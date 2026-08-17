@@ -89,6 +89,16 @@ try {
   check('切换测试地点为 misty_ruins', state.world.currentLocationId === 'misty_ruins', state.world.currentLocationId)
   await page.screenshot({ path: 'qa/dev-state.png' })
 
+  // P003：D20 检定测试区（执行检定并显示完整计算过程与中文结果）
+  await clickByText('执行检定')
+  await sleep(400)
+  body = await bodyText()
+  check(
+    'P003: D20 检定显示计算过程（D20/总值/DC/结果）',
+    body.includes('D20：') && body.includes('总值：') && body.includes('DC：') && body.includes('结果：'),
+  )
+  check('P003: 检定结果显示中文结果（大成功/成功/失败/大失败）', /结果：(大成功|成功|失败|大失败)/.test(body))
+
   // E. 存档 → 刷新 → 继续游戏
   await clickByText('保存存档')
   await page.reload({ waitUntil: 'networkidle0' })

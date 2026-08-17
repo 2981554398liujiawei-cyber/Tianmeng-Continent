@@ -59,7 +59,14 @@ TM-P0-002（内容数据基线与运行时注册表）：
 - 内容注册表：`locations.ts`（4 地点）、`npcs.ts`（3 NPC）、`enemies.ts`（4 敌人）、`quests.ts`（1 任务）、`items.ts`（5 物品含兔子的路径）、`professions.ts`（4 职业）
 - 统一查询出口 `content/index.ts`：`getLocation / getNpc / getEnemy / getQuest / getItem / getProfession`，不存在 ID 安全返回 undefined
 - 游戏页当前位置显示注册表名称（青石村 + ID 小字）
-- 数据一致性测试：交叉引用、Registry ID 一致、初始状态可解析
+- 数据一致性测试：交叉引用、Registry ID 一致、初始状态可解析、关键内容身份锁
+
+TM-P0-003（D20 核心检定规则）：
+- `src/game/rules/d20.ts`：属性修正 `floor((score-10)/2)`、熟练加值（1-20 五档）、`CHECK_DC` 五档标准、`rollD20` / `resolveD20Check`（确定性）/ `performD20Check`（真实掷骰）
+- 天然 20 → 大成功、天然 1 → 大失败（无视 total）；非法输入抛 `RangeError`，不产生 NaN/Infinity
+- 检定属即时结果，不写入 GameState / localStorage
+- 开发者控制台新增「D20 检定测试」区：五项属性（读当前角色真实值）/ DC / 熟练 / 情境修正，完整计算过程与中文结果展示
+- 43 个规则单元测试 + 2 项 E2E（检定显示过程与中文结果）
 
 ## 目录结构
 

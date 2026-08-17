@@ -1,5 +1,9 @@
+import { useState } from 'react'
 import Button from '../components/Button'
 import { useGameStore } from '../game/state/gameStore'
+import { performD20Check, type D20CheckResult } from '../game/rules/d20'
+import { ATTRIBUTE_KEYS, ATTRIBUTE_LABELS } from '../game/content/professions'
+import type { AttributeKey } from '../game/types'
 
 interface DevStatePageProps {
   onBackToMenu: () => void
@@ -9,11 +13,51 @@ const TEST_ITEM_ID = 'test_artifact'
 const LOCATION_A = 'qingshi_village'
 const LOCATION_B = 'misty_ruins'
 
+const OUTCOME_LABELS: Record<D20CheckResult['outcome'], string> = {
+  critical_success: '大成功',
+  success: '成功',
+  failure: '失败',
+  critical_failure: '大失败',
+}
+
+function signed(n: number): string {
+  return n > 0 ? `+${n}` : `${n}`
+}
+
 export default function DevStatePage({ onBackToMenu }: DevStatePageProps) {
   const gameState = useGameStore((s) => s.gameState)
   const hasSave = useGameStore((s) => s.hasSave)
   const { newGame, loadGame, saveGame, deleteGame, addGold, removeGold, addItem, removeItem, setFlag, setCurrentLocation } =
     useGameStore()
+
+  // D20 检定测试区状态（TM-P0-003）
+  const [selectedAttr, setSelectedAttr] = useState<AttributeKey>('str')
+  const [dcInput, setDcInput] = useState('12')
+  const [proficient, setProficient] = useState(false)
+  const [sitInput, setSitInput] = useState('0')
+  const [checkResult, setCheckResult] = useState<D20CheckResult | null>(null)
+  const [checkError, setCheckError] = useState<string | null>(null)
+
+  const handlePerformCheck = () => {
+    setCheckResult(null)
+    setCheckError(null)
+    if (!gameState) {
+      setCheckError('尚未开始游戏，请先新建游戏。')
+      return
+    }
+    try {
+      const result = performD20Check({
+        attributeScore: gameState.player.attributes[selectedAttr],
+        level: gameState.player.level,
+        dc: Number(dcInput),
+        proficient,
+        situationalModifier: Number(sitInput),
+      })
+      setCheckResult(result)
+    } catch (err) {
+      setCheckError(err instanceof Error ? err.message : '检定输入非法')
+    }
+  }
 
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-4xl flex-col gap-6 px-4 py-6">
@@ -64,6 +108,85 @@ export default function DevStatePage({ onBackToMenu }: DevStatePageProps) {
           </Button>
           <span className="self-center text-xs text-bone-500">当前存档状态：{hasSave ? '存在' : '无'}</span>
         </div>
+      </section>
+
+      <section className="rounded border border-ink-600 bg-ink-800/50 p-4">
+        <h3 className="mb-3 text-sm font-bold tracking-wider text-bone-500">D20 检定测试（TM-P0-003）</h3>
+        <div className="flex flex-wrap items-end gap-4">
+          <label className="flex flex-col gap-1 text-xs text-bone-500">
+            属性（读取当前角色真实值）
+            <select
+              className="rounded border border-ink-600 bg-ink-700 px-2 py-1.5 text-sm text-bone-100"
+              value={selectedAttr}
+              onChange={(e) => setSelectedAttr(e.target.value as AttributeKey)}
+            >
+              {ATTRIBUTE_KEYS.map((key) => (
+                <option key={key} value={key}>
+                  {ATTRIBUTE_LABELS[key]}（{gameState ? gameState.player.attributes[key] : '—'}）
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-bone-500">
+            DC
+            <input
+              type="number"
+              className="w-24 rounded border border-ink-600 bg-ink-700 px-2 py-1.5 text-sm text-bone-100"
+              value={dcInput}
+              onChange={(e) => setDcInput(e.target.value)}
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-bone-500">
+            情境修正
+            <input
+              type="number"
+              className="w-24 rounded border border-ink-600 bg-ink-700 px-2 py-1.5 text-sm text-bone-100"
+              value={sitInput}
+              onChange={(e) => setSitInput(e.target.value)}
+            />
+          </label>
+          <label className="flex items-center gap-2 pb-2 text-xs text-bone-500">
+            <input
+              type="checkbox"
+              className="accent-gold-400"
+              checked={proficient}
+              onChange={(e) => setProficient(e.target.checked)}
+            />
+            熟练
+          </label>
+          <Button variant="primary" onClick={handlePerformCheck}>
+            执行检定
+          </Button>
+        </div>
+
+        {checkError && <p className="mt-3 text-sm text-red-300">✗ {checkError}</p>}
+
+        {checkResult && (
+          <div className="mt-3 rounded bg-ink-950/70 p-4 text-sm leading-relaxed text-bone-300">
+            <p>
+              D20：<span className="text-bone-100">{checkResult.roll}</span>
+            </p>
+            <p>
+              {ATTRIBUTE_LABELS[selectedAttr]}修正：
+              <span className="text-bone-100">{signed(checkResult.attributeModifier)}</span>
+            </p>
+            <p>
+              熟练：<span className="text-bone-100">{checkResult.proficiencyBonus > 0 ? signed(checkResult.proficiencyBonus) : '0'}</span>
+            </p>
+            <p>
+              情境：<span className="text-bone-100">{signed(checkResult.situationalModifier)}</span>
+            </p>
+            <p>
+              总值：<span className="text-bone-100">{checkResult.total}</span>
+            </p>
+            <p>
+              DC：<span className="text-bone-100">{checkResult.dc}</span>
+            </p>
+            <p className="mt-1 border-t border-ink-600 pt-2 text-base font-bold text-gold-300">
+              结果：{OUTCOME_LABELS[checkResult.outcome]}
+            </p>
+          </div>
+        )}
       </section>
 
       <section className="rounded border border-ink-600 bg-ink-800/50 p-4">
