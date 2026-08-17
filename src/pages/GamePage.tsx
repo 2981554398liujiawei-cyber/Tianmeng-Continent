@@ -2,7 +2,7 @@ import { useState } from 'react'
 import Button from '../components/Button'
 import { useGameStore } from '../game/state/gameStore'
 import { getProfessionName, ATTRIBUTE_KEYS, ATTRIBUTE_LABELS } from '../game/content/professions'
-import { getEnemy, getLocation, getNpc, getQuest, QUESTS } from '../game/content'
+import { getEnemy, getItem, getLocation, getNpc, getQuest, QUESTS } from '../game/content'
 import type { QuestStatus } from '../game/types'
 
 interface GamePageProps {
@@ -43,6 +43,7 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
   const discoverQuest = useGameStore((s) => s.discoverQuest)
   const acceptQuest = useGameStore((s) => s.acceptQuest)
   const completeQuest = useGameStore((s) => s.completeQuest)
+  const useHealingPotion = useGameStore((s) => s.useHealingPotion)
   const [saveResult, setSaveResult] = useState<'saved' | 'failed' | null>(null)
   const [travelError, setTravelError] = useState(false)
 
@@ -148,6 +149,46 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
           <p className="text-bone-300">未知地点（{world.currentLocationId}）</p>
         )}
         {travelError && <p className="mt-3 text-sm text-red-300">无法前往该地点。</p>}
+      </section>
+
+      <section className="rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
+        <h3 className="mb-3 text-sm font-bold tracking-wider text-bone-500">背包</h3>
+        {gameState.inventory.length === 0 ? (
+          <p className="text-bone-500">背包空空如也。</p>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {gameState.inventory.map((entry) => {
+              const def = getItem(entry.itemId)
+              // TM-P0-010：只有治疗药水提供使用入口；满血 / HP 0 时禁用
+              const isPotion = def?.id === 'healing_potion'
+              const canUse = isPotion && player.hp > 0 && player.hp < player.maxHp
+              return (
+                <div
+                  key={entry.itemId}
+                  className="flex items-center justify-between gap-3 rounded border border-ink-600 bg-ink-900/40 p-3"
+                >
+                  <div>
+                    <p className="font-bold text-bone-100">
+                      {def?.name ?? '未知物品'} <span className="text-xs font-normal text-bone-500">×{entry.quantity}</span>
+                    </p>
+                    <p className="mt-1 text-xs text-bone-500">
+                      {def ? def.description : `（缺失物品定义：${entry.itemId}）`}
+                    </p>
+                  </div>
+                  {isPotion && (
+                    <div className="flex flex-col items-end gap-1">
+                      <Button variant="primary" disabled={!canUse} onClick={() => useHealingPotion()}>
+                        使用
+                      </Button>
+                      {player.hp >= player.maxHp && <span className="text-xs text-bone-500">生命已满</span>}
+                      {player.hp <= 0 && <span className="text-xs text-red-300">当前无法使用</span>}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
       </section>
 
       <section className="rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">

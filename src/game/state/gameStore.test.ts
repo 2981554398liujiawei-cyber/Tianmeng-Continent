@@ -517,3 +517,93 @@ describe('TM-P0-009：resolveCombatVictory 战斗胜利推进任务', () => {
     expect(useGameStore.getState().hasSave).toBe(false)
   })
 })
+
+describe('TM-P0-010：useHealingPotion 治疗药水', () => {
+  const player = () => useGameStore.getState().gameState!.player
+  const potionQty = () =>
+    useGameStore.getState().gameState?.inventory.find((e) => e.itemId === 'healing_potion')?.quantity ?? 0
+
+  it('正常治疗：HP 10/22 药水×2 → true，HP 18，药水×1', () => {
+    useGameStore.setState({
+      gameState: {
+        ...useGameStore.getState().gameState!,
+        player: { ...useGameStore.getState().gameState!.player, hp: 10 },
+      },
+    })
+    expect(useGameStore.getState().useHealingPotion()).toBe(true)
+    expect(player().hp).toBe(18)
+    expect(potionQty()).toBe(1)
+  })
+
+  it('上限截断：HP 20/22 → HP 22（不超过 maxHp），药水×1', () => {
+    useGameStore.setState({
+      gameState: {
+        ...useGameStore.getState().gameState!,
+        player: { ...useGameStore.getState().gameState!.player, hp: 20 },
+      },
+    })
+    expect(useGameStore.getState().useHealingPotion()).toBe(true)
+    expect(player().hp).toBe(22)
+    expect(potionQty()).toBe(1)
+  })
+
+  it('满血不浪费：HP 22/22 → false，HP 与药水不变', () => {
+    const before = JSON.stringify(useGameStore.getState().gameState)
+    expect(useGameStore.getState().useHealingPotion()).toBe(false)
+    expect(JSON.stringify(useGameStore.getState().gameState)).toBe(before)
+  })
+
+  it('HP 0 不允许复活：→ false，HP 与药水不变', () => {
+    useGameStore.setState({
+      gameState: {
+        ...useGameStore.getState().gameState!,
+        player: { ...useGameStore.getState().gameState!.player, hp: 0 },
+      },
+    })
+    const before = JSON.stringify(useGameStore.getState().gameState)
+    expect(useGameStore.getState().useHealingPotion()).toBe(false)
+    expect(JSON.stringify(useGameStore.getState().gameState)).toBe(before)
+  })
+
+  it('无药水：背包无 healing_potion → false，GameState 完全不变', () => {
+    useGameStore.setState({
+      gameState: {
+        ...useGameStore.getState().gameState!,
+        player: { ...useGameStore.getState().gameState!.player, hp: 10 },
+        inventory: useGameStore.getState().gameState!.inventory.filter((e) => e.itemId !== 'healing_potion'),
+      },
+    })
+    const before = JSON.stringify(useGameStore.getState().gameState)
+    expect(useGameStore.getState().useHealingPotion()).toBe(false)
+    expect(JSON.stringify(useGameStore.getState().gameState)).toBe(before)
+  })
+
+  it('最后一瓶：药水×1 成功使用后 inventory 移除该条目', () => {
+    useGameStore.setState({
+      gameState: {
+        ...useGameStore.getState().gameState!,
+        player: { ...useGameStore.getState().gameState!.player, hp: 10 },
+        inventory: [{ itemId: 'healing_potion', quantity: 1 }],
+      },
+    })
+    expect(useGameStore.getState().useHealingPotion()).toBe(true)
+    expect(player().hp).toBe(18)
+    expect(useGameStore.getState().gameState?.inventory.some((e) => e.itemId === 'healing_potion')).toBe(false)
+  })
+
+  it('无 gameState → false', () => {
+    useGameStore.setState({ gameState: null })
+    expect(useGameStore.getState().useHealingPotion()).toBe(false)
+  })
+
+  it('不自动保存：使用成功后 hasSave 仍 false', () => {
+    useGameStore.setState({
+      gameState: {
+        ...useGameStore.getState().gameState!,
+        player: { ...useGameStore.getState().gameState!.player, hp: 10 },
+      },
+    })
+    expect(useGameStore.getState().useHealingPotion()).toBe(true)
+    expect(useGameStore.getState().hasSave).toBe(false)
+  })
+})

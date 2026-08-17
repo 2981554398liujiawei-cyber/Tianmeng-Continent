@@ -128,6 +128,14 @@ TM-P0-009（战斗胜利驱动《村外异动》任务闭环）：
 - GameState 类型结构未变、SAVE_VERSION 仍 1
 - 9 个 Store 单测（合法推进/未接受/available 不跳过/错误敌人/伪造胜利/未知敌人/终态不回退/无奖励副作用/不自动保存）+ 12 项 E2E 完整闭环（含固定随机一击击杀、无奖励断言）
 
+TM-P0-010（背包展示与治疗药水使用）：
+- ItemDefinition 新增静态内容字段 `healAmount`（非 GameState 字段）；healing_potion 锁定 healAmount=8、type=consumable；内容测试锁定所有 healAmount 存在则必须为正整数且仅用于 consumable
+- Store 新增 `useHealingPotion()`（唯一物品使用入口，未加通用 useItem）：需 gameState + 背包有药水 + 0 < hp < maxHp + 注册数据有效；成功 hp=min(maxHp, hp+8) 且药水 -1（同一 Store 更新原子完成）；满血 / HP 0（非复活道具）/ 无药水 → false 且 GameState 完全不变；最后一瓶使用后移除 inventory 条目（不存 quantity=0）；不自动保存
+- GamePage 新增「背包」区：显示 inventory（名称/数量/description 读 getItem）；仅 healing_potion 显示[使用]（启用条件 0 < hp < maxHp；满血禁用提示「生命已满」；HP 0 禁用提示「当前无法使用」）；其他物品只展示；未知物品显示「未知物品 ×n（缺失物品定义：id）」不崩溃不删除
+- CombatPage 未改（战斗中无背包/道具）；初始背包铁剑×1/治疗药水×2 不变
+- GameState 类型结构未变、SAVE_VERSION 仍 1、旧存档继续可读
+- 3 个内容数据测试 + 8 个 Store 单测（正常治疗/上限截断/满血/HP0/无药水/最后一瓶移除/无 gameState/不自动保存）+ 15 项 E2E（初始背包/满血禁用/确定性受伤 22→20→用药 22/药水×1/存档恢复）
+
 ## 目录结构
 
 ```

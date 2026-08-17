@@ -8,6 +8,8 @@ export interface ItemDefinition {
   description: string
   /** 基础价值（金币） */
   value: number
+  /** 使用后恢复的生命值（仅 consumable 可使用，TM-P0-010） */
+  healAmount?: number
 }
 
 /** V1 最小物品目录（仅当前需要的内容） */
@@ -25,6 +27,7 @@ export const ITEMS: Record<string, ItemDefinition> = {
     type: 'consumable',
     description: '装在小陶瓶中的淡红药水，饮下可恢复少量生命。',
     value: 10,
+    healAmount: 8,
   },
   test_artifact: {
     id: 'test_artifact',

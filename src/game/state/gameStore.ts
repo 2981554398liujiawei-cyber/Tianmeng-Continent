@@ -3,7 +3,7 @@ import type { CharacterCreationInput, GameState, QuestStatus } from '../types'
 import { createInitialGameState } from '../content/initial'
 import { checkTravel } from '../rules/exploration'
 import { canTransitionQuestStatus } from '../rules/quest'
-import { getEnemy, getLocation, getQuest } from '../content'
+import { getEnemy, getItem, getLocation, getQuest } from '../content'
 import {
   deleteGame as deleteSave,
   hasSave as storageHasSave,
@@ -48,6 +48,8 @@ interface GameStoreState {
   damagePlayer: (amount: number) => boolean
   /** 战斗胜利提交：Store 自校验敌人存在且属于当前地点；《村外异动》进行中在村外草原击败魔化兔 → completable（TM-P0-009） */
   resolveCombatVictory: (enemyId: string) => boolean
+  /** 使用治疗药水：hp = min(maxHp, hp + healAmount)，药水 -1；满血/HP0/无药水返回 false 不变（TM-P0-010） */
+  useHealingPotion: () => boolean
   addGold: (amount: number) => void
   removeGold: (amount: number) => void
   addItem: (itemId: string, quantity?: number) => void
@@ -246,6 +248,39 @@ export const useGameStore = create<GameStoreState>()((set) => ({
       return { gameState: next }
     })
     return ok
+  },
+
+  useHealingPotion: () => {
+    let used = false
+    set((s) => {
+      if (!s.gameState) return {}
+      const player = s.gameState.player
+      // HP 0 不能复活；满血不浪费药水
+      if (player.hp <= 0 || player.hp >= player.maxHp) return {}
+      const potion = getItem('healing_potion')
+      if (!potion?.healAmount || !Number.isInteger(potion.healAmount) || potion.healAmount <= 0) return {}
+      const inv = s.gameState.inventory
+      const idx = inv.findIndex((e) => e.itemId === 'healing_potion')
+      if (idx < 0) return {}
+      const entry = inv[idx]
+      if (!entry || entry.quantity < 1) return {}
+      // 原子更新：HP 恢复与药水扣减在同一次 Store 更新中完成
+      const hp = Math.min(player.maxHp, player.hp + potion.healAmount)
+      const remaining = entry.quantity - 1
+      const inventory =
+        remaining > 0
+          ? inv.map((e, i) => (i === idx ? { ...e, quantity: remaining } : e))
+          : inv.filter((e) => e.itemId !== 'healing_potion')
+      used = true
+      return {
+        gameState: {
+          ...s.gameState,
+          player: { ...player, hp },
+          inventory,
+        },
+      }
+    })
+    return used
   },
 
   addGold: (amount) => {

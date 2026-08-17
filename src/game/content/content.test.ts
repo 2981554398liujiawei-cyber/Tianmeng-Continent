@@ -226,3 +226,27 @@ describe('TM-P0-008：地点遭遇敌人数据一致性', () => {
     expect(getLocation('qingshi_village')?.description).toContain('群山环抱')
   })
 })
+
+describe('TM-P0-010：治疗药水数据约束', () => {
+  it('healing_potion 为 consumable 且 healAmount === 8', () => {
+    const potion = getItem('healing_potion')
+    expect(potion?.type).toBe('consumable')
+    expect(potion?.healAmount).toBe(8)
+  })
+
+  it('healAmount 若存在必须为正整数且仅用于 consumable', () => {
+    for (const item of Object.values(ITEMS)) {
+      if (item.healAmount !== undefined) {
+        expect(Number.isInteger(item.healAmount), `${item.id} healAmount 正整数`).toBe(true)
+        expect(item.healAmount).toBeGreaterThan(0)
+        expect(item.type, `${item.id} healAmount 仅 consumable`).toBe('consumable')
+      }
+    }
+  })
+
+  it('其他物品不携带 healAmount', () => {
+    expect(getItem('iron_sword')?.healAmount).toBeUndefined()
+    expect(getItem('test_artifact')?.healAmount).toBeUndefined()
+    expect(getItem('rabbit_path')?.healAmount).toBeUndefined()
+  })
+})

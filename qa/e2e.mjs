@@ -430,6 +430,59 @@ try {
   body = await bodyText()
   check('P009: 闭环完成返回主菜单', body.includes('天梦大陆'))
 
+  // P010：背包展示与治疗药水 —— 新游戏（默认骑士，maxHp 22）
+  await clickByText('新游戏')
+  await clickByText('确认进入天梦大陆')
+  body = await bodyText()
+  check('P010: 背包显示铁剑 ×1', body.includes('铁剑 ×1'))
+  check('P010: 背包显示治疗药水 ×2', body.includes('治疗药水 ×2'))
+  check('P010: 药水描述读取注册表', body.includes('装在小陶瓶中的淡红药水'))
+  check('P010: 满血时使用按钮禁用', (await buttonDisabled('使用')) === true)
+  check('P010: 满血提示生命已满', body.includes('生命已满'))
+
+  // 确定性受伤：随机序列 [玩家2, 敌8, 玩家20] → 玩家未命中受伤2 → 第二击天然20击杀
+  await clickByText('村外草原')
+  await clickByText('迎战')
+  await sleep(300)
+  body = await bodyText()
+  await page.evaluate(() => {
+    window.__origRandom = Math.random.bind(Math)
+    const seq = [0.05, 0.35, 0.95] // floor(x*20)+1 → 2 / 8 / 20
+    let i = 0
+    Math.random = () => seq[Math.min(i++, seq.length - 1)]
+  })
+  await clickByText('普通攻击') // 玩家未命中，魔化兔命中 → HP 22→20
+  await sleep(200)
+  await clickByText('普通攻击') // 玩家天然 20 暴击 12 击杀 → 胜利
+  await sleep(300)
+  body = await bodyText()
+  check('P010: 确定性战斗胜利', body.includes('战斗胜利'))
+  await page.evaluate(() => {
+    Math.random = window.__origRandom
+  })
+  await clickByText('返回冒险')
+  body = await bodyText()
+  check('P010: 受伤后 HP 20 / 22', body.includes('20 / 22'))
+  check('P010: 受伤后治疗药水仍 ×2', body.includes('治疗药水 ×2'))
+  check('P010: 受伤后使用按钮启用', (await buttonDisabled('使用')) === false)
+
+  await clickByText('使用')
+  await sleep(250)
+  body = await bodyText()
+  check('P010: 使用药水后 HP 恢复 22 / 22', body.includes('22 / 22'))
+  check('P010: 药水数量减少为 ×1', body.includes('治疗药水 ×1'))
+  check('P010: 满血后使用按钮重新禁用', (await buttonDisabled('使用')) === true)
+
+  // 存档恢复：用药后手动保存 → Continue → HP/药水保持使用后值
+  await clickByText('保存游戏')
+  await clickByText('返回主菜单')
+  await clickByText('继续游戏')
+  body = await bodyText()
+  check('P010: Continue 后 HP 为使用后值 22 / 22', body.includes('22 / 22'))
+  check('P010: Continue 后药水为使用后值 ×1', body.includes('治疗药水 ×1'))
+  check('P010: Continue 后使用按钮仍禁用', (await buttonDisabled('使用')) === true)
+  await clickByText('返回主菜单')
+
   // R2：运行期间存档改坏 → 触发一次 load → Continue 禁用且不进入游戏页
   await clickByText('新游戏')
   await clickByText('确认进入天梦大陆') // P004：默认预填合法，直接确认创建
