@@ -993,6 +993,114 @@ try {
   body = await bodyText()
   check('P022-R1: 无自动存档（继续游戏无存档仍禁用）', (await buttonDisabled('继续游戏')) === true)
 
+  // P1-001：法师职业技能「法术攻击」与灵力消耗
+  // A. 非法师（默认骑士）没有法术攻击
+  await clickByText('新游戏')
+  await clickByText('确认进入天梦大陆')
+  await clickByText('村外草原')
+  await clickByText('迎战')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-001-A: 骑士战斗中显示普通攻击', body.includes('普通攻击'))
+  check('P1-001-A: 骑士不显示法术攻击', !body.includes('法术攻击'))
+  await page.evaluate(() => {
+    window.__origRandom = Math.random.bind(Math)
+    Math.random = () => 0.99 // 普通攻击天然 20
+  })
+  await clickByText('普通攻击')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-001-A: 骑士普通攻击胜利', body.includes('战斗胜利'))
+  await page.evaluate(() => {
+    Math.random = window.__origRandom
+  })
+  await clickByText('返回冒险')
+  await clickByText('返回主菜单')
+
+  // B. 法师拥有法术攻击（创建页选择法师，属性使用合法默认分配）
+  await clickByText('新游戏')
+  await clickLabel('法师')
+  await clickByText('确认进入天梦大陆')
+  await clickByText('村外草原')
+  await clickByText('迎战')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-001-B: 战斗页职业显示法师', body.includes('法师'))
+  check('P1-001-B: 显示灵力 6 / 6', body.includes('6 / 6'))
+  check('P1-001-B: 显示法术攻击（2 灵力）', body.includes('法术攻击（2 灵力）'))
+  check('P1-001-B: 法术按钮启用', (await buttonDisabled('法术攻击')) === false)
+
+  // C. 灵力耗尽：法术天然1 + 敌天然1，连续施法三次 MP 6→4→2→0
+  await page.evaluate(() => {
+    window.__origRandom = Math.random.bind(Math)
+    Math.random = () => 0.0 // 法术 roll1 大失败（0 伤），敌 roll1 大失败（0 伤）
+  })
+  await clickByText('法术攻击')
+  await sleep(300)
+  await clickByText('法术攻击')
+  await sleep(300)
+  await clickByText('法术攻击')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-001-C: 灵力 0 / 6', body.includes('0 / 6'))
+  check('P1-001-C: 法术按钮禁用', (await buttonDisabled('法术攻击')) === true)
+  check('P1-001-C: 显示灵力不足', body.includes('灵力不足'))
+  check('P1-001-C: 普通攻击仍启用', (await buttonDisabled('普通攻击')) === false)
+  check('P1-001-C: 魔化兔仍满血 HP 8 / 8', body.includes('8 / 8'))
+  await page.evaluate(() => {
+    Math.random = window.__origRandom
+  })
+
+  // D. MP0 仍可普通攻击（天然20 暴击击败魔化兔，普通攻击不消费 MP）
+  await page.evaluate(() => {
+    window.__origRandom = Math.random.bind(Math)
+    Math.random = () => 0.99
+  })
+  await clickByText('普通攻击')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-001-D: MP0 普通攻击战斗胜利', body.includes('战斗胜利'))
+  await page.evaluate(() => {
+    Math.random = window.__origRandom
+  })
+
+  // E. 返回冒险 → 青石村休整恢复灵力
+  await clickByText('返回冒险')
+  await clickByText('青石村')
+  await clickByText('休整')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-001-E: 休整后灵力 6 / 6', body.includes('6 / 6'))
+
+  // F. 真正法术命中/暴击：法术天然20，默认法师 MND8 伤害5 暴击10 击败魔化兔
+  await clickByText('村外草原')
+  await clickByText('迎战')
+  await sleep(300)
+  await page.evaluate(() => {
+    window.__origRandom = Math.random.bind(Math)
+    Math.random = () => 0.99
+  })
+  await clickByText('法术攻击')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-001-F: 显示你的法术攻击', body.includes('你的法术攻击'))
+  check('P1-001-F: 暴击造成 10 点伤害', body.includes('暴击') && body.includes('造成 10 点伤害'))
+  check('P1-001-F: 法术暴击战斗胜利', body.includes('战斗胜利'))
+  await page.evaluate(() => {
+    Math.random = window.__origRandom
+  })
+
+  // G. 战斗后 MP 保留 + 手动存档 Continue 保持剩余 MP
+  await clickByText('返回冒险')
+  body = await bodyText()
+  check('P1-001-G: 战斗后灵力 4 / 6', body.includes('4 / 6'))
+  await clickByText('保存游戏')
+  await clickByText('返回主菜单')
+  await clickByText('继续游戏')
+  body = await bodyText()
+  check('P1-001-G: Continue 后灵力仍 4 / 6', body.includes('4 / 6'))
+  await clickByText('返回主菜单')
+
   // R2：运行期间存档改坏 → 触发一次 load → Continue 禁用且不进入游戏页
   await clickByText('新游戏')
   await clickByText('确认进入天梦大陆') // P004：默认预填合法，直接确认创建

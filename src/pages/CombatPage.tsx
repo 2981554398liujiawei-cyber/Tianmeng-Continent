@@ -4,6 +4,9 @@ import { useGameStore } from '../game/state/gameStore'
 import { getEnemy, getItem } from '../game/content'
 import { getProfessionName } from '../game/content/professions'
 import {
+  getMageSpellAttackBonus,
+  getMageSpellDamage,
+  MAGE_SPELL_MP_COST,
   getPlayerAttackBonus,
   getPlayerAttackDamage,
   getPlayerDefense,
@@ -40,12 +43,15 @@ function attackLine(result: AttackResult, defenderName: string): string {
 export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu }: CombatPageProps) {
   const gameState = useGameStore((s) => s.gameState)
   const damagePlayer = useGameStore((s) => s.damagePlayer)
+  const spendMageSpellMp = useGameStore((s) => s.spendMageSpellMp)
   const enemy = getEnemy(enemyId)
 
   const [enemyCurrentHp, setEnemyCurrentHp] = useState(enemy?.maxHp ?? 0)
   const [phase, setPhase] = useState<CombatPhase>('active')
   const [lastPlayerAttack, setLastPlayerAttack] = useState<AttackResult | null>(null)
   const [lastEnemyAttack, setLastEnemyAttack] = useState<AttackResult | null>(null)
+  /** TM-P1-001：最近一次玩家行动类型（仅页面本地，不进入 GameState）——区分「你的攻击/你的法术攻击」 */
+  const [lastPlayerAction, setLastPlayerAction] = useState<'basic' | 'mage_spell' | null>(null)
 
   if (!gameState) {
     return (
@@ -83,10 +89,29 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
       enemy.defense,
       getPlayerAttackDamage(player.attributes.str, weaponDamageBonus),
     )
-    setLastPlayerAttack(playerResult)
+    applyPlayerAttack(playerResult, 'basic')
+  }
+
+  /** TM-P1-001：法师法术攻击——先消费灵力，成功才施法掷骰 */
+  const handleMageSpell = () => {
+    if (phase !== 'active') return
+    // 唯一灵力消费入口：false → 不掷骰、不改敌人 HP、不触发反击、不改最后一次攻击结果
+    if (!spendMageSpellMp()) return
+    const spellResult = performAttack(
+      getMageSpellAttackBonus(player.attributes.mnd, player.level),
+      enemy.defense,
+      getMageSpellDamage(player.attributes.mnd),
+    )
+    applyPlayerAttack(spellResult, 'mage_spell')
+  }
+
+  /** TM-P1-001：普通攻击与法术攻击共用的最小局部结算（不建 ActionSystem/TurnManager） */
+  const applyPlayerAttack = (attack: AttackResult, action: 'basic' | 'mage_spell') => {
+    setLastPlayerAttack(attack)
+    setLastPlayerAction(action)
     setLastEnemyAttack(null)
 
-    const strike = resolvePlayerStrike(enemyCurrentHp, playerResult)
+    const strike = resolvePlayerStrike(enemyCurrentHp, attack)
     setEnemyCurrentHp(strike.enemyHp)
     if (!strike.enemyShouldCounter) {
       // 致死攻击 → 胜利，且敌人不得反击
@@ -118,6 +143,9 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
           </p>
           <p className="mt-2">
             生命 <span className="tabular-nums text-bone-100">{player.hp}</span> / {player.maxHp}
+          </p>
+          <p>
+            灵力 <span className="tabular-nums text-bone-100">{player.mp}</span> / {player.maxMp}
           </p>
           <p>
             防御 <span className="tabular-nums text-bone-100">{playerDefense}</span>
@@ -152,7 +180,7 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
         <section className="rounded border border-ink-600 bg-ink-900/50 p-4 text-sm leading-relaxed text-bone-300">
           {lastPlayerAttack && (
             <p>
-              <span className="text-bone-500">你的攻击：</span>
+              <span className="text-bone-500">{lastPlayerAction === 'mage_spell' ? '你的法术攻击：' : '你的攻击：'}</span>
               {attackLine(lastPlayerAttack, enemy.name)}
             </p>
           )}
@@ -167,9 +195,20 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
 
       <footer className="flex flex-col items-center gap-4">
         {phase === 'active' && (
-          <Button variant="primary" onClick={handleAttack}>
-            普通攻击
-          </Button>
+          <div className="flex flex-col items-center gap-3">
+            <Button variant="primary" onClick={handleAttack}>
+              普通攻击
+            </Button>
+            {/* TM-P1-001：仅法师显示法术攻击；灵力不足时禁用但普通攻击不受影响 */}
+            {player.profession === 'mage' && (
+              <div className="flex flex-col items-center gap-1">
+                <Button variant="primary" disabled={player.mp < MAGE_SPELL_MP_COST} onClick={handleMageSpell}>
+                  法术攻击（{MAGE_SPELL_MP_COST} 灵力）
+                </Button>
+                {player.mp < MAGE_SPELL_MP_COST && <span className="text-xs text-red-300">灵力不足</span>}
+              </div>
+            )}
+          </div>
         )}
         {phase === 'victory' && (
           <>

@@ -34,6 +34,21 @@ export function getPlayerAttackDamage(str: number, weaponDamageBonus = 0): numbe
   return damage
 }
 
+// ---- Phase 1：法师职业技能「法术攻击」（TM-P1-001）----
+
+/** 法术攻击灵力消耗（唯一业务常量，CombatPage 与 Store 都读取它） */
+export const MAGE_SPELL_MP_COST = 2
+
+/** 法师法术攻击加值：MND 属性修正 + 熟练加值（复用已封板 d20 公式） */
+export function getMageSpellAttackBonus(mnd: number, level: number): number {
+  return getAttributeModifier(mnd) + getProficiencyBonus(level)
+}
+
+/** 法师法术伤害：max(1, 6 + MND 属性修正)（不吃 STR / 武器伤害加成） */
+export function getMageSpellDamage(mnd: number): number {
+  return Math.max(1, 6 + getAttributeModifier(mnd))
+}
+
 export type AttackOutcome = 'critical_hit' | 'hit' | 'miss' | 'critical_miss'
 
 export interface AttackResult {

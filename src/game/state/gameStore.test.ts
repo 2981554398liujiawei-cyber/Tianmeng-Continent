@@ -1477,3 +1477,100 @@ describe('TM-P0-022：restAtVillage 青石村休整', () => {
     expect(hp()).toBe(22)
   })
 })
+
+describe('TM-P1-001：spendMageSpellMp 法师法术灵力消费', () => {
+  const mp = () => useGameStore.getState().gameState?.player.mp
+  const setProfession = (p: string) => {
+    useGameStore.setState({
+      gameState: {
+        ...useGameStore.getState().gameState!,
+        player: { ...useGameStore.getState().gameState!.player, profession: p as never },
+      },
+    })
+  }
+  const setMp = (m: number) => {
+    useGameStore.setState({
+      gameState: {
+        ...useGameStore.getState().gameState!,
+        player: { ...useGameStore.getState().gameState!.player, mp: m },
+      },
+    })
+  }
+
+  it('A. 正常消费：mage MP6 → true，MP4', () => {
+    setProfession('mage')
+    setMp(6)
+    expect(useGameStore.getState().spendMageSpellMp()).toBe(true)
+    expect(mp()).toBe(4)
+  })
+
+  it('B. 刚好够：MP2 → true，MP0', () => {
+    setProfession('mage')
+    setMp(2)
+    expect(useGameStore.getState().spendMageSpellMp()).toBe(true)
+    expect(mp()).toBe(0)
+  })
+
+  it('C. 灵力不足：MP1 → false，GameState 完全不变', () => {
+    setProfession('mage')
+    setMp(1)
+    const snapshot = JSON.stringify(useGameStore.getState().gameState)
+    expect(useGameStore.getState().spendMageSpellMp()).toBe(false)
+    expect(JSON.stringify(useGameStore.getState().gameState)).toBe(snapshot)
+  })
+
+  it('D. 非法职业：knight MP6 → false，GameState 完全不变', () => {
+    setProfession('knight')
+    setMp(6)
+    const snapshot = JSON.stringify(useGameStore.getState().gameState)
+    expect(useGameStore.getState().spendMageSpellMp()).toBe(false)
+    expect(JSON.stringify(useGameStore.getState().gameState)).toBe(snapshot)
+  })
+
+  it('E. 无 GameState → false', () => {
+    useGameStore.setState({ gameState: null })
+    expect(useGameStore.getState().spendMageSpellMp()).toBe(false)
+  })
+
+  it('F. 非法 MP：mp=-1 与 mp>maxMp → false，GameState 不变', () => {
+    setProfession('mage')
+    // mp = -1
+    setMp(-1)
+    const s0 = JSON.stringify(useGameStore.getState().gameState)
+    expect(useGameStore.getState().spendMageSpellMp()).toBe(false)
+    expect(JSON.stringify(useGameStore.getState().gameState)).toBe(s0)
+    // mp 越界（> maxMp=6）
+    setMp(7)
+    const s1 = JSON.stringify(useGameStore.getState().gameState)
+    expect(useGameStore.getState().spendMageSpellMp()).toBe(false)
+    expect(JSON.stringify(useGameStore.getState().gameState)).toBe(s1)
+  })
+
+  it('G. 无额外副作用：正常扣除前后除 player.mp 外 player 其他字段/inventory/equipment/quests/world 全不变', () => {
+    setProfession('mage')
+    setMp(6)
+    const before = useGameStore.getState().gameState!
+    useGameStore.getState().spendMageSpellMp()
+    const after = useGameStore.getState().gameState!
+    expect(after.player.hp).toBe(before.player.hp)
+    expect(after.player.maxHp).toBe(before.player.maxHp)
+    expect(after.player.maxMp).toBe(before.player.maxMp)
+    expect(after.player.gold).toBe(before.player.gold)
+    expect(after.player.level).toBe(before.player.level)
+    expect(after.player.profession).toBe(before.player.profession)
+    expect(after.player.attributes).toEqual(before.player.attributes)
+    expect(after.inventory).toEqual(before.inventory)
+    expect(after.equipment).toEqual(before.equipment)
+    expect(after.quests).toEqual(before.quests)
+    expect(after.world).toEqual(before.world)
+    expect(after.player.mp).toBe(before.player.mp - 2)
+  })
+
+  it('H. 不自动保存：成功消费后 hasSave 仍 false', () => {
+    setProfession('mage')
+    setMp(6)
+    useGameStore.getState().spendMageSpellMp()
+    expect(mp()).toBe(4)
+    expect(useGameStore.getState().hasSave).toBe(false)
+  })
+})

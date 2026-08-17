@@ -5,6 +5,7 @@ import { checkTravel } from '../rules/exploration'
 import { canTransitionQuestStatus } from '../rules/quest'
 import { getEnemy, getItem, getLocation, getNpc, getQuest } from '../content'
 import { performD20Check, CHECK_DC, type D20CheckResult } from '../rules/d20'
+import { MAGE_SPELL_MP_COST } from '../rules/combat'
 import {
   deleteGame as deleteSave,
   hasSave as storageHasSave,
@@ -61,6 +62,8 @@ interface GameStoreState {
   sellIronOre: () => boolean
   /** 青石村休整：HP/MP 恢复至最大值；免费、只改 hp/mp、不自动保存（TM-P0-022） */
   restAtVillage: () => boolean
+  /** 法师法术攻击灵力消费（TM-P1-001）：仅 mage 可消费 MAGE_SPELL_MP_COST；只改 player.mp；不自动保存 */
+  spendMageSpellMp: () => boolean
   /** 调查废弃矿洞（TM-P0-016）：心智 D20 检定一次性写入 flags；非法/已调查/异常 → null 且不变 */
   investigateAbandonedMine: () => D20CheckResult | null
   addGold: (amount: number) => void
@@ -522,6 +525,29 @@ export const useGameStore = create<GameStoreState>()((set) => ({
       }
     })
     return rested
+  },
+
+  spendMageSpellMp: () => {
+    let spent = false
+    set((s) => {
+      if (!s.gameState) return {}
+      const player = s.gameState.player
+      // 职业边界：仅法师可以施放法术攻击
+      if (player.profession !== 'mage') return {}
+      // 数据安全：maxMp 非负安全整数 / mp 非负安全整数且在 [0, maxMp] 内
+      if (!Number.isSafeInteger(player.maxMp) || player.maxMp < 0) return {}
+      if (!Number.isSafeInteger(player.mp) || player.mp < 0 || player.mp > player.maxMp) return {}
+      // 灵力不足：mp < 消耗 → 拒绝且状态完全不变
+      if (player.mp < MAGE_SPELL_MP_COST) return {}
+      spent = true
+      return {
+        gameState: {
+          ...s.gameState,
+          player: { ...player, mp: player.mp - MAGE_SPELL_MP_COST },
+        },
+      }
+    })
+    return spent
   },
 
   addGold: (amount) => {

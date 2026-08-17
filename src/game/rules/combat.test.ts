@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
   getCombatPhaseAfterEnemyAttack,
+  getMageSpellAttackBonus,
+  getMageSpellDamage,
   getPlayerAttackBonus,
   getPlayerAttackDamage,
   getPlayerBasicDamage,
   getPlayerDefense,
+  MAGE_SPELL_MP_COST,
   performAttack,
   resolveAttack,
   resolvePlayerStrike,
@@ -227,5 +230,43 @@ describe('TM-P0-007：无副作用', () => {
     performAttack(enemy.attackBonus, getPlayerDefense(agi), enemy.damage)
     expect(JSON.stringify(state)).toBe(snapshot)
     expect(state.player.hp).toBe(state.player.maxHp)
+  })
+})
+
+describe('TM-P1-001：法师法术攻击规则', () => {
+  it('A. 法术攻击加值 = MND 修正 + 熟练加值（Lv1）', () => {
+    expect(getMageSpellAttackBonus(8, 1)).toBe(1) // -1 + 2
+    expect(getMageSpellAttackBonus(10, 1)).toBe(2) // 0 + 2
+    expect(getMageSpellAttackBonus(14, 1)).toBe(4) // +2 + 2
+    expect(getMageSpellAttackBonus(16, 1)).toBe(5) // +3 + 2
+  })
+
+  it('B. 法术伤害 = max(1, 6 + MND 修正)', () => {
+    expect(getMageSpellDamage(8)).toBe(5)
+    expect(getMageSpellDamage(10)).toBe(6)
+    expect(getMageSpellDamage(14)).toBe(8)
+    expect(getMageSpellDamage(16)).toBe(9)
+  })
+
+  it('C. 复用天然 20：MND14 法术伤害 8 → 暴击 16', () => {
+    const result = resolveAttack(20, getMageSpellAttackBonus(14, 1), 11, getMageSpellDamage(14))
+    expect(result.outcome).toBe('critical_hit')
+    expect(result.damage).toBe(16)
+  })
+
+  it('D. 复用天然 1 → critical_miss 0 伤害', () => {
+    const result = resolveAttack(1, getMageSpellAttackBonus(14, 1), 11, getMageSpellDamage(14))
+    expect(result.outcome).toBe('critical_miss')
+    expect(result.damage).toBe(0)
+  })
+
+  it('E. 武器不进入法术公式：getMageSpellDamage 接口无 weaponDamageBonus 参数', () => {
+    // 接口签名只接受 mnd；装备铁剑不影响法术伤害（由 CombatPage 只调用 getMageSpellDamage(mnd) 保证）
+    const fn = getMageSpellDamage as unknown as (mnd: number, weaponBonus?: number) => number
+    expect(fn(14, 999)).toBe(8) // 忽略多余参数
+  })
+
+  it('MAGE_SPELL_MP_COST === 2（唯一业务常量）', () => {
+    expect(MAGE_SPELL_MP_COST).toBe(2)
   })
 })
