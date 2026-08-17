@@ -737,6 +737,21 @@ try {
   check('P016: Continue 后成功文本仍在且无法重掷', body.includes('你在洞口附近发现了被利爪抓乱的泥痕') && body.includes('调查已完成'))
   await clickByText('返回主菜单')
 
+  // P017：无敌人地点隐藏「附近威胁」
+  await clickByText('新游戏')
+  await clickByText('确认进入天梦大陆')
+  body = await bodyText()
+  check('P017: 青石村不显示附近威胁', !body.includes('附近威胁'))
+  check('P017: 青石村不显示空状态文案', !body.includes('这里暂时没有威胁'))
+  check('P017: 青石村其他区域正常（附近人物/药师的小铺/附近委托）', body.includes('附近人物') && body.includes('药师的小铺') && body.includes('附近委托'))
+  await clickByText('村外草原')
+  body = await bodyText()
+  check('P017: 村外草原显示附近威胁（魔化兔 HP 8 防御 11）', body.includes('附近威胁') && body.includes('魔化兔') && body.includes('HP 8') && body.includes('防御 11') && body.includes('迎战'))
+  await clickByText('青石村')
+  body = await bodyText()
+  check('P017: 返回青石村后附近威胁消失', !body.includes('附近威胁'))
+  await clickByText('返回主菜单')
+
   // R2：运行期间存档改坏 → 触发一次 load → Continue 禁用且不进入游戏页
   await clickByText('新游戏')
   await clickByText('确认进入天梦大陆') // P004：默认预填合法，直接确认创建

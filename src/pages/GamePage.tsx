@@ -325,11 +325,10 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
         </section>
       )}
 
-      <section className="rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
-        <h3 className="mb-3 text-sm font-bold tracking-wider text-bone-500">附近威胁</h3>
-        {(location?.enemyIds?.length ?? 0) === 0 ? (
-          <p className="text-bone-500">这里暂时没有威胁。</p>
-        ) : (
+      {/* TM-P0-017：附近威胁 —— 仅当前地点配置了敌人时显示（青石村等无敌人地点整个区域隐藏） */}
+      {(location?.enemyIds?.length ?? 0) > 0 && (
+        <section className="rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
+          <h3 className="mb-3 text-sm font-bold tracking-wider text-bone-500">附近威胁</h3>
           <div className="flex flex-col gap-3">
             {location!.enemyIds!.map((enemyId) => {
               const threat = getEnemy(enemyId)
@@ -355,8 +354,8 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
               )
             })}
           </div>
-        )}
-      </section>
+        </section>
+      )}
 
       {/* TM-P0-016：废弃矿洞调查 —— 仅废弃矿洞显示；DC 来自 CHECK_DC.moderate，不复制常量 */}
       {world.currentLocationId === 'abandoned_mine' && (

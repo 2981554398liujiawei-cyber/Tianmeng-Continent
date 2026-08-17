@@ -185,6 +185,12 @@ TM-P0-016（废弃矿洞调查 D20 正式玩法接入）：
 - GameState 类型结构未变、SAVE_VERSION 仍 1；未新增 investigations/checks/skillChecks/explorationEvents
 - 9 个 Store 单测（成功 total12/失败 total11/天然20/天然1/错误地点 null 不变/已调查禁止重掷且不再调用随机数/非法 level=0 不抛 null/无副作用/不自动保存）+ 9 项 E2E（调查入口与 DC 12/固定天然20 大成功即时显示+成功文本+调查已完成+按钮消失/移动返回不可重掷/存档恢复仍不可重掷）
 
+TM-P0-017（无敌人地点隐藏「附近威胁」）：
+- GamePage「附近威胁」整个区域仅当 `(location?.enemyIds?.length ?? 0) > 0` 时渲染；青石村（enemyIds=[]）不显示；删除「这里暂时没有威胁」空状态文案（不再用空状态替代隐藏）
+- 未知地点（getLocation undefined）不显示威胁区且保持不崩溃；有敌人地点（村外草原/废弃矿洞/兔王巢穴）卡片行为完全不变（名称/等级/HP/防御/[迎战]/HP≤0 时「当前状态无法战斗」）
+- 未修改内容注册表（各地 enemyIds 原样）、未修改 Store/GameState/WorldState/EnemyDefinition/LocationDefinition/SAVE_VERSION（仍 1）；未拆新组件
+- 5 项 E2E（青石村无附近威胁且无空状态文案且附近人物/药师的小铺/附近委托正常/村外草原显示魔化兔 HP 8 防御 11 迎战/返回青石村后威胁区消失）
+
 ## 目录结构
 
 ```
