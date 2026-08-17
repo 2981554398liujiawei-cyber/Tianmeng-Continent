@@ -27,15 +27,18 @@ export default function MainMenu({ hasSave, onNewGame, onContinue, onOpenDev }: 
         </Button>
       </nav>
 
-      <footer className="absolute bottom-4 right-4">
-        <button
-          type="button"
-          className="text-xs text-bone-500/60 underline-offset-4 hover:text-bone-300 hover:underline"
-          onClick={onOpenDev}
-        >
-          开发者控制台
-        </button>
-      </footer>
+      {/* TM-P0-023：开发者控制台仅开发环境可见（import.meta.env.DEV 为唯一环境判断来源）；生产构建不渲染该入口 */}
+      {import.meta.env.DEV && (
+        <footer className="absolute bottom-4 right-4">
+          <button
+            type="button"
+            className="text-xs text-bone-500/60 underline-offset-4 hover:text-bone-300 hover:underline"
+            onClick={onOpenDev}
+          >
+            开发者控制台
+          </button>
+        </footer>
+      )}
     </div>
   )
 }

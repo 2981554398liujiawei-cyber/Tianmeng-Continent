@@ -247,6 +247,13 @@ TM-P0-022-R2（区分正常战败与异常战斗退出——修复 Blocker）：
 - Store/规则层（gameStore/combat/d20/storage/GameState types）零修改；SAVE_VERSION 仍 1；无新增依赖
 - R1 真正战败 E2E（225/225）零回归；未为三个边界新增测试库（保持实现最小）
 
+TM-P0-023（生产版本隐藏开发者控制台）：
+- MainMenu 开发者控制台入口改为 `{import.meta.env.DEV && (...)}` 条件渲染（import.meta.env.DEV 为唯一环境判断来源，未维护第二套 IS_PRODUCTION/NODE_ENV/hostname 判断）；开发环境（npm run dev）主菜单仍显示「开发者控制台」且可进入现有 DevStatePage（历史 E2E 依赖 dev server 全保留）；生产构建（npm run build + preview）主菜单完全不渲染该入口
+- 未删除 DevStatePage 及其 QA 能力；未重构 App 导航（Screen 类型保持不变）；未增加秘密入口（无快捷键/URL 参数/localStorage 开关/密码）；正式玩法代码（GamePage/CombatPage/CharacterCreationPage/Store/规则/内容注册表）零修改
+- 新增 qa/prod-smoke.mjs（生产 Smoke，真实 npm run build + npm run preview -- --port 5198 验证）：断言生产主菜单显示天梦大陆/新游戏/继续游戏、不显示开发者控制台（文本+按钮 DOM 双重断言）、不写 localStorage/不点击新游戏/不修改状态；package.json 新增 `qa:prod` 脚本（未增减任何依赖）
+- 存档零修改：SAVE_VERSION=1、SAVE_KEY/SaveFile/GameState/storage validation 全未动
+- 验证：单测 349/349；dev E2E 227/227 零回归（含历史「返回主菜单→开发者控制台」流程）；生产 smoke 6/6 全绿（真实生产构建）
+
 ## 目录结构
 
 ```
