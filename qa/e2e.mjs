@@ -698,6 +698,45 @@ try {
   check('P015: 返回后对话保持关闭', !body.includes('与村长交谈'))
   await clickByText('返回主菜单')
 
+  // P016：废弃矿洞调查 D20 正式玩法
+  await clickByText('新游戏')
+  await clickByText('确认进入天梦大陆')
+  await clickByText('废弃矿洞')
+  body = await bodyText()
+  check('P016: 矿洞显示调查入口（心智检定 DC 12）', body.includes('调查矿洞') && body.includes('心智检定') && body.includes('DC 12'))
+  check('P016: 显示仔细调查按钮', body.includes('仔细调查'))
+  await page.evaluate(() => {
+    window.__origRandom = Math.random.bind(Math)
+    Math.random = () => 0.999 // 天然 20
+  })
+  await clickByText('仔细调查')
+  await sleep(300)
+  body = await bodyText()
+  check('P016: 即时显示 D20 20 大成功', body.includes('D20 20') && body.includes('大成功'))
+  check('P016: 成功文本（利爪泥痕）', body.includes('你在洞口附近发现了被利爪抓乱的泥痕'))
+  check('P016: 显示调查已完成', body.includes('调查已完成'))
+  const noInvestigateBtn = () =>
+    page.evaluate(() => ![...document.querySelectorAll('button')].some((b) => b.textContent.includes('仔细调查')))
+  check('P016: 不再显示仔细调查按钮', await noInvestigateBtn())
+  await page.evaluate(() => {
+    Math.random = window.__origRandom
+  })
+
+  // 移动返回不可重掷
+  await clickByText('青石村')
+  await clickByText('废弃矿洞')
+  body = await bodyText()
+  check('P016: 返回矿洞仍显示同一成功文本', body.includes('你在洞口附近发现了被利爪抓乱的泥痕') && body.includes('调查已完成'))
+  check('P016: 返回后无法重掷（无仔细调查）', await noInvestigateBtn())
+
+  // 存档恢复
+  await clickByText('保存游戏')
+  await clickByText('返回主菜单')
+  await clickByText('继续游戏')
+  body = await bodyText()
+  check('P016: Continue 后成功文本仍在且无法重掷', body.includes('你在洞口附近发现了被利爪抓乱的泥痕') && body.includes('调查已完成'))
+  await clickByText('返回主菜单')
+
   // R2：运行期间存档改坏 → 触发一次 load → Continue 禁用且不进入游戏页
   await clickByText('新游戏')
   await clickByText('确认进入天梦大陆') // P004：默认预填合法，直接确认创建

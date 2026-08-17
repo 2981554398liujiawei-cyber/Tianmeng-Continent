@@ -177,6 +177,14 @@ TM-P0-015（青石村附近人物与最小对话交互）：
 - GameState 类型结构未变、SAVE_VERSION 仍 1
 - 3 个内容测试（greeting 非空/三句精确锁定/既有资料不变）+ 13 项 E2E（附近人物与 summary/村长交谈全文与结束消失/药师交谈后商店仍在/移动清除对话且草原无附近人物/返回后对话保持关闭）
 
+TM-P0-016（废弃矿洞调查 D20 正式玩法接入）：
+- Store 新增唯一正式调查入口 `investigateAbandonedMine(): D20CheckResult | null`：合法条件 gameState + currentLocationId==='abandoned_mine' + flags.abandoned_mine_investigation === undefined；否则 null 且 GameState 完全不变
+- 正式复用 performD20Check（MND 属性值 + level + CHECK_DC.moderate=12 + proficient:false + situationalModifier:0；未复制 rollD20/修正公式/天然1·20/DC 判断）；D20 异常安全（角色数据非法如 level=0 抛 RangeError → return null 状态不变页面不崩溃）
+- 结果持久化：flags.abandoned_mine_investigation = 'success' | 'failure'（critical_success/success → success，failure/critical_failure → failure），与 D20 结算在同一次 Store 更新中原子完成（未调通用 setFlag 二次更新）；一次性检定（flag 已存在 → null 不再掷骰）；唯一持久变化即该 flag（player/inventory/equipment/quests/currentLocationId/completedEvents/npcStates/其他 flags 全不变），无奖励、不推进任务、不影响魔化鼠战斗、不自动保存
+- GamePage「调查矿洞」区：仅废弃矿洞显示；未调查时显示提示语 +「心智检定 · DC 12」（DC 来自 CHECK_DC.moderate，属性读 player.attributes.mnd，未复制常量）+[仔细调查]；点击后即时显示完整结算（D20 X + 心智修正 Y = Z / DC / 结果：成功/大成功/大失败）+ 持久成功/失败文本 +「调查已完成」；调查后不再显示[仔细调查]；离开矿洞清空即时结果（返回后读 flag 显示持久结果且不可重掷）
+- GameState 类型结构未变、SAVE_VERSION 仍 1；未新增 investigations/checks/skillChecks/explorationEvents
+- 9 个 Store 单测（成功 total12/失败 total11/天然20/天然1/错误地点 null 不变/已调查禁止重掷且不再调用随机数/非法 level=0 不抛 null/无副作用/不自动保存）+ 9 项 E2E（调查入口与 DC 12/固定天然20 大成功即时显示+成功文本+调查已完成+按钮消失/移动返回不可重掷/存档恢复仍不可重掷）
+
 ## 目录结构
 
 ```

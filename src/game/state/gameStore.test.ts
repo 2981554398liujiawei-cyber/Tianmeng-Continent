@@ -972,3 +972,120 @@ describe('TM-P0-014：buyHealingPotion 药师商店', () => {
     expect(JSON.stringify(useGameStore.getState().gameState)).toBe(snapshot)
   })
 })
+
+describe('TM-P0-016：investigateAbandonedMine 矿洞调查', () => {
+  const flag = () => useGameStore.getState().gameState?.world.flags.abandoned_mine_investigation
+  const atMine = () => useGameStore.getState().travelToLocation('abandoned_mine')
+
+  /** 固定下一次 D20 骰面（roll 为 1–20） */
+  const mockRoll = (roll: number) => {
+    vi.spyOn(Math, 'random').mockReturnValue((roll - 1) / 20)
+  }
+
+  beforeEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('A. 成功检定：MND8 修正 -1，骰13 → total 12，success，flag=success', () => {
+    atMine()
+    mockRoll(13)
+    const result = useGameStore.getState().investigateAbandonedMine()
+    expect(result).not.toBeNull()
+    expect(result!.roll).toBe(13)
+    expect(result!.total).toBe(12)
+    expect(result!.success).toBe(true)
+    expect(result!.dc).toBe(12)
+    expect(flag()).toBe('success')
+  })
+
+  it('B. 失败检定：骰12 → total 11，flag=failure', () => {
+    atMine()
+    mockRoll(12)
+    const result = useGameStore.getState().investigateAbandonedMine()
+    expect(result).not.toBeNull()
+    expect(result!.total).toBe(11)
+    expect(result!.success).toBe(false)
+    expect(flag()).toBe('failure')
+  })
+
+  it('C. 天然20 → critical_success，flag=success', () => {
+    atMine()
+    mockRoll(20)
+    const result = useGameStore.getState().investigateAbandonedMine()
+    expect(result!.outcome).toBe('critical_success')
+    expect(flag()).toBe('success')
+  })
+
+  it('D. 天然1 → critical_failure，flag=failure', () => {
+    atMine()
+    mockRoll(1)
+    const result = useGameStore.getState().investigateAbandonedMine()
+    expect(result!.outcome).toBe('critical_failure')
+    expect(flag()).toBe('failure')
+  })
+
+  it('E. 错误地点：青石村调用 → null，GameState 完全不变', () => {
+    const snapshot = JSON.stringify(useGameStore.getState().gameState)
+    expect(useGameStore.getState().investigateAbandonedMine()).toBeNull()
+    expect(JSON.stringify(useGameStore.getState().gameState)).toBe(snapshot)
+  })
+
+  it('F. 已调查禁止重掷：第二次 → null，flag 不变，且不再调用随机数', () => {
+    atMine()
+    const spy = vi.spyOn(Math, 'random').mockReturnValue((13 - 1) / 20)
+    useGameStore.getState().investigateAbandonedMine()
+    expect(flag()).toBe('success')
+    expect(spy).toHaveBeenCalledTimes(1)
+    const second = useGameStore.getState().investigateAbandonedMine()
+    expect(second).toBeNull()
+    expect(flag()).toBe('success')
+    expect(spy).toHaveBeenCalledTimes(1) // 第二次未再调用随机数
+  })
+
+  it('G. 非法角色数据安全：level=0 → 不抛异常，return null，GameState 不变', () => {
+    atMine()
+    useGameStore.setState({
+      gameState: {
+        ...useGameStore.getState().gameState!,
+        player: { ...useGameStore.getState().gameState!.player, level: 0 },
+      },
+    })
+    const snapshot = JSON.stringify(useGameStore.getState().gameState)
+    expect(() => useGameStore.getState().investigateAbandonedMine()).not.toThrow()
+    expect(useGameStore.getState().investigateAbandonedMine()).toBeNull()
+    expect(JSON.stringify(useGameStore.getState().gameState)).toBe(snapshot)
+  })
+
+  it('H. 无副作用：除调查 Flag 外 player/inventory/equipment/quests/currentLocationId/completedEvents/npcStates/其他 flags 全不变', () => {
+    atMine()
+    useGameStore.setState({
+      gameState: {
+        ...useGameStore.getState().gameState!,
+        world: {
+          ...useGameStore.getState().gameState!.world,
+          flags: { existing_flag: true },
+        },
+      },
+    })
+    const before = useGameStore.getState().gameState!
+    mockRoll(13)
+    useGameStore.getState().investigateAbandonedMine()
+    const after = useGameStore.getState().gameState!
+    expect(after.player).toEqual(before.player)
+    expect(after.inventory).toEqual(before.inventory)
+    expect(after.equipment).toEqual(before.equipment)
+    expect(after.quests).toEqual(before.quests)
+    expect(after.world.currentLocationId).toBe(before.world.currentLocationId)
+    expect(after.world.completedEvents).toEqual(before.world.completedEvents)
+    expect(after.world.npcStates).toEqual(before.world.npcStates)
+    expect(after.world.flags).toEqual({ existing_flag: true, abandoned_mine_investigation: 'success' })
+  })
+
+  it('I. 不自动保存：调查后 hasSave 仍 false', () => {
+    atMine()
+    mockRoll(13)
+    useGameStore.getState().investigateAbandonedMine()
+    expect(flag()).toBe('success')
+    expect(useGameStore.getState().hasSave).toBe(false)
+  })
+})

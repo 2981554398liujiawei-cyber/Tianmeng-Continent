@@ -4,6 +4,7 @@ import { createInitialGameState } from '../content/initial'
 import { checkTravel } from '../rules/exploration'
 import { canTransitionQuestStatus } from '../rules/quest'
 import { getEnemy, getItem, getLocation, getNpc, getQuest } from '../content'
+import { performD20Check, CHECK_DC, type D20CheckResult } from '../rules/d20'
 import {
   deleteGame as deleteSave,
   hasSave as storageHasSave,
@@ -56,6 +57,8 @@ interface GameStoreState {
   unequipWeapon: () => boolean
   /** 在药师处购买治疗药水：gold 扣减与药水增加原子完成；不治疗、不自动保存（TM-P0-014） */
   buyHealingPotion: () => boolean
+  /** 调查废弃矿洞（TM-P0-016）：心智 D20 检定一次性写入 flags；非法/已调查/异常 → null 且不变 */
+  investigateAbandonedMine: () => D20CheckResult | null
   addGold: (amount: number) => void
   removeGold: (amount: number) => void
   addItem: (itemId: string, quantity?: number) => void
@@ -385,6 +388,42 @@ export const useGameStore = create<GameStoreState>()((set) => ({
       }
     })
     return bought
+  },
+
+  investigateAbandonedMine: () => {
+    let result: D20CheckResult | null = null
+    set((s) => {
+      if (!s.gameState) return {}
+      // 合法性：必须在废弃矿洞，且未调查过（一次性检定，禁止重掷）
+      if (s.gameState.world.currentLocationId !== 'abandoned_mine') return {}
+      if (s.gameState.world.flags.abandoned_mine_investigation !== undefined) return {}
+      // D20 异常安全：角色数据非法（如 level=0）抛 RangeError → 返回 null 且状态不变、页面不崩溃
+      let check: D20CheckResult
+      try {
+        check = performD20Check({
+          attributeScore: s.gameState.player.attributes.mnd,
+          level: s.gameState.player.level,
+          dc: CHECK_DC.moderate,
+          proficient: false,
+          situationalModifier: 0,
+        })
+      } catch {
+        return {}
+      }
+      // 原子更新：D20 结算与 flags 写入在同一次 Store 更新中完成（不调用通用 setFlag 二次更新）
+      result = check
+      const investigation = check.success ? 'success' : 'failure'
+      return {
+        gameState: {
+          ...s.gameState,
+          world: {
+            ...s.gameState.world,
+            flags: { ...s.gameState.world.flags, abandoned_mine_investigation: investigation },
+          },
+        },
+      }
+    })
+    return result
   },
 
   addGold: (amount) => {

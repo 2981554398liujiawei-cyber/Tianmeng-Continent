@@ -3,7 +3,16 @@ import Button from '../components/Button'
 import { useGameStore } from '../game/state/gameStore'
 import { getProfessionName, ATTRIBUTE_KEYS, ATTRIBUTE_LABELS } from '../game/content/professions'
 import { getEnemy, getItem, getLocation, getNpc, getQuest, NPCS, QUESTS } from '../game/content'
+import { CHECK_DC, type D20CheckResult } from '../game/rules/d20'
 import type { QuestStatus } from '../game/types'
+
+/** D20 检定结果中文（TM-P0-016） */
+const CHECK_OUTCOME_LABELS: Record<D20CheckResult['outcome'], string> = {
+  critical_success: '大成功',
+  success: '成功',
+  failure: '失败',
+  critical_failure: '大失败',
+}
 
 interface GamePageProps {
   onBackToMenu: () => void
@@ -47,10 +56,13 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
   const equipWeapon = useGameStore((s) => s.equipWeapon)
   const unequipWeapon = useGameStore((s) => s.unequipWeapon)
   const buyHealingPotion = useGameStore((s) => s.buyHealingPotion)
+  const investigateAbandonedMine = useGameStore((s) => s.investigateAbandonedMine)
   const [saveResult, setSaveResult] = useState<'saved' | 'failed' | null>(null)
   const [travelError, setTravelError] = useState(false)
   // TM-P0-015：活动对话 NPC（仅 UI 本地状态，不进入 GameState / 存档）
   const [activeNpcId, setActiveNpcId] = useState<string | null>(null)
+  // TM-P0-016：本次调查的即时检定结果（仅 UI 本地状态；离开矿洞清空）
+  const [lastMineInvestigation, setLastMineInvestigation] = useState<D20CheckResult | null>(null)
 
   if (!gameState) {
     return (
@@ -82,7 +94,14 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
     const ok = travelToLocation(targetId)
     // TM-P0-015：成功移动后关闭活动对话；移动失败无需清空
     if (ok) setActiveNpcId(null)
+    // TM-P0-016：离开地点后清除即时调查结果
+    if (ok) setLastMineInvestigation(null)
     setTravelError(!ok)
+  }
+
+  const handleInvestigateMine = () => {
+    const result = investigateAbandonedMine()
+    if (result) setLastMineInvestigation(result)
   }
 
   // TM-P0-015：活动对话前重新校验 NPC 存在且仍在当前位置；异常视为无活动对话（不崩溃）
@@ -338,6 +357,53 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
           </div>
         )}
       </section>
+
+      {/* TM-P0-016：废弃矿洞调查 —— 仅废弃矿洞显示；DC 来自 CHECK_DC.moderate，不复制常量 */}
+      {world.currentLocationId === 'abandoned_mine' && (
+        <section className="rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
+          <h3 className="mb-3 text-sm font-bold tracking-wider text-bone-500">调查矿洞</h3>
+          {(() => {
+            const done = world.flags.abandoned_mine_investigation
+            return (
+              <>
+                {lastMineInvestigation && (
+                  <div className="mb-3 rounded border border-gold-500/40 bg-ink-900/60 p-3">
+                    <p className="text-bone-300">
+                      D20 {lastMineInvestigation.roll} + 心智修正 {lastMineInvestigation.attributeModifier} ={' '}
+                      {lastMineInvestigation.total}
+                    </p>
+                    <p className="text-bone-500">DC {lastMineInvestigation.dc}</p>
+                    <p className="font-bold text-gold-300">结果：{CHECK_OUTCOME_LABELS[lastMineInvestigation.outcome]}</p>
+                  </div>
+                )}
+                {done === 'success' && (
+                  <>
+                    <p className="mb-2 text-bone-300">你在洞口附近发现了被利爪抓乱的泥痕，痕迹延伸向矿洞深处。</p>
+                    <p className="text-xs text-bone-500">调查已完成</p>
+                  </>
+                )}
+                {done === 'failure' && (
+                  <>
+                    <p className="mb-2 text-bone-300">昏暗与杂乱遮掩了细节，你没能判断这些痕迹的来源。</p>
+                    <p className="text-xs text-bone-500">调查已完成</p>
+                  </>
+                )}
+                {done === undefined && (
+                  <>
+                    <p className="mb-2 text-bone-300">矿洞入口一带残留着杂乱痕迹，也许能从中看出些什么。</p>
+                    <p className="mb-3 text-xs text-bone-500">
+                      心智检定 · DC {CHECK_DC.moderate}（当前心智 {player.attributes.mnd}）
+                    </p>
+                    <Button variant="primary" onClick={handleInvestigateMine}>
+                      仔细调查
+                    </Button>
+                  </>
+                )}
+              </>
+            )
+          })()}
+        </section>
+      )}
 
       <section className="rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
         <h3 className="mb-3 text-sm font-bold tracking-wider text-bone-500">附近委托</h3>        {localQuests.length === 0 ? (
