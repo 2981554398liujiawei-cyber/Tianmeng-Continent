@@ -417,6 +417,7 @@ try {
   body = await bodyText()
   check('P009: 返回村外草原后任务日志显示可完成', body.includes('村外异动') && body.includes('可完成'))
   check('P009: 村外草原没有提交任务按钮（不在给予者所在地）', !body.includes('提交任务'))
+  check('P011: 任务可完成但未提交时兔王巢穴仍锁定', (await buttonDisabled('兔王巢穴')) === true)
 
   await clickByText('青石村')
   body = await bodyText()
@@ -425,6 +426,24 @@ try {
   body = await bodyText()
   check('P009: 提交后任务已完成', body.includes('已完成'))
   check('P009: 完成任务金币仍 50（无奖励）', body.includes('50'))
+
+  // P011：提交后解锁兔王巢穴 → 进入巢穴见嘟嘟兔 → 存档恢复
+  await clickByText('村外草原')
+  body = await bodyText()
+  check('P011: 提交后兔王巢穴按钮启用', (await buttonDisabled('兔王巢穴')) === false)
+  check('P011: 不再显示尚未找到进入此地的方法', !body.includes('尚未找到进入此地的方法'))
+  await clickByText('兔王巢穴')
+  body = await bodyText()
+  check('P011: 进入兔王巢穴（显示地点描述）', body.includes('兔王巢穴') && body.includes('魔化兔群的巢穴'))
+  check('P011: 巢穴可见嘟嘟兔威胁（HP 24 · 防御 13）', body.includes('嘟嘟兔') && body.includes('HP 24 · 防御 13'))
+  await clickByText('村外草原')
+  await clickByText('保存游戏')
+  await clickByText('返回主菜单')
+  await clickByText('继续游戏')
+  body = await bodyText()
+  check('P011: Continue 后仍在村外草原', body.includes('村外草原'))
+  check('P011: Continue 后兔王巢穴仍可进入', (await buttonDisabled('兔王巢穴')) === false)
+  await clickByText('青石村')
 
   await clickByText('返回主菜单')
   body = await bodyText()

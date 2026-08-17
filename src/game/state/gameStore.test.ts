@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useGameStore } from './gameStore'
 import { createInitialGameState } from '../content/initial'
+import { checkTravel } from '../rules/exploration'
 
 function createMockStorage(): Storage {
   const store = new Map<string, string>()
@@ -604,6 +605,114 @@ describe('TM-P0-010：useHealingPotion 治疗药水', () => {
       },
     })
     expect(useGameStore.getState().useHealingPotion()).toBe(true)
+    expect(useGameStore.getState().hasSave).toBe(false)
+  })
+})
+
+describe('TM-P0-011：完成《村外异动》解锁兔王巢穴', () => {
+  const flags = () => useGameStore.getState().gameState?.world.flags
+  const questStatus = () =>
+    useGameStore.getState().gameState?.quests.find((q) => q.questId === 'quest_village_monsters')?.status ??
+    'undiscovered'
+  const toCompletable = () => {
+    useGameStore.getState().discoverQuest('quest_village_monsters')
+    useGameStore.getState().acceptQuest('quest_village_monsters')
+    useGameStore.getState().travelToLocation('village_grassland')
+    useGameStore.getState().resolveCombatVictory('corrupted_rabbit')
+    useGameStore.getState().travelToLocation('qingshi_village')
+  }
+
+  it('A. 正常完成解锁：completable → completed 且 rabbit_lair_unlocked === true', () => {
+    toCompletable()
+    expect(useGameStore.getState().completeQuest('quest_village_monsters')).toBe(true)
+    expect(questStatus()).toBe('completed')
+    expect(flags()?.rabbit_lair_unlocked).toBe(true)
+  })
+
+  it('B. in_progress 不得提前解锁', () => {
+    useGameStore.getState().discoverQuest('quest_village_monsters')
+    useGameStore.getState().acceptQuest('quest_village_monsters')
+    expect(useGameStore.getState().completeQuest('quest_village_monsters')).toBe(false)
+    expect(questStatus()).toBe('in_progress')
+    expect(flags()?.rabbit_lair_unlocked).toBeUndefined()
+  })
+
+  it('C. available 不得解锁', () => {
+    useGameStore.getState().discoverQuest('quest_village_monsters')
+    expect(useGameStore.getState().completeQuest('quest_village_monsters')).toBe(false)
+    expect(questStatus()).toBe('available')
+    expect(flags()?.rabbit_lair_unlocked).toBeUndefined()
+  })
+
+  it('D. failed 不得解锁', () => {
+    useGameStore.getState().discoverQuest('quest_village_monsters')
+    useGameStore.getState().acceptQuest('quest_village_monsters')
+    useGameStore.getState().failQuest('quest_village_monsters')
+    expect(useGameStore.getState().completeQuest('quest_village_monsters')).toBe(false)
+    expect(questStatus()).toBe('failed')
+    expect(flags()?.rabbit_lair_unlocked).toBeUndefined()
+  })
+
+  it('E. 其他 world.flags 完整保留', () => {
+    useGameStore.setState({
+      gameState: {
+        ...useGameStore.getState().gameState!,
+        world: {
+          ...useGameStore.getState().gameState!.world,
+          flags: { existing_flag: true, number_flag: 3 },
+        },
+      },
+    })
+    toCompletable()
+    useGameStore.getState().completeQuest('quest_village_monsters')
+    expect(flags()).toEqual({ existing_flag: true, number_flag: 3, rabbit_lair_unlocked: true })
+  })
+
+  it('F. 已有 false 被正式完成覆盖为 true', () => {
+    useGameStore.setState({
+      gameState: {
+        ...useGameStore.getState().gameState!,
+        world: {
+          ...useGameStore.getState().gameState!.world,
+          flags: { rabbit_lair_unlocked: false },
+        },
+      },
+    })
+    toCompletable()
+    useGameStore.getState().completeQuest('quest_village_monsters')
+    expect(flags()?.rabbit_lair_unlocked).toBe(true)
+  })
+
+  it('G. 无奖励副作用：除 quest.status 与解锁 flag 外 player/inventory/equipment/currentLocationId/completedEvents/npcStates 全不变', () => {
+    toCompletable()
+    const before = useGameStore.getState().gameState!
+    useGameStore.getState().completeQuest('quest_village_monsters')
+    const after = useGameStore.getState().gameState!
+    expect(after.player).toEqual(before.player)
+    expect(after.inventory).toEqual(before.inventory)
+    expect(after.equipment).toEqual(before.equipment)
+    expect(after.world.currentLocationId).toBe(before.world.currentLocationId)
+    expect(after.world.completedEvents).toEqual(before.world.completedEvents)
+    expect(after.world.npcStates).toEqual(before.world.npcStates)
+    expect(after.quests[0]?.status).toBe('completed')
+  })
+
+  it('探索联动：完成前 required_flag_missing，完成后 allowed=true（任务 Flag 被既有探索规则消费）', () => {
+    const before = useGameStore.getState().gameState!.world
+    expect(checkTravel('village_grassland', 'rabbit_lair', before.flags).reason).toBe('required_flag_missing')
+    toCompletable()
+    useGameStore.getState().completeQuest('quest_village_monsters')
+    const after = useGameStore.getState().gameState!.world
+    expect(checkTravel('village_grassland', 'rabbit_lair', after.flags).allowed).toBe(true)
+    // 实际移动也走既有 travelToLocation
+    useGameStore.getState().travelToLocation('village_grassland')
+    expect(useGameStore.getState().travelToLocation('rabbit_lair')).toBe(true)
+  })
+
+  it('不自动保存：完成任务并解锁后 hasSave 仍 false', () => {
+    toCompletable()
+    useGameStore.getState().completeQuest('quest_village_monsters')
+    expect(flags()?.rabbit_lair_unlocked).toBe(true)
     expect(useGameStore.getState().hasSave).toBe(false)
   })
 })

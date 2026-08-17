@@ -197,9 +197,22 @@ export const useGameStore = create<GameStoreState>()((set) => ({
     let changed = false
     set((s) => {
       if (!s.gameState) return {}
+      // 先通过封板任务状态机（仅 completable → completed），再产生世界效果（TM-P0-011）
       const next = applyQuestTransition(s.gameState, questId, 'completed')
       if (!next) return {}
       changed = true
+      // 《村外异动》成功完成 → 原子设置 rabbit_lair_unlocked（保留其他 flags）
+      if (questId === 'quest_village_monsters') {
+        return {
+          gameState: {
+            ...next,
+            world: {
+              ...next.world,
+              flags: { ...next.world.flags, rabbit_lair_unlocked: true },
+            },
+          },
+        }
+      }
       return { gameState: next }
     })
     return changed

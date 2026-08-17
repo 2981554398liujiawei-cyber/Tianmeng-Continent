@@ -136,6 +136,13 @@ TM-P0-010（背包展示与治疗药水使用）：
 - GameState 类型结构未变、SAVE_VERSION 仍 1、旧存档继续可读
 - 3 个内容数据测试 + 8 个 Store 单测（正常治疗/上限截断/满血/HP0/无药水/最后一瓶移除/无 gameState/不自动保存）+ 15 项 E2E（初始背包/满血禁用/确定性受伤 22→20→用药 22/药水×1/存档恢复）
 
+TM-P0-011（完成《村外异动》解锁兔王巢穴）：
+- `completeQuest('quest_village_monsters')` 成功（仅 completable→completed）时在同一原子更新中设置 `world.flags.rabbit_lair_unlocked = true`（先过封板状态机再产生世界效果）；其他任务不得触发；其他 world.flags 完整保留；已有 false 覆盖为 true、已有 true 保持
+- 地点数据/checkTravel/travelToLocation 未改，UI 只自然读取 flag（无「任务完成则启用按钮」分支）；不发金币/物品/经验/rabbit_path；completedEvents 不变；不自动保存；开发者控制台「解锁兔王巢穴」开发按钮保留
+- 完成前兔王巢穴保持锁定（required_flag_missing），提交完成后经村外草原可正常进入，可见嘟嘟兔（HP 24 · 防御 13）
+- GameState 类型结构未变、SAVE_VERSION 仍 1
+- 9 个 Store 单测（正常解锁/in_progress·available·failed 不解锁/其他 flag 保留/已有 false 覆盖/无奖励副作用/探索联动 checkTravel 前后对比+travelToLocation/不自动保存）+ 7 项 E2E（提交前锁定/提交后启用/进入巢穴见嘟嘟兔/存档恢复仍可进入）
+
 ## 目录结构
 
 ```
