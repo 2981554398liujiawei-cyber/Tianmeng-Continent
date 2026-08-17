@@ -148,10 +148,14 @@ export function isValidSave(raw: unknown): raw is SaveFile {
 
 // ---------- 存档操作 ----------
 
-/** 写入存档；返回是否成功（TM-P0-001-R1：写入失败必须可表达） */
+/** 写入存档；返回是否成功（R3：写入前用同一 guard 校验，非法状态不得覆盖旧档） */
 export function saveGame(gameState: GameState): boolean {
   const storage = getStorage()
   if (!storage) return false
+  if (!isGameState(gameState)) {
+    console.error('[存档] 拒绝写入非法 GameState（与存档校验不一致）')
+    return false
+  }
   const save: SaveFile = {
     version: SAVE_VERSION,
     savedAt: new Date().toISOString(),
@@ -166,13 +170,14 @@ export function saveGame(gameState: GameState): boolean {
   }
 }
 
-/** 读取存档；无存档或数据损坏时返回 null（不抛出）。坏档保留于 localStorage 以便调试，但一律视为无效。 */
+/** 读取存档；无存档、数据损坏或访问受限时返回 null（绝不抛出）。坏档保留于 localStorage 以便调试，但一律视为无效。 */
 export function loadGame(): SaveFile | null {
   const storage = getStorage()
   if (!storage) return null
-  const raw = storage.getItem(SAVE_KEY)
-  if (!raw) return null
   try {
+    // R3：getItem 也必须在异常边界内（权限/安全策略可能抛错）
+    const raw = storage.getItem(SAVE_KEY)
+    if (!raw) return null
     const parsed: unknown = JSON.parse(raw)
     if (!isValidSave(parsed)) {
       console.error('[存档] 存档无效（损坏/版本不符/结构不合法），已拒绝加载')
@@ -180,18 +185,21 @@ export function loadGame(): SaveFile | null {
     }
     return parsed
   } catch (err) {
-    console.error('[存档] 读取失败（数据损坏），已安全回退', err)
+    console.error('[存档] 读取失败（数据损坏或访问受限），已安全回退', err)
     return null
   }
 }
 
-export function deleteGame(): void {
+/** 删除存档；返回是否删除成功（R3：调用方需以 storage 实际状态为准） */
+export function deleteGame(): boolean {
   const storage = getStorage()
-  if (!storage) return
+  if (!storage) return false
   try {
     storage.removeItem(SAVE_KEY)
+    return true
   } catch (err) {
     console.error('[存档] 删除失败', err)
+    return false
   }
 }
 

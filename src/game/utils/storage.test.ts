@@ -258,3 +258,40 @@ describe('TM-P0-001-R2：类型守卫与运行时类型一致', () => {
     expect(loadGame()).not.toBeNull()
   })
 })
+
+describe('TM-P0-001-R3：存储异常边界', () => {
+  it('getItem 抛错（权限受限）→ loadGame 返回 null、hasSave false、不抛出', () => {
+    vi.spyOn(localStorage, 'getItem').mockImplementation(() => {
+      throw new Error('SecurityError')
+    })
+    expect(() => loadGame()).not.toThrow()
+    expect(loadGame()).toBeNull()
+    expect(hasSave()).toBe(false)
+  })
+
+  it('removeItem 抛错 → deleteGame 返回 false，旧档保留且仍可加载', () => {
+    saveGame(createInitialGameState())
+    vi.spyOn(localStorage, 'removeItem').mockImplementation(() => {
+      throw new Error('SecurityError')
+    })
+    expect(deleteGame()).toBe(false)
+    expect(loadGame()).not.toBeNull()
+    expect(hasSave()).toBe(true)
+  })
+
+  it('非法 GameState 不得写入，也不得覆盖旧档', () => {
+    saveGame(createInitialGameState())
+    const bad = createInitialGameState()
+    bad.player.gold = 10.5 // 非整数，与存档校验不一致
+    expect(saveGame(bad)).toBe(false)
+    // 旧合法存档仍在
+    expect(loadGame()?.gameState.player.gold).toBe(50)
+    expect(hasSave()).toBe(true)
+  })
+
+  it('正常删除后 deleteGame 返回 true 且无存档', () => {
+    saveGame(createInitialGameState())
+    expect(deleteGame()).toBe(true)
+    expect(hasSave()).toBe(false)
+  })
+})

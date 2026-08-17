@@ -5,10 +5,10 @@ export type Attributes = Record<AttributeKey, number>
 
 export type Gender = 'male' | 'female'
 
-export type ProfessionId = 'warrior' | 'knight' | 'ranger' | 'mage'
+/** 职业白名单（const tuple，类型由此派生——单一来源） */
+export const PROFESSION_IDS = ['warrior', 'knight', 'ranger', 'mage'] as const
 
-/** 职业白名单（运行时校验用，与 ProfessionId 保持单一来源） */
-export const PROFESSION_IDS: readonly ProfessionId[] = ['warrior', 'knight', 'ranger', 'mage']
+export type ProfessionId = (typeof PROFESSION_IDS)[number]
 
 export interface Character {
   id: string

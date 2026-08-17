@@ -185,3 +185,32 @@ describe('TM-P0-001-R2：hasSave 与 storage 真实状态一致', () => {
     expect(useGameStore.getState().hasSave).toBe(false)
   })
 })
+
+describe('TM-P0-001-R3：Store 与持久化约束一致', () => {
+  it('deleteGame 时 removeItem 抛错：旧档保留则 hasSave 保持 true', () => {
+    useGameStore.getState().saveGame()
+    expect(useGameStore.getState().hasSave).toBe(true)
+
+    vi.spyOn(localStorage, 'removeItem').mockImplementation(() => {
+      throw new Error('SecurityError')
+    })
+    useGameStore.getState().deleteGame()
+    // R3：删除失败，旧档仍在，不得错误宣称无存档
+    expect(useGameStore.getState().hasSave).toBe(true)
+    expect(useGameStore.getState().loadGame()).toBe(true)
+  })
+
+  it('addGold 拒绝非整数金额（与存档校验一致）', () => {
+    useGameStore.getState().addGold(0.5)
+    expect(useGameStore.getState().gameState?.player.gold).toBe(50)
+    useGameStore.getState().addGold(5)
+    expect(useGameStore.getState().gameState?.player.gold).toBe(55)
+  })
+
+  it('removeGold 拒绝非整数金额', () => {
+    useGameStore.getState().removeGold(2.5)
+    expect(useGameStore.getState().gameState?.player.gold).toBe(50)
+    useGameStore.getState().removeGold(10)
+    expect(useGameStore.getState().gameState?.player.gold).toBe(40)
+  })
+})

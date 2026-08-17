@@ -64,7 +64,8 @@ export const useGameStore = create<GameStoreState>()((set) => ({
 
   deleteGame: () => {
     deleteSave()
-    set({ gameState: null, hasSave: false })
+    // R3：以 storage 实际状态为准——删除失败时旧档仍在，不得错误宣称无存档
+    set({ gameState: null, hasSave: storageHasSave() })
   },
 
   setCurrentLocation: (locationId) => {
@@ -82,7 +83,8 @@ export const useGameStore = create<GameStoreState>()((set) => ({
   },
 
   addGold: (amount) => {
-    if (!Number.isFinite(amount) || amount <= 0) return
+    // R3：与存档校验一致，金币仅允许正整数增量（保持非负整数约束）
+    if (!Number.isInteger(amount) || amount <= 0) return
     set((s) =>
       s.gameState
         ? {
@@ -96,7 +98,7 @@ export const useGameStore = create<GameStoreState>()((set) => ({
   },
 
   removeGold: (amount) => {
-    if (!Number.isFinite(amount) || amount <= 0) return
+    if (!Number.isInteger(amount) || amount <= 0) return
     set((s) =>
       s.gameState
         ? {
