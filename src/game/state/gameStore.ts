@@ -209,12 +209,28 @@ export const useGameStore = create<GameStoreState>()((set) => ({
       // 先通过封板任务状态机（仅 completable → completed），再产生世界效果（TM-P0-011）
       const next = applyQuestTransition(s.gameState, questId, 'completed')
       if (!next) return {}
+      // 金币安全边界（TM-P0-018）：gold 非负安全整数、goldReward 正安全整数、相加仍安全整数；否则完全拒绝完成
+      const reward = getQuest(questId)?.goldReward
+      if (reward !== undefined) {
+        const gold = next.player.gold
+        if (
+          !Number.isSafeInteger(gold) ||
+          gold < 0 ||
+          !Number.isSafeInteger(reward) ||
+          reward <= 0 ||
+          !Number.isSafeInteger(gold + reward)
+        ) {
+          return {}
+        }
+      }
       changed = true
-      // 《村外异动》成功完成 → 原子设置 rabbit_lair_unlocked（保留其他 flags）
+      // 任务完成 + 金币奖励 +（《村外异动》）兔王巢穴解锁：同一原子更新
+      const player = reward !== undefined ? { ...next.player, gold: next.player.gold + reward } : next.player
       if (questId === 'quest_village_monsters') {
         return {
           gameState: {
             ...next,
+            player,
             world: {
               ...next.world,
               flags: { ...next.world.flags, rabbit_lair_unlocked: true },
@@ -222,7 +238,7 @@ export const useGameStore = create<GameStoreState>()((set) => ({
           },
         }
       }
-      return { gameState: next }
+      return reward !== undefined ? { gameState: { ...next, player } } : { gameState: next }
     })
     return changed
   },

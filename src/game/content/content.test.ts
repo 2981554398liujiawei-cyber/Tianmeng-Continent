@@ -298,3 +298,18 @@ describe('TM-P0-015：NPC greeting 对话数据约束', () => {
     expect(NPCS.apothecary!.locationId).toBe('qingshi_village')
   })
 })
+
+describe('TM-P0-018：任务金币奖励数据约束', () => {
+  it('quest_village_monsters.goldReward === 20', () => {
+    expect(getQuest('quest_village_monsters')?.goldReward).toBe(20)
+  })
+
+  it('所有 goldReward 若存在必须为安全正整数', () => {
+    for (const quest of Object.values(QUESTS)) {
+      if (quest.goldReward !== undefined) {
+        expect(Number.isSafeInteger(quest.goldReward), `${quest.id} goldReward 安全整数`).toBe(true)
+        expect(quest.goldReward).toBeGreaterThan(0)
+      }
+    }
+  })
+})

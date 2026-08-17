@@ -460,6 +460,10 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
                   <p className="mt-1 text-xs leading-relaxed text-bone-500">
                     {def?.summary ?? `${qs.questId}（缺失任务定义）`}
                   </p>
+                  {/* TM-P0-018：任务固定金币奖励（读 QuestDefinition.goldReward，不复制常量） */}
+                  {def?.goldReward !== undefined && (
+                    <p className="mt-1 text-xs text-gold-300">奖励：{def.goldReward} 金币</p>
+                  )}
                   {canSubmit && (
                     <div className="mt-2">
                       <Button variant="primary" onClick={() => completeQuest(qs.questId)}>

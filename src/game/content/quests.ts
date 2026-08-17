@@ -8,6 +8,8 @@ export interface QuestDefinition {
   summary: string
   /** 发布任务的 NPC ID */
   giverNpcId: string
+  /** 任务完成固定金币奖励（TM-P0-018）；缺省 0 */
+  goldReward?: number
 }
 
 export const QUESTS: Record<string, QuestDefinition> = {
@@ -16,5 +18,6 @@ export const QUESTS: Record<string, QuestDefinition> = {
     title: '村外异动',
     summary: '青石村附近的野兽出现异常魔化迹象，村长需要冒险者调查村外情况。',
     giverNpcId: 'village_elder',
+    goldReward: 20,
   },
 }

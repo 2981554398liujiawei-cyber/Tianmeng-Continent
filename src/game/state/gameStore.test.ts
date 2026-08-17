@@ -683,12 +683,13 @@ describe('TM-P0-011：完成《村外异动》解锁兔王巢穴', () => {
     expect(flags()?.rabbit_lair_unlocked).toBe(true)
   })
 
-  it('G. 无奖励副作用：除 quest.status 与解锁 flag 外 player/inventory/equipment/currentLocationId/completedEvents/npcStates 全不变', () => {
+  it('G. 无奖励副作用：除 quest.status 与解锁 flag 与金币奖励外 player/inventory/equipment/currentLocationId/completedEvents/npcStates 全不变', () => {
     toCompletable()
     const before = useGameStore.getState().gameState!
     useGameStore.getState().completeQuest('quest_village_monsters')
     const after = useGameStore.getState().gameState!
-    expect(after.player).toEqual(before.player)
+    // TM-P0-018：完成《村外异动》现在有固定 20 金币奖励，player 仅 gold 变化
+    expect(after.player).toEqual({ ...before.player, gold: before.player.gold + 20 })
     expect(after.inventory).toEqual(before.inventory)
     expect(after.equipment).toEqual(before.equipment)
     expect(after.world.currentLocationId).toBe(before.world.currentLocationId)
@@ -1086,6 +1087,99 @@ describe('TM-P0-016：investigateAbandonedMine 矿洞调查', () => {
     mockRoll(13)
     useGameStore.getState().investigateAbandonedMine()
     expect(flag()).toBe('success')
+    expect(useGameStore.getState().hasSave).toBe(false)
+  })
+})
+
+describe('TM-P0-018：《村外异动》固定金币奖励', () => {
+  const gold = () => useGameStore.getState().gameState?.player.gold
+  const questStatus = () =>
+    useGameStore.getState().gameState?.quests.find((q) => q.questId === 'quest_village_monsters')?.status ??
+    'undiscovered'
+  const lairFlag = () => useGameStore.getState().gameState?.world.flags.rabbit_lair_unlocked
+  const toCompletable = () => {
+    useGameStore.getState().discoverQuest('quest_village_monsters')
+    useGameStore.getState().acceptQuest('quest_village_monsters')
+    useGameStore.getState().travelToLocation('village_grassland')
+    useGameStore.getState().resolveCombatVictory('corrupted_rabbit')
+    useGameStore.getState().travelToLocation('qingshi_village')
+  }
+
+  it('A. 正常奖励：completable gold 50 → true，completed，gold 70，rabbit_lair_unlocked true（同一次原子更新）', () => {
+    toCompletable()
+    expect(questStatus()).toBe('completable')
+    expect(useGameStore.getState().completeQuest('quest_village_monsters')).toBe(true)
+    expect(questStatus()).toBe('completed')
+    expect(gold()).toBe(70)
+    expect(lairFlag()).toBe(true)
+  })
+
+  it('B. 不可完成状态不奖励：in_progress → false，gold 不变，flag 不变', () => {
+    useGameStore.getState().discoverQuest('quest_village_monsters')
+    useGameStore.getState().acceptQuest('quest_village_monsters')
+    const snapshot = JSON.stringify(useGameStore.getState().gameState)
+    expect(useGameStore.getState().completeQuest('quest_village_monsters')).toBe(false)
+    expect(JSON.stringify(useGameStore.getState().gameState)).toBe(snapshot)
+  })
+
+  it('C. 重复完成不重复奖励：第一次 gold 70，第二次 false 且仍 70', () => {
+    toCompletable()
+    useGameStore.getState().completeQuest('quest_village_monsters')
+    expect(gold()).toBe(70)
+    expect(useGameStore.getState().completeQuest('quest_village_monsters')).toBe(false)
+    expect(gold()).toBe(70)
+  })
+
+  it('D. 已完成旧状态不补发：status=completed gold 50 → false 且 gold 仍 50', () => {
+    useGameStore.setState({
+      gameState: {
+        ...useGameStore.getState().gameState!,
+        quests: [{ questId: 'quest_village_monsters', status: 'completed' as const, stage: 0, flags: {} }],
+        player: { ...useGameStore.getState().gameState!.player, gold: 50 },
+      },
+    })
+    expect(useGameStore.getState().completeQuest('quest_village_monsters')).toBe(false)
+    expect(gold()).toBe(50)
+  })
+
+  it('E. 金币安全溢出：gold + 20 超安全整数 → false，GameState 完全不变（任务仍 completable）', () => {
+    toCompletable()
+    useGameStore.setState({
+      gameState: {
+        ...useGameStore.getState().gameState!,
+        player: { ...useGameStore.getState().gameState!.player, gold: Number.MAX_SAFE_INTEGER },
+      },
+    })
+    const snapshot = JSON.stringify(useGameStore.getState().gameState)
+    expect(useGameStore.getState().completeQuest('quest_village_monsters')).toBe(false)
+    expect(JSON.stringify(useGameStore.getState().gameState)).toBe(snapshot)
+    expect(questStatus()).toBe('completable')
+  })
+
+  it('F. 无额外副作用：除 quest.status/player.gold/world.flags.rabbit_lair_unlocked 外全不变', () => {
+    toCompletable()
+    const before = useGameStore.getState().gameState!
+    useGameStore.getState().completeQuest('quest_village_monsters')
+    const after = useGameStore.getState().gameState!
+    expect(after.inventory).toEqual(before.inventory)
+    expect(after.equipment).toEqual(before.equipment)
+    expect(after.player.hp).toBe(before.player.hp)
+    expect(after.player.mp).toBe(before.player.mp)
+    expect(after.player.level).toBe(before.player.level)
+    expect(after.player.attributes).toEqual(before.player.attributes)
+    expect(after.world.currentLocationId).toBe(before.world.currentLocationId)
+    expect(after.world.completedEvents).toEqual(before.world.completedEvents)
+    expect(after.world.npcStates).toEqual(before.world.npcStates)
+    // 其他 flags 不变，仅新增 rabbit_lair_unlocked
+    expect(after.world.flags).toEqual({ ...before.world.flags, rabbit_lair_unlocked: true })
+    // 不发 rabbit_path
+    expect(after.inventory.some((e) => e.itemId === 'rabbit_path')).toBe(false)
+  })
+
+  it('G. 不自动保存：成功完成后 hasSave 仍 false', () => {
+    toCompletable()
+    useGameStore.getState().completeQuest('quest_village_monsters')
+    expect(gold()).toBe(70)
     expect(useGameStore.getState().hasSave).toBe(false)
   })
 })

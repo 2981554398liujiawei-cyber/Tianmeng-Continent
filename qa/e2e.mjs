@@ -182,12 +182,12 @@ try {
   await clickByText('青石村')
   body = await bodyText()
 
-  // P006：可完成提交 —— 在给予者所在地显示提交任务，完成后无奖励
+  // P006：可完成提交 —— 在给予者所在地显示提交任务，完成获得固定金币奖励（TM-P0-018）
   check('P006: 回到青石村后任务显示可完成', body.includes('可完成'))
   await clickByText('提交任务')
   body = await bodyText()
   check('P006: 提交任务后任务日志显示已完成', body.includes('已完成'))
-  check('P006: 完成任务金币不变（仍 50）', body.includes('50'))
+  check('P018: 完成任务金币 50 → 70', body.includes('70'))
 
   // P008：战斗 —— 村外草原迎战魔化兔
   await clickByText('村外草原')
@@ -272,14 +272,16 @@ try {
   const readState = () =>
     page.evaluate(() => JSON.parse(document.querySelector('pre').textContent))
 
-  // D. 状态修改
-  await clickByText('+10 金币')
+  // D. 状态修改（P006 提交任务奖励后金币为 70，用相对断言验证 +10/-10）
   let state = await readState()
-  check('+10 金币后 gold=60', state.player.gold === 60, `gold=${state.player.gold}`)
+  const goldBeforeAdd = state.player.gold
+  await clickByText('+10 金币')
+  state = await readState()
+  check('+10 金币后 gold 增加 10', state.player.gold === goldBeforeAdd + 10, `gold=${state.player.gold}`)
 
   await clickByText('-10 金币')
   state = await readState()
-  check('-10 金币后 gold=50', state.player.gold === 50, `gold=${state.player.gold}`)
+  check('-10 金币后 gold 恢复原值', state.player.gold === goldBeforeAdd, `gold=${state.player.gold}`)
 
   await clickByText('获得测试物品')
   state = await readState()
@@ -344,7 +346,7 @@ try {
   await clickByText('继续游戏')
   body = await bodyText()
   check('继续游戏后进入游戏页面', body.includes('冒险日志'))
-  check('读档后金币恢复 50', body.includes('50'))
+  check('读档后金币恢复（任务奖励后基数）', body.includes(String(goldBeforeAdd)))
   check('读档后位置恢复 misty_ruins', body.includes('misty_ruins'))
   check('P005: 未知地点安全显示不崩溃', body.includes('未知地点'))
 
@@ -425,7 +427,22 @@ try {
   await clickByText('提交任务')
   body = await bodyText()
   check('P009: 提交后任务已完成', body.includes('已完成'))
-  check('P009: 完成任务金币仍 50（无奖励）', body.includes('50'))
+  check('P018: 提交后金币 50 → 70（任务奖励 20 金币）', body.includes('70'))
+  check('P018: 任务日志显示奖励 20 金币', body.includes('奖励：20 金币'))
+
+  // P018：存档恢复（任务 completed / 金币 70 / 兔王巢穴解锁保留）
+  await clickByText('保存游戏')
+  await clickByText('返回主菜单')
+  await clickByText('继续游戏')
+  body = await bodyText()
+  check('P018: Continue 后任务仍已完成', body.includes('已完成'))
+  check('P018: Continue 后金币仍 70', body.includes('70'))
+
+  // P018：经济消费联动：任务奖励金币 → 药师商店购买
+  await clickByText('购买')
+  await sleep(200)
+  body = await bodyText()
+  check('P018: 任务金币可在商店消费（70→60 药水+1）', body.includes('60') && body.includes('治疗药水 ×3'))
 
   // P011：提交后解锁兔王巢穴 → 进入巢穴见嘟嘟兔 → 存档恢复
   await clickByText('村外草原')

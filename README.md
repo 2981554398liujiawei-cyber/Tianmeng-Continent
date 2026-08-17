@@ -191,6 +191,15 @@ TM-P0-017（无敌人地点隐藏「附近威胁」）：
 - 未修改内容注册表（各地 enemyIds 原样）、未修改 Store/GameState/WorldState/EnemyDefinition/LocationDefinition/SAVE_VERSION（仍 1）；未拆新组件
 - 5 项 E2E（青石村无附近威胁且无空状态文案且附近人物/药师的小铺/附近委托正常/村外草原显示魔化兔 HP 8 防御 11 迎战/返回青石村后威胁区消失）
 
+TM-P0-018（《村外异动》固定金币奖励）：
+- QuestDefinition 新增可选静态字段 `goldReward?: number`；quest_village_monsters 固定 20（内容测试锁定 ===20，且所有 goldReward 若存在必须安全正整数）；未加 rewards[]/RewardDefinition/itemRewards/xpReward
+- completeQuest 仍严格要求 completable→completed（状态机不变，不可完成状态 false 且金币/flag 不变）；成功完成时在同一次原子 Store 更新中一并：quest.status=completed + player.gold += goldReward +（《村外异动》）rabbit_lair_unlocked=true；返回 true
+- 金币安全边界：gold 非负安全整数 + goldReward 正安全整数 + gold+goldReward 仍安全整数，否则 false 且 GameState 完全不变（任务保持 completable，未用 BigInt）
+- 不可重复领奖：completed 后再次调用 false（状态机承担）；已完成旧状态不补发；不发物品（rabbit_path 仍仅嘟嘟兔胜利可得）/不发经验（保持 Lv.1）/不恢复 HP·MP/不新增任何 flag/completedEvents 不变/不自动保存
+- GamePage 任务日志显示「奖励：N 金币」（读 quest.goldReward，JSX 未复制 20）；提交后金币即时 50→70；无奖励弹窗；药师商店无需修改即可消费奖励金币
+- GameState 类型结构未变、SAVE_VERSION 仍 1
+- 2 个内容测试（goldReward=20/安全正整数约束）+ 7 个 Store 单测（正常奖励原子完成/不可完成状态不奖励/重复完成不重复/已完成不补发/金币溢出拒绝/无额外副作用/不自动保存）+ 6 项 E2E（P006·P009 提交后金币 50→70 与奖励显示/存档恢复任务 completed+金币 70+解锁保留/任务金币商店消费 70→60 药水+1）
+
 ## 目录结构
 
 ```
