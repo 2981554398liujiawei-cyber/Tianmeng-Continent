@@ -230,10 +230,30 @@ export const useGameStore = create<GameStoreState>()((set) => ({
           return {}
         }
       }
+      // TM-P1-002 关系安全预检（《村外异动》专属）：村长 trust 可安全 +1 才允许完成，否则整次拒绝
+      if (questId === 'quest_village_monsters') {
+        const existing = next.world.npcStates.village_elder
+        if (existing) {
+          const trust = existing.relationship.trust
+          if (!Number.isFinite(trust) || !Number.isFinite(trust + 1)) return {}
+        } else if (!getNpc('village_elder')) {
+          return {}
+        }
+      }
       changed = true
-      // 任务完成 + 金币奖励 +（《村外异动》）兔王巢穴解锁：同一原子更新
+      // 任务完成 + 金币奖励 +（《村外异动》）兔王巢穴解锁 + 村长信任：同一原子更新
       const player = reward !== undefined ? { ...next.player, gold: next.player.gold + reward } : next.player
       if (questId === 'quest_village_monsters') {
+        // TM-P1-002：《村外异动》专属关系奖励——村长信任 +1（仅本任务；懒创建 NpcState；locationId 读注册表）
+        const existing = next.world.npcStates.village_elder
+        const elderState = existing
+          ? { ...existing, relationship: { ...existing.relationship, trust: existing.relationship.trust + 1 } }
+          : {
+              npcId: 'village_elder',
+              alive: true,
+              locationId: getNpc('village_elder')!.locationId,
+              relationship: { trust: 1, affection: 0, respect: 0, fear: 0, resentment: 0 },
+            }
         return {
           gameState: {
             ...next,
@@ -241,6 +261,7 @@ export const useGameStore = create<GameStoreState>()((set) => ({
             world: {
               ...next.world,
               flags: { ...next.world.flags, rabbit_lair_unlocked: true },
+              npcStates: { ...next.world.npcStates, village_elder: elderState },
             },
           },
         }

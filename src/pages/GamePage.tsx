@@ -304,6 +304,12 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
               <p className="font-bold text-bone-100">{activeNpc.name}</p>
               <p className="mb-2 text-xs text-bone-500">{activeNpc.role}</p>
               <p className="mb-3 text-bone-300">{activeNpc.greeting}</p>
+              {/* TM-P1-002：村长对话显示信任（读 NpcState；未建立状态时 UI fallback 0，打开对话不创建状态） */}
+              {activeNpc.id === 'village_elder' && (
+                <p className="mb-3 text-xs text-bone-500">
+                  信任：{world.npcStates[activeNpc.id]?.relationship.trust ?? 0}
+                </p>
+              )}
               <Button variant="ghost" onClick={() => setActiveNpcId(null)}>
                 结束交谈
               </Button>

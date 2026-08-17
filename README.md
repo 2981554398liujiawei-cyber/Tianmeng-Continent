@@ -262,6 +262,15 @@ TM-P1-001（法师职业技能「法术攻击」与灵力消耗）：
 - GameState schema 不变、SAVE_VERSION 仍 1
 - 6 个 combat 单测（法术攻击加值 MND8→+1/MND14→+4/MND16→+5；法术伤害 5/6/8/9；天然20 暴击 16；天然1 大失败 0；武器不进入法术公式；MAGE_SPELL_MP_COST===2）+ 8 个 Store 单测（正常 6→4/刚好 2→0/不足 1 false/非法职业 knight false/无 gameState/非法 MP -1 与越界 false/无额外副作用/不自动保存）+ 24 项 E2E（骑士无法术攻击/法师有法术攻击（2 灵力）且启用/连续施法逐次断言 MP 6→4→2→0 且魔化兔持续 8/8+法术禁用+灵力不足+普攻仍启用/MP0 普攻天然20 胜利且离开战斗页前灵力仍 0/6/休整恢复灵力 6/6/法术天然20 暴击 10 伤胜利+你的法术攻击/战斗后 MP4/6 保存 Continue 后仍 4/6）
 
+TM-P1-002（《村外异动》完成后村长信任 +1——NPC 关系第一次真实变化）：
+- completeQuest('quest_village_monsters') 从 completable→completed 成功时，同一原子 Store 更新一并提交：quest.status=completed + gold+20 + rabbit_lair_unlocked=true + village_elder.relationship.trust+1（四项一起，未拆成两个 Store action）
+- 懒创建 NpcState：无 village_elder state 时创建 {npcId:'village_elder', alive:true, locationId: getNpc('village_elder').locationId（读注册表，未复制 qingshi_village）, relationship:{trust:1, affection:0, respect:0, fear:0, resentment:0}}，不设置 romanceInterest；已有 state 时只 trust+1，alive/locationId/affection/respect/fear/resentment/romanceInterest（若历史存在）全部保持，不复活不移动
+- 关系数值安全预检：已有 trust 为 finite 且 +1 仍 finite，否则整次 completeQuest false 且 GameState 完全不变（不把坏值修成 0，Infinity 拒绝）；gold 安全边界保持不变
+- 专属结果：仅 quest_village_monsters 完成加给予者信任（其他任务/未来任务不自动加）；blacksmith/apothecary npcStates 不变；非 completable/重复完成/已 completed 旧状态 → false 不加信任（依赖任务状态机）；新游戏 npcStates 仍 {}（零回归）
+- GamePage 村长对话面板额外显示「信任：N」（读 world.npcStates[activeNpc.id]?.relationship.trust ?? 0；未建立状态时 UI fallback 0，打开对话不创建状态；JSX 未写死 1）；铁匠/药师对话无关系 UI 扩张；未修改 greeting/NpcDefinition（未加 baseTrust/relationshipRewards）
+- 未实现关系 Action（increaseNpcTrust/changeRelationship 等）/关系引擎（RelationshipEngine/Definition/DSL）/恋爱系统/对话树；GameState/NpcState/NpcRelationship schema 不变、SAVE_VERSION 仍 1；无新存档字段
+- 11 个 Store 单测（初始 {} 零回归/正常完成懒创建全字段断言/已有关系 5→6 其余保持/保持 alive=false 与自定义 locationId/非 completable false/重复完成 false/已 completed 不追补/其他 NPC 不变/其他关系不变（romanceInterest 保持）/关系异常 Infinity false/不自动保存）+ 9 项 E2E（完成前信任：0/正式完成流程/金币 70 与兔王巢穴解锁零回归/完成后信任：1 且无好感尊敬恋爱/重复交谈仍 1/Continue 后仍 1/铁匠药师无关系 UI）
+
 ## 目录结构
 
 ```

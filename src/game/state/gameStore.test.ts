@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useGameStore } from './gameStore'
 import { createInitialGameState } from '../content/initial'
 import { checkTravel } from '../rules/exploration'
+import { getNpc } from '../content'
 
 function createMockStorage(): Storage {
   const store = new Map<string, string>()
@@ -694,7 +695,9 @@ describe('TM-P0-011：完成《村外异动》解锁兔王巢穴', () => {
     expect(after.equipment).toEqual(before.equipment)
     expect(after.world.currentLocationId).toBe(before.world.currentLocationId)
     expect(after.world.completedEvents).toEqual(before.world.completedEvents)
-    expect(after.world.npcStates).toEqual(before.world.npcStates)
+    // TM-P1-002：完成《村外异动》现会懒创建 village_elder NpcState（信任 +1）；除此无其他 NPC 状态变化
+    expect(after.world.npcStates.village_elder?.relationship.trust).toBe(1)
+    expect(Object.keys(after.world.npcStates)).toEqual(['village_elder'])
     expect(after.quests[0]?.status).toBe('completed')
   })
 
@@ -1169,7 +1172,9 @@ describe('TM-P0-018：《村外异动》固定金币奖励', () => {
     expect(after.player.attributes).toEqual(before.player.attributes)
     expect(after.world.currentLocationId).toBe(before.world.currentLocationId)
     expect(after.world.completedEvents).toEqual(before.world.completedEvents)
-    expect(after.world.npcStates).toEqual(before.world.npcStates)
+    // TM-P1-002：完成《村外异动》会懒创建 village_elder NpcState（信任 +1）；无其他 NPC 状态变化
+    expect(after.world.npcStates.village_elder?.relationship.trust).toBe(1)
+    expect(Object.keys(after.world.npcStates)).toEqual(['village_elder'])
     // 其他 flags 不变，仅新增 rabbit_lair_unlocked
     expect(after.world.flags).toEqual({ ...before.world.flags, rabbit_lair_unlocked: true })
     // 不发 rabbit_path
@@ -1571,6 +1576,207 @@ describe('TM-P1-001：spendMageSpellMp 法师法术灵力消费', () => {
     setMp(6)
     useGameStore.getState().spendMageSpellMp()
     expect(mp()).toBe(4)
+    expect(useGameStore.getState().hasSave).toBe(false)
+  })
+})
+
+describe('TM-P1-002：《村外异动》完成村长信任 +1', () => {
+  const elderState = () => useGameStore.getState().gameState?.world.npcStates.village_elder
+  const gold = () => useGameStore.getState().gameState?.player.gold
+
+  /** 走正式流程把任务推进到 completable（发现→接受→村外草原击败魔化兔→回村） */
+  const toCompletableWithQuest = () => {
+    useGameStore.getState().discoverQuest('quest_village_monsters')
+    useGameStore.getState().acceptQuest('quest_village_monsters')
+    useGameStore.getState().travelToLocation('village_grassland')
+    useGameStore.getState().resolveCombatVictory('corrupted_rabbit')
+    useGameStore.getState().travelToLocation('qingshi_village')
+  }
+
+  it('A. 初始状态：newGame 后 world.npcStates === {}（零回归）', () => {
+    useGameStore.getState().newGame()
+    expect(useGameStore.getState().gameState?.world.npcStates).toEqual({})
+  })
+
+  it('B. 正常任务完成：elder NpcState 懒创建（npcId/alive/locationId 注册表/五维关系）且四项原子提交', () => {
+    useGameStore.getState().newGame()
+    toCompletableWithQuest()
+    expect(elderState()).toBeUndefined()
+    expect(gold()).toBe(50)
+    expect(useGameStore.getState().completeQuest('quest_village_monsters')).toBe(true)
+    const s = useGameStore.getState().gameState!
+    expect(s.quests.find((q) => q.questId === 'quest_village_monsters')?.status).toBe('completed')
+    expect(s.player.gold).toBe(70)
+    expect(s.world.flags.rabbit_lair_unlocked).toBe(true)
+    const elder = s.world.npcStates.village_elder
+    expect(elder?.npcId).toBe('village_elder')
+    expect(elder?.alive).toBe(true)
+    expect(elder?.locationId).toBe(getNpc('village_elder')?.locationId)
+    expect(elder?.relationship.trust).toBe(1)
+    expect(elder?.relationship.affection).toBe(0)
+    expect(elder?.relationship.respect).toBe(0)
+    expect(elder?.relationship.fear).toBe(0)
+    expect(elder?.relationship.resentment).toBe(0)
+    expect(elder?.relationship.romanceInterest).toBeUndefined()
+  })
+
+  it('C. 已有关系增量：trust 5→6，其余关系字段完全保持', () => {
+    useGameStore.getState().newGame()
+    toCompletableWithQuest()
+    useGameStore.setState({
+      gameState: {
+        ...useGameStore.getState().gameState!,
+        world: {
+          ...useGameStore.getState().gameState!.world,
+          npcStates: {
+            village_elder: {
+              npcId: 'village_elder',
+              alive: true,
+              locationId: 'qingshi_village',
+              relationship: { trust: 5, affection: 2, respect: 3, fear: 1, resentment: 4 },
+            },
+          },
+        },
+      },
+    })
+    useGameStore.getState().completeQuest('quest_village_monsters')
+    const elder = elderState()!
+    expect(elder.relationship.trust).toBe(6)
+    expect(elder.relationship.affection).toBe(2)
+    expect(elder.relationship.respect).toBe(3)
+    expect(elder.relationship.fear).toBe(1)
+    expect(elder.relationship.resentment).toBe(4)
+  })
+
+  it('D. 保持 NPC 状态：alive=false 与自定义 locationId 不被覆盖，只改 trust', () => {
+    useGameStore.getState().newGame()
+    toCompletableWithQuest()
+    useGameStore.setState({
+      gameState: {
+        ...useGameStore.getState().gameState!,
+        world: {
+          ...useGameStore.getState().gameState!.world,
+          npcStates: {
+            village_elder: {
+              npcId: 'village_elder',
+              alive: false,
+              locationId: 'some_existing_location',
+              relationship: { trust: 0, affection: 0, respect: 0, fear: 0, resentment: 0 },
+            },
+          },
+        },
+      },
+    })
+    useGameStore.getState().completeQuest('quest_village_monsters')
+    const elder = elderState()!
+    expect(elder.alive).toBe(false)
+    expect(elder.locationId).toBe('some_existing_location')
+    expect(elder.relationship.trust).toBe(1)
+  })
+
+  it('E. 非 completable（in_progress）：false，无 elder NpcState，gold/flag 不变', () => {
+    useGameStore.getState().newGame()
+    useGameStore.getState().discoverQuest('quest_village_monsters')
+    useGameStore.getState().acceptQuest('quest_village_monsters')
+    const snapshot = JSON.stringify(useGameStore.getState().gameState)
+    expect(useGameStore.getState().completeQuest('quest_village_monsters')).toBe(false)
+    expect(JSON.stringify(useGameStore.getState().gameState)).toBe(snapshot)
+    expect(elderState()).toBeUndefined()
+  })
+
+  it('F. 重复完成：第一次 trust=1，第二次 false 且 trust 仍 1、gold 仍 70', () => {
+    useGameStore.getState().newGame()
+    toCompletableWithQuest()
+    expect(useGameStore.getState().completeQuest('quest_village_monsters')).toBe(true)
+    expect(elderState()?.relationship.trust).toBe(1)
+    expect(gold()).toBe(70)
+    expect(useGameStore.getState().completeQuest('quest_village_monsters')).toBe(false)
+    expect(elderState()?.relationship.trust).toBe(1)
+    expect(gold()).toBe(70)
+  })
+
+  it('G. 已完成旧状态不追补：quest completed 但无 elder NpcState → false，不补 trust', () => {
+    useGameStore.getState().newGame()
+    useGameStore.setState({
+      gameState: {
+        ...useGameStore.getState().gameState!,
+        quests: [{ questId: 'quest_village_monsters', status: 'completed' as const, stage: 0, flags: {} }],
+      },
+    })
+    const snapshot = JSON.stringify(useGameStore.getState().gameState)
+    expect(useGameStore.getState().completeQuest('quest_village_monsters')).toBe(false)
+    expect(JSON.stringify(useGameStore.getState().gameState)).toBe(snapshot)
+    expect(elderState()).toBeUndefined()
+  })
+
+  it('H. 其他 NPC 不变：成功提交前后 blacksmith/apothecary npcStates 完全不变', () => {
+    useGameStore.getState().newGame()
+    toCompletableWithQuest()
+    const before = useGameStore.getState().gameState!
+    useGameStore.getState().completeQuest('quest_village_monsters')
+    const after = useGameStore.getState().gameState!
+    expect(after.world.npcStates.blacksmith).toEqual(before.world.npcStates.blacksmith)
+    expect(after.world.npcStates.apothecary).toEqual(before.world.npcStates.apothecary)
+  })
+
+  it('I. 其他关系不变：已有 elder 的 affection/respect/fear/resentment/romanceInterest 完全相同', () => {
+    useGameStore.getState().newGame()
+    toCompletableWithQuest()
+    useGameStore.setState({
+      gameState: {
+        ...useGameStore.getState().gameState!,
+        world: {
+          ...useGameStore.getState().gameState!.world,
+          npcStates: {
+            village_elder: {
+              npcId: 'village_elder',
+              alive: true,
+              locationId: 'qingshi_village',
+              relationship: { trust: 3, affection: 2, respect: 4, fear: 1, resentment: 0, romanceInterest: true },
+            },
+          },
+        },
+      },
+    })
+    useGameStore.getState().completeQuest('quest_village_monsters')
+    const elder = elderState()!
+    expect(elder.relationship.trust).toBe(4)
+    expect(elder.relationship.affection).toBe(2)
+    expect(elder.relationship.respect).toBe(4)
+    expect(elder.relationship.fear).toBe(1)
+    expect(elder.relationship.resentment).toBe(0)
+    expect(elder.relationship.romanceInterest).toBe(true) // 历史异常值保持，不重置
+  })
+
+  it('J. 关系异常拒绝：trust=Infinity → completeQuest false，整个 GameState 不变', () => {
+    useGameStore.getState().newGame()
+    toCompletableWithQuest()
+    useGameStore.setState({
+      gameState: {
+        ...useGameStore.getState().gameState!,
+        world: {
+          ...useGameStore.getState().gameState!.world,
+          npcStates: {
+            village_elder: {
+              npcId: 'village_elder',
+              alive: true,
+              locationId: 'qingshi_village',
+              relationship: { trust: Number.POSITIVE_INFINITY, affection: 0, respect: 0, fear: 0, resentment: 0 },
+            },
+          },
+        },
+      },
+    })
+    const snapshot = JSON.stringify(useGameStore.getState().gameState)
+    expect(useGameStore.getState().completeQuest('quest_village_monsters')).toBe(false)
+    expect(JSON.stringify(useGameStore.getState().gameState)).toBe(snapshot)
+  })
+
+  it('K. 不自动保存：完成任务 trust=1 后 hasSave 仍 false', () => {
+    useGameStore.getState().newGame()
+    toCompletableWithQuest()
+    useGameStore.getState().completeQuest('quest_village_monsters')
+    expect(elderState()?.relationship.trust).toBe(1)
     expect(useGameStore.getState().hasSave).toBe(false)
   })
 })

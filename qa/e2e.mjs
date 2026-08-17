@@ -1108,6 +1108,76 @@ try {
   check('P1-001-G: Continue 后灵力仍 4 / 6', body.includes('4 / 6'))
   await clickByText('返回主菜单')
 
+  // P1-002：《村外异动》完成后村长信任 +1
+  // 复用 P015 段 clickNthTalk（青石村卡片顺序：村长0 / 铁匠1 / 药师2）
+  // A. 完成前村长交谈显示 信任：0
+  await clickByText('新游戏')
+  await clickByText('确认进入天梦大陆')
+  await clickNthTalk(0)
+  body = await bodyText()
+  check('P1-002-A: 完成前村长对话显示 信任：0', body.includes('信任：0'))
+  await clickByText('结束交谈')
+
+  // B/C. 正式完成任务（查看委托→接受→村外草原确定性击败魔化兔→回村提交）
+  await clickByText('查看委托')
+  await clickByText('接受任务')
+  await clickByText('村外草原')
+  await clickByText('迎战')
+  await sleep(300)
+  await page.evaluate(() => {
+    window.__origRandom = Math.random.bind(Math)
+    Math.random = () => 0.99 // 普通攻击天然 20，暴击击杀魔化兔
+  })
+  await clickByText('普通攻击')
+  await sleep(300)
+  await page.evaluate(() => {
+    Math.random = window.__origRandom
+  })
+  await clickByText('返回冒险')
+  await clickByText('青石村')
+  await clickByText('提交任务')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-002-C: 提交后任务已完成且金币 70', body.includes('已完成') && body.includes('70'))
+  // 兔王巢穴入口在村外草原（青石村无此连接按钮）
+  await clickByText('村外草原')
+  body = await bodyText()
+  check('P1-002-C: 兔王巢穴已解锁可进入', (await buttonDisabled('兔王巢穴')) === false)
+  await clickByText('青石村')
+
+  // D. 关系即时反馈：村长交谈显示 信任：1（无好感/尊敬/恋爱）
+  await clickNthTalk(0)
+  body = await bodyText()
+  check('P1-002-D: 完成后村长对话显示 信任：1', body.includes('信任：1'))
+  check('P1-002-D: 不显示好感/尊敬/恋爱', !body.includes('好感') && !body.includes('尊敬') && !body.includes('恋爱'))
+  await clickByText('结束交谈')
+
+  // E. 重复交谈不加信任
+  await clickNthTalk(0)
+  body = await bodyText()
+  check('P1-002-E: 再次交谈仍 信任：1', body.includes('信任：1'))
+  await clickByText('结束交谈')
+
+  // F. 保存恢复后仍 信任：1
+  await clickByText('保存游戏')
+  await clickByText('返回主菜单')
+  await clickByText('继续游戏')
+  await clickNthTalk(0)
+  body = await bodyText()
+  check('P1-002-F: Continue 后村长对话仍 信任：1', body.includes('信任：1'))
+  await clickByText('结束交谈')
+
+  // G. 铁匠/药师无关系 UI 扩张
+  await clickNthTalk(1)
+  body = await bodyText()
+  check('P1-002-G: 铁匠对话无关系数值 UI', !body.includes('信任：') && !body.includes('好感') && !body.includes('尊敬'))
+  await clickByText('结束交谈')
+  await clickNthTalk(2)
+  body = await bodyText()
+  check('P1-002-G: 药师对话无关系数值 UI', !body.includes('信任：') && !body.includes('好感') && !body.includes('尊敬'))
+  await clickByText('结束交谈')
+  await clickByText('返回主菜单')
+
   // R2：运行期间存档改坏 → 触发一次 load → Continue 禁用且不进入游戏页
   await clickByText('新游戏')
   await clickByText('确认进入天梦大陆') // P004：默认预填合法，直接确认创建
