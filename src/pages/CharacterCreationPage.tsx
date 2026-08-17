@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import Button from '../components/Button'
 import { ATTRIBUTE_KEYS, ATTRIBUTE_LABELS, PROFESSIONS } from '../game/content/professions'
-import { ATTRIBUTE_MAX, ATTRIBUTE_MIN, ATTRIBUTE_TOTAL, NAME_MAX_LENGTH } from '../game/content/initial'
+import { ATTRIBUTE_MAX, ATTRIBUTE_MIN, ATTRIBUTE_POINT_BUDGET, ATTRIBUTE_TOTAL, NAME_MAX_LENGTH } from '../game/content/initial'
 import { getAttributeModifier } from '../game/rules/d20'
 import { getStartingMaxHp, getStartingMaxMp } from '../game/rules/character'
 import type { AttributeKey, Attributes, CharacterCreationInput, Gender, ProfessionId } from '../game/types'
@@ -116,7 +116,7 @@ export default function CharacterCreationPage({ onConfirm, onBack }: CharacterCr
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-sm font-bold tracking-wider text-bone-500">属性分配</h2>
           <span className="text-sm text-bone-300">
-            剩余属性点：<span className="font-bold text-gold-300">{pointsLeft} / {ATTRIBUTE_TOTAL}</span>
+            剩余属性点：<span className="font-bold text-gold-300">{pointsLeft} / {ATTRIBUTE_POINT_BUDGET}</span>
           </span>
         </div>
         <div className="flex flex-col gap-2">
@@ -149,7 +149,8 @@ export default function CharacterCreationPage({ onConfirm, onBack }: CharacterCr
           })}
         </div>
         <p className="mt-3 text-xs text-bone-500">
-          初始生命 {10}+体质、初始灵力 max(0, 冥想−2)；属性范围 {ATTRIBUTE_MIN}–{ATTRIBUTE_MAX}，总点固定 {ATTRIBUTE_TOTAL}。
+          可分配属性点 {ATTRIBUTE_POINT_BUDGET}，属性范围 {ATTRIBUTE_MIN}–{ATTRIBUTE_MAX}，最终五属性总和固定 {ATTRIBUTE_TOTAL}；
+          初始生命 {10}+体质、初始灵力 max(0, 冥想−2)。
         </p>
       </section>
 

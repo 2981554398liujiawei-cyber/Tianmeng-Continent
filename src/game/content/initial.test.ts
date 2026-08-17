@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { createInitialGameState, validateCreationInput } from './initial'
+import {
+  ATTRIBUTE_MAX,
+  ATTRIBUTE_MIN,
+  ATTRIBUTE_POINT_BUDGET,
+  ATTRIBUTE_TOTAL,
+  createInitialGameState,
+  validateCreationInput,
+} from './initial'
 import type { CharacterCreationInput } from '../types'
 
 const yunlan = (over: Partial<CharacterCreationInput> = {}): CharacterCreationInput => ({
@@ -8,6 +15,16 @@ const yunlan = (over: Partial<CharacterCreationInput> = {}): CharacterCreationIn
   profession: 'mage',
   attributes: { str: 8, con: 10, agi: 10, mnd: 16, lck: 10 }, // 总和 54
   ...over,
+})
+
+describe('TM-P0-004-R1：属性点预算语义', () => {
+  it('常量语义正确：8 最低 / 16 最高 / 14 点预算 / 总和 54', () => {
+    expect(ATTRIBUTE_MIN).toBe(8)
+    expect(ATTRIBUTE_MAX).toBe(16)
+    expect(ATTRIBUTE_POINT_BUDGET).toBe(14)
+    expect(ATTRIBUTE_TOTAL).toBe(54)
+    expect(ATTRIBUTE_MIN * 5 + ATTRIBUTE_POINT_BUDGET).toBe(ATTRIBUTE_TOTAL)
+  })
 })
 
 describe('TM-P0-004：默认创建兼容（无 input）', () => {

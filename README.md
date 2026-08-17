@@ -71,7 +71,7 @@ TM-P0-003（D20 核心检定规则）：
 TM-P0-004（角色创建与新游戏入口）：
 - 主菜单「新游戏」→ 角色创建页 → 确认创建 → 生成 GameState → 游戏页；返回主菜单不创建角色、不碰旧存档
 - 可设置：姓名（1–16 字符 trim 校验）/ 性别（男/女）/ 职业（四职业，读 PROFESSIONS 注册表）+ 五项属性分配
-- 属性分配：初始全部 8，共 14 点自由分配（总和固定 54，范围 8–16），[−]/[+] 边界禁用，剩余点数实时显示；修正值调用 `getAttributeModifier`
+- 属性分配：初始全部 8，可自由分配 14 点（`ATTRIBUTE_POINT_BUDGET`），最终五属性总和固定 54（`ATTRIBUTE_TOTAL`），范围 8–16，[−]/[+] 边界禁用，剩余点数实时显示（默认 0 / 14）；修正值调用 `getAttributeModifier`
 - 初始 HP/MP 派生公式（`src/game/rules/character.ts`）：`maxHp = 10 + CON`、`maxMp = max(0, MND−2)`
 - 默认预填石头城/男/骑士/14-12-10-8-10（剩余 0），与默认开发角色一致
 - `createInitialGameState(input?)`：有 input 按玩家数据创建并自校验（非法姓名/性别/职业/属性抛 RangeError），无 input 保持默认

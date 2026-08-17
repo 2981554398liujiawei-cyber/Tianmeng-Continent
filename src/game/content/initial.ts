@@ -5,10 +5,11 @@ import { getStartingMaxHp, getStartingMaxMp } from '../rules/character'
 /** 初始地点（V1 开发用） */
 export const START_LOCATION_ID = 'qingshi_village'
 
-/** 属性分配约束（TM-P0-004） */
-export const ATTRIBUTE_MIN = 8
-export const ATTRIBUTE_MAX = 16
-export const ATTRIBUTE_TOTAL = 54
+/** 属性分配约束（TM-P0-004 / R1） */
+export const ATTRIBUTE_MIN = 8 // 单项最低值
+export const ATTRIBUTE_MAX = 16 // 单项最高值
+export const ATTRIBUTE_POINT_BUDGET = 14 // 可自由分配点数（5×8 + 14 = 54）
+export const ATTRIBUTE_TOTAL = 54 // 最终五属性总和
 export const NAME_MAX_LENGTH = 16
 
 const ATTRIBUTE_KEYS: AttributeKey[] = ['str', 'con', 'agi', 'mnd', 'lck']

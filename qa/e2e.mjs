@@ -63,10 +63,28 @@ try {
   body = await bodyText()
   check('P004: 点击新游戏进入角色创建页', body.includes('创建角色'))
   check('P004: 创建页显示五项属性', ['力量', '体质', '敏捷', '冥想', '幸运'].every((t) => body.includes(t)))
-  check('P004: 默认剩余属性点为 0 / 54', body.includes('0 / 54'))
+  check('P004-R1: 默认剩余属性点为 0 / 14', body.includes('0 / 14'))
   check('P004: 默认姓名为石头城', body.includes('石头城'))
   check('P004: 默认职业为骑士', body.includes('骑士'))
   await page.screenshot({ path: 'qa/creation-page.png' })
+
+  // P004-R1：属性点预算交互（默认 0/14 → 降 1 点 → 1/14 → 加回 → 0/14）
+  await page.evaluate(() => {
+    const btn = [...document.querySelectorAll('button')].find((b) => b.getAttribute('aria-label') === '降低力量')
+    if (!btn) throw new Error('未找到降低力量按钮')
+    btn.click()
+  })
+  await sleep(200)
+  body = await bodyText()
+  check('P004-R1: 降低力量 1 点后剩余属性点 1 / 14', body.includes('1 / 14'))
+  await page.evaluate(() => {
+    const btn = [...document.querySelectorAll('button')].find((b) => b.getAttribute('aria-label') === '提高力量')
+    if (!btn) throw new Error('未找到提高力量按钮')
+    btn.click()
+  })
+  await sleep(200)
+  body = await bodyText()
+  check('P004-R1: 加回后剩余属性点恢复 0 / 14', body.includes('0 / 14'))
 
   // 修改姓名与职业
   await page.focus('input[placeholder="输入角色姓名"]')
