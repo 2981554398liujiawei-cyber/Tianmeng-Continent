@@ -42,7 +42,10 @@ export default function App() {
   }
 
   const handleVictory = () => {
-    // 胜利返回原游戏页：当前位置不变、玩家剩余 HP 保留
+    // TM-P0-009：战斗胜利先通过正式 Store action 提交到持久 GameState，再返回游戏页
+    if (combatEnemyId) {
+      useGameStore.getState().resolveCombatVictory(combatEnemyId)
+    }
     setCombatEnemyId(null)
     setScreen('game')
   }

@@ -3,7 +3,7 @@ import type { CharacterCreationInput, GameState, QuestStatus } from '../types'
 import { createInitialGameState } from '../content/initial'
 import { checkTravel } from '../rules/exploration'
 import { canTransitionQuestStatus } from '../rules/quest'
-import { getQuest } from '../content'
+import { getEnemy, getLocation, getQuest } from '../content'
 import {
   deleteGame as deleteSave,
   hasSave as storageHasSave,
@@ -46,6 +46,8 @@ interface GameStoreState {
 
   /** 战斗伤害：hp = max(0, hp - amount)，仅正整数伤害，不设通用 setPlayerHp（TM-P0-008） */
   damagePlayer: (amount: number) => boolean
+  /** 战斗胜利提交：Store 自校验敌人存在且属于当前地点；《村外异动》进行中在村外草原击败魔化兔 → completable（TM-P0-009） */
+  resolveCombatVictory: (enemyId: string) => boolean
   addGold: (amount: number) => void
   removeGold: (amount: number) => void
   addItem: (itemId: string, quantity?: number) => void
@@ -223,6 +225,27 @@ export const useGameStore = create<GameStoreState>()((set) => ({
       return { gameState: { ...s.gameState, player: { ...s.gameState.player, hp } } }
     })
     return damaged
+  },
+
+  resolveCombatVictory: (enemyId) => {
+    let ok = false
+    set((s) => {
+      if (!s.gameState) return {}
+      // Store 自校验（不能只信 CombatPage）：敌人必须存在且属于当前地点
+      const enemy = getEnemy(enemyId)
+      if (!enemy) return {}
+      const location = getLocation(s.gameState.world.currentLocationId)
+      if (!location) return {}
+      if (!location.enemyIds?.includes(enemyId)) return {}
+      ok = true
+      // 合法胜利但无任务关联（非魔化兔 / 非村外草原 / 任务未在进行中）：quests/gold/inventory/world 全部不变
+      if (enemyId !== 'corrupted_rabbit' || location.id !== 'village_grassland') return {}
+      // 《村外异动》in_progress → completable：复用封板状态机（canTransitionQuestStatus）
+      const next = applyQuestTransition(s.gameState, 'quest_village_monsters', 'completable')
+      if (!next) return {}
+      return { gameState: next }
+    })
+    return ok
   },
 
   addGold: (amount) => {

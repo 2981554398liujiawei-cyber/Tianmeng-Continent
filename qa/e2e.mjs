@@ -373,6 +373,63 @@ try {
   await clickByText('返回主菜单')
   check('删除存档后「继续游戏」重新禁用', (await continueDisabled()) === true)
 
+  // P009：首个完整任务闭环 —— 新游戏 → 接受任务 → 真实战斗胜利 → 自动可完成 → 提交（无奖励）
+  await clickByText('新游戏')
+  body = await bodyText()
+  check('P009: 进入创建页', body.includes('创建角色'))
+  await page.focus('input[placeholder="输入角色姓名"]')
+  await page.keyboard.down('Control')
+  await page.keyboard.press('KeyA')
+  await page.keyboard.up('Control')
+  await page.keyboard.press('Backspace')
+  await page.type('input[placeholder="输入角色姓名"]', '云岚')
+  await clickLabel('法师')
+  await clickByText('确认进入天梦大陆')
+  body = await bodyText()
+  check('P009: 新游戏进入青石村', body.includes('冒险日志') && body.includes('qingshi_village'))
+  check('P009: 初始金币 50', body.includes('50'))
+
+  await clickByText('查看委托')
+  await clickByText('接受任务')
+  body = await bodyText()
+  check('P009: 接受《村外异动》进行中', body.includes('进行中'))
+
+  await clickByText('村外草原')
+  await clickByText('迎战')
+  await sleep(300)
+  body = await bodyText()
+  const hpBeforeClosedLoop = readHps(body)
+  await page.evaluate(() => {
+    window.__origRandom = Math.random.bind(Math)
+    Math.random = () => 0.999 // 第一击天然 20 暴击 12 击杀魔化兔（HP 8）
+  })
+  await clickByText('普通攻击')
+  await sleep(300)
+  body = await bodyText()
+  check('P009: 真实战斗胜利（天然 20）', body.includes('战斗胜利'))
+  await page.evaluate(() => {
+    Math.random = window.__origRandom
+  })
+  const hpAfterVictory = readHps(body)
+  check('P009: 一击击杀玩家未受伤（无反击）', hpAfterVictory.player === hpBeforeClosedLoop.player)
+
+  await clickByText('返回冒险')
+  body = await bodyText()
+  check('P009: 返回村外草原后任务日志显示可完成', body.includes('村外异动') && body.includes('可完成'))
+  check('P009: 村外草原没有提交任务按钮（不在给予者所在地）', !body.includes('提交任务'))
+
+  await clickByText('青石村')
+  body = await bodyText()
+  check('P009: 回青石村出现提交任务按钮', body.includes('提交任务'))
+  await clickByText('提交任务')
+  body = await bodyText()
+  check('P009: 提交后任务已完成', body.includes('已完成'))
+  check('P009: 完成任务金币仍 50（无奖励）', body.includes('50'))
+
+  await clickByText('返回主菜单')
+  body = await bodyText()
+  check('P009: 闭环完成返回主菜单', body.includes('天梦大陆'))
+
   // R2：运行期间存档改坏 → 触发一次 load → Continue 禁用且不进入游戏页
   await clickByText('新游戏')
   await clickByText('确认进入天梦大陆') // P004：默认预填合法，直接确认创建

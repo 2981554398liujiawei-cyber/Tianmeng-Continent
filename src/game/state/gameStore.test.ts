@@ -434,3 +434,86 @@ describe('TM-P0-008：damagePlayer 战斗伤害', () => {
     expect(useGameStore.getState().damagePlayer(2)).toBe(false)
   })
 })
+
+describe('TM-P0-009：resolveCombatVictory 战斗胜利推进任务', () => {
+  const questStatus = () =>
+    useGameStore.getState().gameState?.quests.find((q) => q.questId === 'quest_village_monsters')?.status ??
+    'undiscovered'
+  const acceptQuest = () => {
+    useGameStore.getState().discoverQuest('quest_village_monsters')
+    useGameStore.getState().acceptQuest('quest_village_monsters')
+  }
+  const travelGrassland = () => useGameStore.getState().travelToLocation('village_grassland')
+
+  it('合法推进：接受任务 → 村外草原 → 击败魔化兔 → completable', () => {
+    acceptQuest()
+    expect(travelGrassland()).toBe(true)
+    expect(useGameStore.getState().resolveCombatVictory('corrupted_rabbit')).toBe(true)
+    expect(questStatus()).toBe('completable')
+  })
+
+  it('未接受任务：quests=[] 时击败魔化兔 → 返回 true 且 quests 仍 []（不自动发现）', () => {
+    travelGrassland()
+    expect(useGameStore.getState().resolveCombatVictory('corrupted_rabbit')).toBe(true)
+    expect(useGameStore.getState().gameState?.quests).toEqual([])
+  })
+
+  it('available 不会被战斗跳过：发现但未接受 → 击败魔化兔 → available 不变', () => {
+    useGameStore.getState().discoverQuest('quest_village_monsters')
+    travelGrassland()
+    expect(useGameStore.getState().resolveCombatVictory('corrupted_rabbit')).toBe(true)
+    expect(questStatus()).toBe('available')
+  })
+
+  it('错误敌人：in_progress 时在废弃矿洞击败魔化鼠 → 任务仍 in_progress', () => {
+    acceptQuest()
+    useGameStore.getState().travelToLocation('abandoned_mine')
+    expect(useGameStore.getState().resolveCombatVictory('corrupted_rat')).toBe(true)
+    expect(questStatus()).toBe('in_progress')
+  })
+
+  it('错误地点/伪造胜利：在青石村调用魔化兔胜利 → false 且 GameState 完全不变', () => {
+    acceptQuest()
+    const snapshot = JSON.stringify(useGameStore.getState().gameState)
+    expect(useGameStore.getState().resolveCombatVictory('corrupted_rabbit')).toBe(false)
+    expect(JSON.stringify(useGameStore.getState().gameState)).toBe(snapshot)
+  })
+
+  it('未知敌人 → false 且 GameState 不变', () => {
+    acceptQuest()
+    const snapshot = JSON.stringify(useGameStore.getState().gameState)
+    expect(useGameStore.getState().resolveCombatVictory('fake_enemy')).toBe(false)
+    expect(JSON.stringify(useGameStore.getState().gameState)).toBe(snapshot)
+  })
+
+  it('已完成终态：completed 后再击败魔化兔 → 仍 completed 不回退', () => {
+    acceptQuest()
+    travelGrassland()
+    useGameStore.getState().resolveCombatVictory('corrupted_rabbit')
+    useGameStore.getState().completeQuest('quest_village_monsters')
+    expect(questStatus()).toBe('completed')
+    travelGrassland()
+    expect(useGameStore.getState().resolveCombatVictory('corrupted_rabbit')).toBe(true)
+    expect(questStatus()).toBe('completed')
+  })
+
+  it('无奖励副作用：推进成功后除 quest.status 外 player/inventory/world 全部不变', () => {
+    acceptQuest()
+    travelGrassland()
+    const before = useGameStore.getState().gameState!
+    useGameStore.getState().resolveCombatVictory('corrupted_rabbit')
+    const after = useGameStore.getState().gameState!
+    expect(after.player).toEqual(before.player)
+    expect(after.inventory).toEqual(before.inventory)
+    expect(after.world).toEqual(before.world)
+    expect(after.quests[0]?.status).toBe('completable')
+  })
+
+  it('不自动保存：内存推进后 hasSave 仍 false', () => {
+    acceptQuest()
+    travelGrassland()
+    useGameStore.getState().resolveCombatVictory('corrupted_rabbit')
+    expect(questStatus()).toBe('completable')
+    expect(useGameStore.getState().hasSave).toBe(false)
+  })
+})

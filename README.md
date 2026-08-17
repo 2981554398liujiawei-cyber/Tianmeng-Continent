@@ -119,6 +119,15 @@ TM-P0-008（单敌人回合战斗 MVP）：
 - 4 个地点遭遇数据测试 + 5 个 damagePlayer 单测 + 9 项 E2E（迎战进战斗页/循环攻击 HP 单调非负/胜负结局/胜利返回/失败 Continue 恢复）
 - TM-P0-008-R1：combat.ts 新增确定性阶段纯函数 `resolvePlayerStrike`（致死攻击→victory 不反击/未命中→敌人回合继续）与 `getCombatPhaseAfterEnemyAttack`（HP 0→defeat），CombatPage 实际使用；5 个确定性单测（致死/超额截断/未击杀反击/未命中/HP 归零）+ E2E 固定 Math.random 天然 20 第一击即胜且玩家 HP 不变
 
+TM-P0-009（战斗胜利驱动《村外异动》任务闭环）：
+- Store 新增 `resolveCombatVictory(enemyId)`：战斗胜利提交到持久 GameState 的唯一正式入口；Store 自校验（getEnemy 存在 / 当前地点存在 / 敌人属于当前地点 enemyIds），非法/伪造胜利返回 false 且 GameState 完全不变
+- 推进规则：仅当 魔化兔 + 村外草原 + 《村外异动》in_progress 时 in_progress→completable（复用封板 canTransitionQuestStatus）；未接受（quests=[]）/available 不被跳过；completed 终态不回退；非任务敌人合法胜利返回 true 但 quests/gold/inventory/world 全不变
+- stage/flags 不变；world.completedEvents 不变；同一敌人允许再次迎战；战斗胜利与任务推进只改内存不自动保存
+- App handleVictory：返回游戏页前先调用 resolveCombatVictory；CombatPage 不接触任务
+- 首个完整闭环（不依赖开发者控制台）：接受任务 → 村外草原击败魔化兔 → 胜利返回日志「可完成」（不在给予者所在地无提交按钮）→ 回青石村出现[提交任务] → 已完成，无任何奖励
+- GameState 类型结构未变、SAVE_VERSION 仍 1
+- 9 个 Store 单测（合法推进/未接受/available 不跳过/错误敌人/伪造胜利/未知敌人/终态不回退/无奖励副作用/不自动保存）+ 12 项 E2E 完整闭环（含固定随机一击击杀、无奖励断言）
+
 ## 目录结构
 
 ```
