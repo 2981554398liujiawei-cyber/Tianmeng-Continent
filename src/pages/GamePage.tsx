@@ -258,6 +258,21 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
         )}
       </section>
 
+      {/* TM-P0-019：新的线索 —— 仅当背包实际拥有 rabbit_path（quantity>=1）且注册表定义存在时显示；名称/描述全部读 getItem，不复制静态文案 */}
+      {(() => {
+        const pathDef = getItem('rabbit_path')
+        const hasPath =
+          pathDef !== undefined && gameState.inventory.some((e) => e.itemId === 'rabbit_path' && e.quantity >= 1)
+        if (!hasPath) return null
+        return (
+          <section className="rounded border border-gold-500/40 bg-gold-500/5 p-5 text-sm text-bone-300">
+            <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">新的线索</h3>
+            <p className="font-bold text-bone-100">{pathDef.name}</p>
+            <p className="mt-1 leading-relaxed text-bone-300">{pathDef.description}</p>
+          </section>
+        )
+      })()}
+
       {/* TM-P0-015：附近人物 —— 仅当前地点存在注册 NPC 时显示 */}
       {localNpcs.length > 0 && (
         <section className="rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">

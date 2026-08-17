@@ -200,6 +200,14 @@ TM-P0-018（《村外异动》固定金币奖励）：
 - GameState 类型结构未变、SAVE_VERSION 仍 1
 - 2 个内容测试（goldReward=20/安全正整数约束）+ 7 个 Store 单测（正常奖励原子完成/不可完成状态不奖励/重复完成不重复/已完成不补发/金币溢出拒绝/无额外副作用/不自动保存）+ 6 项 E2E（P006·P009 提交后金币 50→70 与奖励显示/存档恢复任务 completed+金币 70+解锁保留/任务金币商店消费 70→60 药水+1）
 
+TM-P0-019（《兔子的路径》新线索突出展示）：
+- GamePage 新增「新的线索」突出展示区：仅当背包实际拥有 rabbit_path（itemId 匹配且 quantity>=1）且 getItem('rabbit_path') 存在时显示；名称与 description 全部读注册表（JSX 未复制「兔子的路径/藏宝图/黄金兔子王」第二份文案）；与地点无关（青石村/村外草原/废弃矿洞/兔王巢穴均显示）
+- 唯一性：用 some 判定，quantity>1 也只渲染一个线索区；缺失 ItemDefinition（getItem 返回 undefined）→ 隐藏区域不崩溃、背包未知物品降级照常、不自动删除条目
+- 不新增 [使用]/[查看]/[追踪] 等按钮；不新增 useRabbitPath/examineRabbitPath 等 Action；不新增任何 World Flag/持久状态（线索显示只由既有 inventory 决定）；不新增黄金兔子王实体/地点/任务/新地图；藏宝图不能移动玩家
+- 原背包 rabbit_path ×1 展示保持（新线索区为额外突出展示，不替代背包）；药水/铁剑行为不变；存档无需新逻辑（inventory 已持久化，保存→Continue 自然恢复）
+- 本卡无 Store/GameState 修改；GameState 类型结构未变、SAVE_VERSION 仍 1
+- 3 项 E2E（未获得藏宝图时新游戏不显示新的线索/Boss 正式流程返回冒险显示新的线索区（含藏宝图与黄金兔子王）/保存 Continue 后新的线索仍显示）
+
 ## 目录结构
 
 ```

@@ -479,6 +479,7 @@ try {
   body = await bodyText()
   check('P012: 返回后背包显示兔子的路径 ×1', body.includes('兔子的路径 ×1'))
   check('P012: 藏宝图描述含藏宝图与黄金兔子王', body.includes('藏宝图') && body.includes('黄金兔子王'))
+  check('P019: Boss 后返回冒险显示新的线索区域', body.includes('新的线索'))
   await clickByText('村外草原')
   await clickByText('保存游戏')
   await clickByText('返回主菜单')
@@ -487,6 +488,7 @@ try {
   check('P011: Continue 后仍在村外草原', body.includes('村外草原'))
   check('P011: Continue 后兔王巢穴仍可进入', (await buttonDisabled('兔王巢穴')) === false)
   check('P012: Continue 后兔子的路径仍 ×1', body.includes('兔子的路径 ×1'))
+  check('P019: Continue 后新的线索仍显示', body.includes('新的线索'))
   await clickByText('青石村')
 
   await clickByText('返回主菜单')
@@ -761,6 +763,7 @@ try {
   check('P017: 青石村不显示附近威胁', !body.includes('附近威胁'))
   check('P017: 青石村不显示空状态文案', !body.includes('这里暂时没有威胁'))
   check('P017: 青石村其他区域正常（附近人物/药师的小铺/附近委托）', body.includes('附近人物') && body.includes('药师的小铺') && body.includes('附近委托'))
+  check('P019: 未获得藏宝图时不显示新的线索', !body.includes('新的线索'))
   await clickByText('村外草原')
   body = await bodyText()
   check('P017: 村外草原显示附近威胁（魔化兔 HP 8 防御 11）', body.includes('附近威胁') && body.includes('魔化兔') && body.includes('HP 8') && body.includes('防御 11') && body.includes('迎战'))
