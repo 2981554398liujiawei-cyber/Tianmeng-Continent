@@ -26,7 +26,7 @@ function Bar({ label, value, max }: { label: string; value: number; max: number 
 export default function GamePage({ onBackToMenu }: GamePageProps) {
   const gameState = useGameStore((s) => s.gameState)
   const saveGame = useGameStore((s) => s.saveGame)
-  const [saved, setSaved] = useState(false)
+  const [saveResult, setSaveResult] = useState<'saved' | 'failed' | null>(null)
 
   if (!gameState) {
     return (
@@ -40,9 +40,9 @@ export default function GamePage({ onBackToMenu }: GamePageProps) {
   const { player, world } = gameState
 
   const handleSave = () => {
-    saveGame()
-    setSaved(true)
-    window.setTimeout(() => setSaved(false), 2000)
+    const ok = saveGame()
+    setSaveResult(ok ? 'saved' : 'failed')
+    window.setTimeout(() => setSaveResult(null), 2500)
   }
 
   return (
@@ -93,7 +93,8 @@ export default function GamePage({ onBackToMenu }: GamePageProps) {
         <Button variant="primary" onClick={handleSave}>
           保存游戏
         </Button>
-        {saved && <span className="text-sm text-gold-300">✓ 已保存</span>}
+        {saveResult === 'saved' && <span className="text-sm text-gold-300">✓ 已保存</span>}
+        {saveResult === 'failed' && <span className="text-sm text-red-300">✗ 保存失败</span>}
       </footer>
     </div>
   )

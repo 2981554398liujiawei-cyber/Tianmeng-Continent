@@ -1,9 +1,32 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useGameStore } from './gameStore'
 import { createInitialGameState } from '../content/initial'
 
+function createMockStorage(): Storage {
+  const store = new Map<string, string>()
+  return {
+    get length() {
+      return store.size
+    },
+    clear: () => store.clear(),
+    getItem: (key) => store.get(key) ?? null,
+    key: (index) => Array.from(store.keys())[index] ?? null,
+    removeItem: (key) => {
+      store.delete(key)
+    },
+    setItem: (key, value) => {
+      store.set(key, String(value))
+    },
+  } as Storage
+}
+
 beforeEach(() => {
+  vi.stubGlobal('localStorage', createMockStorage())
   useGameStore.setState({ gameState: createInitialGameState(), hasSave: false })
+})
+
+afterEach(() => {
+  vi.unstubAllGlobals()
 })
 
 const gold = () => useGameStore.getState().gameState?.player.gold
@@ -105,5 +128,33 @@ describe('newGame 与状态完整性', () => {
     expect(gs?.world).toBeDefined()
     expect(gs?.player.name).toBe('石头城')
     expect(gs?.player.profession).toBe('knight')
+  })
+})
+
+describe('TM-P0-001-R1：存档生命周期', () => {
+  it('保存成功 → hasSave 为 true，loadGame 成功', () => {
+    useGameStore.getState().saveGame()
+    expect(useGameStore.getState().hasSave).toBe(true)
+    expect(useGameStore.getState().loadGame()).toBe(true)
+  })
+
+  it('loadGame 在无有效存档时返回 false', () => {
+    expect(useGameStore.getState().loadGame()).toBe(false)
+  })
+
+  it('storage 写入失败时 saveGame 返回 false 且不得把 hasSave 设为 true', () => {
+    vi.spyOn(localStorage, 'setItem').mockImplementation(() => {
+      throw new Error('QuotaExceededError')
+    })
+    const ok = useGameStore.getState().saveGame()
+    expect(ok).toBe(false)
+    expect(useGameStore.getState().hasSave).toBe(false)
+  })
+
+  it('deleteGame 后 hasSave 为 false 且 loadGame 失败', () => {
+    useGameStore.getState().saveGame()
+    useGameStore.getState().deleteGame()
+    expect(useGameStore.getState().hasSave).toBe(false)
+    expect(useGameStore.getState().loadGame()).toBe(false)
   })
 })

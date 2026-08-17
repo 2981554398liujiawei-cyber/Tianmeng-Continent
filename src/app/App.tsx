@@ -18,8 +18,9 @@ export default function App() {
   }
 
   const handleContinue = () => {
-    loadGame()
-    setScreen('game')
+    // TM-P0-001-R1：只有成功读到合法存档才进入游戏页
+    const ok = loadGame()
+    if (ok) setScreen('game')
   }
 
   if (screen === 'game') {

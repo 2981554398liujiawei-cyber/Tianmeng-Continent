@@ -1,4 +1,4 @@
-import type { GameState } from '../types'
+import type { GameState, Character, Inventory, Equipment, WorldState } from '../types'
 
 export const SAVE_KEY = 'tianmeng_continent_save'
 export const SAVE_VERSION = 1
@@ -19,21 +19,94 @@ function getStorage(): Storage | null {
   }
 }
 
-/** 基本形状校验，防止损坏存档进入运行时 */
-function isGameStateShape(value: unknown): value is GameState {
-  if (typeof value !== 'object' || value === null) return false
-  const gs = value as Record<string, unknown>
-  if (typeof gs.player !== 'object' || gs.player === null) return false
-  if (!Array.isArray(gs.inventory)) return false
-  if (typeof gs.equipment !== 'object' || gs.equipment === null) return false
-  if (!Array.isArray(gs.quests)) return false
-  if (typeof gs.world !== 'object' || gs.world === null) return false
+// ---------- 手写校验（TM-P0-001-R1：单一入口，统一「有效存档」语义） ----------
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0
+}
+
+function isPositiveInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value > 0
+}
+
+const ATTRIBUTE_KEYS = ['str', 'con', 'agi', 'mnd', 'lck'] as const
+
+function isCharacter(value: unknown): value is Character {
+  if (!isRecord(value)) return false
+  if (typeof value.id !== 'string' || value.id === '') return false
+  if (typeof value.name !== 'string' || value.name === '') return false
+  if (value.gender !== 'male' && value.gender !== 'female') return false
+  if (!isNonNegativeInteger(value.level)) return false
+  if (typeof value.profession !== 'string' || value.profession === '') return false
+  const attrs = value.attributes
+  if (!isRecord(attrs)) return false
+  for (const key of ATTRIBUTE_KEYS) {
+    if (!isNonNegativeInteger(attrs[key])) return false
+  }
+  if (!isNonNegativeInteger(value.hp) || !isNonNegativeInteger(value.maxHp)) return false
+  if (!isNonNegativeInteger(value.mp) || !isNonNegativeInteger(value.maxMp)) return false
+  if (!isNonNegativeInteger(value.gold)) return false
   return true
 }
 
-export function saveGame(gameState: GameState): void {
+function isInventory(value: unknown): value is Inventory {
+  if (!Array.isArray(value)) return false
+  return value.every((entry) => {
+    if (!isRecord(entry)) return false
+    if (typeof entry.itemId !== 'string' || entry.itemId === '') return false
+    return isPositiveInteger(entry.quantity)
+  })
+}
+
+function isEquipment(value: unknown): value is Equipment {
+  if (!isRecord(value)) return false
+  const slotOk = (slot: unknown): boolean => slot === null || typeof slot === 'string'
+  return slotOk(value.weapon) && slotOk(value.armor) && slotOk(value.accessory)
+}
+
+function isQuests(value: unknown): boolean {
+  return Array.isArray(value)
+}
+
+function isWorld(value: unknown): value is WorldState {
+  if (!isRecord(value)) return false
+  if (typeof value.currentLocationId !== 'string' || value.currentLocationId === '') return false
+  if (!isRecord(value.flags)) return false
+  if (!Array.isArray(value.completedEvents)) return false
+  if (!isRecord(value.npcStates)) return false
+  return true
+}
+
+/** 合法 GameState 判定：当前运行时真正依赖的字段 */
+function isGameState(value: unknown): value is GameState {
+  if (!isRecord(value)) return false
+  return (
+    isCharacter(value.player) &&
+    isInventory(value.inventory) &&
+    isEquipment(value.equipment) &&
+    isQuests(value.quests) &&
+    isWorld(value.world)
+  )
+}
+
+/** 合法存档判定（TM-P0-001-R1：loadGame / hasSave / 主菜单共用此语义） */
+export function isValidSave(raw: unknown): raw is SaveFile {
+  if (!isRecord(raw)) return false
+  if (raw.version !== SAVE_VERSION) return false
+  if (typeof raw.savedAt !== 'string') return false
+  return isGameState(raw.gameState)
+}
+
+// ---------- 存档操作 ----------
+
+/** 写入存档；返回是否成功（TM-P0-001-R1：写入失败必须可表达） */
+export function saveGame(gameState: GameState): boolean {
   const storage = getStorage()
-  if (!storage) return
+  if (!storage) return false
   const save: SaveFile = {
     version: SAVE_VERSION,
     savedAt: new Date().toISOString(),
@@ -41,12 +114,14 @@ export function saveGame(gameState: GameState): void {
   }
   try {
     storage.setItem(SAVE_KEY, JSON.stringify(save))
+    return true
   } catch (err) {
     console.error('[存档] 写入失败', err)
+    return false
   }
 }
 
-/** 读取存档；无存档或数据损坏时返回 null（不抛出） */
+/** 读取存档；无存档或数据损坏时返回 null（不抛出）。坏档保留于 localStorage 以便调试，但一律视为无效。 */
 export function loadGame(): SaveFile | null {
   const storage = getStorage()
   if (!storage) return null
@@ -54,21 +129,11 @@ export function loadGame(): SaveFile | null {
   if (!raw) return null
   try {
     const parsed: unknown = JSON.parse(raw)
-    if (typeof parsed !== 'object' || parsed === null) return null
-    const save = parsed as Record<string, unknown>
-    if (save.version !== SAVE_VERSION) {
-      console.error('[存档] 版本不匹配，忽略：', save.version)
+    if (!isValidSave(parsed)) {
+      console.error('[存档] 存档无效（损坏/版本不符/结构不合法），已拒绝加载')
       return null
     }
-    if (!isGameStateShape(save.gameState)) {
-      console.error('[存档] 数据损坏（结构不合法），忽略')
-      return null
-    }
-    return {
-      version: save.version as number,
-      savedAt: save.savedAt as string,
-      gameState: save.gameState as GameState,
-    }
+    return parsed
   } catch (err) {
     console.error('[存档] 读取失败（数据损坏），已安全回退', err)
     return null
@@ -85,12 +150,7 @@ export function deleteGame(): void {
   }
 }
 
+/** 是否存在「有效」存档（TM-P0-001-R1：坏档不算有存档） */
 export function hasSave(): boolean {
-  const storage = getStorage()
-  if (!storage) return false
-  try {
-    return storage.getItem(SAVE_KEY) !== null
-  } catch {
-    return false
-  }
+  return loadGame() !== null
 }

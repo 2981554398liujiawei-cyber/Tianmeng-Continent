@@ -91,3 +91,75 @@ describe('异常存档处理', () => {
     expect(loadGame()).toBeNull()
   })
 })
+
+describe('TM-P0-001-R1：有效存档判定统一（loadGame / hasSave 共用）', () => {
+  const writeRaw = (gameState: unknown) => {
+    localStorage.setItem(
+      SAVE_KEY,
+      JSON.stringify({ version: SAVE_VERSION, savedAt: 'x', gameState }),
+    )
+  }
+
+  it('合法存档 → hasSave 为 true', () => {
+    saveGame(createInitialGameState())
+    expect(hasSave()).toBe(true)
+  })
+
+  it('损坏 JSON → hasSave 为 false', () => {
+    localStorage.setItem(SAVE_KEY, '{ broken json')
+    expect(hasSave()).toBe(false)
+  })
+
+  it('顶层看似正确但 player 缺字段（空对象）→ 拒绝', () => {
+    writeRaw({
+      player: {},
+      inventory: [],
+      equipment: { weapon: null, armor: null, accessory: null },
+      quests: [],
+      world: { currentLocationId: 'x', flags: {}, completedEvents: [], npcStates: {} },
+    })
+    expect(loadGame()).toBeNull()
+    expect(hasSave()).toBe(false)
+  })
+
+  it('attributes 缺字段 → 拒绝', () => {
+    const state = createInitialGameState()
+    const attrs = state.player.attributes as Record<string, number>
+    delete attrs.str
+    writeRaw(state)
+    expect(loadGame()).toBeNull()
+    expect(hasSave()).toBe(false)
+  })
+
+  it('inventory entry 数量非法（0 / 负数）→ 拒绝', () => {
+    writeRaw({ ...createInitialGameState(), inventory: [{ itemId: 'x', quantity: 0 }] })
+    expect(loadGame()).toBeNull()
+    writeRaw({ ...createInitialGameState(), inventory: [{ itemId: 'x', quantity: -1 }] })
+    expect(loadGame()).toBeNull()
+    expect(hasSave()).toBe(false)
+  })
+
+  it('world 缺 currentLocationId → 拒绝', () => {
+    const state = createInitialGameState()
+    const world = state.world as Partial<typeof state.world>
+    delete world.currentLocationId
+    writeRaw(state)
+    expect(loadGame()).toBeNull()
+    expect(hasSave()).toBe(false)
+  })
+
+  it('错误版本 → 拒绝且 hasSave 为 false', () => {
+    localStorage.setItem(
+      SAVE_KEY,
+      JSON.stringify({ version: 2, savedAt: 'x', gameState: createInitialGameState() }),
+    )
+    expect(loadGame()).toBeNull()
+    expect(hasSave()).toBe(false)
+  })
+
+  it('坏档保留在 localStorage 但一律视为无效（行为确定：拒绝加载）', () => {
+    localStorage.setItem(SAVE_KEY, JSON.stringify({ version: 2, savedAt: 'x', gameState: {} }))
+    expect(localStorage.getItem(SAVE_KEY)).not.toBeNull()
+    expect(loadGame()).toBeNull()
+  })
+})

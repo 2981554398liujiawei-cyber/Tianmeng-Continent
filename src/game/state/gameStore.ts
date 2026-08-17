@@ -16,8 +16,10 @@ interface GameStoreState {
 
   // 存档生命周期
   newGame: () => void
-  loadGame: () => void
-  saveGame: () => void
+  /** 读档成功返回 true，无有效存档返回 false（TM-P0-001-R1：调用方据此决定是否可进入游戏页） */
+  loadGame: () => boolean
+  /** 保存成功返回 true，写入失败返回 false（TM-P0-001-R1） */
+  saveGame: () => boolean
   deleteGame: () => void
 
   // 状态修改（数据流验证用最小动作集）
@@ -41,15 +43,20 @@ export const useGameStore = create<GameStoreState>()((set) => ({
     const save = loadSaveFromStorage()
     if (save) {
       set({ gameState: save.gameState, hasSave: true })
+      return true
     }
+    return false
   },
 
   saveGame: () => {
+    let ok = false
     set((s) => {
       if (!s.gameState) return {}
-      persistGame(s.gameState)
-      return { hasSave: true }
+      ok = persistGame(s.gameState)
+      // 只有实际写入成功才标记为已有存档（TM-P0-001-R1）
+      return { hasSave: ok }
     })
+    return ok
   },
 
   deleteGame: () => {
