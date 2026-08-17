@@ -250,3 +250,27 @@ describe('TM-P0-010：治疗药水数据约束', () => {
     expect(getItem('rabbit_path')?.healAmount).toBeUndefined()
   })
 })
+
+describe('TM-P0-013：铁剑武器伤害加成数据约束', () => {
+  it('iron_sword 为 weapon 且 weaponDamageBonus === 2', () => {
+    const sword = getItem('iron_sword')
+    expect(sword?.type).toBe('weapon')
+    expect(sword?.weaponDamageBonus).toBe(2)
+  })
+
+  it('weaponDamageBonus 若存在必须为正整数且仅用于 weapon', () => {
+    for (const item of Object.values(ITEMS)) {
+      if (item.weaponDamageBonus !== undefined) {
+        expect(Number.isInteger(item.weaponDamageBonus), `${item.id} weaponDamageBonus 正整数`).toBe(true)
+        expect(item.weaponDamageBonus).toBeGreaterThan(0)
+        expect(item.type, `${item.id} weaponDamageBonus 仅 weapon`).toBe('weapon')
+      }
+    }
+  })
+
+  it('其他物品不携带 weaponDamageBonus', () => {
+    expect(getItem('healing_potion')?.weaponDamageBonus).toBeUndefined()
+    expect(getItem('test_artifact')?.weaponDamageBonus).toBeUndefined()
+    expect(getItem('rabbit_path')?.weaponDamageBonus).toBeUndefined()
+  })
+})

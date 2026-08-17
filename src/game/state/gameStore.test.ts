@@ -821,3 +821,63 @@ describe('TM-P0-012：击败嘟嘟兔获得唯一《兔子的路径》', () => {
     expect(useGameStore.getState().hasSave).toBe(false)
   })
 })
+
+describe('TM-P0-013：equipWeapon / unequipWeapon 装备铁剑', () => {
+  const weapon = () => useGameStore.getState().gameState?.equipment.weapon
+  const swordQty = () =>
+    useGameStore.getState().gameState?.inventory.find((e) => e.itemId === 'iron_sword')?.quantity ?? 0
+
+  it('正常装备：iron_sword ×1 → true，weapon=iron_sword，inventory 仍 ×1', () => {
+    expect(weapon()).toBeNull()
+    expect(useGameStore.getState().equipWeapon('iron_sword')).toBe(true)
+    expect(weapon()).toBe('iron_sword')
+    expect(swordQty()).toBe(1)
+  })
+
+  it('非武器：治疗药水 → false，equipment 不变', () => {
+    const snapshot = JSON.stringify(useGameStore.getState().gameState?.equipment)
+    expect(useGameStore.getState().equipWeapon('healing_potion')).toBe(false)
+    expect(JSON.stringify(useGameStore.getState().gameState?.equipment)).toBe(snapshot)
+  })
+
+  it('未知物品 → false，GameState 完全不变', () => {
+    const snapshot = JSON.stringify(useGameStore.getState().gameState)
+    expect(useGameStore.getState().equipWeapon('fake_item')).toBe(false)
+    expect(JSON.stringify(useGameStore.getState().gameState)).toBe(snapshot)
+  })
+
+  it('未拥有武器：移除铁剑后 → false', () => {
+    useGameStore.setState({
+      gameState: {
+        ...useGameStore.getState().gameState!,
+        inventory: useGameStore.getState().gameState!.inventory.filter((e) => e.itemId !== 'iron_sword'),
+      },
+    })
+    expect(useGameStore.getState().equipWeapon('iron_sword')).toBe(false)
+    expect(weapon()).toBeNull()
+  })
+
+  it('卸下：weapon=iron_sword → true，weapon=null，inventory 仍 ×1', () => {
+    useGameStore.getState().equipWeapon('iron_sword')
+    expect(useGameStore.getState().unequipWeapon()).toBe(true)
+    expect(weapon()).toBeNull()
+    expect(swordQty()).toBe(1)
+  })
+
+  it('重复卸下：weapon=null → false', () => {
+    expect(useGameStore.getState().unequipWeapon()).toBe(false)
+    expect(weapon()).toBeNull()
+  })
+
+  it('无 gameState：两操作均 false', () => {
+    useGameStore.setState({ gameState: null })
+    expect(useGameStore.getState().equipWeapon('iron_sword')).toBe(false)
+    expect(useGameStore.getState().unequipWeapon()).toBe(false)
+  })
+
+  it('不自动保存：成功装备后 hasSave 仍 false', () => {
+    useGameStore.getState().equipWeapon('iron_sword')
+    expect(weapon()).toBe('iron_sword')
+    expect(useGameStore.getState().hasSave).toBe(false)
+  })
+})

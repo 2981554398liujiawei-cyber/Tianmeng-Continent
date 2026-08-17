@@ -151,6 +151,15 @@ TM-P0-012（击败嘟嘟兔获得唯一《兔子的路径》）：
 - GameState 类型结构未变、SAVE_VERSION 仍 1
 - 8 个 Store 单测（正常 Boss 胜利/重复不复制/预先已有/错误地点伪造 false/其他敌人无奖励/魔化兔推进零回归/无额外副作用/不自动保存）+ 6 项 E2E（Boss 战前无藏宝图/固定随机击败嘟嘟兔/返回后 ×1 与描述/存档恢复仍 ×1）
 
+TM-P0-013（铁剑装备与武器伤害加成）：
+- ItemDefinition 新增静态字段 `weaponDamageBonus`；iron_sword=2（id/name/type/description/value 不变）；内容测试锁定 weaponDamageBonus 存在则正整数且仅 weapon，其他物品不携带
+- combat.ts 新增 `getPlayerAttackDamage(str, weaponDamageBonus=0) = getPlayerBasicDamage(str) + bonus`（getPlayerBasicDamage 语义不变）；0/正整数允许，-1/1.5/NaN/Infinity 抛 RangeError，返回保证 finite；暴击公式未改（baseDamage 8 → 天然20 → 16）
+- Store 新增 `equipWeapon(itemId)` / `unequipWeapon()`：equip 需 gameState + 物品存在 + type=weapon + 背包拥有 quantity>=1（装备不消耗 inventory，equipment.weapon 仅记录 ID）；非法（未知/药水/任务物品/未拥有/无 gameState）→ false 全不变；卸下 weapon→null 且 inventory 不变，已 null → false；未实现 equipArmor/equipAccessory/equipItem
+- GamePage 新增「装备」区（武器：未装备/铁剑，名称读 getItem，未知装备显示未知武器+id 不崩溃）；背包铁剑显示[装备]/[卸下]（只调 Store action）；药水仍只有[使用]、任务物品无按钮
+- CombatPage 玩家攻击改用 getPlayerAttackDamage（读当前装备，缺失/未知/非 weapon 安全按 0），玩家区显示武器行；命中率/attackBonus 未受影响；开发者控制台攻击测试同步使用相同伤害规则
+- GameState 类型结构未变、SAVE_VERSION 仍 1、旧存档兼容（equipment 字段已存在）
+- 3 个内容测试 + 6 个战斗伤害单测 + 8 个 Store 装备单测（正常/非武器/未知/未拥有/卸下/重复卸下/无 gameState/不自动保存）+ 12 项 E2E（装备 UI/roll 7 命中造成 8 点伤害一击胜利/卸下恢复/存档恢复）
+
 ## 目录结构
 
 ```

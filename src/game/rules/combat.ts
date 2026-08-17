@@ -19,6 +19,21 @@ export function getPlayerBasicDamage(str: number): number {
   return Math.max(1, 4 + getAttributeModifier(str))
 }
 
+/**
+ * 玩家普通攻击伤害：基础伤害 + 武器伤害加成（TM-P0-013）。
+ * weaponDamageBonus 允许 0 / 正整数，非法（负数/小数/NaN/Infinity）抛 RangeError。
+ */
+export function getPlayerAttackDamage(str: number, weaponDamageBonus = 0): number {
+  if (!Number.isInteger(weaponDamageBonus) || weaponDamageBonus < 0 || !Number.isFinite(weaponDamageBonus)) {
+    throw new RangeError('武器伤害加成必须是 0 或正整数')
+  }
+  const damage = getPlayerBasicDamage(str) + weaponDamageBonus
+  if (!Number.isFinite(damage)) {
+    throw new RangeError('攻击伤害溢出')
+  }
+  return damage
+}
+
 export type AttackOutcome = 'critical_hit' | 'hit' | 'miss' | 'critical_miss'
 
 export interface AttackResult {

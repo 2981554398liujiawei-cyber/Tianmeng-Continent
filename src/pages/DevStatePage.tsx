@@ -4,13 +4,13 @@ import { useGameStore } from '../game/state/gameStore'
 import { performD20Check, type D20CheckResult } from '../game/rules/d20'
 import {
   getPlayerAttackBonus,
-  getPlayerBasicDamage,
+  getPlayerAttackDamage,
   getPlayerDefense,
   performAttack,
   type AttackResult,
 } from '../game/rules/combat'
 import { ATTRIBUTE_KEYS, ATTRIBUTE_LABELS } from '../game/content/professions'
-import { getEnemy, getQuest, ENEMIES } from '../game/content'
+import { getEnemy, getItem, getQuest, ENEMIES } from '../game/content'
 import type { AttributeKey, QuestStatus } from '../game/types'
 
 interface DevStatePageProps {
@@ -78,9 +78,14 @@ export default function DevStatePage({ onBackToMenu }: DevStatePageProps) {
       return
     }
     try {
-      const bonus = getPlayerAttackBonus(gameState.player.attributes.str, gameState.player.level)
-      const baseDamage = getPlayerBasicDamage(gameState.player.attributes.str)
-      setAttackResult(performAttack(bonus, enemy.defense, baseDamage))
+      // TM-P0-013：开发测试与正式战斗共用同一伤害规则（读取当前装备武器加成）
+      const weaponId = gameState.equipment.weapon
+      const weapon = weaponId ? getItem(weaponId) : undefined
+      const bonus =
+        weapon?.type === 'weapon' && Number.isInteger(weapon.weaponDamageBonus) ? (weapon.weaponDamageBonus ?? 0) : 0
+      const baseDamage = getPlayerAttackDamage(gameState.player.attributes.str, bonus)
+      const attackBonus = getPlayerAttackBonus(gameState.player.attributes.str, gameState.player.level)
+      setAttackResult(performAttack(attackBonus, enemy.defense, baseDamage))
     } catch (err) {
       setAttackError(err instanceof Error ? err.message : '攻击结算失败')
     }

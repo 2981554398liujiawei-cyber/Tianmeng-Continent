@@ -50,6 +50,10 @@ interface GameStoreState {
   resolveCombatVictory: (enemyId: string) => boolean
   /** 使用治疗药水：hp = min(maxHp, hp + healAmount)，药水 -1；满血/HP0/无药水返回 false 不变（TM-P0-010） */
   useHealingPotion: () => boolean
+  /** 装备武器：仅可装备已拥有的 weapon，装备不消耗 inventory（TM-P0-013） */
+  equipWeapon: (itemId: string) => boolean
+  /** 卸下武器：weapon → null，inventory 不变（TM-P0-013） */
+  unequipWeapon: () => boolean
   addGold: (amount: number) => void
   removeGold: (amount: number) => void
   addItem: (itemId: string, quantity?: number) => void
@@ -307,6 +311,42 @@ export const useGameStore = create<GameStoreState>()((set) => ({
       }
     })
     return used
+  },
+
+  equipWeapon: (itemId) => {
+    let equipped = false
+    set((s) => {
+      if (!s.gameState) return {}
+      // Store 自校验：物品存在、是 weapon、且背包实际拥有该武器
+      const item = getItem(itemId)
+      if (!item || item.type !== 'weapon') return {}
+      const owned = s.gameState.inventory.some((e) => e.itemId === itemId && e.quantity >= 1)
+      if (!owned) return {}
+      equipped = true
+      return {
+        gameState: {
+          ...s.gameState,
+          equipment: { ...s.gameState.equipment, weapon: itemId },
+        },
+      }
+    })
+    return equipped
+  },
+
+  unequipWeapon: () => {
+    let unequipped = false
+    set((s) => {
+      if (!s.gameState) return {}
+      if (s.gameState.equipment.weapon === null) return {}
+      unequipped = true
+      return {
+        gameState: {
+          ...s.gameState,
+          equipment: { ...s.gameState.equipment, weapon: null },
+        },
+      }
+    })
+    return unequipped
   },
 
   addGold: (amount) => {

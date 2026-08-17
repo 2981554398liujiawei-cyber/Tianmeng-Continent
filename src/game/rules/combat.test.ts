@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   getCombatPhaseAfterEnemyAttack,
   getPlayerAttackBonus,
+  getPlayerAttackDamage,
   getPlayerBasicDamage,
   getPlayerDefense,
   performAttack,
@@ -30,6 +31,35 @@ describe('TM-P0-007：玩家派生规则', () => {
     expect(getPlayerBasicDamage(10)).toBe(4)
     expect(getPlayerBasicDamage(14)).toBe(6)
     expect(getPlayerBasicDamage(16)).toBe(7)
+  })
+})
+
+describe('TM-P0-013：getPlayerAttackDamage 武器伤害加成', () => {
+  it('STR14 无武器加成 → 6（getPlayerBasicDamage 语义不变）', () => {
+    expect(getPlayerAttackDamage(14)).toBe(6)
+    expect(getPlayerAttackDamage(14, 0)).toBe(6)
+  })
+
+  it('STR14 + 武器加成 2 → 8（装备铁剑）', () => {
+    expect(getPlayerAttackDamage(14, 2)).toBe(8)
+  })
+
+  it('STR8 + 武器加成 2 → 5', () => {
+    expect(getPlayerAttackDamage(8, 2)).toBe(5)
+  })
+
+  it('天然 20 暴击仍由 resolveAttack 处理：baseDamage 8 → damage 16', () => {
+    const r = resolveAttack(20, 4, 11, getPlayerAttackDamage(14, 2))
+    expect(r.damage).toBe(16)
+    expect(r.outcome).toBe('critical_hit')
+  })
+
+  it.each([-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY])('非法武器加成 %p 抛 RangeError', (bonus) => {
+    expect(() => getPlayerAttackDamage(14, bonus as number)).toThrow(RangeError)
+  })
+
+  it('正常返回为有限数字', () => {
+    expect(Number.isFinite(getPlayerAttackDamage(14, 2))).toBe(true)
   })
 })
 

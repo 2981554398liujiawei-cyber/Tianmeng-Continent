@@ -10,6 +10,8 @@ export interface ItemDefinition {
   value: number
   /** 使用后恢复的生命值（仅 consumable 可使用，TM-P0-010） */
   healAmount?: number
+  /** 装备后普通攻击伤害加成（仅 weapon 可使用，TM-P0-013） */
+  weaponDamageBonus?: number
 }
 
 /** V1 最小物品目录（仅当前需要的内容） */
@@ -20,6 +22,7 @@ export const ITEMS: Record<string, ItemDefinition> = {
     type: 'weapon',
     description: '村镇铁匠铺打造的寻常铁剑，虽不锋利，胜在可靠。',
     value: 30,
+    weaponDamageBonus: 2,
   },
   healing_potion: {
     id: 'healing_potion',

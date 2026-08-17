@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import Button from '../components/Button'
 import { useGameStore } from '../game/state/gameStore'
-import { getEnemy } from '../game/content'
+import { getEnemy, getItem } from '../game/content'
 import { getProfessionName } from '../game/content/professions'
 import {
   getPlayerAttackBonus,
-  getPlayerBasicDamage,
+  getPlayerAttackDamage,
   getPlayerDefense,
   performAttack,
   getCombatPhaseAfterEnemyAttack,
@@ -66,6 +66,12 @@ export default function CombatPage({ enemyId, onVictory, onDefeat }: CombatPageP
 
   const player = gameState.player
   const playerDefense = getPlayerDefense(player.attributes.agi)
+  // TM-P0-013：读取当前装备武器伤害加成；无装备/未知/非武器安全按 0 处理
+  const equippedWeapon = gameState.equipment.weapon ? getItem(gameState.equipment.weapon) : undefined
+  const weaponDamageBonus =
+    equippedWeapon?.type === 'weapon' && Number.isInteger(equippedWeapon.weaponDamageBonus)
+      ? (equippedWeapon.weaponDamageBonus ?? 0)
+      : 0
 
   const handleAttack = () => {
     if (phase !== 'active') return
@@ -73,7 +79,7 @@ export default function CombatPage({ enemyId, onVictory, onDefeat }: CombatPageP
     const playerResult = performAttack(
       getPlayerAttackBonus(player.attributes.str, player.level),
       enemy.defense,
-      getPlayerBasicDamage(player.attributes.str),
+      getPlayerAttackDamage(player.attributes.str, weaponDamageBonus),
     )
     setLastPlayerAttack(playerResult)
     setLastEnemyAttack(null)
@@ -113,6 +119,18 @@ export default function CombatPage({ enemyId, onVictory, onDefeat }: CombatPageP
           </p>
           <p>
             防御 <span className="tabular-nums text-bone-100">{playerDefense}</span>
+          </p>
+          <p>
+            武器：{' '}
+            {equippedWeapon ? (
+              <span className="text-bone-100">{equippedWeapon.name}</span>
+            ) : gameState.equipment.weapon ? (
+              <span className="text-bone-100">
+                未知武器 <span className="text-bone-500">（{gameState.equipment.weapon}）</span>
+              </span>
+            ) : (
+              <span className="text-bone-500">未装备</span>
+            )}
           </p>
         </section>
 

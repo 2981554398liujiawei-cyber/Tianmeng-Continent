@@ -44,6 +44,8 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
   const acceptQuest = useGameStore((s) => s.acceptQuest)
   const completeQuest = useGameStore((s) => s.completeQuest)
   const useHealingPotion = useGameStore((s) => s.useHealingPotion)
+  const equipWeapon = useGameStore((s) => s.equipWeapon)
+  const unequipWeapon = useGameStore((s) => s.unequipWeapon)
   const [saveResult, setSaveResult] = useState<'saved' | 'failed' | null>(null)
   const [travelError, setTravelError] = useState(false)
 
@@ -152,6 +154,27 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
       </section>
 
       <section className="rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
+        <h3 className="mb-3 text-sm font-bold tracking-wider text-bone-500">装备</h3>
+        {(() => {
+          const weaponDef = gameState.equipment.weapon ? getItem(gameState.equipment.weapon) : undefined
+          return (
+            <p>
+              武器：{' '}
+              {weaponDef ? (
+                <span className="text-bone-100">{weaponDef.name}</span>
+              ) : gameState.equipment.weapon ? (
+                <span className="text-bone-100">
+                  未知武器 <span className="text-bone-500">（{gameState.equipment.weapon}）</span>
+                </span>
+              ) : (
+                <span className="text-bone-500">未装备</span>
+              )}
+            </p>
+          )
+        })()}
+      </section>
+
+      <section className="rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
         <h3 className="mb-3 text-sm font-bold tracking-wider text-bone-500">背包</h3>
         {gameState.inventory.length === 0 ? (
           <p className="text-bone-500">背包空空如也。</p>
@@ -162,6 +185,9 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
               // TM-P0-010：只有治疗药水提供使用入口；满血 / HP 0 时禁用
               const isPotion = def?.id === 'healing_potion'
               const canUse = isPotion && player.hp > 0 && player.hp < player.maxHp
+              // TM-P0-013：铁剑提供装备/卸下入口（装备不消耗 inventory）
+              const isWeapon = def?.id === 'iron_sword'
+              const isEquipped = gameState.equipment.weapon === 'iron_sword'
               return (
                 <div
                   key={entry.itemId}
@@ -175,15 +201,25 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
                       {def ? def.description : `（缺失物品定义：${entry.itemId}）`}
                     </p>
                   </div>
-                  {isPotion && (
-                    <div className="flex flex-col items-end gap-1">
-                      <Button variant="primary" disabled={!canUse} onClick={() => useHealingPotion()}>
-                        使用
+                  <div className="flex flex-col items-end gap-1">
+                    {isWeapon && (
+                      <Button
+                        variant="primary"
+                        onClick={() => (isEquipped ? unequipWeapon() : equipWeapon(entry.itemId))}
+                      >
+                        {isEquipped ? '卸下' : '装备'}
                       </Button>
-                      {player.hp >= player.maxHp && <span className="text-xs text-bone-500">生命已满</span>}
-                      {player.hp <= 0 && <span className="text-xs text-red-300">当前无法使用</span>}
-                    </div>
-                  )}
+                    )}
+                    {isPotion && (
+                      <>
+                        <Button variant="primary" disabled={!canUse} onClick={() => useHealingPotion()}>
+                          使用
+                        </Button>
+                        {player.hp >= player.maxHp && <span className="text-xs text-bone-500">生命已满</span>}
+                        {player.hp <= 0 && <span className="text-xs text-red-300">当前无法使用</span>}
+                      </>
+                    )}
+                  </div>
                 </div>
               )
             })}

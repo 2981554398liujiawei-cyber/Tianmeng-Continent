@@ -529,6 +529,58 @@ try {
   check('P010: Continue 后使用按钮仍禁用', (await buttonDisabled('使用')) === true)
   await clickByText('返回主菜单')
 
+  // P013：铁剑装备与武器伤害加成（新游戏默认骑士石头城 STR14）
+  await clickByText('新游戏')
+  await clickByText('确认进入天梦大陆')
+  body = await bodyText()
+  check('P013: 初始武器未装备', body.includes('未装备'))
+  check('P013: 背包铁剑 ×1 且显示装备按钮', body.includes('铁剑 ×1') && body.includes('装备'))
+  await clickByText('装备')
+  await sleep(200)
+  body = await bodyText()
+  check('P013: 装备后武器显示铁剑', body.includes('武器： 铁剑'))
+  check('P013: 装备后铁剑仍 ×1（不消耗背包）', body.includes('铁剑 ×1'))
+  check('P013: 已装备显示卸下按钮', body.includes('卸下'))
+
+  // 装备后真实伤害：玩家 roll 7 → 7+4=11 >= 11 命中 → 造成 8 点伤害 → 魔化兔 HP8 一击胜利（无反击）
+  await clickByText('村外草原')
+  await clickByText('迎战')
+  await sleep(300)
+  body = await bodyText()
+  check('P013: 战斗页玩家区显示武器铁剑', body.includes('武器： 铁剑'))
+  await page.evaluate(() => {
+    window.__origRandom = Math.random.bind(Math)
+    Math.random = () => 0.3 // floor(0.3 * 20) + 1 = 7
+  })
+  await clickByText('普通攻击')
+  await sleep(300)
+  body = await bodyText()
+  check('P013: 装备铁剑普通命中造成 8 点伤害', body.includes('造成 8 点伤害'))
+  check('P013: 一击击杀魔化兔（战斗胜利）', body.includes('战斗胜利'))
+  await page.evaluate(() => {
+    Math.random = window.__origRandom
+  })
+  await clickByText('返回冒险')
+  await clickByText('青石村')
+
+  // 卸下恢复未装备
+  await clickByText('卸下')
+  await sleep(200)
+  body = await bodyText()
+  check('P013: 卸下后武器恢复未装备', body.includes('未装备'))
+  check('P013: 卸下后铁剑仍 ×1', body.includes('铁剑 ×1'))
+
+  // 存档恢复：再装备 → 保存 → Continue → 装备状态保留
+  await clickByText('装备')
+  await sleep(200)
+  await clickByText('保存游戏')
+  await clickByText('返回主菜单')
+  await clickByText('继续游戏')
+  body = await bodyText()
+  check('P013: Continue 后武器仍为铁剑', body.includes('武器： 铁剑'))
+  check('P013: Continue 后铁剑仍 ×1', body.includes('铁剑 ×1'))
+  await clickByText('返回主菜单')
+
   // R2：运行期间存档改坏 → 触发一次 load → Continue 禁用且不进入游戏页
   await clickByText('新游戏')
   await clickByText('确认进入天梦大陆') // P004：默认预填合法，直接确认创建
