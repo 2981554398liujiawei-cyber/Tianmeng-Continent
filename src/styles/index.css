@@ -1,0 +1,36 @@
+@import "tailwindcss";
+
+/* 深色东方奇幻主题：墨色底、暗金点缀、暖白文字 */
+@theme {
+  --color-ink-950: #0a0c10;
+  --color-ink-900: #0d0f14;
+  --color-ink-800: #14171e;
+  --color-ink-700: #1c2029;
+  --color-ink-600: #262b36;
+
+  --color-gold-300: #dcc088;
+  --color-gold-400: #c9a25e;
+  --color-gold-500: #a8864a;
+  --color-gold-600: #7d6336;
+
+  --color-bone-100: #f2ead9;
+  --color-bone-300: #d9cdb4;
+  --color-bone-500: #a89b80;
+
+  --font-serif-cn: "Noto Serif SC", "Songti SC", "SimSun", "Microsoft YaHei", serif;
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+  body {
+    background-color: var(--color-ink-950);
+    background-image:
+      radial-gradient(ellipse 80% 60% at 50% -10%, rgba(201, 162, 94, 0.08), transparent 60%),
+      linear-gradient(180deg, var(--color-ink-900), var(--color-ink-950));
+    color: var(--color-bone-100);
+    font-family: var(--font-serif-cn);
+    min-height: 100vh;
+  }
+}
