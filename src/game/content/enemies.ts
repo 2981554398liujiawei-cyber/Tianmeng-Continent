@@ -36,7 +36,7 @@ export const ENEMIES: Record<string, EnemyDefinition> = {
     id: 'dudu_rabbit',
     name: '嘟嘟兔',
     level: 3,
-    description: '盘踞巢穴深处的巨大兔王，魔化最深，据说吞吃过路者。',
+    description: '全身白色皮毛、胖胖嘟嘟的魔化兔BOSS，喜欢在草原游荡，是黄金兔子王的伴侣。',
     tags: ['beast', 'boss'],
   },
 }

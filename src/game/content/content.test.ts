@@ -136,3 +136,31 @@ describe('TM-P0-002：不存在 ID 查询安全返回 undefined', () => {
     expect(Object.keys(PROFESSIONS)).toHaveLength(4)
   })
 })
+
+describe('TM-P0-002-R1：关键内容身份锁', () => {
+  it('apothecary 是药师大叔（非女性设定）', () => {
+    expect(getNpc('apothecary')?.summary).toContain('药师大叔')
+    expect(getNpc('apothecary')?.summary).not.toContain('女子')
+  })
+
+  it('dudu_rabbit 是黄金兔子王的伴侣，不是兔王/吞吃过路者', () => {
+    const desc = getEnemy('dudu_rabbit')?.description ?? ''
+    expect(desc).toContain('黄金兔子王')
+    expect(desc).not.toContain('吞吃过路者')
+    expect(desc).not.toContain('兔王')
+  })
+
+  it('rabbit_path 是通往黄金兔子王所在之地的藏宝图', () => {
+    const desc = getItem('rabbit_path')?.description ?? ''
+    expect(desc).toContain('黄金兔子王')
+    expect(desc).toContain('藏宝图')
+    expect(desc).not.toContain('迁徙')
+  })
+
+  it('注册表数量与 ID 未被改动（无新增黄金兔子王条目）', () => {
+    expect(Object.keys(ENEMIES)).toHaveLength(4)
+    expect(Object.keys(NPCS)).toHaveLength(3)
+    expect(Object.keys(QUESTS)).toHaveLength(1)
+    expect(getEnemy('golden_rabbit_king')).toBeUndefined()
+  })
+})

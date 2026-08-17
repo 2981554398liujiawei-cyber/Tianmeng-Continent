@@ -37,7 +37,7 @@ export const ITEMS: Record<string, ItemDefinition> = {
     id: 'rabbit_path',
     name: '兔子的路径',
     type: 'quest',
-    description: '记录着兔群迁徙路线的手绘草图，边角微微卷曲，隐约沾着草汁。',
+    description: '一份指向黄金兔子王所在之地的藏宝图，上面以景物和路标标记着前往目标地点的路线。',
     value: 0,
   },
 }

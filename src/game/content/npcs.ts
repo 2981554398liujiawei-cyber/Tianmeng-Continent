@@ -33,6 +33,6 @@ export const NPCS: Record<string, NpcDefinition> = {
     name: '药师',
     role: '药师',
     locationId: 'qingshi_village',
-    summary: '熟悉草药的温和女子，最近常为被野兽咬伤的村民配药。',
+    summary: '青石村的药师大叔，熟悉采药与炼药，村外魔化野兽的活动给他的采药工作带来了麻烦。',
   },
 }
