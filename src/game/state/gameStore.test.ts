@@ -238,3 +238,57 @@ describe('TM-P0-001-R4：setFlag 拒绝非有限数字', () => {
     expect(useGameStore.getState().gameState?.world.flags.progress).toBe(0.5)
   })
 })
+
+describe('TM-P0-005：travelToLocation 正式移动入口', () => {
+  const locationId = () => useGameStore.getState().gameState?.world.currentLocationId
+
+  it('合法相邻移动：青石村 → 村外草原，更新并返回 true', () => {
+    expect(locationId()).toBe('qingshi_village')
+    expect(useGameStore.getState().travelToLocation('village_grassland')).toBe(true)
+    expect(locationId()).toBe('village_grassland')
+  })
+
+  it('合法相邻移动：青石村 → 废弃矿洞', () => {
+    expect(useGameStore.getState().travelToLocation('abandoned_mine')).toBe(true)
+    expect(locationId()).toBe('abandoned_mine')
+  })
+
+  it('非相邻移动：青石村 → 兔王巢穴，位置不变返回 false', () => {
+    expect(useGameStore.getState().travelToLocation('rabbit_lair')).toBe(false)
+    expect(locationId()).toBe('qingshi_village')
+  })
+
+  it('锁定地点：村外草原 → 兔王巢穴（未解锁），位置不变返回 false', () => {
+    useGameStore.getState().travelToLocation('village_grassland')
+    expect(useGameStore.getState().travelToLocation('rabbit_lair')).toBe(false)
+    expect(locationId()).toBe('village_grassland')
+  })
+
+  it('解锁后：村外草原 → 兔王巢穴成功', () => {
+    useGameStore.getState().travelToLocation('village_grassland')
+    useGameStore.getState().setFlag('rabbit_lair_unlocked', true)
+    expect(useGameStore.getState().travelToLocation('rabbit_lair')).toBe(true)
+    expect(locationId()).toBe('rabbit_lair')
+    // 兔王巢穴可返回村外草原
+    expect(useGameStore.getState().travelToLocation('village_grassland')).toBe(true)
+  })
+
+  it('无 gameState 时返回 false', () => {
+    useGameStore.setState({ gameState: null })
+    expect(useGameStore.getState().travelToLocation('village_grassland')).toBe(false)
+  })
+
+  it('移动不自动保存', () => {
+    useGameStore.getState().travelToLocation('village_grassland')
+    expect(useGameStore.getState().hasSave).toBe(false)
+  })
+
+  it('非严格解锁值不生效：1 与 "true" 均无法进入兔王巢穴', () => {
+    useGameStore.getState().travelToLocation('village_grassland')
+    useGameStore.getState().setFlag('rabbit_lair_unlocked', 1)
+    expect(useGameStore.getState().travelToLocation('rabbit_lair')).toBe(false)
+    useGameStore.getState().setFlag('rabbit_lair_unlocked', 'true')
+    expect(useGameStore.getState().travelToLocation('rabbit_lair')).toBe(false)
+    expect(locationId()).toBe('village_grassland')
+  })
+})

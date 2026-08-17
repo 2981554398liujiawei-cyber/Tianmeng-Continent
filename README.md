@@ -79,6 +79,15 @@ TM-P0-004（角色创建与新游戏入口）：
 - 创建新角色不自动覆盖旧存档；Continue 流程零回归
 - 11 个创建校验单测 + 3 个 HP/MP 公式单测 + 9 项 E2E（创建流程/旧存档回归）
 
+TM-P0-005（场景节点探索与合法地点移动）：
+- `src/game/rules/exploration.ts`：纯函数 `checkTravel(current, target, flags)`，按序检查 当前地点存在 → 目标存在 → 相邻 → 解锁 Flag（严格 === true，1/"true" 不算），返回 `{allowed, reason?}`，无副作用
+- Store 正式入口 `travelToLocation(targetId): boolean`：自身执行 checkTravel，非法移动不改 GameState；`setCurrentLocation` 保留为开发控制台专用
+- 游戏页场景区：地点名称 + description + 相邻地点按钮（中文名，读 LOCATIONS 注册表）；锁定地点按钮禁用并提示「尚未找到进入此地的方法」（不暴露 requiredFlag）；未知 currentLocationId 显示「未知地点」不崩溃、无移动按钮
+- 移动只改内存、不自动保存；手动保存后 Continue 恢复当前位置
+- 开发者控制台新增「解锁兔王巢穴」验证按钮（setFlag('rabbit_lair_unlocked', true)）
+- GameState 结构未改、SAVE_VERSION 仍 1
+- 17 个探索规则单测 + 8 个 Store 移动单测 + 13 项 E2E（流程 A 基本移动 / B 锁定 / C 解锁 / D 存档恢复位置 / 未知地点边界）
+
 ## 目录结构
 
 ```

@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { CharacterCreationInput, GameState } from '../types'
 import { createInitialGameState } from '../content/initial'
+import { checkTravel } from '../rules/exploration'
 import {
   deleteGame as deleteSave,
   hasSave as storageHasSave,
@@ -24,7 +25,10 @@ interface GameStoreState {
   deleteGame: () => void
 
   // 状态修改（数据流验证用最小动作集）
+  /** 开发验证入口：直接设置地点（正式游戏页面禁止调用，仅开发者控制台使用，TM-P0-005） */
   setCurrentLocation: (locationId: string) => void
+  /** 正式移动入口：Store 自身执行 checkTravel 校验，非法移动不改变 GameState（TM-P0-005） */
+  travelToLocation: (targetLocationId: string) => boolean
   addGold: (amount: number) => void
   removeGold: (amount: number) => void
   addItem: (itemId: string, quantity?: number) => void
@@ -81,6 +85,23 @@ export const useGameStore = create<GameStoreState>()((set) => ({
           }
         : {},
     )
+  },
+
+  travelToLocation: (targetLocationId) => {
+    let moved = false
+    set((s) => {
+      if (!s.gameState) return {}
+      const check = checkTravel(s.gameState.world.currentLocationId, targetLocationId, s.gameState.world.flags)
+      if (!check.allowed) return {}
+      moved = true
+      return {
+        gameState: {
+          ...s.gameState,
+          world: { ...s.gameState.world, currentLocationId: targetLocationId },
+        },
+      }
+    })
+    return moved
   },
 
   addGold: (amount) => {

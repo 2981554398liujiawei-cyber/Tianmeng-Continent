@@ -49,6 +49,12 @@ const continueDisabled = () =>
     return btn ? btn.disabled : null
   })
 
+const buttonDisabled = (text) =>
+  page.evaluate((t) => {
+    const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.includes(t))
+    return btn ? btn.disabled : null
+  }, text)
+
 try {
   // B.1 主菜单
   await page.goto(URL, { waitUntil: 'networkidle0' })
@@ -108,6 +114,51 @@ try {
   check('游戏页显示金币 50', body.includes('50'))
   await page.screenshot({ path: 'qa/game-page.png' })
 
+  // P005：流程 A —— 基本移动
+  await clickByText('村外草原')
+  body = await bodyText()
+  check('P005-A: 移动至村外草原（显示描述）', body.includes('村外草原') && body.includes('风吹草低'))
+  await clickByText('青石村')
+  body = await bodyText()
+  check('P005-A: 返回青石村（显示描述）', body.includes('青石村') && body.includes('群山环抱'))
+  await clickByText('废弃矿洞')
+  body = await bodyText()
+  check('P005-A: 移动至废弃矿洞（显示描述）', body.includes('废弃矿洞') && body.includes('洞口杂草丛生'))
+  await clickByText('青石村')
+  body = await bodyText()
+  check('P005-A: 回到青石村', body.includes('青石村'))
+
+  // P005：流程 D —— 存档恢复位置（青石村 → 村外草原 → 保存 → Continue → 仍村外草原）
+  await clickByText('村外草原')
+  await clickByText('保存游戏')
+  await clickByText('返回主菜单')
+  await clickByText('继续游戏')
+  body = await bodyText()
+  check('P005-D: 保存并继续游戏后仍处于村外草原', body.includes('村外草原') && body.includes('风吹草低'))
+
+  // P005：流程 B —— 兔王巢穴锁定
+  check('P005-B: 兔王巢穴按钮可见', body.includes('兔王巢穴'))
+  check('P005-B: 未解锁时兔王巢穴按钮禁用', (await buttonDisabled('兔王巢穴')) === true)
+  check('P005-B: 显示尚未找到进入此地的方法', body.includes('尚未找到进入此地的方法'))
+
+  // P005：流程 C —— 开发者控制台解锁（解锁后保存存档，Continue 读档才保留）→ 进入兔王巢穴
+  await clickByText('返回主菜单')
+  await clickByText('开发者控制台')
+  await clickByText('解锁兔王巢穴')
+  await clickByText('保存存档')
+  await clickByText('返回主菜单')
+  await clickByText('继续游戏')
+  body = await bodyText()
+  check('P005-C: 解锁后读档仍在村外草原', body.includes('村外草原'))
+  check('P005-C: 解锁后兔王巢穴按钮启用', (await buttonDisabled('兔王巢穴')) === false)
+  await clickByText('兔王巢穴')
+  body = await bodyText()
+  check('P005-C: 进入兔王巢穴（显示描述）', body.includes('兔王巢穴') && body.includes('魔化兔群的巢穴'))
+  check('P005-C: 兔王巢穴可返回村外草原', body.includes('村外草原'))
+  // 回到青石村，保证后续切换测试地点逻辑（qingshi_village → misty_ruins）正确
+  await clickByText('村外草原')
+  await clickByText('青石村')
+
   // 回主菜单 → 开发者控制台
   await clickByText('返回主菜单')
   await clickByText('开发者控制台')
@@ -161,6 +212,7 @@ try {
   check('继续游戏后进入游戏页面', body.includes('冒险日志'))
   check('读档后金币恢复 50', body.includes('50'))
   check('读档后位置恢复 misty_ruins', body.includes('misty_ruins'))
+  check('P005: 未知地点安全显示不崩溃', body.includes('未知地点'))
 
   // P004：旧存档回归——已有存档时新游戏→创建页→返回，Continue 仍可用，原存档不破坏
   await clickByText('返回主菜单')

@@ -26,7 +26,9 @@ function Bar({ label, value, max }: { label: string; value: number; max: number 
 export default function GamePage({ onBackToMenu }: GamePageProps) {
   const gameState = useGameStore((s) => s.gameState)
   const saveGame = useGameStore((s) => s.saveGame)
+  const travelToLocation = useGameStore((s) => s.travelToLocation)
   const [saveResult, setSaveResult] = useState<'saved' | 'failed' | null>(null)
+  const [travelError, setTravelError] = useState(false)
 
   if (!gameState) {
     return (
@@ -38,11 +40,17 @@ export default function GamePage({ onBackToMenu }: GamePageProps) {
   }
 
   const { player, world } = gameState
+  const location = getLocation(world.currentLocationId)
 
   const handleSave = () => {
     const ok = saveGame()
     setSaveResult(ok ? 'saved' : 'failed')
     window.setTimeout(() => setSaveResult(null), 2500)
+  }
+
+  const handleTravel = (targetId: string) => {
+    // TM-P0-005：正式游戏移动只走 travelToLocation（Store 内部校验）
+    setTravelError(!travelToLocation(targetId))
   }
 
   return (
@@ -82,12 +90,43 @@ export default function GamePage({ onBackToMenu }: GamePageProps) {
       </section>
 
       <section className="rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
-        <p className="mb-1 text-bone-500">当前位置</p>
-        <p>{getLocation(world.currentLocationId)?.name ?? world.currentLocationId}</p>
-        <p className="text-xs text-bone-500">{world.currentLocationId}</p>
-        <p className="mt-3 text-xs text-bone-500">
-          （此页面为开发基线展示，场景探索将在后续任务卡实现。）
-        </p>
+        <p className="mb-2 text-bone-500">当前位置</p>
+        {location ? (
+          <>
+            <h3 className="text-lg font-bold text-bone-100">{location.name}</h3>
+            <p className="mt-2 leading-relaxed">{location.description}</p>
+            <p className="mt-2 text-xs text-bone-500">{location.id}</p>
+            <div className="mt-4">
+              <p className="mb-2 text-bone-500">可前往：</p>
+              <div className="flex flex-wrap gap-4">
+                {location.connections.map((targetId) => {
+                  const target = getLocation(targetId)
+                  if (!target) return null
+                  const locked =
+                    target.requiredFlag !== undefined && world.flags[target.requiredFlag] !== true
+                  return (
+                    <div key={targetId} className="flex flex-col items-start gap-1">
+                      <Button
+                        variant={locked ? 'ghost' : 'primary'}
+                        disabled={locked}
+                        onClick={() => handleTravel(targetId)}
+                      >
+                        {target.name}
+                      </Button>
+                      {locked && (
+                        <span className="text-xs text-bone-500">尚未找到进入此地的方法</span>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </>
+        ) : (
+          // TM-P0-005：未知当前位置安全边界——不崩溃、不提供移动按钮
+          <p className="text-bone-300">未知地点（{world.currentLocationId}）</p>
+        )}
+        {travelError && <p className="mt-3 text-sm text-red-300">无法前往该地点。</p>}
       </section>
 
       <footer className="flex items-center gap-4">

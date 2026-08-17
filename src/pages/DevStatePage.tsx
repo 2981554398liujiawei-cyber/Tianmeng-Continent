@@ -89,6 +89,9 @@ export default function DevStatePage({ onBackToMenu }: DevStatePageProps) {
           <Button variant="ghost" onClick={() => setFlag('test_flag', true)}>
             设置测试 Flag
           </Button>
+          <Button variant="ghost" onClick={() => setFlag('rabbit_lair_unlocked', true)}>
+            解锁兔王巢穴
+          </Button>
           <Button
             variant="ghost"
             onClick={() => setCurrentLocation(gameState?.world.currentLocationId === LOCATION_A ? LOCATION_B : LOCATION_A)}
