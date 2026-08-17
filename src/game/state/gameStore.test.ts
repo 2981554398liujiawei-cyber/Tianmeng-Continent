@@ -292,3 +292,113 @@ describe('TM-P0-005：travelToLocation 正式移动入口', () => {
     expect(locationId()).toBe('village_grassland')
   })
 })
+
+describe('TM-P0-006：discoverQuest 任务发现', () => {
+  const quests = () => useGameStore.getState().gameState?.quests
+
+  it('初始 quests=[]，发现后创建 available QuestState（stage 0 / flags {}）', () => {
+    expect(quests()).toEqual([])
+    expect(useGameStore.getState().discoverQuest('quest_village_monsters')).toBe(true)
+    const list = quests()
+    expect(list).toHaveLength(1)
+    expect(list?.[0]).toEqual({
+      questId: 'quest_village_monsters',
+      status: 'available',
+      stage: 0,
+      flags: {},
+    })
+  })
+
+  it('重复发现返回 false 且不产生重复任务', () => {
+    useGameStore.getState().discoverQuest('quest_village_monsters')
+    expect(useGameStore.getState().discoverQuest('quest_village_monsters')).toBe(false)
+    expect(quests()).toHaveLength(1)
+  })
+
+  it('显式 undiscovered 可被发现为 available', () => {
+    useGameStore.setState({
+      gameState: {
+        ...useGameStore.getState().gameState!,
+        quests: [{ questId: 'quest_village_monsters', status: 'undiscovered', stage: 0, flags: {} }],
+      },
+    })
+    expect(useGameStore.getState().discoverQuest('quest_village_monsters')).toBe(true)
+    expect(quests()?.[0]?.status).toBe('available')
+  })
+
+  it('未知任务 ID 返回 false 且 quests 不变', () => {
+    const before = JSON.stringify(quests())
+    expect(useGameStore.getState().discoverQuest('not_exists')).toBe(false)
+    expect(JSON.stringify(quests())).toBe(before)
+  })
+})
+
+describe('TM-P0-006：任务状态转换', () => {
+  const status = () => useGameStore.getState().gameState?.quests[0]?.status
+  const snapshot = () => JSON.stringify(useGameStore.getState().gameState)
+
+  beforeEach(() => {
+    useGameStore.getState().discoverQuest('quest_village_monsters')
+  })
+
+  it('acceptQuest：available → in_progress', () => {
+    expect(useGameStore.getState().acceptQuest('quest_village_monsters')).toBe(true)
+    expect(status()).toBe('in_progress')
+  })
+
+  it('禁止跳状态：available 时 completeQuest 返回 false 且状态不变', () => {
+    const before = snapshot()
+    expect(useGameStore.getState().completeQuest('quest_village_monsters')).toBe(false)
+    expect(status()).toBe('available')
+    expect(snapshot()).toBe(before)
+  })
+
+  it('markQuestCompletable：in_progress → completable', () => {
+    useGameStore.getState().acceptQuest('quest_village_monsters')
+    expect(useGameStore.getState().markQuestCompletable('quest_village_monsters')).toBe(true)
+    expect(status()).toBe('completable')
+  })
+
+  it('completeQuest：completable → completed', () => {
+    useGameStore.getState().acceptQuest('quest_village_monsters')
+    useGameStore.getState().markQuestCompletable('quest_village_monsters')
+    expect(useGameStore.getState().completeQuest('quest_village_monsters')).toBe(true)
+    expect(status()).toBe('completed')
+  })
+
+  it('终态：completed 后 accept/fail/markCompletable/complete 全部 false', () => {
+    useGameStore.getState().acceptQuest('quest_village_monsters')
+    useGameStore.getState().markQuestCompletable('quest_village_monsters')
+    useGameStore.getState().completeQuest('quest_village_monsters')
+    expect(useGameStore.getState().acceptQuest('quest_village_monsters')).toBe(false)
+    expect(useGameStore.getState().failQuest('quest_village_monsters')).toBe(false)
+    expect(useGameStore.getState().markQuestCompletable('quest_village_monsters')).toBe(false)
+    expect(useGameStore.getState().completeQuest('quest_village_monsters')).toBe(false)
+    expect(status()).toBe('completed')
+  })
+
+  it('failQuest：in_progress → failed', () => {
+    useGameStore.getState().acceptQuest('quest_village_monsters')
+    expect(useGameStore.getState().failQuest('quest_village_monsters')).toBe(true)
+    expect(status()).toBe('failed')
+  })
+
+  it('failQuest：completable → failed', () => {
+    useGameStore.getState().acceptQuest('quest_village_monsters')
+    useGameStore.getState().markQuestCompletable('quest_village_monsters')
+    expect(useGameStore.getState().failQuest('quest_village_monsters')).toBe(true)
+    expect(status()).toBe('failed')
+  })
+
+  it('失败操作无副作用：player/inventory/equipment/world 均不变', () => {
+    const before = snapshot()
+    useGameStore.getState().completeQuest('quest_village_monsters') // available 时非法
+    useGameStore.getState().failQuest('quest_village_monsters') // available 时非法
+    expect(snapshot()).toBe(before)
+  })
+
+  it('任务状态修改不自动保存', () => {
+    useGameStore.getState().acceptQuest('quest_village_monsters')
+    expect(useGameStore.getState().hasSave).toBe(false)
+  })
+})

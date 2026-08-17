@@ -114,10 +114,22 @@ try {
   check('游戏页显示金币 50', body.includes('50'))
   await page.screenshot({ path: 'qa/game-page.png' })
 
+  // P006：任务流程 —— 发现与接受《村外异动》
+  body = await bodyText()
+  check('P006: 青石村显示村长似乎有事相托', body.includes('村长似乎有事相托'))
+  await clickByText('查看委托')
+  body = await bodyText()
+  check('P006: 查看委托后任务日志显示村外异动（可接受）', body.includes('村外异动') && body.includes('可接受'))
+  check('P006: 委托详情来自注册表（发布者村长）', body.includes('发布者：村长'))
+  await clickByText('接受任务')
+  body = await bodyText()
+  check('P006: 接受任务后任务日志显示进行中', body.includes('进行中'))
+
   // P005：流程 A —— 基本移动
   await clickByText('村外草原')
   body = await bodyText()
   check('P005-A: 移动至村外草原（显示描述）', body.includes('村外草原') && body.includes('风吹草低'))
+  check('P006: 移动后任务日志仍显示村外异动/进行中', body.includes('村外异动') && body.includes('进行中'))
   await clickByText('青石村')
   body = await bodyText()
   check('P005-A: 返回青石村（显示描述）', body.includes('青石村') && body.includes('群山环抱'))
@@ -135,21 +147,24 @@ try {
   await clickByText('继续游戏')
   body = await bodyText()
   check('P005-D: 保存并继续游戏后仍处于村外草原', body.includes('村外草原') && body.includes('风吹草低'))
+  check('P006: 存档恢复后任务仍为村外异动/进行中', body.includes('村外异动') && body.includes('进行中'))
 
   // P005：流程 B —— 兔王巢穴锁定
   check('P005-B: 兔王巢穴按钮可见', body.includes('兔王巢穴'))
   check('P005-B: 未解锁时兔王巢穴按钮禁用', (await buttonDisabled('兔王巢穴')) === true)
   check('P005-B: 显示尚未找到进入此地的方法', body.includes('尚未找到进入此地的方法'))
 
-  // P005：流程 C —— 开发者控制台解锁（解锁后保存存档，Continue 读档才保留）→ 进入兔王巢穴
+  // P005：流程 C —— 开发者控制台解锁+标记可完成（保存存档，Continue 读档才保留）→ 进入兔王巢穴
   await clickByText('返回主菜单')
   await clickByText('开发者控制台')
   await clickByText('解锁兔王巢穴')
+  await clickByText('标记可完成') // P006：开发者控制台标记任务可完成
   await clickByText('保存存档')
   await clickByText('返回主菜单')
   await clickByText('继续游戏')
   body = await bodyText()
   check('P005-C: 解锁后读档仍在村外草原', body.includes('村外草原'))
+  check('P006: 标记可完成后任务日志显示可完成', body.includes('可完成'))
   check('P005-C: 解锁后兔王巢穴按钮启用', (await buttonDisabled('兔王巢穴')) === false)
   await clickByText('兔王巢穴')
   body = await bodyText()
@@ -158,6 +173,14 @@ try {
   // 回到青石村，保证后续切换测试地点逻辑（qingshi_village → misty_ruins）正确
   await clickByText('村外草原')
   await clickByText('青石村')
+  body = await bodyText()
+
+  // P006：可完成提交 —— 在给予者所在地显示提交任务，完成后无奖励
+  check('P006: 回到青石村后任务显示可完成', body.includes('可完成'))
+  await clickByText('提交任务')
+  body = await bodyText()
+  check('P006: 提交任务后任务日志显示已完成', body.includes('已完成'))
+  check('P006: 完成任务金币不变（仍 50）', body.includes('50'))
 
   // 回主菜单 → 开发者控制台
   await clickByText('返回主菜单')

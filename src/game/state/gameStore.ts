@@ -1,7 +1,9 @@
 import { create } from 'zustand'
-import type { CharacterCreationInput, GameState } from '../types'
+import type { CharacterCreationInput, GameState, QuestStatus } from '../types'
 import { createInitialGameState } from '../content/initial'
 import { checkTravel } from '../rules/exploration'
+import { canTransitionQuestStatus } from '../rules/quest'
+import { getQuest } from '../content'
 import {
   deleteGame as deleteSave,
   hasSave as storageHasSave,
@@ -29,11 +31,54 @@ interface GameStoreState {
   setCurrentLocation: (locationId: string) => void
   /** 正式移动入口：Store 自身执行 checkTravel 校验，非法移动不改变 GameState（TM-P0-005） */
   travelToLocation: (targetLocationId: string) => boolean
+
+  // 任务生命周期（TM-P0-006）
+  /** 发现任务：不存在则创建 available QuestState；undiscovered → available；其余状态不重复创建 */
+  discoverQuest: (questId: string) => boolean
+  /** 接受任务：仅 available → in_progress */
+  acceptQuest: (questId: string) => boolean
+  /** 标记可完成：仅 in_progress → completable */
+  markQuestCompletable: (questId: string) => boolean
+  /** 完成任务：仅 completable → completed，不发奖励 */
+  completeQuest: (questId: string) => boolean
+  /** 任务失败：仅 in_progress/completable → failed（终态） */
+  failQuest: (questId: string) => boolean
   addGold: (amount: number) => void
   removeGold: (amount: number) => void
   addItem: (itemId: string, quantity?: number) => void
   removeItem: (itemId: string, quantity?: number) => void
   setFlag: (key: string, value: boolean | number | string) => void
+}
+
+/** 任务发现：不存在 → 创建 available；undiscovered → available；其余状态不重复创建。非法返回 null（TM-P0-006） */
+function applyQuestDiscovery(gameState: GameState, questId: string): GameState | null {
+  if (!getQuest(questId)) return null
+  const index = gameState.quests.findIndex((q) => q.questId === questId)
+  if (index < 0) {
+    return {
+      ...gameState,
+      quests: [...gameState.quests, { questId, status: 'available', stage: 0, flags: {} }],
+    }
+  }
+  const current = gameState.quests[index]
+  if (!current) return null
+  if (current.status !== 'undiscovered') return null
+  const nextQuests = [...gameState.quests]
+  nextQuests[index] = { ...current, status: 'available' }
+  return { ...gameState, quests: nextQuests }
+}
+
+/** 通用任务状态转换：仅当 questId 存在且状态转换合法时更新，否则返回 null（TM-P0-006） */
+function applyQuestTransition(gameState: GameState, questId: string, to: QuestStatus): GameState | null {
+  if (!getQuest(questId)) return null
+  const index = gameState.quests.findIndex((q) => q.questId === questId)
+  if (index < 0) return null
+  const current = gameState.quests[index]
+  if (!current) return null
+  if (!canTransitionQuestStatus(current.status, to)) return null
+  const nextQuests = [...gameState.quests]
+  nextQuests[index] = { ...current, status: to }
+  return { ...gameState, quests: nextQuests }
 }
 
 export const useGameStore = create<GameStoreState>()((set) => ({
@@ -102,6 +147,67 @@ export const useGameStore = create<GameStoreState>()((set) => ({
       }
     })
     return moved
+  },
+
+  // ---- 任务生命周期（TM-P0-006）----
+  discoverQuest: (questId) => {
+    let changed = false
+    set((s) => {
+      if (!s.gameState) return {}
+      const next = applyQuestDiscovery(s.gameState, questId)
+      if (!next) return {}
+      changed = true
+      return { gameState: next }
+    })
+    return changed
+  },
+
+  acceptQuest: (questId) => {
+    let changed = false
+    set((s) => {
+      if (!s.gameState) return {}
+      const next = applyQuestTransition(s.gameState, questId, 'in_progress')
+      if (!next) return {}
+      changed = true
+      return { gameState: next }
+    })
+    return changed
+  },
+
+  markQuestCompletable: (questId) => {
+    let changed = false
+    set((s) => {
+      if (!s.gameState) return {}
+      const next = applyQuestTransition(s.gameState, questId, 'completable')
+      if (!next) return {}
+      changed = true
+      return { gameState: next }
+    })
+    return changed
+  },
+
+  completeQuest: (questId) => {
+    let changed = false
+    set((s) => {
+      if (!s.gameState) return {}
+      const next = applyQuestTransition(s.gameState, questId, 'completed')
+      if (!next) return {}
+      changed = true
+      return { gameState: next }
+    })
+    return changed
+  },
+
+  failQuest: (questId) => {
+    let changed = false
+    set((s) => {
+      if (!s.gameState) return {}
+      const next = applyQuestTransition(s.gameState, questId, 'failed')
+      if (!next) return {}
+      changed = true
+      return { gameState: next }
+    })
+    return changed
   },
 
   addGold: (amount) => {

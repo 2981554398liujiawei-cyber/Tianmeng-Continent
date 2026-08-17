@@ -88,6 +88,17 @@ TM-P0-005（场景节点探索与合法地点移动）：
 - GameState 结构未改、SAVE_VERSION 仍 1
 - 17 个探索规则单测 + 8 个 Store 移动单测 + 13 项 E2E（流程 A 基本移动 / B 锁定 / C 解锁 / D 存档恢复位置 / 未知地点边界）
 
+TM-P0-006（最小任务状态机与任务日志）：
+- `src/game/rules/quest.ts`：`canTransitionQuestStatus(from, to)` 状态机（undiscovered→available→in_progress→completable→completed；in_progress/completable→failed；completed/failed 终态）
+- Store 五个任务操作（均返回 boolean，Store 自身校验，非法操作 GameState 完全不变）：`discoverQuest`（不存在→创建 available/stage0/flags{}；undiscovered→available；不重复创建；未知 ID 拒绝）/ `acceptQuest` / `markQuestCompletable` / `completeQuest`（不发奖励）/ `failQuest`
+- 任务不在 quests 中视为 undiscovered；默认 quests=[] 不变；任务 ID 必须来自注册表
+- GamePage 新增「附近委托」（通过 giverNpcId→NPC.locationId 判断，不写死地点）+「任务日志」（名称/状态中文/summary；completable 且位于给予者所在地时显示「提交任务」；缺失任务定义显示「未知任务」不崩溃）
+- 状态中文：未发现/可接受/进行中/可完成/已完成/失败
+- 任务变化只改内存不自动保存；手动保存后 Continue 恢复任务状态
+- 开发者控制台新增「任务状态验证」区（发现/接受/标记可完成/完成/失败 + 当前状态）
+- GameState 结构未改、SAVE_VERSION 仍 1、未新增 questJournal/activeQuestId 等
+- 19 个状态机单测 + 13 个 Store 任务单测 + 10 项 E2E（发现/接受/移动保留/存档恢复/标记可完成/提交/金币不变）
+
 ## 目录结构
 
 ```

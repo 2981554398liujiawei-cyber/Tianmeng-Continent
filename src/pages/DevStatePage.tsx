@@ -3,7 +3,8 @@ import Button from '../components/Button'
 import { useGameStore } from '../game/state/gameStore'
 import { performD20Check, type D20CheckResult } from '../game/rules/d20'
 import { ATTRIBUTE_KEYS, ATTRIBUTE_LABELS } from '../game/content/professions'
-import type { AttributeKey } from '../game/types'
+import { getQuest } from '../game/content'
+import type { AttributeKey, QuestStatus } from '../game/types'
 
 interface DevStatePageProps {
   onBackToMenu: () => void
@@ -12,6 +13,16 @@ interface DevStatePageProps {
 const TEST_ITEM_ID = 'test_artifact'
 const LOCATION_A = 'qingshi_village'
 const LOCATION_B = 'misty_ruins'
+const TEST_QUEST_ID = 'quest_village_monsters'
+
+const QUEST_STATUS_LABELS: Record<QuestStatus, string> = {
+  undiscovered: '未发现',
+  available: '可接受',
+  in_progress: '进行中',
+  completable: '可完成',
+  completed: '已完成',
+  failed: '失败',
+}
 
 const OUTCOME_LABELS: Record<D20CheckResult['outcome'], string> = {
   critical_success: '大成功',
@@ -29,6 +40,11 @@ export default function DevStatePage({ onBackToMenu }: DevStatePageProps) {
   const hasSave = useGameStore((s) => s.hasSave)
   const { newGame, loadGame, saveGame, deleteGame, addGold, removeGold, addItem, removeItem, setFlag, setCurrentLocation } =
     useGameStore()
+  const { discoverQuest, acceptQuest, markQuestCompletable, completeQuest, failQuest } = useGameStore()
+
+  // 任务状态验证区（TM-P0-006）
+  const questState = gameState?.quests.find((q) => q.questId === TEST_QUEST_ID)
+  const questStatus = questState?.status ?? 'undiscovered'
 
   // D20 检定测试区状态（TM-P0-003）
   const [selectedAttr, setSelectedAttr] = useState<AttributeKey>('str')
@@ -190,6 +206,30 @@ export default function DevStatePage({ onBackToMenu }: DevStatePageProps) {
             </p>
           </div>
         )}
+      </section>
+
+      <section className="rounded border border-ink-600 bg-ink-800/50 p-4">
+        <h3 className="mb-3 text-sm font-bold tracking-wider text-bone-500">任务状态验证（TM-P0-006）</h3>
+        <p className="mb-2 text-xs text-bone-500">
+          {getQuest(TEST_QUEST_ID)?.title}：当前：{QUEST_STATUS_LABELS[questStatus]}
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="ghost" onClick={() => discoverQuest(TEST_QUEST_ID)}>
+            发现任务
+          </Button>
+          <Button variant="ghost" onClick={() => acceptQuest(TEST_QUEST_ID)}>
+            接受任务
+          </Button>
+          <Button variant="ghost" onClick={() => markQuestCompletable(TEST_QUEST_ID)}>
+            标记可完成
+          </Button>
+          <Button variant="ghost" onClick={() => completeQuest(TEST_QUEST_ID)}>
+            完成任务
+          </Button>
+          <Button variant="ghost" onClick={() => failQuest(TEST_QUEST_ID)}>
+            任务失败
+          </Button>
+        </div>
       </section>
 
       <section className="rounded border border-ink-600 bg-ink-800/50 p-4">

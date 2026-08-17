@@ -2,10 +2,21 @@ import { useState } from 'react'
 import Button from '../components/Button'
 import { useGameStore } from '../game/state/gameStore'
 import { getProfessionName, ATTRIBUTE_KEYS, ATTRIBUTE_LABELS } from '../game/content/professions'
-import { getLocation } from '../game/content'
+import { getLocation, getNpc, getQuest, QUESTS } from '../game/content'
+import type { QuestStatus } from '../game/types'
 
 interface GamePageProps {
   onBackToMenu: () => void
+}
+
+/** 任务状态中文（TM-P0-006） */
+const QUEST_STATUS_LABELS: Record<QuestStatus, string> = {
+  undiscovered: '未发现',
+  available: '可接受',
+  in_progress: '进行中',
+  completable: '可完成',
+  completed: '已完成',
+  failed: '失败',
 }
 
 function Bar({ label, value, max }: { label: string; value: number; max: number }) {
@@ -27,6 +38,9 @@ export default function GamePage({ onBackToMenu }: GamePageProps) {
   const gameState = useGameStore((s) => s.gameState)
   const saveGame = useGameStore((s) => s.saveGame)
   const travelToLocation = useGameStore((s) => s.travelToLocation)
+  const discoverQuest = useGameStore((s) => s.discoverQuest)
+  const acceptQuest = useGameStore((s) => s.acceptQuest)
+  const completeQuest = useGameStore((s) => s.completeQuest)
   const [saveResult, setSaveResult] = useState<'saved' | 'failed' | null>(null)
   const [travelError, setTravelError] = useState(false)
 
@@ -41,6 +55,11 @@ export default function GamePage({ onBackToMenu }: GamePageProps) {
 
   const { player, world } = gameState
   const location = getLocation(world.currentLocationId)
+  // TM-P0-006：附近委托 = 给予者位于当前地点的注册任务（不写死地点 ID）
+  const localQuests = Object.values(QUESTS).filter((quest) => {
+    const giver = getNpc(quest.giverNpcId)
+    return giver?.locationId === world.currentLocationId
+  })
 
   const handleSave = () => {
     const ok = saveGame()
@@ -127,6 +146,77 @@ export default function GamePage({ onBackToMenu }: GamePageProps) {
           <p className="text-bone-300">未知地点（{world.currentLocationId}）</p>
         )}
         {travelError && <p className="mt-3 text-sm text-red-300">无法前往该地点。</p>}
+      </section>
+
+      <section className="rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
+        <h3 className="mb-3 text-sm font-bold tracking-wider text-bone-500">附近委托</h3>
+        {localQuests.length === 0 ? (
+          <p className="text-bone-500">这里暂时没有可接的委托。</p>
+        ) : (
+          localQuests.map((quest) => {
+            const qs = gameState.quests.find((q) => q.questId === quest.id)
+            const status = qs?.status ?? 'undiscovered'
+            const giver = getNpc(quest.giverNpcId)
+            if (status === 'undiscovered') {
+              return (
+                <div key={quest.id} className="flex items-center justify-between gap-4">
+                  <p>{giver?.name ?? quest.giverNpcId}似乎有事相托。</p>
+                  <Button variant="ghost" onClick={() => discoverQuest(quest.id)}>
+                    查看委托
+                  </Button>
+                </div>
+              )
+            }
+            if (status === 'available') {
+              return (
+                <div key={quest.id}>
+                  <p className="font-bold text-bone-100">{quest.title}</p>
+                  <p className="mt-1 leading-relaxed">{quest.summary}</p>
+                  <p className="mt-1 text-xs text-bone-500">发布者：{giver?.name ?? quest.giverNpcId}</p>
+                  <div className="mt-2">
+                    <Button variant="primary" onClick={() => acceptQuest(quest.id)}>
+                      接受任务
+                    </Button>
+                  </div>
+                </div>
+              )
+            }
+            return null // 已接/已完成：委托入口不重复显示
+          })
+        )}
+      </section>
+
+      <section className="rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
+        <h3 className="mb-3 text-sm font-bold tracking-wider text-bone-500">任务日志</h3>
+        {gameState.quests.length === 0 ? (
+          <p className="text-bone-500">日志为空。</p>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {gameState.quests.map((qs) => {
+              const def = getQuest(qs.questId)
+              const giver = def ? getNpc(def.giverNpcId) : undefined
+              const canSubmit = qs.status === 'completable' && giver?.locationId === world.currentLocationId
+              return (
+                <div key={qs.questId} className="rounded border border-ink-600 bg-ink-900/40 p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="font-bold text-bone-100">{def?.title ?? '未知任务'}</p>
+                    <span className="shrink-0 text-xs text-gold-300">{QUEST_STATUS_LABELS[qs.status]}</span>
+                  </div>
+                  <p className="mt-1 text-xs leading-relaxed text-bone-500">
+                    {def?.summary ?? `${qs.questId}（缺失任务定义）`}
+                  </p>
+                  {canSubmit && (
+                    <div className="mt-2">
+                      <Button variant="primary" onClick={() => completeQuest(qs.questId)}>
+                        提交任务
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
       </section>
 
       <footer className="flex items-center gap-4">
