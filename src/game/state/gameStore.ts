@@ -146,6 +146,8 @@ export const useGameStore = create<GameStoreState>()((set) => ({
 
   setFlag: (key, value) => {
     if (!key) return
+    // R4：拒绝非有限数字（NaN/±Infinity 无法 JSON round-trip，写入后存档将不可加载）
+    if (typeof value === 'number' && !Number.isFinite(value)) return
     set((s) =>
       s.gameState
         ? {

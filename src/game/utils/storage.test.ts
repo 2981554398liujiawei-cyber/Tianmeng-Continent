@@ -295,3 +295,47 @@ describe('TM-P0-001-R3：存储异常边界', () => {
     expect(hasSave()).toBe(false)
   })
 })
+
+describe('TM-P0-001-R4：封闭非有限数值 Flag 漏洞', () => {
+  it('World Flag NaN → saveGame 返回 false，旧合法档不被覆盖', () => {
+    saveGame(createInitialGameState())
+    const bad = createInitialGameState()
+    bad.world.flags.bad = Number.NaN
+    expect(saveGame(bad)).toBe(false)
+    // 原合法旧档仍可加载
+    expect(loadGame()?.gameState.player.gold).toBe(50)
+    expect(hasSave()).toBe(true)
+  })
+
+  it('World Flag Infinity / -Infinity → saveGame 返回 false', () => {
+    const inf = createInitialGameState()
+    inf.world.flags.bad = Number.POSITIVE_INFINITY
+    expect(saveGame(inf)).toBe(false)
+    const ninf = createInitialGameState()
+    ninf.world.flags.bad = Number.NEGATIVE_INFINITY
+    expect(saveGame(ninf)).toBe(false)
+  })
+
+  it('Quest Flag NaN → 拒绝保存（与 World Flag 同一校验语义）', () => {
+    const state = createInitialGameState()
+    state.quests = [{ questId: 'q1', status: 'in_progress', stage: 1, flags: { bad: Number.NaN } }]
+    expect(saveGame(state)).toBe(false)
+  })
+
+  it('有限小数 Flag 正常工作（save → load round-trip）', () => {
+    const state = createInitialGameState()
+    state.world.flags.progress = 0.5
+    expect(saveGame(state)).toBe(true)
+    const loaded = loadGame()
+    expect(loaded).not.toBeNull()
+    expect(loaded?.gameState.world.flags.progress).toBe(0.5)
+  })
+
+  it('写入成功即必然可读回（含有限数值 Flag 的完整 round-trip）', () => {
+    const state = createInitialGameState()
+    state.world.flags.progress = 1.5
+    const ok = saveGame(state)
+    expect(ok).toBe(true)
+    expect(loadGame()).not.toBeNull()
+  })
+})

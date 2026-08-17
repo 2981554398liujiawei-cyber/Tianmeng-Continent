@@ -214,3 +214,27 @@ describe('TM-P0-001-R3：Store 与持久化约束一致', () => {
     expect(useGameStore.getState().gameState?.player.gold).toBe(40)
   })
 })
+
+describe('TM-P0-001-R4：setFlag 拒绝非有限数字', () => {
+  it("setFlag('x', NaN) 不改变 GameState", () => {
+    const flagsBefore = useGameStore.getState().gameState?.world.flags
+    useGameStore.getState().setFlag('x', Number.NaN)
+    const flagsAfter = useGameStore.getState().gameState?.world.flags
+    expect(flagsAfter).toEqual(flagsBefore)
+    expect(flagsAfter?.['x']).toBeUndefined()
+  })
+
+  it("setFlag('x', Infinity) / setFlag('x', -Infinity) 不改变 GameState", () => {
+    const flagsBefore = useGameStore.getState().gameState?.world.flags
+    useGameStore.getState().setFlag('x', Number.POSITIVE_INFINITY)
+    useGameStore.getState().setFlag('y', Number.NEGATIVE_INFINITY)
+    expect(useGameStore.getState().gameState?.world.flags).toEqual(flagsBefore)
+  })
+
+  it('有限小数 Flag 可保存并读回（0.5 不被误伤）', () => {
+    useGameStore.getState().setFlag('progress', 0.5)
+    useGameStore.getState().saveGame()
+    expect(useGameStore.getState().loadGame()).toBe(true)
+    expect(useGameStore.getState().gameState?.world.flags.progress).toBe(0.5)
+  })
+})

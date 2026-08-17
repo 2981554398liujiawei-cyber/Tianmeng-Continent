@@ -73,8 +73,10 @@ function isEquipment(value: unknown): value is Equipment {
   return slotOk(value.weapon) && slotOk(value.armor) && slotOk(value.accessory)
 }
 
+/** Flag 值语义：boolean | string | 有限 number（R4：NaN/±Infinity 无法 JSON round-trip，一律拒绝） */
 function isFlagValue(value: unknown): value is boolean | number | string {
-  return typeof value === 'boolean' || typeof value === 'number' || typeof value === 'string'
+  if (typeof value === 'number') return Number.isFinite(value)
+  return typeof value === 'boolean' || typeof value === 'string'
 }
 
 /** R2：quests 的每个元素必须是合法 QuestState */
