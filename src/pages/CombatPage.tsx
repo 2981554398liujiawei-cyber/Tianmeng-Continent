@@ -181,7 +181,7 @@ export default function CombatPage({ enemyId, onVictory, onDefeat }: CombatPageP
           <>
             <p className="text-lg font-bold text-red-300">战斗失败</p>
             <Button variant="danger" onClick={onDefeat}>
-              返回主菜单
+              返回冒险
             </Button>
           </>
         )}

@@ -936,6 +936,63 @@ try {
   check('P022: Continue 后生命 22 / 22 灵力 6 / 6', body.includes('22 / 22') && body.includes('6 / 6'))
   await clickByText('返回主菜单')
 
+  // P022-R1：真正战败 → HP0 返回冒险 → 回村休整（修复战败软锁出口）
+  // 先清空历史存档，验证「无存档起始」下战败与休整全程不自动创建存档
+  await page.evaluate(() => localStorage.removeItem('tianmeng_continent_save'))
+  await page.reload({ waitUntil: 'networkidle0' })
+  await sleep(500)
+  await clickByText('新游戏')
+  await clickByText('确认进入天梦大陆')
+  await clickByText('村外草原')
+  await clickByText('迎战')
+  await sleep(300)
+  // 固定随机：玩家持续天然1 大失败失手（0 伤害）、魔化兔持续命中（2 伤/轮），直至 HP 0
+  await page.evaluate(() => {
+    window.__origRandom = Math.random.bind(Math)
+    const seq = [0.0, 0.6] // 玩家 roll 1（大失败，不命中）/ 敌 roll 13 命中 2 伤
+    let i = 0
+    Math.random = () => seq[i++ % 2]
+  })
+  for (let i = 0; i < 14; i++) {
+    body = await bodyText()
+    if (body.includes('战斗失败')) break
+    await clickByText('普通攻击')
+    await sleep(300)
+  }
+  await page.evaluate(() => {
+    Math.random = window.__origRandom
+  })
+  body = await bodyText()
+  check('P022-R1: 真正战败出现（战斗失败/返回冒险）', body.includes('战斗失败') && body.includes('返回冒险'))
+  check('P022-R1: 战败按钮不是返回主菜单', !body.includes('返回主菜单'))
+  await clickByText('返回冒险')
+  body = await bodyText()
+  check('P022-R1: 返回冒险后当前位置村外草原', body.includes('当前位置') && body.includes('村外草原'))
+  check('P022-R1: 战败返回后生命 0 / 22', body.includes('0 / 22'))
+  check('P022-R1: HP0 显示当前状态无法战斗', body.includes('当前状态无法战斗'))
+  check('P022-R1: HP0 迎战按钮禁用', (await buttonDisabled('迎战')) === true)
+
+  // HP0 仍可移动回青石村
+  await clickByText('青石村')
+  body = await bodyText()
+  check('P022-R1: HP0 可移动回青石村（显示村中休整）', body.includes('村中休整'))
+  check('P022-R1: 休整按钮启用', (await buttonDisabled('休整')) === false)
+  await clickByText('休整')
+  await sleep(300)
+  body = await bodyText()
+  check('P022-R1: 休整后生命 22 / 22 灵力 6 / 6', body.includes('22 / 22') && body.includes('6 / 6'))
+  check('P022-R1: 休整后状态良好无需休整', body.includes('状态良好，无需休整'))
+
+  // 恢复后可重新战斗
+  await clickByText('村外草原')
+  body = await bodyText()
+  check('P022-R1: 恢复后迎战按钮重新启用', (await buttonDisabled('迎战')) === false)
+
+  // 战败与休整全程不自动存档（初始无存档 → 继续游戏仍禁用）
+  await clickByText('返回主菜单')
+  body = await bodyText()
+  check('P022-R1: 无自动存档（继续游戏无存档仍禁用）', (await buttonDisabled('继续游戏')) === true)
+
   // R2：运行期间存档改坏 → 触发一次 load → Continue 禁用且不进入游戏页
   await clickByText('新游戏')
   await clickByText('确认进入天梦大陆') // P004：默认预填合法，直接确认创建

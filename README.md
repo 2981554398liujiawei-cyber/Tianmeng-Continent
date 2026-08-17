@@ -233,6 +233,13 @@ TM-P0-022（青石村休整与战败恢复出口）：
 - GameState 类型结构未变、SAVE_VERSION 仍 1
 - 10 个 Store 单测（正常受伤 10/22→22/MP 不满 2→6/HP0 恢复/双不满/已全满 false/错误地点 false/无 gameState/无额外副作用 gold·level·profession·attributes·inventory·equipment·quests·world 全不变/不自动保存/药水 HP0 规则零回归）+ 9 项 E2E（真实战斗受伤 HP<22/青石村休整恢复 22/22·6/6+状态良好+按钮禁用/村外草原隐藏村中休整/存档恢复保持满值）
 
+TM-P0-022-R1（战败返回冒险并接通青石村休整——修复 Blocker）：
+- 真正战败接通玩家流程：App.handleDefeat 由 setScreen('main') 改为 setScreen('game')（combatEnemyId=null + 回冒险页）；CombatPage 正常战败按钮由「返回主菜单」改为「返回冒险」（胜利按钮不变）；无 GameState/未知 enemyId 的防御性异常分支保持「返回主菜单」不退化
+- 战败返回后：HP 仍 0（无自动回血/自动休整/自动读档/自动传送）、战斗地点保持（村外草原战败返回后 currentLocationId 仍 village_grassland）；GamePage 既有 HP0 规则复用：附近威胁迎战 disabled +「当前状态无法战斗」、治疗药水使用 disabled +「当前无法使用」、移动按钮仍可用
+- HP0 可经既有地点连接移动回青石村 →「村中休整」[休整] enabled → 点击后 HP22/22·MP6/6 → 重新前往村外草原迎战重新可用；战败不触发 resolveCombatVictory（无铁矿石/rabbit_path/任务推进/金币）；完整战败→休整流程不自动创建存档（hasSave 保持原值）
+- Store/GameState schema 零修改（restAtVillage 等既有实现未动）；SAVE_VERSION 仍 1
+- 12 项 E2E（固定随机循环致死真正战败出现且按钮为返回冒险非主菜单/返回后当前位置村外草原+生命 0/22+当前状态无法战斗+迎战禁用/HP0 可移动回村/休整启用→22/22·6/6+状态良好/恢复后迎战重新启用/无存档起始下战败与休整全程不自动存档——继续游戏仍禁用）
+
 ## 目录结构
 
 ```

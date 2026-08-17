@@ -51,9 +51,9 @@ export default function App() {
   }
 
   const handleDefeat = () => {
-    // 失败只返回主菜单；不复活、不自动读档、不自动传送
+    // TM-P0-022-R1：正常战败返回冒险页（保持 HP0 与原战斗地点，可回村休整恢复）；不复活、不自动读档、不自动传送
     setCombatEnemyId(null)
-    setScreen('main')
+    setScreen('game')
   }
 
   if (screen === 'create') {
