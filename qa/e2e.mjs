@@ -1,4 +1,4 @@
-// 一次性 E2E QA 脚本：验证 TM-P0-001 验收标准 B/D/E/F 及 R1 存档边界收敛
+// E2E QA 脚本：验证 TM-P0-001~003 验收与 TM-P0-004 角色创建流程
 // 运行：node qa/e2e.mjs （需 dev server 已在 5199 端口运行）
 // 环境变量：CHROME_PATH（默认系统 Chrome）、BASE_URL（默认 http://localhost:5199/）
 import puppeteer from 'puppeteer-core'
@@ -30,6 +30,17 @@ const clickByText = async (text) => {
   await sleep(250)
 }
 
+// 点击包含指定文本的 label（用于性别/职业 radio 选择）
+const clickLabel = async (text) => {
+  await page.evaluate((t) => {
+    const labels = [...document.querySelectorAll('label')]
+    const target = labels.find((l) => l.textContent.includes(t))
+    if (!target) throw new Error('未找到选项: ' + t)
+    target.click()
+  }, text)
+  await sleep(250)
+}
+
 const bodyText = () => page.evaluate(() => document.body.textContent)
 
 const continueDisabled = () =>
@@ -47,12 +58,34 @@ try {
   check('主菜单显示「新游戏」', body.includes('新游戏'))
   check('无存档时「继续游戏」禁用', (await continueDisabled()) === true)
 
-  // B.2 点击新游戏进入游戏页面
+  // B.2 点击新游戏 → 角色创建页（TM-P0-004）
   await clickByText('新游戏')
   body = await bodyText()
-  check('点击新游戏进入游戏页面（冒险日志）', body.includes('冒险日志'))
-  check('游戏页显示角色「石头城」', body.includes('石头城'))
-  check('游戏页显示职业「骑士」', body.includes('骑士'))
+  check('P004: 点击新游戏进入角色创建页', body.includes('创建角色'))
+  check('P004: 创建页显示五项属性', ['力量', '体质', '敏捷', '冥想', '幸运'].every((t) => body.includes(t)))
+  check('P004: 默认剩余属性点为 0 / 54', body.includes('0 / 54'))
+  check('P004: 默认姓名为石头城', body.includes('石头城'))
+  check('P004: 默认职业为骑士', body.includes('骑士'))
+  await page.screenshot({ path: 'qa/creation-page.png' })
+
+  // 修改姓名与职业
+  await page.focus('input[placeholder="输入角色姓名"]')
+  await page.keyboard.down('Control')
+  await page.keyboard.press('KeyA')
+  await page.keyboard.up('Control')
+  await page.keyboard.press('Backspace')
+  await page.type('input[placeholder="输入角色姓名"]', '云岚')
+  await clickLabel('法师')
+  await sleep(200)
+  body = await bodyText()
+  check('P004: 摘要显示新姓名云岚与新职业法师', body.includes('云岚') && body.includes('法师'))
+
+  // 确认创建 → 游戏页
+  await clickByText('确认进入天梦大陆')
+  body = await bodyText()
+  check('P004: 确认创建进入游戏页面（冒险日志）', body.includes('冒险日志'))
+  check('P004: 游戏页显示新角色「云岚」', body.includes('云岚'))
+  check('P004: 游戏页显示所选职业「法师」', body.includes('法师'))
   check('游戏页显示当前位置「青石村」', body.includes('qingshi_village'))
   check('游戏页显示金币 50', body.includes('50'))
   await page.screenshot({ path: 'qa/game-page.png' })
@@ -111,6 +144,17 @@ try {
   check('读档后金币恢复 50', body.includes('50'))
   check('读档后位置恢复 misty_ruins', body.includes('misty_ruins'))
 
+  // P004：旧存档回归——已有存档时新游戏→创建页→返回，Continue 仍可用，原存档不破坏
+  await clickByText('返回主菜单')
+  await clickByText('新游戏')
+  body = await bodyText()
+  check('P004: 已有存档时点击新游戏仍进入创建页', body.includes('创建角色'))
+  await clickByText('返回主菜单')
+  check('P004: 创建页返回主菜单后 Continue 仍可用', (await continueDisabled()) === false)
+  await clickByText('继续游戏')
+  body = await bodyText()
+  check('P004: 原存档仍可继续（云岚）', body.includes('冒险日志') && body.includes('云岚'))
+
   // R1：物品恢复断言（进开发者控制台读背包）
   await clickByText('返回主菜单')
   await clickByText('开发者控制台')
@@ -127,6 +171,7 @@ try {
 
   // R2：运行期间存档改坏 → 触发一次 load → Continue 禁用且不进入游戏页
   await clickByText('新游戏')
+  await clickByText('确认进入天梦大陆') // P004：默认预填合法，直接确认创建
   await clickByText('保存游戏')
   await clickByText('返回主菜单')
   check('R2: 合法存档存在时 Continue 可用', (await continueDisabled()) === false)

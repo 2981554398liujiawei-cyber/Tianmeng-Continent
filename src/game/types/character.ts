@@ -23,3 +23,11 @@ export interface Character {
   maxMp: number
   gold: number
 }
+
+/** 角色创建输入（TM-P0-004） */
+export interface CharacterCreationInput {
+  name: string
+  gender: Gender
+  profession: ProfessionId
+  attributes: Attributes
+}

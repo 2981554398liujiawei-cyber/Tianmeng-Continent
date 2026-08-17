@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { GameState } from '../types'
+import type { CharacterCreationInput, GameState } from '../types'
 import { createInitialGameState } from '../content/initial'
 import {
   deleteGame as deleteSave,
@@ -15,7 +15,8 @@ interface GameStoreState {
   hasSave: boolean
 
   // 存档生命周期
-  newGame: () => void
+  /** 新建游戏：传入创建输入则按玩家数据生成角色，否则生成默认开发角色（TM-P0-004） */
+  newGame: (input?: CharacterCreationInput) => void
   /** 读档成功返回 true，无有效存档返回 false（TM-P0-001-R1：调用方据此决定是否可进入游戏页） */
   loadGame: () => boolean
   /** 保存成功返回 true，写入失败返回 false（TM-P0-001-R1） */
@@ -35,8 +36,8 @@ export const useGameStore = create<GameStoreState>()((set) => ({
   gameState: null,
   hasSave: storageHasSave(),
 
-  newGame: () => {
-    set({ gameState: createInitialGameState() })
+  newGame: (input) => {
+    set({ gameState: createInitialGameState(input) })
   },
 
   loadGame: () => {
