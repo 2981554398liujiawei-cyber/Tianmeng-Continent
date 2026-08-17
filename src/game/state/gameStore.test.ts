@@ -716,3 +716,108 @@ describe('TM-P0-011：完成《村外异动》解锁兔王巢穴', () => {
     expect(useGameStore.getState().hasSave).toBe(false)
   })
 })
+
+describe('TM-P0-012：击败嘟嘟兔获得唯一《兔子的路径》', () => {
+  const hasPath = () =>
+    useGameStore.getState().gameState?.inventory.filter((e) => e.itemId === 'rabbit_path') ?? []
+  const pathQty = () => {
+    const entries = hasPath()
+    return entries.length === 0 ? 0 : entries.reduce((sum, e) => sum + (e.quantity ?? 0), 0)
+  }
+  const atRabbitLair = () => useGameStore.getState().travelToLocation('rabbit_lair')
+
+  it('A. 正常 Boss 胜利：兔王巢穴击败嘟嘟兔 → true 且 rabbit_path ×1', () => {
+    // 先完成《村外异动》解锁巢穴（正式流程路径）
+    useGameStore.getState().discoverQuest('quest_village_monsters')
+    useGameStore.getState().acceptQuest('quest_village_monsters')
+    useGameStore.getState().travelToLocation('village_grassland')
+    useGameStore.getState().resolveCombatVictory('corrupted_rabbit')
+    useGameStore.getState().travelToLocation('qingshi_village')
+    useGameStore.getState().completeQuest('quest_village_monsters')
+    // 青石村 → 村外草原 → 兔王巢穴（经既有探索规则）
+    useGameStore.getState().travelToLocation('village_grassland')
+    expect(atRabbitLair()).toBe(true)
+    expect(useGameStore.getState().resolveCombatVictory('dudu_rabbit')).toBe(true)
+    expect(pathQty()).toBe(1)
+  })
+
+  it('B. 重复 Boss 胜利不复制：再次击败仍 ×1 且仅一条 entry', () => {
+    useGameStore.setState({
+      gameState: {
+        ...useGameStore.getState().gameState!,
+        inventory: [...useGameStore.getState().gameState!.inventory, { itemId: 'rabbit_path', quantity: 1 }],
+        world: { ...useGameStore.getState().gameState!.world, currentLocationId: 'rabbit_lair' },
+      },
+    })
+    expect(useGameStore.getState().resolveCombatVictory('dudu_rabbit')).toBe(true)
+    expect(useGameStore.getState().resolveCombatVictory('dudu_rabbit')).toBe(true)
+    expect(hasPath()).toHaveLength(1)
+    expect(pathQty()).toBe(1)
+  })
+
+  it('C. 预先已有 ×1：Boss 胜利后保持 ×1', () => {
+    useGameStore.setState({
+      gameState: {
+        ...useGameStore.getState().gameState!,
+        inventory: [...useGameStore.getState().gameState!.inventory, { itemId: 'rabbit_path', quantity: 1 }],
+        world: { ...useGameStore.getState().gameState!.world, currentLocationId: 'rabbit_lair' },
+      },
+    })
+    expect(useGameStore.getState().resolveCombatVictory('dudu_rabbit')).toBe(true)
+    expect(pathQty()).toBe(1)
+  })
+
+  it('D. 错误地点伪造 Boss 胜利：village_grassland → false 且 GameState 完全不变', () => {
+    const snapshot = JSON.stringify(useGameStore.getState().gameState)
+    expect(useGameStore.getState().resolveCombatVictory('dudu_rabbit')).toBe(false)
+    expect(JSON.stringify(useGameStore.getState().gameState)).toBe(snapshot)
+    expect(pathQty()).toBe(0)
+  })
+
+  it('E. 其他敌人无奖励：废弃矿洞击败魔化鼠 → true 且 rabbit_path 不存在', () => {
+    useGameStore.getState().travelToLocation('abandoned_mine')
+    expect(useGameStore.getState().resolveCombatVictory('corrupted_rat')).toBe(true)
+    expect(pathQty()).toBe(0)
+  })
+
+  it('F. 魔化兔任务推进零回归：in_progress + 村外草原 + 魔化兔胜利 → completable 且无 rabbit_path', () => {
+    useGameStore.getState().discoverQuest('quest_village_monsters')
+    useGameStore.getState().acceptQuest('quest_village_monsters')
+    useGameStore.getState().travelToLocation('village_grassland')
+    expect(useGameStore.getState().resolveCombatVictory('corrupted_rabbit')).toBe(true)
+    expect(
+      useGameStore.getState().gameState?.quests.find((q) => q.questId === 'quest_village_monsters')?.status,
+    ).toBe('completable')
+    expect(pathQty()).toBe(0)
+  })
+
+  it('G. 无额外副作用：Boss 胜利除 inventory 新增 rabbit_path 外 player/equipment/quests/world 全不变', () => {
+    useGameStore.setState({
+      gameState: {
+        ...useGameStore.getState().gameState!,
+        world: { ...useGameStore.getState().gameState!.world, currentLocationId: 'rabbit_lair' },
+      },
+    })
+    const before = useGameStore.getState().gameState!
+    expect(useGameStore.getState().resolveCombatVictory('dudu_rabbit')).toBe(true)
+    const after = useGameStore.getState().gameState!
+    expect(after.player).toEqual(before.player)
+    expect(after.equipment).toEqual(before.equipment)
+    expect(after.quests).toEqual(before.quests)
+    expect(after.world).toEqual(before.world)
+    expect(after.inventory).toEqual([...before.inventory, { itemId: 'rabbit_path', quantity: 1 }])
+    expect(before.player.gold).toBe(after.player.gold)
+  })
+
+  it('不自动保存：获得藏宝图后 hasSave 仍 false', () => {
+    useGameStore.setState({
+      gameState: {
+        ...useGameStore.getState().gameState!,
+        world: { ...useGameStore.getState().gameState!.world, currentLocationId: 'rabbit_lair' },
+      },
+    })
+    useGameStore.getState().resolveCombatVictory('dudu_rabbit')
+    expect(pathQty()).toBe(1)
+    expect(useGameStore.getState().hasSave).toBe(false)
+  })
+})

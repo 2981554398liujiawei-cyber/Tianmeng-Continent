@@ -253,12 +253,25 @@ export const useGameStore = create<GameStoreState>()((set) => ({
       if (!location) return {}
       if (!location.enemyIds?.includes(enemyId)) return {}
       ok = true
-      // 合法胜利但无任务关联（非魔化兔 / 非村外草原 / 任务未在进行中）：quests/gold/inventory/world 全部不变
-      if (enemyId !== 'corrupted_rabbit' || location.id !== 'village_grassland') return {}
-      // 《村外异动》in_progress → completable：复用封板状态机（canTransitionQuestStatus）
-      const next = applyQuestTransition(s.gameState, 'quest_village_monsters', 'completable')
-      if (!next) return {}
-      return { gameState: next }
+      // 《村外异动》任务推进：村外草原击败魔化兔 → completable（复用封板状态机）
+      if (enemyId === 'corrupted_rabbit' && location.id === 'village_grassland') {
+        const next = applyQuestTransition(s.gameState, 'quest_village_monsters', 'completable')
+        if (next) return { gameState: next }
+      }
+      // 嘟嘟兔固定战利品（TM-P0-012）：兔王巢穴击败嘟嘟兔 → 首次获得《兔子的路径》×1（唯一，不重复）
+      if (enemyId === 'dudu_rabbit' && location.id === 'rabbit_lair') {
+        const hasPath = s.gameState.inventory.some((e) => e.itemId === 'rabbit_path')
+        if (!hasPath) {
+          return {
+            gameState: {
+              ...s.gameState,
+              inventory: [...s.gameState.inventory, { itemId: 'rabbit_path', quantity: 1 }],
+            },
+          }
+        }
+      }
+      // 合法胜利但无持久效果（其他敌人 / 重复嘟嘟兔胜利 / 任务不在推进条件）：其余状态全部不变
+      return {}
     })
     return ok
   },

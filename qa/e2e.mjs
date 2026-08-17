@@ -436,6 +436,32 @@ try {
   body = await bodyText()
   check('P011: 进入兔王巢穴（显示地点描述）', body.includes('兔王巢穴') && body.includes('魔化兔群的巢穴'))
   check('P011: 巢穴可见嘟嘟兔威胁（HP 24 · 防御 13）', body.includes('嘟嘟兔') && body.includes('HP 24 · 防御 13'))
+
+  // P012：击败嘟嘟兔获得唯一《兔子的路径》
+  check('P012: Boss 战前背包无兔子的路径', !body.includes('兔子的路径'))
+  await clickByText('迎战')
+  await sleep(300)
+  body = await bodyText()
+  check('P012: 嘟嘟兔战斗开始（HP 24 / 24）', body.includes('嘟嘟兔') && body.includes('24 / 24'))
+  await page.evaluate(() => {
+    window.__origRandom = Math.random.bind(Math)
+    const seq = [0.999, 0, 0.999] // 玩家20暴击12 → 嘟嘟兔 24→12；嘟嘟兔天然1 玩家不受伤；玩家20暴击12 → 击杀
+    let i = 0
+    Math.random = () => seq[Math.min(i++, seq.length - 1)]
+  })
+  await clickByText('普通攻击')
+  await sleep(200)
+  await clickByText('普通攻击')
+  await sleep(300)
+  body = await bodyText()
+  check('P012: 确定性击败嘟嘟兔（战斗胜利）', body.includes('战斗胜利'))
+  await page.evaluate(() => {
+    Math.random = window.__origRandom
+  })
+  await clickByText('返回冒险')
+  body = await bodyText()
+  check('P012: 返回后背包显示兔子的路径 ×1', body.includes('兔子的路径 ×1'))
+  check('P012: 藏宝图描述含藏宝图与黄金兔子王', body.includes('藏宝图') && body.includes('黄金兔子王'))
   await clickByText('村外草原')
   await clickByText('保存游戏')
   await clickByText('返回主菜单')
@@ -443,6 +469,7 @@ try {
   body = await bodyText()
   check('P011: Continue 后仍在村外草原', body.includes('村外草原'))
   check('P011: Continue 后兔王巢穴仍可进入', (await buttonDisabled('兔王巢穴')) === false)
+  check('P012: Continue 后兔子的路径仍 ×1', body.includes('兔子的路径 ×1'))
   await clickByText('青石村')
 
   await clickByText('返回主菜单')

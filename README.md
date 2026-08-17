@@ -143,6 +143,14 @@ TM-P0-011（完成《村外异动》解锁兔王巢穴）：
 - GameState 类型结构未变、SAVE_VERSION 仍 1
 - 9 个 Store 单测（正常解锁/in_progress·available·failed 不解锁/其他 flag 保留/已有 false 覆盖/无奖励副作用/探索联动 checkTravel 前后对比+travelToLocation/不自动保存）+ 7 项 E2E（提交前锁定/提交后启用/进入巢穴见嘟嘟兔/存档恢复仍可进入）
 
+TM-P0-012（击败嘟嘟兔获得唯一《兔子的路径》）：
+- `resolveCombatVictory` 仍为唯一正式胜利提交入口（Store 自校验敌人/地点/所属关系）；新增固定 Boss 战利品分支：兔王巢穴击败嘟嘟兔且背包无 rabbit_path 时，在同一次 Store 更新中加入 `{ itemId:'rabbit_path', quantity:1 }`（未用通用 addItem 拼接、无掉落表/权重/随机）
+- 唯一性：已有 ×1 再胜利不复制、不产生重复 entry（单测 B/C 硬锁）；错误地点伪造 Boss 胜利 false 且 GameState 完全不变；其他敌人（魔化兔/鼠/狼）无任何掉落；魔化兔任务推进零回归
+- 除 inventory 外 player/equipment/quests/world 全不变（gold 不变、HP/MP 不恢复、rabbit_lair_unlocked 不变、completedEvents 不变）；不自动保存
+- 无奖励弹窗/结算页；CombatPage 不直接发奖励；Boss 可重复迎战但只获得一次藏宝图；rabbit_path 定义未改（type=quest 藏宝图）
+- GameState 类型结构未变、SAVE_VERSION 仍 1
+- 8 个 Store 单测（正常 Boss 胜利/重复不复制/预先已有/错误地点伪造 false/其他敌人无奖励/魔化兔推进零回归/无额外副作用/不自动保存）+ 6 项 E2E（Boss 战前无藏宝图/固定随机击败嘟嘟兔/返回后 ×1 与描述/存档恢复仍 ×1）
+
 ## 目录结构
 
 ```
