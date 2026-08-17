@@ -2,8 +2,15 @@ import { useState } from 'react'
 import Button from '../components/Button'
 import { useGameStore } from '../game/state/gameStore'
 import { performD20Check, type D20CheckResult } from '../game/rules/d20'
+import {
+  getPlayerAttackBonus,
+  getPlayerBasicDamage,
+  getPlayerDefense,
+  performAttack,
+  type AttackResult,
+} from '../game/rules/combat'
 import { ATTRIBUTE_KEYS, ATTRIBUTE_LABELS } from '../game/content/professions'
-import { getQuest } from '../game/content'
+import { getEnemy, getQuest, ENEMIES } from '../game/content'
 import type { AttributeKey, QuestStatus } from '../game/types'
 
 interface DevStatePageProps {
@@ -31,6 +38,13 @@ const OUTCOME_LABELS: Record<D20CheckResult['outcome'], string> = {
   critical_failure: '大失败',
 }
 
+const ATTACK_OUTCOME_LABELS: Record<AttackResult['outcome'], string> = {
+  critical_hit: '暴击',
+  hit: '命中',
+  miss: '未命中',
+  critical_miss: '大失败',
+}
+
 function signed(n: number): string {
   return n > 0 ? `+${n}` : `${n}`
 }
@@ -45,6 +59,51 @@ export default function DevStatePage({ onBackToMenu }: DevStatePageProps) {
   // 任务状态验证区（TM-P0-006）
   const questState = gameState?.quests.find((q) => q.questId === TEST_QUEST_ID)
   const questStatus = questState?.status ?? 'undiscovered'
+
+  // 普通攻击规则测试区（TM-P0-007）
+  const [selectedEnemyId, setSelectedEnemyId] = useState('corrupted_rabbit')
+  const [attackResult, setAttackResult] = useState<AttackResult | null>(null)
+  const [attackError, setAttackError] = useState<string | null>(null)
+
+  const handlePlayerAttack = () => {
+    setAttackResult(null)
+    setAttackError(null)
+    if (!gameState) {
+      setAttackError('尚未开始游戏，请先新建游戏。')
+      return
+    }
+    const enemy = getEnemy(selectedEnemyId)
+    if (!enemy) {
+      setAttackError('敌人不存在。')
+      return
+    }
+    try {
+      const bonus = getPlayerAttackBonus(gameState.player.attributes.str, gameState.player.level)
+      const baseDamage = getPlayerBasicDamage(gameState.player.attributes.str)
+      setAttackResult(performAttack(bonus, enemy.defense, baseDamage))
+    } catch (err) {
+      setAttackError(err instanceof Error ? err.message : '攻击结算失败')
+    }
+  }
+
+  const handleEnemyAttack = () => {
+    setAttackResult(null)
+    setAttackError(null)
+    if (!gameState) {
+      setAttackError('尚未开始游戏，请先新建游戏。')
+      return
+    }
+    const enemy = getEnemy(selectedEnemyId)
+    if (!enemy) {
+      setAttackError('敌人不存在。')
+      return
+    }
+    try {
+      setAttackResult(performAttack(enemy.attackBonus, getPlayerDefense(gameState.player.attributes.agi), enemy.damage))
+    } catch (err) {
+      setAttackError(err instanceof Error ? err.message : '攻击结算失败')
+    }
+  }
 
   // D20 检定测试区状态（TM-P0-003）
   const [selectedAttr, setSelectedAttr] = useState<AttributeKey>('str')
@@ -230,6 +289,60 @@ export default function DevStatePage({ onBackToMenu }: DevStatePageProps) {
             任务失败
           </Button>
         </div>
+      </section>
+
+      <section className="rounded border border-ink-600 bg-ink-800/50 p-4">
+        <h3 className="mb-3 text-sm font-bold tracking-wider text-bone-500">普通攻击规则测试（TM-P0-007）</h3>
+        <div className="flex flex-wrap items-end gap-4">
+          <label className="flex flex-col gap-1 text-xs text-bone-500">
+            目标敌人（读取 ENEMIES 注册表）
+            <select
+              className="rounded border border-ink-600 bg-ink-700 px-2 py-1.5 text-sm text-bone-100"
+              value={selectedEnemyId}
+              onChange={(e) => setSelectedEnemyId(e.target.value)}
+            >
+              {Object.values(ENEMIES).map((enemy) => (
+                <option key={enemy.id} value={enemy.id}>
+                  {enemy.name}（Lv.{enemy.level} 防 {enemy.defense}）
+                </option>
+              ))}
+            </select>
+          </label>
+          <Button variant="primary" onClick={handlePlayerAttack}>
+            玩家攻击敌人
+          </Button>
+          <Button variant="ghost" onClick={handleEnemyAttack}>
+            敌人攻击玩家
+          </Button>
+        </div>
+
+        {attackError && <p className="mt-3 text-sm text-red-300">✗ {attackError}</p>}
+
+        {attackResult && (
+          <div className="mt-3 rounded bg-ink-950/70 p-4 text-sm leading-relaxed text-bone-300">
+            <p>
+              D20：<span className="text-bone-100">{attackResult.roll}</span>
+            </p>
+            <p>
+              攻击加值：<span className="text-bone-100">{attackResult.attackBonus}</span>
+            </p>
+            <p>
+              总值：<span className="text-bone-100">{attackResult.total}</span>
+            </p>
+            <p>
+              目标防御：<span className="text-bone-100">{attackResult.defense}</span>
+            </p>
+            <p>
+              是否命中：<span className="text-bone-100">{attackResult.hit ? '是' : '否'}</span>
+            </p>
+            <p>
+              造成伤害：<span className="text-bone-100">{attackResult.damage}</span>
+            </p>
+            <p className="mt-1 border-t border-ink-600 pt-2 text-base font-bold text-gold-300">
+              结果：{ATTACK_OUTCOME_LABELS[attackResult.outcome]}
+            </p>
+          </div>
+        )}
       </section>
 
       <section className="rounded border border-ink-600 bg-ink-800/50 p-4">

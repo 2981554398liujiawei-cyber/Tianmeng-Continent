@@ -224,6 +224,33 @@ try {
   )
   check('P003: 检定结果显示中文结果（大成功/成功/失败/大失败）', /结果：(大成功|成功|失败|大失败)/.test(body))
 
+  // P007：普通攻击规则测试区
+  body = await bodyText()
+  check('P007: 控制台显示普通攻击规则测试', body.includes('普通攻击规则测试'))
+  check('P007: 敌人选择含四敌人（读注册表）', ['魔化兔', '魔化鼠', '魔化狼', '嘟嘟兔'].every((t) => body.includes(t)))
+  await clickByText('玩家攻击敌人')
+  await sleep(300)
+  body = await bodyText()
+  check(
+    'P007: 玩家攻击显示完整计算过程',
+    ['D20：', '攻击加值：', '总值：', '目标防御：', '是否命中：', '造成伤害：', '结果：'].every((t) =>
+      body.includes(t),
+    ),
+  )
+  check('P007: 玩家攻击中文结果（暴击/命中/未命中/大失败）', /结果：(暴击|命中|未命中|大失败)/.test(body))
+  state = await readState()
+  check('P007: 玩家攻击后 HP 未变', state.player.hp === state.player.maxHp)
+  await clickByText('敌人攻击玩家')
+  await sleep(300)
+  body = await bodyText()
+  check(
+    'P007: 敌人攻击显示完整计算过程',
+    ['D20：', '攻击加值：', '总值：', '目标防御：', '造成伤害：', '结果：'].every((t) => body.includes(t)),
+  )
+  check('P007: 敌人攻击中文结果', /结果：(暴击|命中|未命中|大失败)/.test(body))
+  state = await readState()
+  check('P007: 敌人攻击后 HP 未变', state.player.hp === state.player.maxHp)
+
   // E. 存档 → 刷新 → 继续游戏
   await clickByText('保存存档')
   await page.reload({ waitUntil: 'networkidle0' })

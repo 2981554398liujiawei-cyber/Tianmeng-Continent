@@ -99,6 +99,16 @@ TM-P0-006（最小任务状态机与任务日志）：
 - GameState 结构未改、SAVE_VERSION 仍 1、未新增 questJournal/activeQuestId 等
 - 19 个状态机单测 + 13 个 Store 任务单测 + 10 项 E2E（发现/接受/移动保留/存档恢复/标记可完成/提交/金币不变）
 
+TM-P0-007（最小战斗规则内核与敌人战斗数据）：
+- `src/game/rules/combat.ts`：`getPlayerDefense = 10 + AGI修正`、`getPlayerAttackBonus = STR修正 + 熟练加值`、`getPlayerBasicDamage = max(1, 4 + STR修正)`（均复用已封板 getAttributeModifier/getProficiencyBonus）
+- `resolveAttack(roll, attackBonus, defense, baseDamage)`：天然20→暴击命中伤害×2（无视 total）、天然1→大失败伤害 0（无视 total）、普通 total>=defense→命中、否则未命中；`performAttack` 复用现有 rollD20
+- 输入边界：非法 roll/attackBonus/defense/baseDamage 抛 RangeError，不产生 NaN/Infinity
+- 四敌人补齐 V1 战斗基线：魔化兔 HP8/防11/攻+2/伤2、魔化鼠 HP6/防10/攻+2/伤2、魔化狼 HP12/防12/攻+3/伤3、嘟嘟兔 HP24/防13/攻+4/伤4（name/description/tags/level 不变）
+- 战斗规则纯输出：不修改 GameState/玩家 HP、不新增 BattleState/回合/先攻/敌人当前 HP；GamePage 无战斗功能
+- 开发者控制台新增「普通攻击规则测试」区：敌人下拉（读 ENEMIES）/玩家攻击敌人/敌人攻击玩家，完整计算过程与中文结果（暴击/命中/未命中/大失败），无副作用
+- GameState 结构未改、SAVE_VERSION 仍 1
+- 15 个战斗规则单测 + 3 个敌人数据一致性测试 + 8 项 E2E（控制台攻击测试/HP 不变）
+
 ## 目录结构
 
 ```

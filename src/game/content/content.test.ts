@@ -164,3 +164,35 @@ describe('TM-P0-002-R1：关键内容身份锁', () => {
     expect(getEnemy('golden_rabbit_king')).toBeUndefined()
   })
 })
+
+describe('TM-P0-007：敌人战斗数据一致性', () => {
+  it('全部敌人战斗字段为整数且 maxHp/defense/damage 为正整数', () => {
+    for (const enemy of Object.values(ENEMIES)) {
+      expect(Number.isInteger(enemy.maxHp), `${enemy.id} maxHp`).toBe(true)
+      expect(enemy.maxHp).toBeGreaterThan(0)
+      expect(Number.isInteger(enemy.defense), `${enemy.id} defense`).toBe(true)
+      expect(enemy.defense).toBeGreaterThan(0)
+      expect(Number.isInteger(enemy.attackBonus), `${enemy.id} attackBonus`).toBe(true)
+      expect(Number.isInteger(enemy.damage), `${enemy.id} damage`).toBe(true)
+      expect(enemy.damage).toBeGreaterThan(0)
+    }
+  })
+
+  it('四敌人战斗基线数值锁定（V1 平衡基线）', () => {
+    expect(getEnemy('corrupted_rabbit')).toMatchObject({ maxHp: 8, defense: 11, attackBonus: 2, damage: 2 })
+    expect(getEnemy('corrupted_rat')).toMatchObject({ maxHp: 6, defense: 10, attackBonus: 2, damage: 2 })
+    expect(getEnemy('corrupted_wolf')).toMatchObject({ maxHp: 12, defense: 12, attackBonus: 3, damage: 3 })
+    expect(getEnemy('dudu_rabbit')).toMatchObject({ maxHp: 24, defense: 13, attackBonus: 4, damage: 4 })
+  })
+
+  it('已锁定身份字段未被修改：name/description/tags/level', () => {
+    expect(getEnemy('corrupted_rabbit')?.name).toBe('魔化兔')
+    expect(getEnemy('corrupted_rat')?.name).toBe('魔化鼠')
+    expect(getEnemy('corrupted_wolf')?.name).toBe('魔化狼')
+    expect(getEnemy('dudu_rabbit')?.name).toBe('嘟嘟兔')
+    expect(getEnemy('corrupted_rabbit')?.tags).toEqual(['beast'])
+    expect(getEnemy('dudu_rabbit')?.tags).toEqual(['beast', 'boss'])
+    expect(getEnemy('dudu_rabbit')?.level).toBe(3)
+    expect(getEnemy('dudu_rabbit')?.description).toContain('黄金兔子王')
+  })
+})
