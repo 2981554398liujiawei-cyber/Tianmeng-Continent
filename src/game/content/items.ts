@@ -33,6 +33,13 @@ export const ITEMS: Record<string, ItemDefinition> = {
     description: '用于开发状态页验证背包数据流的任务物品。',
     value: 1,
   },
+  rabbit_path: {
+    id: 'rabbit_path',
+    name: '兔子的路径',
+    type: 'quest',
+    description: '记录着兔群迁徙路线的手绘草图，边角微微卷曲，隐约沾着草汁。',
+    value: 0,
+  },
 }
 
 export function getItem(id: string): ItemDefinition | undefined {

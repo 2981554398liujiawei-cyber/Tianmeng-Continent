@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import Button from '../components/Button'
 import { useGameStore } from '../game/state/gameStore'
-import { getProfessionName } from '../game/content/professions'
-import { ATTRIBUTE_KEYS, ATTRIBUTE_LABELS } from '../game/content/professions'
+import { getProfessionName, ATTRIBUTE_KEYS, ATTRIBUTE_LABELS } from '../game/content/professions'
+import { getLocation } from '../game/content'
 
 interface GamePageProps {
   onBackToMenu: () => void
@@ -83,7 +83,8 @@ export default function GamePage({ onBackToMenu }: GamePageProps) {
 
       <section className="rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
         <p className="mb-1 text-bone-500">当前位置</p>
-        <p>{world.currentLocationId}</p>
+        <p>{getLocation(world.currentLocationId)?.name ?? world.currentLocationId}</p>
+        <p className="text-xs text-bone-500">{world.currentLocationId}</p>
         <p className="mt-3 text-xs text-bone-500">
           （此页面为开发基线展示，场景探索将在后续任务卡实现。）
         </p>
