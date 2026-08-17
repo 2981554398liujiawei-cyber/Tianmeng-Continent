@@ -1030,23 +1030,29 @@ try {
   check('P1-001-B: 显示法术攻击（2 灵力）', body.includes('法术攻击（2 灵力）'))
   check('P1-001-B: 法术按钮启用', (await buttonDisabled('法术攻击')) === false)
 
-  // C. 灵力耗尽：法术天然1 + 敌天然1，连续施法三次 MP 6→4→2→0
+  // C. 灵力耗尽：法术天然1 + 敌天然1，连续施法三次并逐次断言 MP 6→4→2→0
   await page.evaluate(() => {
     window.__origRandom = Math.random.bind(Math)
     Math.random = () => 0.0 // 法术 roll1 大失败（0 伤），敌 roll1 大失败（0 伤）
   })
   await clickByText('法术攻击')
   await sleep(300)
-  await clickByText('法术攻击')
-  await sleep(300)
+  body = await bodyText()
+  check('P1-001-C: 第一次法术后灵力 4 / 6', body.includes('4 / 6'))
+  check('P1-001-C: 第一次法术后魔化兔仍 HP 8 / 8', body.includes('8 / 8'))
   await clickByText('法术攻击')
   await sleep(300)
   body = await bodyText()
-  check('P1-001-C: 灵力 0 / 6', body.includes('0 / 6'))
+  check('P1-001-C: 第二次法术后灵力 2 / 6', body.includes('2 / 6'))
+  check('P1-001-C: 第二次法术后魔化兔仍 HP 8 / 8', body.includes('8 / 8'))
+  await clickByText('法术攻击')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-001-C: 第三次法术后灵力 0 / 6', body.includes('0 / 6'))
+  check('P1-001-C: 第三次法术后魔化兔仍 HP 8 / 8', body.includes('8 / 8'))
   check('P1-001-C: 法术按钮禁用', (await buttonDisabled('法术攻击')) === true)
   check('P1-001-C: 显示灵力不足', body.includes('灵力不足'))
   check('P1-001-C: 普通攻击仍启用', (await buttonDisabled('普通攻击')) === false)
-  check('P1-001-C: 魔化兔仍满血 HP 8 / 8', body.includes('8 / 8'))
   await page.evaluate(() => {
     Math.random = window.__origRandom
   })
@@ -1060,6 +1066,7 @@ try {
   await sleep(300)
   body = await bodyText()
   check('P1-001-D: MP0 普通攻击战斗胜利', body.includes('战斗胜利'))
+  check('P1-001-D: 普通攻击后灵力仍 0 / 6（不消费 MP）', body.includes('0 / 6'))
   await page.evaluate(() => {
     Math.random = window.__origRandom
   })

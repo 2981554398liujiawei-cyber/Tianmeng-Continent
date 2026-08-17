@@ -260,7 +260,7 @@ TM-P1-001（法师职业技能「法术攻击」与灵力消耗）：
 - CombatPage：玩家面板新增「灵力 X / Y」（所有职业显示）；仅 mage 显示 [法术攻击（2 灵力）]（消耗数字读 MAGE_SPELL_MP_COST）；其他职业只显示普通攻击；mp<2 时法术 disabled +「灵力不足」而普通攻击仍 enabled；使用顺序=先 spendMageSpellMp() 成功才掷骰（false 不掷骰/不改敌人 HP/不反击/不改最后攻击结果）；命中/未命中/暴击/大失败均消耗 2 MP；法术未击杀敌人正常反击、击杀 victory 不反击（复用 resolvePlayerStrike 与既有反击流程）；普通与法术共用 CombatPage 内部最小局部 helper（未建 ActionSystem/TurnManager/CombatEngine）；日志区分「你的法术攻击：」/「你的攻击：」（lastPlayerAction 仅页面本地，不进入 GameState）
 - 战斗结束后 MP 保留（不自动补满）；青石村休整自然恢复（restAtVillage 未修改）；战败闭环（HP0→返回冒险→回村休整）语义不变；未修改 PROFESSIONS/Enemy/Location/Item/Quest/NPC 定义，未给 ProfessionInfo 加 abilities[]/skills[]/spellList；未实现其他职业技能/技能树/冷却/经验升级/元素/魔法防御/法杖/新敌人地点任务 NPC
 - GameState schema 不变、SAVE_VERSION 仍 1
-- 6 个 combat 单测（法术攻击加值 MND8→+1/MND14→+4/MND16→+5；法术伤害 5/6/8/9；天然20 暴击 16；天然1 大失败 0；武器不进入法术公式；MAGE_SPELL_MP_COST===2）+ 8 个 Store 单测（正常 6→4/刚好 2→0/不足 1 false/非法职业 knight false/无 gameState/非法 MP -1 与越界 false/无额外副作用/不自动保存）+ 19 项 E2E（骑士无法术攻击/法师有法术攻击（2 灵力）且启用/连续施法 MP 6→4→2→0 法术禁用+灵力不足+普攻仍启用+魔化兔仍 8/8/MP0 普攻天然20 胜利/休整恢复灵力 6/6/法术天然20 暴击 10 伤胜利+你的法术攻击/战斗后 MP4/6 保存 Continue 后仍 4/6）
+- 6 个 combat 单测（法术攻击加值 MND8→+1/MND14→+4/MND16→+5；法术伤害 5/6/8/9；天然20 暴击 16；天然1 大失败 0；武器不进入法术公式；MAGE_SPELL_MP_COST===2）+ 8 个 Store 单测（正常 6→4/刚好 2→0/不足 1 false/非法职业 knight false/无 gameState/非法 MP -1 与越界 false/无额外副作用/不自动保存）+ 24 项 E2E（骑士无法术攻击/法师有法术攻击（2 灵力）且启用/连续施法逐次断言 MP 6→4→2→0 且魔化兔持续 8/8+法术禁用+灵力不足+普攻仍启用/MP0 普攻天然20 胜利且离开战斗页前灵力仍 0/6/休整恢复灵力 6/6/法术天然20 暴击 10 伤胜利+你的法术攻击/战斗后 MP4/6 保存 Continue 后仍 4/6）
 
 ## 目录结构
 
