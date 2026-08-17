@@ -57,6 +57,7 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
   const unequipWeapon = useGameStore((s) => s.unequipWeapon)
   const buyHealingPotion = useGameStore((s) => s.buyHealingPotion)
   const sellIronOre = useGameStore((s) => s.sellIronOre)
+  const restAtVillage = useGameStore((s) => s.restAtVillage)
   const investigateAbandonedMine = useGameStore((s) => s.investigateAbandonedMine)
   const [saveResult, setSaveResult] = useState<'saved' | 'failed' | null>(null)
   const [travelError, setTravelError] = useState(false)
@@ -273,6 +274,25 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
           </section>
         )
       })()}
+
+      {/* TM-P0-022：村中休整 —— 仅青石村显示；免费恢复 HP/MP 至最大值（战败软锁出口） */}
+      {world.currentLocationId === 'qingshi_village' && (
+        <section className="rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
+          <h3 className="mb-3 text-sm font-bold tracking-wider text-bone-500">村中休整</h3>
+          <p className="mb-3 text-bone-300">在村里稍作休息，可以恢复生命与灵力。</p>
+          {(() => {
+            const needsRest = player.hp < player.maxHp || player.mp < player.maxMp
+            return (
+              <div className="flex flex-col items-start gap-1">
+                <Button variant="primary" disabled={!needsRest} onClick={() => restAtVillage()}>
+                  休整
+                </Button>
+                {!needsRest && <span className="text-xs text-bone-500">状态良好，无需休整</span>}
+              </div>
+            )
+          })()}
+        </section>
+      )}
 
       {/* TM-P0-015：附近人物 —— 仅当前地点存在注册 NPC 时显示 */}
       {localNpcs.length > 0 && (

@@ -225,6 +225,14 @@ TM-P0-021（青石村铁匠收购铁矿石）：
 - GameState 类型结构未变、SAVE_VERSION 仍 1
 - 9 个 Store 单测（正常出售 50→55 ×2→1/出售最后一个删除 entry/无铁矿石 false/错误地点 false/无 gameState/金币溢出 false/异常 quantity false/原子副作用边界 equipment·quests·world·hp·mp·level·attributes 全不变/不自动保存）+ 12 项 E2E（正式获取 ×2→回村铁匠收购区与持有 2/出售 50→55 铁矿石×1/存档恢复 ×1+55/经济联动 55→45 药师购药/最后一块出售 45→50 且按钮禁用+没有可出售的铁矿石）
 
+TM-P0-022（青石村休整与战败恢复出口）：
+- Store 新增唯一休整入口 `restAtVillage()`（未实现 rest/healPlayer/sleep/camp/revive 通用系统）：地点限制 currentLocationId==='qingshi_village'（本卡允许既有固定地点 ID 校验，未建 Inn/NPC/RestDefinition）
+- 可恢复条件：至少一个资源未满（hp<maxHp 或 mp<maxMp，含 hp===0）；成功 hp=maxHp 且 mp=maxMp（只改这两项）；免费（不扣金币/不耗药水/不耗铁矿石）；已全满/错误地点（村外草原/废弃矿洞/兔王巢穴）/异常数值（maxHp 非正安全整数/maxMp 负或非安全整数/hp·mp 非安全整数或越界）/无 gameState → false 且 GameState 完全不变
+- 战败软锁出口：HP0 可以休整恢复至 maxHp（单测明确证明）；useHealingPotion HP0 禁止规则保持不变（休整与药水是两个独立入口）；CombatPage 未修改（战斗失败仍 HP0→返回冒险）；移动规则未修改（HP0 仍可经既有连接移动回村，无自动传送/自动复活）
+- GamePage 新增「村中休整」区：仅青石村显示（其他地点整个区域隐藏）；提示语「在村里稍作休息，可以恢复生命与灵力。」+[休整]；任一资源未满（含 HP0）按钮启用，全满时按钮 disabled 并显示「状态良好，无需休整」；休整后角色面板立即显示满值且按钮变 disabled；无旅店/住宿剧情
+- GameState 类型结构未变、SAVE_VERSION 仍 1
+- 10 个 Store 单测（正常受伤 10/22→22/MP 不满 2→6/HP0 恢复/双不满/已全满 false/错误地点 false/无 gameState/无额外副作用 gold·level·profession·attributes·inventory·equipment·quests·world 全不变/不自动保存/药水 HP0 规则零回归）+ 9 项 E2E（真实战斗受伤 HP<22/青石村休整恢复 22/22·6/6+状态良好+按钮禁用/村外草原隐藏村中休整/存档恢复保持满值）
+
 ## 目录结构
 
 ```

@@ -883,6 +883,59 @@ try {
   check('P021: 显示没有可出售的铁矿石', body.includes('没有可出售的铁矿石'))
   await clickByText('返回主菜单')
 
+  // P022：青石村休整与战败恢复出口
+  await clickByText('新游戏')
+  await clickByText('确认进入天梦大陆')
+  await clickByText('村外草原')
+  await clickByText('迎战')
+  await sleep(300)
+  // 固定第一轮：玩家失手 + 敌人命中受伤，随后暴击击杀
+  await page.evaluate(() => {
+    window.__origRandom = Math.random.bind(Math)
+    const seq = [0.05, 0.35, 0.95] // 玩家2未命中 / 敌8命中伤2 / 玩家20击杀
+    let i = 0
+    Math.random = () => seq[Math.min(i++, seq.length - 1)]
+  })
+  await clickByText('普通攻击')
+  await sleep(300)
+  await clickByText('普通攻击')
+  await sleep(300)
+  body = await bodyText()
+  check('P022: 击败魔化兔（战斗胜利）', body.includes('战斗胜利'))
+  await page.evaluate(() => {
+    Math.random = window.__origRandom
+  })
+  await clickByText('返回冒险')
+  body = await bodyText()
+  const hpAfterBattle = body.match(/生命\s*(\d+)\s*\/\s*(\d+)/)
+  check('P022: 战斗受伤后 HP < 22', hpAfterBattle && Number(hpAfterBattle[1]) < 22, `hp=${hpAfterBattle?.[1]}`)
+
+  // 青石村休整恢复
+  await clickByText('青石村')
+  body = await bodyText()
+  check('P022: 青石村显示村中休整', body.includes('村中休整'))
+  check('P022: 受伤后休整按钮启用', (await buttonDisabled('休整')) === false)
+  await clickByText('休整')
+  await sleep(300)
+  body = await bodyText()
+  check('P022: 休整后生命 22 / 22 灵力 6 / 6', body.includes('22 / 22') && body.includes('6 / 6'))
+  check('P022: 休整后显示状态良好无需休整', body.includes('状态良好，无需休整'))
+  check('P022: 休整后按钮禁用', (await buttonDisabled('休整')) === true)
+
+  // 其他地点隐藏村中休整
+  await clickByText('村外草原')
+  body = await bodyText()
+  check('P022: 村外草原不显示村中休整', !body.includes('村中休整'))
+
+  // 存档恢复：休整后的 HP/MP
+  await clickByText('青石村')
+  await clickByText('保存游戏')
+  await clickByText('返回主菜单')
+  await clickByText('继续游戏')
+  body = await bodyText()
+  check('P022: Continue 后生命 22 / 22 灵力 6 / 6', body.includes('22 / 22') && body.includes('6 / 6'))
+  await clickByText('返回主菜单')
+
   // R2：运行期间存档改坏 → 触发一次 load → Continue 禁用且不进入游戏页
   await clickByText('新游戏')
   await clickByText('确认进入天梦大陆') // P004：默认预填合法，直接确认创建

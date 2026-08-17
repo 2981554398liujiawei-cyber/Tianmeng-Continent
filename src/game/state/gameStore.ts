@@ -59,6 +59,8 @@ interface GameStoreState {
   buyHealingPotion: () => boolean
   /** 在铁匠处出售铁矿石：gold 增加与铁矿石减少原子完成；不自动保存（TM-P0-021） */
   sellIronOre: () => boolean
+  /** 青石村休整：HP/MP 恢复至最大值；免费、只改 hp/mp、不自动保存（TM-P0-022） */
+  restAtVillage: () => boolean
   /** 调查废弃矿洞（TM-P0-016）：心智 D20 检定一次性写入 flags；非法/已调查/异常 → null 且不变 */
   investigateAbandonedMine: () => D20CheckResult | null
   addGold: (amount: number) => void
@@ -495,6 +497,31 @@ export const useGameStore = create<GameStoreState>()((set) => ({
       }
     })
     return sold
+  },
+
+  restAtVillage: () => {
+    let rested = false
+    set((s) => {
+      if (!s.gameState) return {}
+      // 地点限制：仅青石村可休整（本卡允许以既有固定地点 ID 校验）
+      if (s.gameState.world.currentLocationId !== 'qingshi_village') return {}
+      const player = s.gameState.player
+      // 数据安全：maxHp 正安全整数 / maxMp 非负安全整数 / hp·mp 安全整数且在 [0, max] 内
+      if (!Number.isSafeInteger(player.maxHp) || player.maxHp <= 0) return {}
+      if (!Number.isSafeInteger(player.maxMp) || player.maxMp < 0) return {}
+      if (!Number.isSafeInteger(player.hp) || !Number.isSafeInteger(player.mp)) return {}
+      if (player.hp < 0 || player.hp > player.maxHp || player.mp < 0 || player.mp > player.maxMp) return {}
+      // 可恢复条件：至少一个资源未满（含 HP 0）；全满则无意义更新
+      if (player.hp >= player.maxHp && player.mp >= player.maxMp) return {}
+      rested = true
+      return {
+        gameState: {
+          ...s.gameState,
+          player: { ...player, hp: player.maxHp, mp: player.maxMp },
+        },
+      }
+    })
+    return rested
   },
 
   addGold: (amount) => {

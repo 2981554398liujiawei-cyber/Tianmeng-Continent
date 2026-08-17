@@ -1386,3 +1386,94 @@ describe('TM-P0-021：sellIronOre 铁匠收购', () => {
     expect(useGameStore.getState().hasSave).toBe(false)
   })
 })
+
+describe('TM-P0-022：restAtVillage 青石村休整', () => {
+  const hp = () => useGameStore.getState().gameState?.player.hp
+  const mp = () => useGameStore.getState().gameState?.player.mp
+  const setVitals = (h: number, m: number) => {
+    useGameStore.setState({
+      gameState: {
+        ...useGameStore.getState().gameState!,
+        player: { ...useGameStore.getState().gameState!.player, hp: h, mp: m },
+      },
+    })
+  }
+
+  it('A. 正常受伤休整：青石村 HP10/22 MP6/6 → true，HP 22，MP 6', () => {
+    setVitals(10, 6)
+    expect(useGameStore.getState().restAtVillage()).toBe(true)
+    expect(hp()).toBe(22)
+    expect(mp()).toBe(6)
+  })
+
+  it('B. MP 不满：HP22/22 MP2/6 → true，HP 22，MP 6', () => {
+    setVitals(22, 2)
+    expect(useGameStore.getState().restAtVillage()).toBe(true)
+    expect(hp()).toBe(22)
+    expect(mp()).toBe(6)
+  })
+
+  it('C. HP0 恢复（战败软锁出口）：HP0/22 MP6/6 → true，HP 22', () => {
+    setVitals(0, 6)
+    expect(useGameStore.getState().restAtVillage()).toBe(true)
+    expect(hp()).toBe(22)
+  })
+
+  it('D. HP/MP 都不满：HP5 MP1 → true，两项同时恢复最大值', () => {
+    setVitals(5, 1)
+    expect(useGameStore.getState().restAtVillage()).toBe(true)
+    expect(hp()).toBe(22)
+    expect(mp()).toBe(6)
+  })
+
+  it('E. 已全满：HP22 MP6 → false，GameState 完全不变', () => {
+    setVitals(22, 6)
+    const snapshot = JSON.stringify(useGameStore.getState().gameState)
+    expect(useGameStore.getState().restAtVillage()).toBe(false)
+    expect(JSON.stringify(useGameStore.getState().gameState)).toBe(snapshot)
+  })
+
+  it('F. 错误地点：abandoned_mine HP10 → false，GameState 完全不变', () => {
+    useGameStore.getState().travelToLocation('abandoned_mine')
+    setVitals(10, 6)
+    const snapshot = JSON.stringify(useGameStore.getState().gameState)
+    expect(useGameStore.getState().restAtVillage()).toBe(false)
+    expect(JSON.stringify(useGameStore.getState().gameState)).toBe(snapshot)
+  })
+
+  it('G. 无 GameState → false', () => {
+    useGameStore.setState({ gameState: null })
+    expect(useGameStore.getState().restAtVillage()).toBe(false)
+  })
+
+  it('H. 无额外副作用：成功休整除 player.hp/mp 外 gold/level/profession/attributes/inventory/equipment/quests/world 全不变', () => {
+    setVitals(10, 2)
+    const before = useGameStore.getState().gameState!
+    useGameStore.getState().restAtVillage()
+    const after = useGameStore.getState().gameState!
+    expect(after.player.gold).toBe(before.player.gold)
+    expect(after.player.level).toBe(before.player.level)
+    expect(after.player.profession).toBe(before.player.profession)
+    expect(after.player.attributes).toEqual(before.player.attributes)
+    expect(after.inventory).toEqual(before.inventory)
+    expect(after.equipment).toEqual(before.equipment)
+    expect(after.quests).toEqual(before.quests)
+    expect(after.world).toEqual(before.world)
+  })
+
+  it('I. 不自动保存：成功休整后 hasSave 仍 false', () => {
+    setVitals(10, 6)
+    useGameStore.getState().restAtVillage()
+    expect(hp()).toBe(22)
+    expect(useGameStore.getState().hasSave).toBe(false)
+  })
+
+  it('J. 药水 HP0 规则零回归：HP0 时 useHealingPotion 仍 false（休整是独立入口）', () => {
+    setVitals(0, 6)
+    expect(useGameStore.getState().useHealingPotion()).toBe(false)
+    expect(hp()).toBe(0)
+    // 休整可以恢复（独立入口）
+    expect(useGameStore.getState().restAtVillage()).toBe(true)
+    expect(hp()).toBe(22)
+  })
+})
