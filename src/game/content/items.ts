@@ -1,5 +1,5 @@
-/** 物品类型：武器/防具/饰品/消耗品/任务物品 */
-export type ItemType = 'weapon' | 'armor' | 'accessory' | 'consumable' | 'quest'
+/** 物品类型：武器/防具/饰品/消耗品/任务物品/材料（TM-P0-020 新增 material） */
+export type ItemType = 'weapon' | 'armor' | 'accessory' | 'consumable' | 'quest' | 'material'
 
 export interface ItemDefinition {
   id: string
@@ -45,6 +45,13 @@ export const ITEMS: Record<string, ItemDefinition> = {
     type: 'quest',
     description: '一份指向黄金兔子王所在之地的藏宝图，上面以景物和路标标记着前往目标地点的路线。',
     value: 0,
+  },
+  iron_ore: {
+    id: 'iron_ore',
+    name: '铁矿石',
+    type: 'material',
+    description: '从废弃矿洞中取得的普通铁矿石，表面带着粗粝的金属光泽。',
+    value: 5,
   },
 }
 

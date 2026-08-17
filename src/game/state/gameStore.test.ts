@@ -1183,3 +1183,100 @@ describe('TM-P0-018：《村外异动》固定金币奖励', () => {
     expect(useGameStore.getState().hasSave).toBe(false)
   })
 })
+
+describe('TM-P0-020：魔化鼠掉落铁矿石', () => {
+  const oreEntries = () =>
+    useGameStore.getState().gameState?.inventory.filter((e) => e.itemId === 'iron_ore') ?? []
+  const oreQty = () => {
+    const entries = oreEntries()
+    return entries.length === 0 ? 0 : entries.reduce((sum, e) => sum + (e.quantity ?? 0), 0)
+  }
+  const atMine = () => useGameStore.getState().travelToLocation('abandoned_mine')
+
+  it('A. 首次合法胜利：废弃矿洞背包无 iron_ore → true，铁矿石 ×1', () => {
+    atMine()
+    expect(useGameStore.getState().resolveCombatVictory('corrupted_rat')).toBe(true)
+    expect(oreQty()).toBe(1)
+  })
+
+  it('B. 第二次合法胜利堆叠：已有 ×1 再胜利 → true，×2 且仅一条 entry', () => {
+    atMine()
+    useGameStore.getState().resolveCombatVictory('corrupted_rat')
+    expect(useGameStore.getState().resolveCombatVictory('corrupted_rat')).toBe(true)
+    expect(oreQty()).toBe(2)
+    expect(oreEntries()).toHaveLength(1)
+  })
+
+  it('C. 错误地点伪造：青石村 → false，GameState 完全不变', () => {
+    const snapshot = JSON.stringify(useGameStore.getState().gameState)
+    expect(useGameStore.getState().resolveCombatVictory('corrupted_rat')).toBe(false)
+    expect(JSON.stringify(useGameStore.getState().gameState)).toBe(snapshot)
+  })
+
+  it('D. 未知敌人 → false，GameState 完全不变', () => {
+    atMine()
+    const snapshot = JSON.stringify(useGameStore.getState().gameState)
+    expect(useGameStore.getState().resolveCombatVictory('fake_enemy')).toBe(false)
+    expect(JSON.stringify(useGameStore.getState().gameState)).toBe(snapshot)
+  })
+
+  it('E. 魔化兔零回归：村外草原击败魔化兔推进任务且不掉 iron_ore', () => {
+    useGameStore.getState().discoverQuest('quest_village_monsters')
+    useGameStore.getState().acceptQuest('quest_village_monsters')
+    useGameStore.getState().travelToLocation('village_grassland')
+    expect(useGameStore.getState().resolveCombatVictory('corrupted_rabbit')).toBe(true)
+    expect(
+      useGameStore.getState().gameState?.quests.find((q) => q.questId === 'quest_village_monsters')?.status,
+    ).toBe('completable')
+    expect(oreQty()).toBe(0)
+  })
+
+  it('F. 嘟嘟兔零回归：兔王巢穴击败嘟嘟兔 → rabbit_path ×1 且不掉 iron_ore', () => {
+    // 解锁巢穴后进入
+    useGameStore.getState().discoverQuest('quest_village_monsters')
+    useGameStore.getState().acceptQuest('quest_village_monsters')
+    useGameStore.getState().travelToLocation('village_grassland')
+    useGameStore.getState().resolveCombatVictory('corrupted_rabbit')
+    useGameStore.getState().travelToLocation('qingshi_village')
+    useGameStore.getState().completeQuest('quest_village_monsters')
+    useGameStore.getState().travelToLocation('village_grassland')
+    useGameStore.getState().travelToLocation('rabbit_lair')
+    expect(useGameStore.getState().resolveCombatVictory('dudu_rabbit')).toBe(true)
+    expect(
+      useGameStore.getState().gameState?.inventory.some((e) => e.itemId === 'rabbit_path' && e.quantity === 1),
+    ).toBe(true)
+    expect(oreQty()).toBe(0)
+  })
+
+  it('G. 数量安全边界：iron_ore × MAX_SAFE_INTEGER → 合法胜利 true 但 inventory 不变', () => {
+    atMine()
+    useGameStore.setState({
+      gameState: {
+        ...useGameStore.getState().gameState!,
+        inventory: [{ itemId: 'iron_ore', quantity: Number.MAX_SAFE_INTEGER }],
+      },
+    })
+    const snapshot = JSON.stringify(useGameStore.getState().gameState)
+    expect(useGameStore.getState().resolveCombatVictory('corrupted_rat')).toBe(true)
+    expect(JSON.stringify(useGameStore.getState().gameState)).toBe(snapshot)
+  })
+
+  it('H. 无其他副作用：首次掉落除 inventory 新增 iron_ore ×1 外 player/equipment/quests/world 全不变', () => {
+    atMine()
+    const before = useGameStore.getState().gameState!
+    expect(useGameStore.getState().resolveCombatVictory('corrupted_rat')).toBe(true)
+    const after = useGameStore.getState().gameState!
+    expect(after.player).toEqual(before.player)
+    expect(after.equipment).toEqual(before.equipment)
+    expect(after.quests).toEqual(before.quests)
+    expect(after.world).toEqual(before.world)
+    expect(after.inventory).toEqual([...before.inventory, { itemId: 'iron_ore', quantity: 1 }])
+  })
+
+  it('I. 不自动保存：魔化鼠胜利获得铁矿石后 hasSave 仍 false', () => {
+    atMine()
+    useGameStore.getState().resolveCombatVictory('corrupted_rat')
+    expect(oreQty()).toBe(1)
+    expect(useGameStore.getState().hasSave).toBe(false)
+  })
+})

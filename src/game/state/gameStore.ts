@@ -295,6 +295,23 @@ export const useGameStore = create<GameStoreState>()((set) => ({
           }
         }
       }
+      // 魔化鼠固定战利品（TM-P0-020）：废弃矿洞击败魔化鼠 → 铁矿石 +1（重复胜利堆叠同一 entry）
+      if (enemyId === 'corrupted_rat' && location.id === 'abandoned_mine') {
+        const inv = s.gameState.inventory
+        const idx = inv.findIndex((e) => e.itemId === 'iron_ore')
+        const current = idx >= 0 ? (inv[idx]?.quantity ?? 0) : 0
+        // 数量安全：已有数量合法且 +1 仍为安全整数才更新；否则胜利仍合法但 inventory 不变
+        if (
+          idx < 0 ||
+          (Number.isSafeInteger(current) && current >= 1 && Number.isSafeInteger(current + 1))
+        ) {
+          const inventory =
+            idx >= 0
+              ? inv.map((e, i) => (i === idx ? { ...e, quantity: current + 1 } : e))
+              : [...inv, { itemId: 'iron_ore', quantity: 1 }]
+          return { gameState: { ...s.gameState, inventory } }
+        }
+      }
       // 合法胜利但无持久效果（其他敌人 / 重复嘟嘟兔胜利 / 任务不在推进条件）：其余状态全部不变
       return {}
     })

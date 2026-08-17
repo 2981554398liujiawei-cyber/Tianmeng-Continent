@@ -772,6 +772,59 @@ try {
   check('P017: 返回青石村后附近威胁消失', !body.includes('附近威胁'))
   await clickByText('返回主菜单')
 
+  // P020：废弃矿洞魔化鼠掉落铁矿石
+  await clickByText('新游戏')
+  await clickByText('确认进入天梦大陆')
+  await clickByText('废弃矿洞')
+  body = await bodyText()
+  check('P020: Boss 战前背包不存在铁矿石', !body.includes('铁矿石'))
+  await clickByText('迎战')
+  await sleep(300)
+  body = await bodyText()
+  check('P020: 魔化鼠战斗开始（HP 6 / 6）', body.includes('魔化鼠') && body.includes('6 / 6'))
+  await page.evaluate(() => {
+    window.__origRandom = Math.random.bind(Math)
+    Math.random = () => 0.999 // 天然 20，暴击 12 一击击杀 HP6 魔化鼠
+  })
+  await clickByText('普通攻击')
+  await sleep(300)
+  body = await bodyText()
+  check('P020: 首次击败魔化鼠（战斗胜利）', body.includes('战斗胜利'))
+  await page.evaluate(() => {
+    Math.random = window.__origRandom
+  })
+  await clickByText('返回冒险')
+  body = await bodyText()
+  check('P020: 返回冒险背包显示铁矿石 ×1', body.includes('铁矿石 ×1'))
+  check('P020: 铁矿石描述含普通铁矿石与金属光泽', body.includes('普通铁矿石') && body.includes('金属光泽'))
+
+  // 重复击败堆叠
+  await clickByText('迎战')
+  await sleep(300)
+  await page.evaluate(() => {
+    window.__origRandom = Math.random.bind(Math)
+    Math.random = () => 0.999
+  })
+  await clickByText('普通攻击')
+  await sleep(300)
+  body = await bodyText()
+  check('P020: 再次击败魔化鼠（战斗胜利）', body.includes('战斗胜利'))
+  await page.evaluate(() => {
+    Math.random = window.__origRandom
+  })
+  await clickByText('返回冒险')
+  body = await bodyText()
+  check('P020: 重复击败后铁矿石堆叠为 ×2', body.includes('铁矿石 ×2'))
+  check('P020: 不出现两条独立铁矿石 ×1', !body.includes('铁矿石 ×1'))
+
+  // 存档恢复
+  await clickByText('保存游戏')
+  await clickByText('返回主菜单')
+  await clickByText('继续游戏')
+  body = await bodyText()
+  check('P020: Continue 后铁矿石仍 ×2', body.includes('铁矿石 ×2'))
+  await clickByText('返回主菜单')
+
   // R2：运行期间存档改坏 → 触发一次 load → Continue 禁用且不进入游戏页
   await clickByText('新游戏')
   await clickByText('确认进入天梦大陆') // P004：默认预填合法，直接确认创建

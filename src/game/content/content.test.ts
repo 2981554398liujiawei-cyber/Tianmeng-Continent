@@ -275,6 +275,22 @@ describe('TM-P0-013：铁剑武器伤害加成数据约束', () => {
   })
 })
 
+describe('TM-P0-020：铁矿石静态数据约束', () => {
+  it('iron_ore 精确锁定（id/name/type/description/value）', () => {
+    const ore = getItem('iron_ore')
+    expect(ore?.id).toBe('iron_ore')
+    expect(ore?.name).toBe('铁矿石')
+    expect(ore?.type).toBe('material')
+    expect(ore?.description).toBe('从废弃矿洞中取得的普通铁矿石，表面带着粗粝的金属光泽。')
+    expect(ore?.value).toBe(5)
+  })
+
+  it('iron_ore 无 healAmount / weaponDamageBonus', () => {
+    expect(getItem('iron_ore')?.healAmount).toBeUndefined()
+    expect(getItem('iron_ore')?.weaponDamageBonus).toBeUndefined()
+  })
+})
+
 describe('TM-P0-015：NPC greeting 对话数据约束', () => {
   it('所有 NPC greeting 为非空字符串（trim 后长度 > 0）', () => {
     for (const npc of Object.values(NPCS)) {

@@ -208,6 +208,15 @@ TM-P0-019（《兔子的路径》新线索突出展示）：
 - 本卡无 Store/GameState 修改；GameState 类型结构未变、SAVE_VERSION 仍 1
 - 3 项 E2E（未获得藏宝图时新游戏不显示新的线索/Boss 正式流程返回冒险显示新的线索区（含藏宝图与黄金兔子王）/保存 Continue 后新的线索仍显示）
 
+TM-P0-020（废弃矿洞魔化鼠掉落铁矿石）：
+- ItemType 新增唯一类型 `material`（weapon/armor/accessory/consumable/quest/material，未加 junk/crafting/ore/resource/loot）；新增静态物品 iron_ore（id/name=铁矿石/type=material/description 精确锁定/value=5，无 healAmount/weaponDamageBonus）；内容测试精确锁定全部字段
+- resolveCombatVictory 仍是唯一正式胜利提交入口（前置三重校验保留：enemyId 存在/当前地点存在/敌人属于当前地点 enemyIds）；新增固定战利品分支：废弃矿洞击败魔化鼠 → 铁矿石 +1（重复胜利堆叠更新同一 entry，不建重复条目）；未新增 grantIronOre/lootEnemy 等 Action，App/CombatPage 不直接 addItem
+- 数量安全：已有数量需 Number.isSafeInteger 且 >=1 且 +1 仍安全整数才更新；quantity=MAX_SAFE_INTEGER 时合法胜利仍返回 true 但 inventory 完全不变（未用 BigInt）
+- 防伪与零回归：错误地点伪造（青石村调 corrupted_rat）false 且 GameState 完全不变；未知敌人 false；魔化兔推进任务且不掉 iron_ore；嘟嘟兔仅 rabbit_path 唯一奖励不掉 iron_ore；魔化狼不新增任何奖励；无金币/经验/HP·MP/attributes/equipment/quests/world.flags/completedEvents/npcStates 修改
+- 敌人数据（corrupted_rat Lv1 HP6 DEF10 攻击+2 伤害2）与战斗公式未动；未建立掉落表/概率/权重；GamePage 无需专用战利品 UI（胜利返回后背包自然显示铁矿石，无掉落弹窗/Toast/结算页）；铁矿石暂不可出售/锻造（value 仅为静态数据）
+- GameState 类型结构未变、SAVE_VERSION 仍 1
+- 2 个内容测试（iron_ore 精确锁定/无 healAmount·weaponDamageBonus）+ 9 个 Store 单测（首次胜利 ×1/重复堆叠 ×2 且仅一条 entry/错误地点 false/未知敌人 false/魔化兔零回归/嘟嘟兔零回归/数量边界胜利 true 但不变/无其他副作用/不自动保存）+ 9 项 E2E（战前无铁矿石/固定天然20 首次掉落 ×1 与描述/重复击败堆叠 ×2 且无两条 ×1/存档恢复仍 ×2）
+
 ## 目录结构
 
 ```
