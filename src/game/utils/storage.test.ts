@@ -163,3 +163,98 @@ describe('TM-P0-001-R1：有效存档判定统一（loadGame / hasSave 共用）
     expect(loadGame()).toBeNull()
   })
 })
+
+describe('TM-P0-001-R2：类型守卫与运行时类型一致', () => {
+  const writeRaw = (gameState: unknown) => {
+    localStorage.setItem(
+      SAVE_KEY,
+      JSON.stringify({ version: SAVE_VERSION, savedAt: 'x', gameState }),
+    )
+  }
+  const validWorld = () => ({
+    currentLocationId: 'qingshi_village',
+    flags: {},
+    completedEvents: [],
+    npcStates: {},
+  })
+  const validPlayer = () => ({
+    id: 'p1',
+    name: '石头城',
+    gender: 'male',
+    level: 1,
+    profession: 'knight',
+    attributes: { str: 14, con: 12, agi: 10, mnd: 8, lck: 10 },
+    hp: 22,
+    maxHp: 22,
+    mp: 6,
+    maxMp: 6,
+    gold: 50,
+  })
+  const validBase = () => ({
+    player: validPlayer(),
+    inventory: [],
+    equipment: { weapon: null, armor: null, accessory: null },
+    quests: [],
+    world: validWorld(),
+  })
+
+  it('非法 profession "cleric" → 拒绝', () => {
+    writeRaw({ ...validBase(), player: { ...validPlayer(), profession: 'cleric' } })
+    expect(loadGame()).toBeNull()
+    expect(hasSave()).toBe(false)
+  })
+
+  it('quests 元素为空对象 → 拒绝', () => {
+    writeRaw({ ...validBase(), quests: [{}] })
+    expect(loadGame()).toBeNull()
+  })
+
+  it('quests 元素状态非法 → 拒绝', () => {
+    writeRaw({
+      ...validBase(),
+      quests: [{ questId: 'q1', status: 'bogus', stage: 0, flags: {} }],
+    })
+    expect(loadGame()).toBeNull()
+  })
+
+  it('world.completedEvents 含非字符串元素 → 拒绝', () => {
+    writeRaw({ ...validBase(), world: { ...validWorld(), completedEvents: [123] } })
+    expect(loadGame()).toBeNull()
+  })
+
+  it('world.flags 含非法值 null → 拒绝', () => {
+    writeRaw({ ...validBase(), world: { ...validWorld(), flags: { x: null } } })
+    expect(loadGame()).toBeNull()
+  })
+
+  it('world.npcStates 含非法 NpcState → 拒绝', () => {
+    writeRaw({
+      ...validBase(),
+      world: {
+        ...validWorld(),
+        npcStates: {
+          elder: { npcId: 'elder', alive: true, locationId: 'x', relationship: { trust: 'high' } },
+        },
+      },
+    })
+    expect(loadGame()).toBeNull()
+  })
+
+  it('合法 npcStates（含 romanceInterest）→ 接受', () => {
+    writeRaw({
+      ...validBase(),
+      world: {
+        ...validWorld(),
+        npcStates: {
+          elder: {
+            npcId: 'elder',
+            alive: true,
+            locationId: 'qingshi_village',
+            relationship: { trust: 1, affection: 2, respect: 3, fear: 0, resentment: 0, romanceInterest: true },
+          },
+        },
+      },
+    })
+    expect(loadGame()).not.toBeNull()
+  })
+})

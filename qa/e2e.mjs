@@ -115,6 +115,21 @@ try {
   await clickByText('返回主菜单')
   check('删除存档后「继续游戏」重新禁用', (await continueDisabled()) === true)
 
+  // R2：运行期间存档改坏 → 触发一次 load → Continue 禁用且不进入游戏页
+  await clickByText('新游戏')
+  await clickByText('保存游戏')
+  await clickByText('返回主菜单')
+  check('R2: 合法存档存在时 Continue 可用', (await continueDisabled()) === false)
+  await clickByText('开发者控制台')
+  await page.evaluate(() => {
+    window.localStorage.setItem('tianmeng_continent_save', '{ broken')
+  })
+  await clickByText('返回主菜单')
+  await clickByText('继续游戏') // 按钮此时仍 enabled（hasSave 尚未同步），点击触发 loadGame
+  body = await bodyText()
+  check('R2: 运行期改坏后点击继续不进入游戏页', body.includes('天梦大陆') && !body.includes('冒险日志'))
+  check('R2: 运行期改坏并触发 load 后 Continue 随即禁用', (await continueDisabled()) === true)
+
   // R1：五件套存在但 player 内部损坏的坏档 → 刷新后主菜单正常、继续游戏禁用
   await page.evaluate(() => {
     const bad = {

@@ -7,6 +7,9 @@ export type Gender = 'male' | 'female'
 
 export type ProfessionId = 'warrior' | 'knight' | 'ranger' | 'mage'
 
+/** 职业白名单（运行时校验用，与 ProfessionId 保持单一来源） */
+export const PROFESSION_IDS: readonly ProfessionId[] = ['warrior', 'knight', 'ranger', 'mage']
+
 export interface Character {
   id: string
   name: string

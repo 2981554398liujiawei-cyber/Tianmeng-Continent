@@ -1,4 +1,6 @@
 import type { GameState, Character, Inventory, Equipment, WorldState } from '../types'
+import { PROFESSION_IDS } from '../types/character'
+import { QUEST_STATUSES } from '../types/quest'
 
 export const SAVE_KEY = 'tianmeng_continent_save'
 export const SAVE_VERSION = 1
@@ -41,7 +43,10 @@ function isCharacter(value: unknown): value is Character {
   if (typeof value.name !== 'string' || value.name === '') return false
   if (value.gender !== 'male' && value.gender !== 'female') return false
   if (!isNonNegativeInteger(value.level)) return false
-  if (typeof value.profession !== 'string' || value.profession === '') return false
+  // R2：profession 必须是现有职业枚举之一
+  if (typeof value.profession !== 'string' || !(PROFESSION_IDS as readonly string[]).includes(value.profession)) {
+    return false
+  }
   const attrs = value.attributes
   if (!isRecord(attrs)) return false
   for (const key of ATTRIBUTE_KEYS) {
@@ -68,16 +73,56 @@ function isEquipment(value: unknown): value is Equipment {
   return slotOk(value.weapon) && slotOk(value.armor) && slotOk(value.accessory)
 }
 
+function isFlagValue(value: unknown): value is boolean | number | string {
+  return typeof value === 'boolean' || typeof value === 'number' || typeof value === 'string'
+}
+
+/** R2：quests 的每个元素必须是合法 QuestState */
+function isQuestState(value: unknown): boolean {
+  if (!isRecord(value)) return false
+  if (typeof value.questId !== 'string' || value.questId === '') return false
+  if (typeof value.status !== 'string' || !(QUEST_STATUSES as readonly string[]).includes(value.status)) {
+    return false
+  }
+  if (typeof value.stage !== 'number' || !Number.isInteger(value.stage) || value.stage < 0) return false
+  const flags = value.flags
+  if (!isRecord(flags)) return false
+  return Object.values(flags).every(isFlagValue)
+}
+
 function isQuests(value: unknown): boolean {
-  return Array.isArray(value)
+  return Array.isArray(value) && value.every(isQuestState)
+}
+
+/** R2：npcStates 的每个 value 必须是合法 NpcState */
+function isNpcState(value: unknown): boolean {
+  if (!isRecord(value)) return false
+  if (typeof value.npcId !== 'string' || value.npcId === '') return false
+  if (typeof value.alive !== 'boolean') return false
+  if (typeof value.locationId !== 'string' || value.locationId === '') return false
+  const rel = value.relationship
+  if (!isRecord(rel)) return false
+  for (const key of ['trust', 'affection', 'respect', 'fear', 'resentment']) {
+    if (typeof rel[key] !== 'number' || !Number.isFinite(rel[key])) return false
+  }
+  if (rel.romanceInterest !== undefined && typeof rel.romanceInterest !== 'boolean') return false
+  return true
+}
+
+function isNpcStates(value: unknown): boolean {
+  if (!isRecord(value)) return false
+  return Object.values(value).every(isNpcState)
 }
 
 function isWorld(value: unknown): value is WorldState {
   if (!isRecord(value)) return false
   if (typeof value.currentLocationId !== 'string' || value.currentLocationId === '') return false
-  if (!isRecord(value.flags)) return false
-  if (!Array.isArray(value.completedEvents)) return false
-  if (!isRecord(value.npcStates)) return false
+  const flags = value.flags
+  if (!isRecord(flags)) return false
+  if (!Object.values(flags).every(isFlagValue)) return false
+  const events = value.completedEvents
+  if (!Array.isArray(events) || !events.every((e) => typeof e === 'string')) return false
+  if (!isNpcStates(value.npcStates)) return false
   return true
 }
 

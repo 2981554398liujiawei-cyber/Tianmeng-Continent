@@ -45,6 +45,8 @@ export const useGameStore = create<GameStoreState>()((set) => ({
       set({ gameState: save.gameState, hasSave: true })
       return true
     }
+    // R2：storage 已无合法存档时同步 hasSave，保持「hasSave = storage 当前是否存在合法档」
+    set({ hasSave: false })
     return false
   },
 
@@ -53,8 +55,9 @@ export const useGameStore = create<GameStoreState>()((set) => ({
     set((s) => {
       if (!s.gameState) return {}
       ok = persistGame(s.gameState)
-      // 只有实际写入成功才标记为已有存档（TM-P0-001-R1）
-      return { hasSave: ok }
+      // R2：hasSave 始终反映 storage 的真实状态，而不是本次写入结果；
+      // 写入失败但旧合法存档仍在时，不得错误地丢失 hasSave=true
+      return { hasSave: storageHasSave() }
     })
     return ok
   },

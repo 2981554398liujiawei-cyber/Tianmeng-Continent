@@ -158,3 +158,30 @@ describe('TM-P0-001-R1：存档生命周期', () => {
     expect(useGameStore.getState().loadGame()).toBe(false)
   })
 })
+
+describe('TM-P0-001-R2：hasSave 与 storage 真实状态一致', () => {
+  it('已有合法旧档，下一次写入失败：saveGame 返回 false 但 hasSave 保持 true，旧档仍可加载', () => {
+    useGameStore.getState().saveGame()
+    expect(useGameStore.getState().hasSave).toBe(true)
+
+    vi.spyOn(localStorage, 'setItem').mockImplementation(() => {
+      throw new Error('QuotaExceededError')
+    })
+    const ok = useGameStore.getState().saveGame()
+    expect(ok).toBe(false)
+    // R2：写入失败不得错误丢失旧存档的 hasSave=true
+    expect(useGameStore.getState().hasSave).toBe(true)
+    // 旧合法存档仍能加载
+    expect(useGameStore.getState().loadGame()).toBe(true)
+  })
+
+  it('运行期间存档被改坏：loadGame 返回 false 并同步 hasSave=false', () => {
+    useGameStore.getState().saveGame()
+    expect(useGameStore.getState().hasSave).toBe(true)
+
+    localStorage.setItem('tianmeng_continent_save', '{ broken')
+    const ok = useGameStore.getState().loadGame()
+    expect(ok).toBe(false)
+    expect(useGameStore.getState().hasSave).toBe(false)
+  })
+})

@@ -7,6 +7,16 @@ export type QuestStatus =
   | 'completed' // 已完成
   | 'failed' // 失败
 
+/** 任务状态白名单（运行时校验用，与 QuestStatus 保持单一来源） */
+export const QUEST_STATUSES: readonly QuestStatus[] = [
+  'undiscovered',
+  'available',
+  'in_progress',
+  'completable',
+  'completed',
+  'failed',
+]
+
 export interface QuestState {
   questId: string
   status: QuestStatus
