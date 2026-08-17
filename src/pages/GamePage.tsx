@@ -56,6 +56,7 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
   const equipWeapon = useGameStore((s) => s.equipWeapon)
   const unequipWeapon = useGameStore((s) => s.unequipWeapon)
   const buyHealingPotion = useGameStore((s) => s.buyHealingPotion)
+  const sellIronOre = useGameStore((s) => s.sellIronOre)
   const investigateAbandonedMine = useGameStore((s) => s.investigateAbandonedMine)
   const [saveResult, setSaveResult] = useState<'saved' | 'failed' | null>(null)
   const [travelError, setTravelError] = useState(false)
@@ -333,6 +334,37 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
                     购买
                   </Button>
                   {!canAfford && <span className="text-xs text-red-300">金币不足</span>}
+                </div>
+              </div>
+            )
+          })()}
+        </section>
+      )}
+
+      {/* TM-P0-021：铁匠收购 —— 仅当前地点存在铁匠时显示（读 NPC 注册表） */}
+      {getNpc('blacksmith')?.locationId === world.currentLocationId && (
+        <section className="rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
+          <h3 className="mb-3 text-sm font-bold tracking-wider text-bone-500">铁匠的收购</h3>
+          {(() => {
+            const ore = getItem('iron_ore')
+            if (!ore) return <p className="text-bone-500">货架空空如也。</p>
+            const price = ore.value
+            const held = gameState.inventory.find((e) => e.itemId === 'iron_ore')?.quantity ?? 0
+            const canSell = held >= 1
+            return (
+              <div className="flex items-center justify-between gap-3 rounded border border-ink-600 bg-ink-900/40 p-3">
+                <div>
+                  <p className="font-bold text-bone-100">{ore.name}</p>
+                  <p className="mt-1 text-xs text-bone-500">
+                    {ore.description} 收购价：{price} 金币
+                  </p>
+                  <p className="mt-1 text-xs text-bone-500">持有：{held}</p>
+                </div>
+                <div className="flex flex-col items-end gap-1">
+                  <Button variant="primary" disabled={!canSell} onClick={() => sellIronOre()}>
+                    出售 1 个
+                  </Button>
+                  {!canSell && <span className="text-xs text-red-300">没有可出售的铁矿石</span>}
                 </div>
               </div>
             )

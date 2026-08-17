@@ -1280,3 +1280,109 @@ describe('TM-P0-020：魔化鼠掉落铁矿石', () => {
     expect(useGameStore.getState().hasSave).toBe(false)
   })
 })
+
+describe('TM-P0-021：sellIronOre 铁匠收购', () => {
+  const gold = () => useGameStore.getState().gameState?.player.gold
+  const oreQty = () =>
+    useGameStore.getState().gameState?.inventory.find((e) => e.itemId === 'iron_ore')?.quantity ?? 0
+  const hasOreEntry = () =>
+    useGameStore.getState().gameState?.inventory.some((e) => e.itemId === 'iron_ore') ?? false
+
+  const giveOre = (n: number) => {
+    useGameStore.setState({
+      gameState: {
+        ...useGameStore.getState().gameState!,
+        inventory: [...useGameStore.getState().gameState!.inventory, { itemId: 'iron_ore', quantity: n }],
+      },
+    })
+  }
+
+  it('A. 正常出售：青石村 gold 50 铁矿石×2 → true，gold 55，×1', () => {
+    giveOre(2)
+    expect(useGameStore.getState().sellIronOre()).toBe(true)
+    expect(gold()).toBe(55)
+    expect(oreQty()).toBe(1)
+  })
+
+  it('B. 出售最后一个：×1 → true，gold 55，iron_ore entry 删除', () => {
+    giveOre(1)
+    expect(useGameStore.getState().sellIronOre()).toBe(true)
+    expect(gold()).toBe(55)
+    expect(hasOreEntry()).toBe(false)
+  })
+
+  it('C. 无铁矿石 → false，GameState 完全不变', () => {
+    const snapshot = JSON.stringify(useGameStore.getState().gameState)
+    expect(useGameStore.getState().sellIronOre()).toBe(false)
+    expect(JSON.stringify(useGameStore.getState().gameState)).toBe(snapshot)
+  })
+
+  it('D. 错误地点：abandoned_mine 拥有铁矿石 → false，GameState 完全不变', () => {
+    useGameStore.getState().travelToLocation('abandoned_mine')
+    giveOre(1)
+    const snapshot = JSON.stringify(useGameStore.getState().gameState)
+    expect(useGameStore.getState().sellIronOre()).toBe(false)
+    expect(JSON.stringify(useGameStore.getState().gameState)).toBe(snapshot)
+  })
+
+  it('E. 无 GameState → false', () => {
+    useGameStore.setState({ gameState: null })
+    expect(useGameStore.getState().sellIronOre()).toBe(false)
+  })
+
+  it('F. 金币溢出：gold=MAX_SAFE_INTEGER → false，GameState 完全不变', () => {
+    giveOre(1)
+    useGameStore.setState({
+      gameState: {
+        ...useGameStore.getState().gameState!,
+        player: { ...useGameStore.getState().gameState!.player, gold: Number.MAX_SAFE_INTEGER },
+      },
+    })
+    const snapshot = JSON.stringify(useGameStore.getState().gameState)
+    expect(useGameStore.getState().sellIronOre()).toBe(false)
+    expect(JSON.stringify(useGameStore.getState().gameState)).toBe(snapshot)
+  })
+
+  it('G. 异常 quantity：0 / 非安全整数 → false，GameState 完全不变', () => {
+    // quantity 0
+    giveOre(0)
+    const s0 = JSON.stringify(useGameStore.getState().gameState)
+    expect(useGameStore.getState().sellIronOre()).toBe(false)
+    expect(JSON.stringify(useGameStore.getState().gameState)).toBe(s0)
+    // 非安全整数（MAX_SAFE_INTEGER + 1 为不安全整数）
+    useGameStore.setState({
+      gameState: {
+        ...useGameStore.getState().gameState!,
+        inventory: useGameStore.getState().gameState!.inventory.filter((e) => e.itemId !== 'iron_ore'),
+      },
+    })
+    giveOre(Number.MAX_SAFE_INTEGER + 1)
+    const s1 = JSON.stringify(useGameStore.getState().gameState)
+    expect(useGameStore.getState().sellIronOre()).toBe(false)
+    expect(JSON.stringify(useGameStore.getState().gameState)).toBe(s1)
+  })
+
+  it('H. 原子副作用边界：除 player.gold 与 inventory.iron_ore 外 equipment/quests/world/hp/mp/level/attributes 全不变', () => {
+    giveOre(2)
+    const before = useGameStore.getState().gameState!
+    useGameStore.getState().sellIronOre()
+    const after = useGameStore.getState().gameState!
+    expect(after.equipment).toEqual(before.equipment)
+    expect(after.quests).toEqual(before.quests)
+    expect(after.world).toEqual(before.world)
+    expect(after.player.hp).toBe(before.player.hp)
+    expect(after.player.mp).toBe(before.player.mp)
+    expect(after.player.level).toBe(before.player.level)
+    expect(after.player.attributes).toEqual(before.player.attributes)
+    expect(after.player.gold).toBe(before.player.gold + 5)
+    // 铁剑装备不受影响（equipment 未变）
+    expect(after.inventory.filter((e) => e.itemId === 'iron_ore')).toHaveLength(1)
+  })
+
+  it('I. 不自动保存：成功出售后 hasSave 仍 false', () => {
+    giveOre(1)
+    useGameStore.getState().sellIronOre()
+    expect(gold()).toBe(55)
+    expect(useGameStore.getState().hasSave).toBe(false)
+  })
+})

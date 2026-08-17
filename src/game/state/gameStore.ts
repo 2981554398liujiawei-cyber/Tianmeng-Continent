@@ -57,6 +57,8 @@ interface GameStoreState {
   unequipWeapon: () => boolean
   /** 在药师处购买治疗药水：gold 扣减与药水增加原子完成；不治疗、不自动保存（TM-P0-014） */
   buyHealingPotion: () => boolean
+  /** 在铁匠处出售铁矿石：gold 增加与铁矿石减少原子完成；不自动保存（TM-P0-021） */
+  sellIronOre: () => boolean
   /** 调查废弃矿洞（TM-P0-016）：心智 D20 检定一次性写入 flags；非法/已调查/异常 → null 且不变 */
   investigateAbandonedMine: () => D20CheckResult | null
   addGold: (amount: number) => void
@@ -457,6 +459,42 @@ export const useGameStore = create<GameStoreState>()((set) => ({
       }
     })
     return result
+  },
+
+  sellIronOre: () => {
+    let sold = false
+    set((s) => {
+      if (!s.gameState) return {}
+      // Store 自校验：当前地点必须有铁匠在场（读 NPC 注册表，不硬编码地点）
+      const blacksmith = getNpc('blacksmith')
+      if (!blacksmith || blacksmith.locationId !== s.gameState.world.currentLocationId) return {}
+      // 商品数据校验：铁矿石存在、material、value 为正安全整数（价格唯一来源 ItemDefinition.value）
+      const ore = getItem('iron_ore')
+      if (!ore || ore.type !== 'material') return {}
+      const price = ore.value
+      if (!Number.isSafeInteger(price) || price <= 0) return {}
+      // 库存校验：拥有铁矿石且数量为正安全整数
+      const inv = s.gameState.inventory
+      const idx = inv.findIndex((e) => e.itemId === 'iron_ore')
+      if (idx < 0) return {}
+      const quantity = inv[idx]?.quantity
+      if (!Number.isSafeInteger(quantity) || (quantity ?? 0) < 1) return {}
+      // 金币安全：非负安全整数且 +price 仍安全整数
+      const gold = s.gameState.player.gold
+      if (!Number.isSafeInteger(gold) || gold < 0 || !Number.isSafeInteger(gold + price)) return {}
+      // 原子交易：金币增加与铁矿石减少在同一次 Store 更新中完成（不拼接 removeItem/addGold）
+      const remaining = (quantity ?? 0) - 1
+      const inventory = remaining > 0 ? inv.map((e, i) => (i === idx ? { ...e, quantity: remaining } : e)) : inv.filter((e) => e.itemId !== 'iron_ore')
+      sold = true
+      return {
+        gameState: {
+          ...s.gameState,
+          player: { ...s.gameState.player, gold: gold + price },
+          inventory,
+        },
+      }
+    })
+    return sold
   },
 
   addGold: (amount) => {

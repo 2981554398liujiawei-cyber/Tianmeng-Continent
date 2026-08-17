@@ -217,6 +217,14 @@ TM-P0-020（废弃矿洞魔化鼠掉落铁矿石）：
 - GameState 类型结构未变、SAVE_VERSION 仍 1
 - 2 个内容测试（iron_ore 精确锁定/无 healAmount·weaponDamageBonus）+ 9 个 Store 单测（首次胜利 ×1/重复堆叠 ×2 且仅一条 entry/错误地点 false/未知敌人 false/魔化兔零回归/嘟嘟兔零回归/数量边界胜利 true 但不变/无其他副作用/不自动保存）+ 9 项 E2E（战前无铁矿石/固定天然20 首次掉落 ×1 与描述/重复击败堆叠 ×2 且无两条 ×1/存档恢复仍 ×2）
 
+TM-P0-021（青石村铁匠收购铁矿石）：
+- Store 新增唯一出售入口 `sellIronOre()`（未实现 sellItem/sellMaterial/merchantSell/trade 通用系统）：Store 自校验当前地点存在铁匠（getNpc('blacksmith').locationId === 当前地点，未硬编码地点）、商品数据（getItem('iron_ore') 存在/type==='material'/value 正安全整数）、库存（iron_ore quantity>=1 且安全整数）、金币安全（非负安全整数且 +value 仍安全整数）；价格唯一来源 iron_ore.value（5 金币）
+- 成功：gold += value 且铁矿石 -1（最后一块删除 entry，不留 ×0）在同一次 Store 更新中原子完成（未拼接 removeItem/addGold）；失败（无铁矿石/错误地点如废弃矿洞/金币溢出 MAX_SAFE_INTEGER/异常 quantity 0·非安全整数/无 gameState）→ false 且 GameState 完全不变
+- 不出售其他物品（铁剑/治疗药水/兔子的路径/测试遗物——rabbit_path 永不进入出售逻辑）；铁剑装备（equipment.weapon=iron_sword）零影响；不自动保存
+- GamePage 新增「铁匠的收购」区：仅当前地点存在铁匠时显示（正常仅青石村，其他地点整个区域隐藏）；铁矿石名称/description/收购价（5 金币）全部读注册表（未复制文案/第二价格常量）；显示「持有：N」+[出售 1 个]；无铁矿石时按钮 disabled 并显示「没有可出售的铁矿石」（UI 禁用非安全边界，Store 独立校验）；与铁匠交谈（附近人物）互相独立，greeting 未改
+- GameState 类型结构未变、SAVE_VERSION 仍 1
+- 9 个 Store 单测（正常出售 50→55 ×2→1/出售最后一个删除 entry/无铁矿石 false/错误地点 false/无 gameState/金币溢出 false/异常 quantity false/原子副作用边界 equipment·quests·world·hp·mp·level·attributes 全不变/不自动保存）+ 12 项 E2E（正式获取 ×2→回村铁匠收购区与持有 2/出售 50→55 铁矿石×1/存档恢复 ×1+55/经济联动 55→45 药师购药/最后一块出售 45→50 且按钮禁用+没有可出售的铁矿石）
+
 ## 目录结构
 
 ```

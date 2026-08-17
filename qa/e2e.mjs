@@ -825,6 +825,64 @@ try {
   check('P020: Continue 后铁矿石仍 ×2', body.includes('铁矿石 ×2'))
   await clickByText('返回主菜单')
 
+  // P021：青石村铁匠收购铁矿石
+  await clickByText('新游戏')
+  await clickByText('确认进入天梦大陆')
+  await clickByText('废弃矿洞')
+  await sleep(300)
+  const killRat = async () => {
+    await clickByText('迎战')
+    await sleep(300)
+    await page.evaluate(() => {
+      window.__origRandom = Math.random.bind(Math)
+      Math.random = () => 0.999
+    })
+    await clickByText('普通攻击')
+    await sleep(300)
+    await page.evaluate(() => {
+      Math.random = window.__origRandom
+    })
+    body = await bodyText()
+    check('P021: 击败魔化鼠获得铁矿石（战斗胜利）', body.includes('战斗胜利'))
+    await clickByText('返回冒险')
+  }
+  await killRat()
+  body = await bodyText()
+  check('P021: 首次掉落铁矿石 ×1', body.includes('铁矿石 ×1'))
+  await killRat()
+  body = await bodyText()
+  check('P021: 铁矿石 ×2', body.includes('铁矿石 ×2'))
+  await clickByText('青石村')
+  body = await bodyText()
+  check('P021: 青石村显示铁匠的收购（收购价 5 金币）', body.includes('铁匠的收购') && body.includes('收购价：5 金币'))
+  check('P021: 持有 2 且出售按钮启用', body.includes('持有：2') && (await buttonDisabled('出售 1 个')) === false)
+  await clickByText('出售 1 个')
+  await sleep(200)
+  body = await bodyText()
+  check('P021: 出售后金币 50→55 铁矿石 ×1', body.includes('55') && body.includes('铁矿石 ×1'))
+
+  // 存档恢复：铁矿石 ×1 金币 55
+  await clickByText('保存游戏')
+  await clickByText('返回主菜单')
+  await clickByText('继续游戏')
+  body = await bodyText()
+  check('P021: Continue 后铁矿石 ×1 金币 55', body.includes('铁矿石 ×1') && body.includes('55'))
+
+  // 经济联动：铁匠出售金币 → 药师购买药水（55→45）
+  await clickByText('购买')
+  await sleep(200)
+  body = await bodyText()
+  check('P021: 战利品经济闭环（金币 55→45 药水+1）', body.includes('治疗药水 ×3'))
+
+  // 出售最后一块
+  await clickByText('出售 1 个')
+  await sleep(200)
+  body = await bodyText()
+  check('P021: 最后一块出售后金币 45→50 背包无铁矿石', body.includes('50') && !body.includes('铁矿石 ×1'))
+  check('P021: 无铁矿石时出售按钮禁用', (await buttonDisabled('出售 1 个')) === true)
+  check('P021: 显示没有可出售的铁矿石', body.includes('没有可出售的铁矿石'))
+  await clickByText('返回主菜单')
+
   // R2：运行期间存档改坏 → 触发一次 load → Continue 禁用且不进入游戏页
   await clickByText('新游戏')
   await clickByText('确认进入天梦大陆') // P004：默认预填合法，直接确认创建
