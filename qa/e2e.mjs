@@ -238,6 +238,31 @@ try {
   }
   await clickByText('青石村')
 
+  // P008-R1：固定 Math.random 让第一击天然 20（暴击 12 > 魔化兔 HP 8）→ 胜利且玩家 HP 完全不变（无反击）
+  await clickByText('村外草原')
+  await clickByText('迎战')
+  await sleep(300)
+  body = await bodyText()
+  const hpBeforeDeterministic = readHps(body)
+  await page.evaluate(() => {
+    window.__origRandom = Math.random.bind(Math)
+    Math.random = () => 0.999 // floor(0.999 * 20) + 1 = 20
+  })
+  await clickByText('普通攻击')
+  await sleep(300)
+  body = await bodyText()
+  check('P008-R1: 天然 20 第一击即战斗胜利', body.includes('战斗胜利'))
+  const hpAfterDeterministic = readHps(body)
+  check(
+    'P008-R1: 致死攻击后玩家 HP 完全不变（敌人不反击）',
+    hpAfterDeterministic.player === hpBeforeDeterministic.player && hpAfterDeterministic.player >= 0,
+  )
+  await page.evaluate(() => {
+    Math.random = window.__origRandom
+  })
+  await clickByText('返回冒险')
+  await clickByText('青石村')
+
   // 回主菜单 → 开发者控制台
   await clickByText('返回主菜单')
   await clickByText('开发者控制台')

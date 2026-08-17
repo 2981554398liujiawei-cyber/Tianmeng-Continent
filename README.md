@@ -117,6 +117,7 @@ TM-P0-008（单敌人回合战斗 MVP）：
 - App 保存瞬时 UI 状态 activeEnemyId（非 GameState，不进存档）；正式入口校验敌人存在且属于当前地点 enemyIds，未知 enemyId 不进战斗不崩溃
 - GameState 结构未改、SAVE_VERSION 仍 1
 - 4 个地点遭遇数据测试 + 5 个 damagePlayer 单测 + 9 项 E2E（迎战进战斗页/循环攻击 HP 单调非负/胜负结局/胜利返回/失败 Continue 恢复）
+- TM-P0-008-R1：combat.ts 新增确定性阶段纯函数 `resolvePlayerStrike`（致死攻击→victory 不反击/未命中→敌人回合继续）与 `getCombatPhaseAfterEnemyAttack`（HP 0→defeat），CombatPage 实际使用；5 个确定性单测（致死/超额截断/未击杀反击/未命中/HP 归零）+ E2E 固定 Math.random 天然 20 第一击即胜且玩家 HP 不变
 
 ## 目录结构
 

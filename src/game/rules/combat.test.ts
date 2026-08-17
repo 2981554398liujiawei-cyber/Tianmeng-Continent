@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
+  getCombatPhaseAfterEnemyAttack,
   getPlayerAttackBonus,
   getPlayerBasicDamage,
   getPlayerDefense,
   performAttack,
   resolveAttack,
+  resolvePlayerStrike,
 } from './combat'
 import { ENEMIES } from '../content/enemies'
 import { createInitialGameState } from '../content/initial'
@@ -113,6 +115,46 @@ describe('TM-P0-007：随机入口 performAttack', () => {
       expect(Number.isFinite(r.total)).toBe(true)
       expect(Number.isFinite(r.damage)).toBe(true)
     }
+  })
+})
+
+describe('TM-P0-008-R1：确定性战斗阶段结算', () => {
+  it('A. 致死攻击 → enemyHp 0 / victory / 不反击', () => {
+    const attack = resolveAttack(10, 4, 11, 6) // total 14 >= 11 命中
+    const r = resolvePlayerStrike(6, attack)
+    expect(r.enemyHp).toBe(0)
+    expect(r.phase).toBe('victory')
+    expect(r.enemyShouldCounter).toBe(false)
+  })
+
+  it('B. 超额伤害仍截断为 0（不得负数）', () => {
+    const crit = resolveAttack(20, 0, 10, 6) // 暴击 damage 12
+    const r = resolvePlayerStrike(2, crit)
+    expect(r.enemyHp).toBe(0)
+    expect(r.phase).toBe('victory')
+  })
+
+  it('C. 未击杀 → active / 允许反击', () => {
+    const attack = resolveAttack(10, 4, 11, 2) // 命中 damage 2
+    const r = resolvePlayerStrike(8, attack)
+    expect(r.enemyHp).toBe(6)
+    expect(r.phase).toBe('active')
+    expect(r.enemyShouldCounter).toBe(true)
+  })
+
+  it('D. 未命中 → 敌人 HP 不变 / active / 允许反击', () => {
+    const miss = resolveAttack(3, 4, 11, 6) // total 7 < 11 未命中
+    expect(miss.hit).toBe(false)
+    const r = resolvePlayerStrike(8, miss)
+    expect(r.enemyHp).toBe(8)
+    expect(r.phase).toBe('active')
+    expect(r.enemyShouldCounter).toBe(true)
+  })
+
+  it('E. 玩家 HP=0 → defeat；HP>0 → active', () => {
+    expect(getCombatPhaseAfterEnemyAttack(0)).toBe('defeat')
+    expect(getCombatPhaseAfterEnemyAttack(1)).toBe('active')
+    expect(getCombatPhaseAfterEnemyAttack(10)).toBe('active')
   })
 })
 

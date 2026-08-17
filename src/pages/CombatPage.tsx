@@ -8,7 +8,10 @@ import {
   getPlayerBasicDamage,
   getPlayerDefense,
   performAttack,
+  getCombatPhaseAfterEnemyAttack,
+  resolvePlayerStrike,
   type AttackResult,
+  type CombatPhase,
 } from '../game/rules/combat'
 
 interface CombatPageProps {
@@ -16,9 +19,6 @@ interface CombatPageProps {
   onVictory: () => void
   onDefeat: () => void
 }
-
-/** 战斗阶段（TM-P0-008）：本地 React 状态，不进 GameState / 存档 */
-type CombatPhase = 'active' | 'victory' | 'defeat'
 
 const ATTACK_OUTCOME_LABELS: Record<AttackResult['outcome'], string> = {
   critical_hit: '暴击',
@@ -69,7 +69,7 @@ export default function CombatPage({ enemyId, onVictory, onDefeat }: CombatPageP
 
   const handleAttack = () => {
     if (phase !== 'active') return
-    // 玩家先行动（复用封板战斗规则）
+    // 玩家先行动（复用封板战斗规则；阶段结算使用确定性纯函数 TM-P0-008-R1）
     const playerResult = performAttack(
       getPlayerAttackBonus(player.attributes.str, player.level),
       enemy.defense,
@@ -78,14 +78,11 @@ export default function CombatPage({ enemyId, onVictory, onDefeat }: CombatPageP
     setLastPlayerAttack(playerResult)
     setLastEnemyAttack(null)
 
-    let enemyHp = enemyCurrentHp
-    if (playerResult.hit) {
-      enemyHp = Math.max(0, enemyCurrentHp - playerResult.damage)
-      setEnemyCurrentHp(enemyHp)
-    }
-    if (enemyHp === 0) {
-      // 敌人归零 → 胜利，且敌人不得反击
-      setPhase('victory')
+    const strike = resolvePlayerStrike(enemyCurrentHp, playerResult)
+    setEnemyCurrentHp(strike.enemyHp)
+    if (!strike.enemyShouldCounter) {
+      // 致死攻击 → 胜利，且敌人不得反击
+      setPhase(strike.phase)
       return
     }
 
@@ -96,9 +93,7 @@ export default function CombatPage({ enemyId, onVictory, onDefeat }: CombatPageP
       damagePlayer(enemyResult.damage)
     }
     // 玩家 HP 归零 → 失败（不出现负 HP，damagePlayer 已保证）
-    if (useGameStore.getState().gameState?.player.hp === 0) {
-      setPhase('defeat')
-    }
+    setPhase(getCombatPhaseAfterEnemyAttack(useGameStore.getState().gameState?.player.hp ?? 1))
   }
 
   return (

@@ -116,3 +116,31 @@ export function resolveAttack(
 export function performAttack(attackBonus: number, defense: number, baseDamage: number): AttackResult {
   return resolveAttack(rollD20(), attackBonus, defense, baseDamage)
 }
+
+// ---- 单回合战斗阶段辅助（TM-P0-008-R1：确定性可测）----
+
+export type CombatPhase = 'active' | 'victory' | 'defeat'
+
+export interface PlayerStrikeResolution {
+  enemyHp: number
+  phase: 'active' | 'victory'
+  /** 玩家攻击后敌人是否应进行反击 */
+  enemyShouldCounter: boolean
+}
+
+/** 玩家一击后的战斗阶段结算：致死攻击 → victory 且不反击；未命中 → 敌人回合继续 */
+export function resolvePlayerStrike(enemyCurrentHp: number, attack: AttackResult): PlayerStrikeResolution {
+  if (!attack.hit) {
+    return { enemyHp: enemyCurrentHp, phase: 'active', enemyShouldCounter: true }
+  }
+  const enemyHp = Math.max(0, enemyCurrentHp - attack.damage)
+  if (enemyHp === 0) {
+    return { enemyHp, phase: 'victory', enemyShouldCounter: false }
+  }
+  return { enemyHp, phase: 'active', enemyShouldCounter: true }
+}
+
+/** 敌人反击后玩家战斗阶段：HP 归零 → defeat */
+export function getCombatPhaseAfterEnemyAttack(playerHp: number): 'active' | 'defeat' {
+  return playerHp === 0 ? 'defeat' : 'active'
+}
