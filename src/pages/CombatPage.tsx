@@ -18,6 +18,8 @@ interface CombatPageProps {
   enemyId: string
   onVictory: () => void
   onDefeat: () => void
+  /** TM-P0-022-R2：防御性异常出口（无 GameState / 未知 enemyId）→ 真正返回主菜单 */
+  onExitToMenu: () => void
 }
 
 const ATTACK_OUTCOME_LABELS: Record<AttackResult['outcome'], string> = {
@@ -35,7 +37,7 @@ function attackLine(result: AttackResult, defenderName: string): string {
   return `D20 ${result.roll} + 攻击加值 ${result.attackBonus} = ${result.total}；${defenderName}防御 ${result.defense}；${outcome}，未造成伤害`
 }
 
-export default function CombatPage({ enemyId, onVictory, onDefeat }: CombatPageProps) {
+export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu }: CombatPageProps) {
   const gameState = useGameStore((s) => s.gameState)
   const damagePlayer = useGameStore((s) => s.damagePlayer)
   const enemy = getEnemy(enemyId)
@@ -49,17 +51,17 @@ export default function CombatPage({ enemyId, onVictory, onDefeat }: CombatPageP
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-6">
         <p className="text-bone-300">当前没有进行中的游戏。</p>
-        <Button onClick={onDefeat}>返回主菜单</Button>
+        <Button onClick={onExitToMenu}>返回主菜单</Button>
       </div>
     )
   }
 
   if (!enemy) {
-    // 未知 enemyId：不得进入战斗、不得崩溃
+    // 未知 enemyId：不得进入战斗、不得崩溃（防御性异常出口，真正返回主菜单）
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-6">
         <p className="text-bone-300">未知敌人（{enemyId}），无法进入战斗。</p>
-        <Button onClick={onDefeat}>返回主菜单</Button>
+        <Button onClick={onExitToMenu}>返回主菜单</Button>
       </div>
     )
   }

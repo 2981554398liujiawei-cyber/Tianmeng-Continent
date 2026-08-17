@@ -240,6 +240,13 @@ TM-P0-022-R1（战败返回冒险并接通青石村休整——修复 Blocker）
 - Store/GameState schema 零修改（restAtVillage 等既有实现未动）；SAVE_VERSION 仍 1
 - 12 项 E2E（固定随机循环致死真正战败出现且按钮为返回冒险非主菜单/返回后当前位置村外草原+生命 0/22+当前状态无法战斗+迎战禁用/HP0 可移动回村/休整启用→22/22·6/6+状态良好/恢复后迎战重新启用/无存档起始下战败与休整全程不自动存档——继续游戏仍禁用）
 
+TM-P0-022-R2（区分正常战败与异常战斗退出——修复 Blocker）：
+- CombatPage Props 最小扩展：新增 onExitToMenu 回调（未建立 Router/Navigation abstraction）；正常战败（phase==='defeat'）仍调用 onDefeat → screen==='game'（返回冒险）不回退 R1
+- 两个防御性异常分支按钮真正执行 onExitToMenu：无 GameState（「当前没有进行中的游戏。」）与未知 enemyId（「未知敌人（…），无法进入战斗。」）→ setCombatEnemyId(null) + setScreen('main')，按钮文字与行为一致（不再调用正常战败 onDefeat）
+- App 提供最小主菜单退出回调（仅异常分支使用）；不自动 loadGame/saveGame/newGame/restAtVillage
+- Store/规则层（gameStore/combat/d20/storage/GameState types）零修改；SAVE_VERSION 仍 1；无新增依赖
+- R1 真正战败 E2E（225/225）零回归；未为三个边界新增测试库（保持实现最小）
+
 ## 目录结构
 
 ```

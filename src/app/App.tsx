@@ -56,12 +56,25 @@ export default function App() {
     setScreen('game')
   }
 
+  // TM-P0-022-R2：防御性异常出口（无 GameState / 未知 enemyId）真正返回主菜单，与正常战败区分
+  const handleExitToMenu = () => {
+    setCombatEnemyId(null)
+    setScreen('main')
+  }
+
   if (screen === 'create') {
     return <CharacterCreationPage onConfirm={handleConfirmCreation} onBack={() => setScreen('main')} />
   }
 
   if (screen === 'combat' && combatEnemyId) {
-    return <CombatPage enemyId={combatEnemyId} onVictory={handleVictory} onDefeat={handleDefeat} />
+    return (
+      <CombatPage
+        enemyId={combatEnemyId}
+        onVictory={handleVictory}
+        onDefeat={handleDefeat}
+        onExitToMenu={handleExitToMenu}
+      />
+    )
   }
 
   if (screen === 'game') {
