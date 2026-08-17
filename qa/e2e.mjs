@@ -581,6 +581,72 @@ try {
   check('P013: Continue 后铁剑仍 ×1', body.includes('铁剑 ×1'))
   await clickByText('返回主菜单')
 
+  // P014：药师商店与治疗药水购买
+  await clickByText('新游戏')
+  await clickByText('确认进入天梦大陆')
+  body = await bodyText()
+  check('P014: 青石村显示药师的小铺', body.includes('药师的小铺'))
+  check('P014: 商品信息读注册表（价格 10 金币）', body.includes('治疗药水') && body.includes('价格：10 金币'))
+  check('P014: 初始购买按钮启用', (await buttonDisabled('购买')) === false)
+  await clickByText('购买')
+  await sleep(200)
+  body = await bodyText()
+  check('P014: 购买后金币 40', body.includes('40'))
+  check('P014: 购买后治疗药水 ×3', body.includes('治疗药水 ×3'))
+
+  // 存档恢复：购买 → 保存 → Continue → 金币 40 / 药水 ×3
+  await clickByText('保存游戏')
+  await clickByText('返回主菜单')
+  await clickByText('继续游戏')
+  body = await bodyText()
+  check('P014: Continue 后金币 40 且药水 ×3', body.includes('40') && body.includes('治疗药水 ×3'))
+
+  // 确定性受伤（HP 22→20）后购买不治疗，再使用药水恢复
+  await clickByText('村外草原')
+  await clickByText('迎战')
+  await sleep(300)
+  await page.evaluate(() => {
+    window.__origRandom = Math.random.bind(Math)
+    const seq = [0.05, 0.35, 0.95] // 玩家2未命中 / 敌8命中伤2 / 玩家20击杀
+    let i = 0
+    Math.random = () => seq[Math.min(i++, seq.length - 1)]
+  })
+  await clickByText('普通攻击')
+  await sleep(200)
+  await clickByText('普通攻击')
+  await sleep(300)
+  body = await bodyText()
+  check('P014: 战斗胜利（受伤 2 点）', body.includes('战斗胜利'))
+  await page.evaluate(() => {
+    Math.random = window.__origRandom
+  })
+  await clickByText('返回冒险')
+  await clickByText('青石村')
+  body = await bodyText()
+  check('P014: 受伤后 HP 20 / 22', body.includes('20 / 22'))
+  await clickByText('购买')
+  await sleep(200)
+  body = await bodyText()
+  check('P014: 购买后 HP 仍 20（不自动治疗）', body.includes('20 / 22'))
+  check('P014: 购买后金币 30 药水 ×4', body.includes('治疗药水 ×4'))
+  await clickByText('使用')
+  await sleep(200)
+  body = await bodyText()
+  check('P014: 背包使用药水后 HP 22 / 22', body.includes('22 / 22'))
+  check('P014: 药水减少为 ×3', body.includes('治疗药水 ×3'))
+
+  // 金币不足：30→20→10→0，购买按钮禁用且显示金币不足
+  await clickByText('购买')
+  await sleep(150)
+  await clickByText('购买')
+  await sleep(150)
+  await clickByText('购买')
+  await sleep(150)
+  body = await bodyText()
+  check('P014: 金币耗尽后购买按钮禁用', (await buttonDisabled('购买')) === true)
+  check('P014: 显示金币不足', body.includes('金币不足'))
+  await clickByText('返回主菜单')
+
   // R2：运行期间存档改坏 → 触发一次 load → Continue 禁用且不进入游戏页
   await clickByText('新游戏')
   await clickByText('确认进入天梦大陆') // P004：默认预填合法，直接确认创建

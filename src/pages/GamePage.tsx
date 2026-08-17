@@ -46,6 +46,7 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
   const useHealingPotion = useGameStore((s) => s.useHealingPotion)
   const equipWeapon = useGameStore((s) => s.equipWeapon)
   const unequipWeapon = useGameStore((s) => s.unequipWeapon)
+  const buyHealingPotion = useGameStore((s) => s.buyHealingPotion)
   const [saveResult, setSaveResult] = useState<'saved' | 'failed' | null>(null)
   const [travelError, setTravelError] = useState(false)
 
@@ -227,6 +228,37 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
         )}
       </section>
 
+      {/* TM-P0-014：药师商店 —— 仅当前地点存在药师时显示（读 NPC 注册表） */}
+      {getNpc('apothecary')?.locationId === world.currentLocationId && (
+        <section className="rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
+          <h3 className="mb-3 text-sm font-bold tracking-wider text-bone-500">药师的小铺</h3>
+          {(() => {
+            const potion = getItem('healing_potion')
+            if (!potion) return <p className="text-bone-500">货架空空如也。</p>
+            const price = potion.value
+            const canAfford = player.gold >= price
+            return (
+              <div className="flex items-center justify-between gap-3 rounded border border-ink-600 bg-ink-900/40 p-3">
+                <div>
+                  <p className="font-bold text-bone-100">{potion.name}</p>
+                  <p className="mt-1 text-xs text-bone-500">
+                    {potion.description}
+                    {potion.healAmount !== undefined && <span> 恢复生命：{potion.healAmount}</span>}
+                    <span> 价格：{price} 金币</span>
+                  </p>
+                </div>
+                <div className="flex flex-col items-end gap-1">
+                  <Button variant="primary" disabled={!canAfford} onClick={() => buyHealingPotion()}>
+                    购买
+                  </Button>
+                  {!canAfford && <span className="text-xs text-red-300">金币不足</span>}
+                </div>
+              </div>
+            )
+          })()}
+        </section>
+      )}
+
       <section className="rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
         <h3 className="mb-3 text-sm font-bold tracking-wider text-bone-500">附近威胁</h3>
         {(location?.enemyIds?.length ?? 0) === 0 ? (
@@ -261,8 +293,7 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
       </section>
 
       <section className="rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
-        <h3 className="mb-3 text-sm font-bold tracking-wider text-bone-500">附近委托</h3>
-        {localQuests.length === 0 ? (
+        <h3 className="mb-3 text-sm font-bold tracking-wider text-bone-500">附近委托</h3>        {localQuests.length === 0 ? (
           <p className="text-bone-500">这里暂时没有可接的委托。</p>
         ) : (
           localQuests.map((quest) => {

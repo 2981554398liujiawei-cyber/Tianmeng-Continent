@@ -3,7 +3,7 @@ import type { CharacterCreationInput, GameState, QuestStatus } from '../types'
 import { createInitialGameState } from '../content/initial'
 import { checkTravel } from '../rules/exploration'
 import { canTransitionQuestStatus } from '../rules/quest'
-import { getEnemy, getItem, getLocation, getQuest } from '../content'
+import { getEnemy, getItem, getLocation, getNpc, getQuest } from '../content'
 import {
   deleteGame as deleteSave,
   hasSave as storageHasSave,
@@ -54,6 +54,8 @@ interface GameStoreState {
   equipWeapon: (itemId: string) => boolean
   /** 卸下武器：weapon → null，inventory 不变（TM-P0-013） */
   unequipWeapon: () => boolean
+  /** 在药师处购买治疗药水：gold 扣减与药水增加原子完成；不治疗、不自动保存（TM-P0-014） */
+  buyHealingPotion: () => boolean
   addGold: (amount: number) => void
   removeGold: (amount: number) => void
   addItem: (itemId: string, quantity?: number) => void
@@ -347,6 +349,42 @@ export const useGameStore = create<GameStoreState>()((set) => ({
       }
     })
     return unequipped
+  },
+
+  buyHealingPotion: () => {
+    let bought = false
+    set((s) => {
+      if (!s.gameState) return {}
+      // Store 自校验：当前地点必须有药师在场（读 NPC 注册表，不硬编码地点）
+      const apothecary = getNpc('apothecary')
+      if (!apothecary || apothecary.locationId !== s.gameState.world.currentLocationId) return {}
+      // 商品数据校验：治疗药水存在、consumable、value 为正整数（价格唯一来源 ItemDefinition.value）
+      const potion = getItem('healing_potion')
+      if (!potion || potion.type !== 'consumable') return {}
+      const price = potion.value
+      if (!Number.isSafeInteger(price) || price <= 0) return {}
+      const gold = s.gameState.player.gold
+      if (!Number.isSafeInteger(gold) || gold < price) return {}
+      // 数量安全：药水数量 +1 必须是安全整数
+      const inv = s.gameState.inventory
+      const idx = inv.findIndex((e) => e.itemId === 'healing_potion')
+      const current = idx >= 0 ? (inv[idx]?.quantity ?? 0) : 0
+      if (!Number.isSafeInteger(current) || !Number.isSafeInteger(current + 1)) return {}
+      // 原子交易：金币扣除与药水增加在同一次 Store 更新中完成（不拼接 removeGold/addItem）
+      const inventory =
+        idx >= 0
+          ? inv.map((e, i) => (i === idx ? { ...e, quantity: (e.quantity ?? 0) + 1 } : e))
+          : [...inv, { itemId: 'healing_potion', quantity: 1 }]
+      bought = true
+      return {
+        gameState: {
+          ...s.gameState,
+          player: { ...s.gameState.player, gold: gold - price },
+          inventory,
+        },
+      }
+    })
+    return bought
   },
 
   addGold: (amount) => {

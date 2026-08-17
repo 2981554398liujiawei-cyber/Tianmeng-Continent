@@ -881,3 +881,94 @@ describe('TM-P0-013：equipWeapon / unequipWeapon 装备铁剑', () => {
     expect(useGameStore.getState().hasSave).toBe(false)
   })
 })
+
+describe('TM-P0-014：buyHealingPotion 药师商店', () => {
+  const gold = () => useGameStore.getState().gameState?.player.gold
+  const potionQty = () =>
+    useGameStore.getState().gameState?.inventory.find((e) => e.itemId === 'healing_potion')?.quantity ?? 0
+
+  it('A. 正常购买：青石村 gold 50 药水×2 → true，gold 40，药水×3', () => {
+    expect(gold()).toBe(50)
+    expect(potionQty()).toBe(2)
+    expect(useGameStore.getState().buyHealingPotion()).toBe(true)
+    expect(gold()).toBe(40)
+    expect(potionQty()).toBe(3)
+  })
+
+  it('B. 无药水条目：inventory 无 healing_potion → true，gold 40，新增 ×1', () => {
+    useGameStore.setState({
+      gameState: {
+        ...useGameStore.getState().gameState!,
+        inventory: useGameStore.getState().gameState!.inventory.filter((e) => e.itemId !== 'healing_potion'),
+      },
+    })
+    expect(useGameStore.getState().buyHealingPotion()).toBe(true)
+    expect(gold()).toBe(40)
+    expect(potionQty()).toBe(1)
+  })
+
+  it('C. 金币恰好够：gold 10 → true，gold 0，药水 +1', () => {
+    useGameStore.setState({
+      gameState: {
+        ...useGameStore.getState().gameState!,
+        player: { ...useGameStore.getState().gameState!.player, gold: 10 },
+      },
+    })
+    expect(useGameStore.getState().buyHealingPotion()).toBe(true)
+    expect(gold()).toBe(0)
+    expect(potionQty()).toBe(3)
+  })
+
+  it('D. 金币不足：gold 9 → false，GameState 完全不变', () => {
+    useGameStore.setState({
+      gameState: {
+        ...useGameStore.getState().gameState!,
+        player: { ...useGameStore.getState().gameState!.player, gold: 9 },
+      },
+    })
+    const snapshot = JSON.stringify(useGameStore.getState().gameState)
+    expect(useGameStore.getState().buyHealingPotion()).toBe(false)
+    expect(JSON.stringify(useGameStore.getState().gameState)).toBe(snapshot)
+  })
+
+  it('E. 错误地点：village_grassland → false，GameState 完全不变', () => {
+    useGameStore.getState().travelToLocation('village_grassland')
+    const snapshot = JSON.stringify(useGameStore.getState().gameState)
+    expect(useGameStore.getState().buyHealingPotion()).toBe(false)
+    expect(JSON.stringify(useGameStore.getState().gameState)).toBe(snapshot)
+  })
+
+  it('F. 无 GameState → false', () => {
+    useGameStore.setState({ gameState: null })
+    expect(useGameStore.getState().buyHealingPotion()).toBe(false)
+  })
+
+  it('G. 交易不治疗：HP 10/22 购买后仍 10', () => {
+    useGameStore.setState({
+      gameState: {
+        ...useGameStore.getState().gameState!,
+        player: { ...useGameStore.getState().gameState!.player, hp: 10 },
+      },
+    })
+    useGameStore.getState().buyHealingPotion()
+    expect(useGameStore.getState().gameState?.player.hp).toBe(10)
+  })
+
+  it('H. 不自动保存：成功购买后 hasSave 仍 false', () => {
+    useGameStore.getState().buyHealingPotion()
+    expect(gold()).toBe(40)
+    expect(useGameStore.getState().hasSave).toBe(false)
+  })
+
+  it('I. 数量安全边界：药水数量 MAX_SAFE_INTEGER → false，金币与 inventory 均不变', () => {
+    useGameStore.setState({
+      gameState: {
+        ...useGameStore.getState().gameState!,
+        inventory: [{ itemId: 'healing_potion', quantity: Number.MAX_SAFE_INTEGER }],
+      },
+    })
+    const snapshot = JSON.stringify(useGameStore.getState().gameState)
+    expect(useGameStore.getState().buyHealingPotion()).toBe(false)
+    expect(JSON.stringify(useGameStore.getState().gameState)).toBe(snapshot)
+  })
+})

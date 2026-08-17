@@ -160,6 +160,14 @@ TM-P0-013（铁剑装备与武器伤害加成）：
 - GameState 类型结构未变、SAVE_VERSION 仍 1、旧存档兼容（equipment 字段已存在）
 - 3 个内容测试 + 6 个战斗伤害单测 + 8 个 Store 装备单测（正常/非武器/未知/未拥有/卸下/重复卸下/无 gameState/不自动保存）+ 12 项 E2E（装备 UI/roll 7 命中造成 8 点伤害一击胜利/卸下恢复/存档恢复）
 
+TM-P0-014（青石村药师商店与治疗药水购买）：
+- Store 新增 `buyHealingPotion()`（唯一购买入口，未实现通用 buyItem/purchase/shopTransaction）：Store 自校验当前地点存在药师（getNpc('apothecary').locationId === 当前地点，不硬编码）、商品数据（getItem('healing_potion') 存在/consumable/value 正整数）、金币充足（gold >= value）；价格唯一来源 ItemDefinition.value（10）
+- 成功：gold -= value 且药水 +1（无条目新建 {itemId,quantity:1}）在同一次 Store 更新中原子完成（未拼接 removeGold/addItem）；gold 永不为负（恰好 10→0）；quantity 使用 Number.isSafeInteger 防溢出（MAX_SAFE_INTEGER 时购买失败状态不变）；失败（错误地点/金币不足/药师不在/商品异常/无 gameState）→ false 且 GameState 完全不变
+- 购买不治疗（HP/MP 不变）；CombatPage 未改（战斗中无商店）；不自动保存
+- GamePage 新增「药师的小铺」：仅当前地点存在药师时显示（青石村）；商品名称/description/healAmount/value 全部读注册表；金币不足时[购买]禁用并显示「金币不足」（UI 禁用非安全边界，Store 独立校验）
+- GameState 类型结构未变、SAVE_VERSION 仍 1
+- 9 个 Store 单测（正常购买/无条目新建/恰好够/不足 false 不变/错误地点 false 不变/无 gameState/不治疗/不自动保存/数量安全边界）+ 14 项 E2E（商店显示与价格/购买 50→40 药水×3/存档恢复/确定性受伤 20 后购买不治疗→背包使用恢复/金币耗尽按钮禁用+金币不足+不为负）
+
 ## 目录结构
 
 ```
