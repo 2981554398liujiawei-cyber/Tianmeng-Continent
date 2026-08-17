@@ -48,14 +48,22 @@ export function resolveAttack(
   if (!Number.isInteger(defense) || defense < 0) {
     throw new RangeError('防御必须是非负整数')
   }
-  if (!Number.isInteger(baseDamage) || baseDamage < 1) {
-    throw new RangeError('基础伤害必须是 >= 1 的整数')
+  if (!Number.isInteger(baseDamage) || baseDamage < 1 || !Number.isFinite(baseDamage * 2)) {
+    throw new RangeError('基础伤害必须是可安全结算暴击的正整数')
   }
 
   const total = roll + attackBonus
+  // 最小防线：正常返回的所有数值必须有限（TM-P0-007-R1）
+  if (!Number.isFinite(total)) {
+    throw new RangeError('攻击结算结果溢出')
+  }
 
   // 天然 20：必定暴击命中，伤害双倍，无视 total
   if (roll === 20) {
+    const criticalDamage = baseDamage * 2
+    if (!Number.isFinite(criticalDamage)) {
+      throw new RangeError('暴击伤害溢出')
+    }
     return {
       roll,
       attackBonus,
@@ -63,7 +71,7 @@ export function resolveAttack(
       defense,
       hit: true,
       critical: true,
-      damage: baseDamage * 2,
+      damage: criticalDamage,
       outcome: 'critical_hit',
     }
   }

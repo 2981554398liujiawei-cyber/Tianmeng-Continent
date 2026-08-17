@@ -56,6 +56,29 @@ describe('TM-P0-007：攻击结算', () => {
     expect(r.damage).toBe(12)
   })
 
+  it('正常暴击仍为 2 倍伤害（baseDamage 6 → 12）', () => {
+    const r = resolveAttack(20, 0, 10, 6)
+    expect(r.outcome).toBe('critical_hit')
+    expect(r.damage).toBe(12)
+  })
+
+  it('高值整数可安全暴击且保持有限（1_000_000 → 2_000_000）', () => {
+    const r = resolveAttack(20, 0, 10, 1_000_000)
+    expect(r.damage).toBe(2_000_000)
+    expect(Number.isFinite(r.damage)).toBe(true)
+  })
+
+  it('返回对象所有数值均为有限（普通命中与暴击）', () => {
+    const hit = resolveAttack(7, 4, 11, 6)
+    expect(Number.isFinite(hit.total)).toBe(true)
+    expect(Number.isFinite(hit.damage)).toBe(true)
+    const crit = resolveAttack(20, 4, 11, 6)
+    expect(Number.isFinite(crit.total)).toBe(true)
+    expect(Number.isFinite(crit.damage)).toBe(true)
+    expect(Number.isFinite(crit.attackBonus)).toBe(true)
+    expect(Number.isFinite(crit.defense)).toBe(true)
+  })
+
   it('天然 1：即使 attackBonus=100 / defense=0 仍大失败且伤害 0', () => {
     const r = resolveAttack(1, 100, 0, 6)
     expect(r.outcome).toBe('critical_miss')
@@ -114,6 +137,11 @@ describe('TM-P0-007：输入异常抛 RangeError', () => {
     expect(() => resolveAttack(10, 4, 11, 0)).toThrow(RangeError)
     expect(() => resolveAttack(10, 4, 11, 1.5)).toThrow(RangeError)
     expect(() => resolveAttack(10, 4, 11, Number.POSITIVE_INFINITY)).toThrow(RangeError)
+  })
+
+  it('R1: Number.MAX_VALUE 暴击溢出被拒绝（不得返回 Infinity 伤害）', () => {
+    expect(() => resolveAttack(20, 0, 10, Number.MAX_VALUE)).toThrow(RangeError)
+    expect(() => resolveAttack(10, 0, 10, Number.MAX_VALUE)).toThrow(RangeError)
   })
 })
 
