@@ -2,7 +2,7 @@ import { useState } from 'react'
 import Button from '../components/Button'
 import { useGameStore } from '../game/state/gameStore'
 import { getProfessionName, ATTRIBUTE_KEYS, ATTRIBUTE_LABELS } from '../game/content/professions'
-import { getEnemy, getItem, getLocation, getNpc, getQuest, QUESTS } from '../game/content'
+import { getEnemy, getItem, getLocation, getNpc, getQuest, NPCS, QUESTS } from '../game/content'
 import type { QuestStatus } from '../game/types'
 
 interface GamePageProps {
@@ -49,6 +49,8 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
   const buyHealingPotion = useGameStore((s) => s.buyHealingPotion)
   const [saveResult, setSaveResult] = useState<'saved' | 'failed' | null>(null)
   const [travelError, setTravelError] = useState(false)
+  // TM-P0-015：活动对话 NPC（仅 UI 本地状态，不进入 GameState / 存档）
+  const [activeNpcId, setActiveNpcId] = useState<string | null>(null)
 
   if (!gameState) {
     return (
@@ -66,6 +68,8 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
     const giver = getNpc(quest.giverNpcId)
     return giver?.locationId === world.currentLocationId
   })
+  // TM-P0-015：附近人物 = 常驻当前地点的注册 NPC（动态过滤，不硬编码列表）
+  const localNpcs = Object.values(NPCS).filter((npc) => npc.locationId === world.currentLocationId)
 
   const handleSave = () => {
     const ok = saveGame()
@@ -75,8 +79,15 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
 
   const handleTravel = (targetId: string) => {
     // TM-P0-005：正式游戏移动只走 travelToLocation（Store 内部校验）
-    setTravelError(!travelToLocation(targetId))
+    const ok = travelToLocation(targetId)
+    // TM-P0-015：成功移动后关闭活动对话；移动失败无需清空
+    if (ok) setActiveNpcId(null)
+    setTravelError(!ok)
   }
+
+  // TM-P0-015：活动对话前重新校验 NPC 存在且仍在当前位置；异常视为无活动对话（不崩溃）
+  const activeNpc = activeNpcId ? getNpc(activeNpcId) : undefined
+  const showDialog = activeNpc !== undefined && activeNpc.locationId === world.currentLocationId
 
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-3xl flex-col gap-6 px-4 py-6">
@@ -227,6 +238,42 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
           </div>
         )}
       </section>
+
+      {/* TM-P0-015：附近人物 —— 仅当前地点存在注册 NPC 时显示 */}
+      {localNpcs.length > 0 && (
+        <section className="rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
+          <h3 className="mb-3 text-sm font-bold tracking-wider text-bone-500">附近人物</h3>
+          {showDialog && activeNpc && (
+            <div className="mb-3 rounded border border-gold-500/40 bg-ink-900/60 p-4">
+              <p className="mb-1 text-xs tracking-wider text-bone-500">与{activeNpc.name}交谈</p>
+              <p className="font-bold text-bone-100">{activeNpc.name}</p>
+              <p className="mb-2 text-xs text-bone-500">{activeNpc.role}</p>
+              <p className="mb-3 text-bone-300">{activeNpc.greeting}</p>
+              <Button variant="ghost" onClick={() => setActiveNpcId(null)}>
+                结束交谈
+              </Button>
+            </div>
+          )}
+          <div className="flex flex-col gap-2">
+            {localNpcs.map((npc) => (
+              <div
+                key={npc.id}
+                className="flex items-center justify-between gap-3 rounded border border-ink-600 bg-ink-900/40 p-3"
+              >
+                <div>
+                  <p className="font-bold text-bone-100">
+                    {npc.name} <span className="text-xs font-normal text-bone-500">{npc.role}</span>
+                  </p>
+                  <p className="mt-1 text-xs text-bone-500">{npc.summary}</p>
+                </div>
+                <Button variant="primary" onClick={() => setActiveNpcId(npc.id)}>
+                  交谈
+                </Button>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* TM-P0-014：药师商店 —— 仅当前地点存在药师时显示（读 NPC 注册表） */}
       {getNpc('apothecary')?.locationId === world.currentLocationId && (

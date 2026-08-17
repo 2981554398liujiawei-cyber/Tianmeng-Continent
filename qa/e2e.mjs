@@ -647,6 +647,57 @@ try {
   check('P014: 显示金币不足', body.includes('金币不足'))
   await clickByText('返回主菜单')
 
+  // P015：青石村附近人物与最小对话交互
+  // 点击第 index 个「交谈」按钮（卡片顺序：村长0 / 铁匠1 / 药师2）
+  const clickNthTalk = async (index) => {
+    await page.evaluate((i) => {
+      const btns = [...document.querySelectorAll('button')].filter((b) => b.textContent.trim() === '交谈')
+      const btn = btns[i]
+      if (!btn) throw new Error('未找到第 ' + i + ' 个交谈按钮')
+      btn.click()
+    }, index)
+    await sleep(250)
+  }
+  await clickByText('新游戏')
+  await clickByText('确认进入天梦大陆')
+  body = await bodyText()
+  check('P015: 青石村显示附近人物（村长/铁匠/药师）', body.includes('附近人物') && body.includes('村长') && body.includes('铁匠') && body.includes('药师'))
+  check('P015: 人物简介来自注册表（村长/药师 summary）', body.includes('年迈而沉稳的老人') && body.includes('采药与炼药'))
+
+  // 村长交谈：精确 greeting → 结束 → 文字消失
+  await clickByText('交谈')
+  await sleep(250)
+  body = await bodyText()
+  check('P015: 与村长交谈面板', body.includes('与村长交谈'))
+  check('P015: 村长固定 greeting 全文', body.includes('村外的野兽越来越不安分，村里的人都很担心。'))
+  check('P015: 显示结束交谈按钮', body.includes('结束交谈'))
+  await clickByText('结束交谈')
+  body = await bodyText()
+  check('P015: 结束交谈后 greeting 消失', !body.includes('村外的野兽越来越不安分'))
+
+  // 药师交谈与商店互不干扰
+  await clickNthTalk(2)
+  body = await bodyText()
+  check('P015: 与药师交谈面板', body.includes('与药师交谈'))
+  check('P015: 药师固定 greeting 全文', body.includes('最近村外采药不太安稳。要是受了伤，我这里还有些治疗药水。'))
+  await clickByText('结束交谈')
+  body = await bodyText()
+  check('P015: 结束药师交谈后商店仍在（药师的小铺/购买）', body.includes('药师的小铺') && body.includes('购买'))
+
+  // 移动清除对话：村长交谈中前往村外草原
+  await clickByText('交谈')
+  await sleep(250)
+  await clickByText('村外草原')
+  await sleep(300)
+  body = await bodyText()
+  check('P015: 移动后村长对话清除', !body.includes('村外的野兽越来越不安分'))
+  check('P015: 草原无附近人物区', !body.includes('附近人物'))
+  await clickByText('青石村')
+  body = await bodyText()
+  check('P015: 回青石村附近人物重新出现', body.includes('附近人物') && body.includes('村长'))
+  check('P015: 返回后对话保持关闭', !body.includes('与村长交谈'))
+  await clickByText('返回主菜单')
+
   // R2：运行期间存档改坏 → 触发一次 load → Continue 禁用且不进入游戏页
   await clickByText('新游戏')
   await clickByText('确认进入天梦大陆') // P004：默认预填合法，直接确认创建

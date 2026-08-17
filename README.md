@@ -168,6 +168,15 @@ TM-P0-014（青石村药师商店与治疗药水购买）：
 - GameState 类型结构未变、SAVE_VERSION 仍 1
 - 9 个 Store 单测（正常购买/无条目新建/恰好够/不足 false 不变/错误地点 false 不变/无 gameState/不治疗/不自动保存/数量安全边界）+ 14 项 E2E（商店显示与价格/购买 50→40 药水×3/存档恢复/确定性受伤 20 后购买不治疗→背包使用恢复/金币耗尽按钮禁用+金币不足+不为负）
 
+TM-P0-015（青石村附近人物与最小对话交互）：
+- NpcDefinition 新增静态字段 `greeting`；村长/铁匠/药师三句固定问候语严格使用任务卡原文（内容测试精确锁定完整文本，非 toContain）；id/name/role/locationId/summary 全部保持原值；未加 dialogueTree/nodes/choices/scripts
+- GamePage 新增「附近人物」区：按 npc.locationId === 当前地点动态过滤（读 NPCS 注册表，无硬编码列表）；每张卡片显示名称/role/summary/[交谈]；无 NPC 地点（村外草原/废弃矿洞/兔王巢穴）整个区域隐藏
+- 对话状态 `activeNpcId: string | null` 仅 React 本地状态（非 GameState、不持久化、不初始化 NpcState）；点击[交谈]显示「与X交谈」面板（名称/role/greeting 全读注册表，JSX 未复制文案）+[结束交谈]；同时仅一个活动对话（再点他人直接切换）；结束交谈 → null 且不改任何 GameState；成功移动后自动清除（移动失败不清）
+- 面板显示前重新校验 getNpc(activeNpcId) 存在且 locationId === 当前地点，未知/缺失/离场视为无活动对话不崩溃
+- 对话不推进任务（委托区/日志独立）、不购买物品（商店区独立共存）、不修改 npcStates/关系值；交谈状态不进存档（Continue 后无活动对话）
+- GameState 类型结构未变、SAVE_VERSION 仍 1
+- 3 个内容测试（greeting 非空/三句精确锁定/既有资料不变）+ 13 项 E2E（附近人物与 summary/村长交谈全文与结束消失/药师交谈后商店仍在/移动清除对话且草原无附近人物/返回后对话保持关闭）
+
 ## 目录结构
 
 ```

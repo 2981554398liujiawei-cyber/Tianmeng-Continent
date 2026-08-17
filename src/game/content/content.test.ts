@@ -274,3 +274,27 @@ describe('TM-P0-013：铁剑武器伤害加成数据约束', () => {
     expect(getItem('rabbit_path')?.weaponDamageBonus).toBeUndefined()
   })
 })
+
+describe('TM-P0-015：NPC greeting 对话数据约束', () => {
+  it('所有 NPC greeting 为非空字符串（trim 后长度 > 0）', () => {
+    for (const npc of Object.values(NPCS)) {
+      expect(typeof npc.greeting).toBe('string')
+      expect(npc.greeting.trim().length).toBeGreaterThan(0)
+    }
+  })
+
+  it('三 NPC 固定 greeting 精确锁定', () => {
+    expect(NPCS.village_elder!.greeting).toBe('村外的野兽越来越不安分，村里的人都很担心。')
+    expect(NPCS.blacksmith!.greeting).toBe('出门冒险前把兵器检查仔细，别等到交手时才发现出了毛病。')
+    expect(NPCS.apothecary!.greeting).toBe('最近村外采药不太安稳。要是受了伤，我这里还有些治疗药水。')
+  })
+
+  it('NPC 既有资料（id/name/role/locationId/summary）保持不变', () => {
+    expect(NPCS.village_elder!.role).toBe('青石村村长')
+    expect(NPCS.village_elder!.locationId).toBe('qingshi_village')
+    expect(NPCS.blacksmith!.role).toBe('铁匠')
+    expect(NPCS.blacksmith!.locationId).toBe('qingshi_village')
+    expect(NPCS.apothecary!.role).toBe('药师')
+    expect(NPCS.apothecary!.locationId).toBe('qingshi_village')
+  })
+})
