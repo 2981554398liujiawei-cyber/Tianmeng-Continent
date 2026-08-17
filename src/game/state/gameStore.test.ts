@@ -402,3 +402,35 @@ describe('TM-P0-006：任务状态转换', () => {
     expect(useGameStore.getState().hasSave).toBe(false)
   })
 })
+
+describe('TM-P0-008：damagePlayer 战斗伤害', () => {
+  const hp = () => useGameStore.getState().gameState?.player.hp
+
+  it('HP 22 受到 2 点伤害 → HP 20 返回 true', () => {
+    expect(hp()).toBe(22)
+    expect(useGameStore.getState().damagePlayer(2)).toBe(true)
+    expect(hp()).toBe(20)
+  })
+
+  it('HP 2 受到 5 点伤害 → HP 0（不出现负数）', () => {
+    useGameStore.setState({
+      gameState: {
+        ...useGameStore.getState().gameState!,
+        player: { ...useGameStore.getState().gameState!.player, hp: 2 },
+      },
+    })
+    expect(useGameStore.getState().damagePlayer(5)).toBe(true)
+    expect(hp()).toBe(0)
+  })
+
+  it.each([0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY])('非法伤害 %p → false 且 HP 不变', (amount) => {
+    const before = hp()
+    expect(useGameStore.getState().damagePlayer(amount as number)).toBe(false)
+    expect(hp()).toBe(before)
+  })
+
+  it('无 gameState 时返回 false', () => {
+    useGameStore.setState({ gameState: null })
+    expect(useGameStore.getState().damagePlayer(2)).toBe(false)
+  })
+})

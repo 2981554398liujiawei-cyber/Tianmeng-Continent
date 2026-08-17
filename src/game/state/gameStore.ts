@@ -43,6 +43,9 @@ interface GameStoreState {
   completeQuest: (questId: string) => boolean
   /** 任务失败：仅 in_progress/completable → failed（终态） */
   failQuest: (questId: string) => boolean
+
+  /** 战斗伤害：hp = max(0, hp - amount)，仅正整数伤害，不设通用 setPlayerHp（TM-P0-008） */
+  damagePlayer: (amount: number) => boolean
   addGold: (amount: number) => void
   removeGold: (amount: number) => void
   addItem: (itemId: string, quantity?: number) => void
@@ -208,6 +211,18 @@ export const useGameStore = create<GameStoreState>()((set) => ({
       return { gameState: next }
     })
     return changed
+  },
+
+  damagePlayer: (amount) => {
+    if (!Number.isInteger(amount) || amount <= 0) return false
+    let damaged = false
+    set((s) => {
+      if (!s.gameState) return {}
+      const hp = Math.max(0, s.gameState.player.hp - amount)
+      damaged = true
+      return { gameState: { ...s.gameState, player: { ...s.gameState.player, hp } } }
+    })
+    return damaged
   },
 
   addGold: (amount) => {

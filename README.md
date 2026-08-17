@@ -109,6 +109,15 @@ TM-P0-007（最小战斗规则内核与敌人战斗数据）：
 - GameState 结构未改、SAVE_VERSION 仍 1
 - 15 个战斗规则单测 + 3 个敌人数据一致性测试 + 8 项 E2E（控制台攻击测试/HP 不变）
 
+TM-P0-008（单敌人回合战斗 MVP）：
+- LocationDefinition 新增可选 `enemyIds`：青石村 [] / 村外草原 [corrupted_rabbit] / 废弃矿洞 [corrupted_rat] / 兔王巢穴 [dudu_rabbit]（corrupted_wolf 未入遭遇）；内容测试锁定敌人 ID 可查询且地点字段不变
+- GamePage 新增「附近威胁」：仅当当前地点 enemyIds 非空时显示（名称/Lv/HP/防御读 ENEMIES），[迎战]；player.hp=0 时禁用并提示「当前状态无法战斗」
+- `src/pages/CombatPage.tsx`：敌人当前 HP 为本地 React 状态（不进 GameState/存档）；玩家先行动 → 敌人存活才反击（同一套 performAttack）；胜利：敌人归零立即 victory 且不反击，[返回冒险] 回原地点、HP 保留、无奖励；失败：玩家 HP 归零 defeat，攻击禁用、无负 HP，仅 [返回主菜单]（不复活/不自动读档）；战斗中不可保存/逃跑
+- Store 新增 `damagePlayer(amount)`：hp = max(0, hp − amount)，仅正整数伤害，无通用 setPlayerHp
+- App 保存瞬时 UI 状态 activeEnemyId（非 GameState，不进存档）；正式入口校验敌人存在且属于当前地点 enemyIds，未知 enemyId 不进战斗不崩溃
+- GameState 结构未改、SAVE_VERSION 仍 1
+- 4 个地点遭遇数据测试 + 5 个 damagePlayer 单测 + 9 项 E2E（迎战进战斗页/循环攻击 HP 单调非负/胜负结局/胜利返回/失败 Continue 恢复）
+
 ## 目录结构
 
 ```

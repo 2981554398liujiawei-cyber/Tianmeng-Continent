@@ -2,11 +2,13 @@ import { useState } from 'react'
 import Button from '../components/Button'
 import { useGameStore } from '../game/state/gameStore'
 import { getProfessionName, ATTRIBUTE_KEYS, ATTRIBUTE_LABELS } from '../game/content/professions'
-import { getLocation, getNpc, getQuest, QUESTS } from '../game/content'
+import { getEnemy, getLocation, getNpc, getQuest, QUESTS } from '../game/content'
 import type { QuestStatus } from '../game/types'
 
 interface GamePageProps {
   onBackToMenu: () => void
+  /** TM-P0-008：进入战斗（App 负责正式入口校验） */
+  onEngage: (enemyId: string) => void
 }
 
 /** 任务状态中文（TM-P0-006） */
@@ -34,7 +36,7 @@ function Bar({ label, value, max }: { label: string; value: number; max: number 
   )
 }
 
-export default function GamePage({ onBackToMenu }: GamePageProps) {
+export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
   const gameState = useGameStore((s) => s.gameState)
   const saveGame = useGameStore((s) => s.saveGame)
   const travelToLocation = useGameStore((s) => s.travelToLocation)
@@ -146,6 +148,39 @@ export default function GamePage({ onBackToMenu }: GamePageProps) {
           <p className="text-bone-300">未知地点（{world.currentLocationId}）</p>
         )}
         {travelError && <p className="mt-3 text-sm text-red-300">无法前往该地点。</p>}
+      </section>
+
+      <section className="rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
+        <h3 className="mb-3 text-sm font-bold tracking-wider text-bone-500">附近威胁</h3>
+        {(location?.enemyIds?.length ?? 0) === 0 ? (
+          <p className="text-bone-500">这里暂时没有威胁。</p>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {location!.enemyIds!.map((enemyId) => {
+              const threat = getEnemy(enemyId)
+              if (!threat) return null
+              const cannotFight = player.hp <= 0
+              return (
+                <div key={enemyId} className="rounded border border-ink-600 bg-ink-900/40 p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="font-bold text-bone-100">
+                        {threat.name} <span className="text-xs font-normal text-bone-500">· Lv.{threat.level}</span>
+                      </p>
+                      <p className="mt-1 text-xs text-bone-500">
+                        HP {threat.maxHp} · 防御 {threat.defense}
+                      </p>
+                    </div>
+                    <Button variant="primary" disabled={cannotFight} onClick={() => onEngage(threat.id)}>
+                      迎战
+                    </Button>
+                  </div>
+                  {cannotFight && <p className="mt-2 text-xs text-red-300">当前状态无法战斗</p>}
+                </div>
+              )
+            })}
+          </div>
+        )}
       </section>
 
       <section className="rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">

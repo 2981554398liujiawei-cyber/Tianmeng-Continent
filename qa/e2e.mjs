@@ -43,6 +43,13 @@ const clickLabel = async (text) => {
 
 const bodyText = () => page.evaluate(() => document.body.textContent)
 
+// 解析战斗页玩家/敌人 HP（玩家：生命 X / Y；敌人：HP X / Y）
+const readHps = (body) => {
+  const playerMatch = body.match(/生命\s*(\d+)\s*\/\s*(\d+)/)
+  const enemyMatch = body.match(/HP\s*(\d+)\s*\/\s*(\d+)/)
+  return { player: playerMatch ? Number(playerMatch[1]) : null, enemy: enemyMatch ? Number(enemyMatch[1]) : null }
+}
+
 const continueDisabled = () =>
   page.evaluate(() => {
     const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.includes('继续游戏'))
@@ -182,6 +189,55 @@ try {
   check('P006: 提交任务后任务日志显示已完成', body.includes('已完成'))
   check('P006: 完成任务金币不变（仍 50）', body.includes('50'))
 
+  // P008：战斗 —— 村外草原迎战魔化兔
+  await clickByText('村外草原')
+  body = await bodyText()
+  check('P008: 村外草原显示附近威胁（魔化兔）', body.includes('魔化兔') && body.includes('迎战'))
+  check('P008: 威胁信息含 HP 8 · 防御 11', body.includes('HP 8 · 防御 11'))
+  await clickByText('迎战')
+  body = await bodyText()
+  check('P008: 进入战斗页', body.includes('战斗'))
+  check('P008: 战斗页显示玩家与魔化兔', body.includes('云岚') && body.includes('魔化兔'))
+  check('P008: 敌人初始 HP 8 / 8', body.includes('8 / 8'))
+  check('P008: 普通攻击按钮存在', body.includes('普通攻击'))
+
+  // 循环普通攻击直到胜负（最多 100 轮），断言 HP 单调不增且不小于 0
+  let combatOver = false
+  for (let i = 0; i < 100 && !combatOver; i++) {
+    body = await bodyText()
+    const before = readHps(body)
+    await clickByText('普通攻击')
+    await sleep(150)
+    body = await bodyText()
+    const after = readHps(body)
+    check(
+      `P008: 第${i + 1}轮攻击后 HP 不增且非负`,
+      after.enemy !== null &&
+        after.player !== null &&
+        after.enemy <= before.enemy &&
+        after.player <= before.player &&
+        after.enemy >= 0 &&
+        after.player >= 0,
+      `敌 ${before.enemy}→${after.enemy} 玩 ${before.player}→${after.player}`,
+    )
+    if (body.includes('战斗胜利') || body.includes('战斗失败')) combatOver = true
+  }
+  body = await bodyText()
+  check('P008: 战斗有明确结局（胜利或失败）', body.includes('战斗胜利') || body.includes('战斗失败'))
+
+  // 结局处理：胜利返回冒险；失败返回主菜单后 Continue 恢复（读 P005-C 存档）
+  if (body.includes('战斗胜利')) {
+    await clickByText('返回冒险')
+    body = await bodyText()
+    check('P008: 胜利后返回冒险（仍村外草原，HP 保留）', body.includes('村外草原'))
+  } else {
+    await clickByText('返回主菜单')
+    await clickByText('继续游戏')
+    body = await bodyText()
+    check('P008: 失败后返回主菜单，Continue 可恢复', body.includes('村外草原'))
+  }
+  await clickByText('青石村')
+
   // 回主菜单 → 开发者控制台
   await clickByText('返回主菜单')
   await clickByText('开发者控制台')
@@ -228,6 +284,8 @@ try {
   body = await bodyText()
   check('P007: 控制台显示普通攻击规则测试', body.includes('普通攻击规则测试'))
   check('P007: 敌人选择含四敌人（读注册表）', ['魔化兔', '魔化鼠', '魔化狼', '嘟嘟兔'].every((t) => body.includes(t)))
+  state = await readState()
+  const hpBeforePlayerAttack = state.player.hp
   await clickByText('玩家攻击敌人')
   await sleep(300)
   body = await bodyText()
@@ -239,7 +297,8 @@ try {
   )
   check('P007: 玩家攻击中文结果（暴击/命中/未命中/大失败）', /结果：(暴击|命中|未命中|大失败)/.test(body))
   state = await readState()
-  check('P007: 玩家攻击后 HP 未变', state.player.hp === state.player.maxHp)
+  check('P007: 玩家攻击后 HP 未变', state.player.hp === hpBeforePlayerAttack && state.player.hp >= 0)
+  const hpBeforeEnemyAttack = state.player.hp
   await clickByText('敌人攻击玩家')
   await sleep(300)
   body = await bodyText()
@@ -249,7 +308,7 @@ try {
   )
   check('P007: 敌人攻击中文结果', /结果：(暴击|命中|未命中|大失败)/.test(body))
   state = await readState()
-  check('P007: 敌人攻击后 HP 未变', state.player.hp === state.player.maxHp)
+  check('P007: 敌人攻击后 HP 未变', state.player.hp === hpBeforeEnemyAttack && state.player.hp >= 0)
 
   // E. 存档 → 刷新 → 继续游戏
   await clickByText('保存存档')

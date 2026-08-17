@@ -196,3 +196,33 @@ describe('TM-P0-007：敌人战斗数据一致性', () => {
     expect(getEnemy('dudu_rabbit')?.description).toContain('黄金兔子王')
   })
 })
+
+describe('TM-P0-008：地点遭遇敌人数据一致性', () => {
+  it('所有 Location.enemyIds 均可通过 getEnemy 查询', () => {
+    for (const loc of Object.values(LOCATIONS)) {
+      for (const enemyId of loc.enemyIds ?? []) {
+        expect(getEnemy(enemyId), `${loc.id} 遭遇 ${enemyId}`).toBeDefined()
+      }
+    }
+  })
+
+  it('四地点遭遇配置符合任务卡', () => {
+    expect(getLocation('qingshi_village')?.enemyIds).toEqual([])
+    expect(getLocation('village_grassland')?.enemyIds).toEqual(['corrupted_rabbit'])
+    expect(getLocation('abandoned_mine')?.enemyIds).toEqual(['corrupted_rat'])
+    expect(getLocation('rabbit_lair')?.enemyIds).toEqual(['dudu_rabbit'])
+  })
+
+  it('corrupted_wolf 未放入正式地点遭遇', () => {
+    for (const loc of Object.values(LOCATIONS)) {
+      expect(loc.enemyIds ?? []).not.toContain('corrupted_wolf')
+    }
+  })
+
+  it('已锁定地点字段保持不变：name/description/connections/requiredFlag', () => {
+    expect(getLocation('qingshi_village')?.connections).toEqual(['village_grassland', 'abandoned_mine'])
+    expect(getLocation('village_grassland')?.connections).toEqual(['qingshi_village', 'rabbit_lair'])
+    expect(getLocation('rabbit_lair')?.requiredFlag).toBe('rabbit_lair_unlocked')
+    expect(getLocation('qingshi_village')?.description).toContain('群山环抱')
+  })
+})
