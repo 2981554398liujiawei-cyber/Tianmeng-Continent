@@ -3,6 +3,7 @@ import { useGameStore, VILLAGE_ELDER_POST_QUEST_EVENT_ID } from './gameStore'
 import { createInitialGameState } from '../content/initial'
 import { checkTravel } from '../rules/exploration'
 import { getNpc, getQuest } from '../content'
+import type { QuestStatus } from '../types/quest'
 
 function createMockStorage(): Storage {
   const store = new Map<string, string>()
@@ -3201,7 +3202,7 @@ describe('TM-P1-018：向村中两人打听《追寻黄金兔子王》地图线�
   }
 
   /** 直接构造任务 flag 运行态 */
-  const seedQuestFlag = (flagKey: string, value: unknown) => {
+  const seedQuestFlag = (flagKey: string, value: string | number | boolean) => {
     useGameStore.setState((s) => {
       if (!s.gameState) return {}
       return {
@@ -3216,7 +3217,7 @@ describe('TM-P1-018：向村中两人打听《追寻黄金兔子王》地图线�
   }
 
   /** 直接构造任务状态运行态 */
-  const seedQuestStatus = (status: string) => {
+  const seedQuestStatus = (status: QuestStatus) => {
     useGameStore.setState((s) => {
       if (!s.gameState) return {}
       return {
