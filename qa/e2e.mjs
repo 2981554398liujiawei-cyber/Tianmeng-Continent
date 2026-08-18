@@ -2579,6 +2579,86 @@ try {
   check('P1-021-H: 草原无采药调查按钮', herbButtonAfterContinue === false)
   await clickByText('返回主菜单')
 
+  // TM-P1-022：第二条支线《矿洞余患》（铁匠发布；直接继续 P1-021 已保存档，青石村）
+  // A. Continue：采药受阻已完成 + 黄金主线保持
+  await clickByText('继续游戏')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-022-A: 采药受阻已完成', body.includes('采药受阻') && body.includes('已完成'))
+  check('P1-022-A: 追寻黄金兔子王进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
+  check('P1-022-A: 巢穴复查完成', body.includes('巢穴复查完成。'))
+  check('P1-022-A: 下一步目的地【待补充】', body.includes('下一步目的地：【待补充】'))
+  // B. 铁匠支线：发现→查看→接受
+  check('P1-022-B: 附近委托出现铁匠入口', body.includes('铁匠似乎有事相托'))
+  await clickByText('查看委托')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-022-B: 矿洞余患可接受（发布者铁匠）', body.includes('矿洞余患') && body.includes('发布者：铁匠') && body.includes('可接受'))
+  await clickByText('接受任务')
+  await sleep(200)
+  body = await bodyText()
+  check('P1-022-B: 矿洞余患进行中', body.includes('矿洞余患') && body.includes('进行中'))
+  check('P1-022-B: 当前目标：前往废弃矿洞处理残余的魔化鼠', body.includes('当前目标：前往废弃矿洞处理残余的魔化鼠。'))
+  const remnantGoldBefore = body.match(/金币\s*(\d+)/)
+  const remnantOreBefore = body.match(/铁矿石\s*×(\d+)/)
+  check('P1-022-B: 记录金币与铁矿石成功', remnantGoldBefore !== null)
+  // C. 前往矿洞，魔化鼠仍存在可迎战
+  await clickByText('废弃矿洞')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-022-C: 废弃矿洞出现魔化鼠', body.includes('魔化鼠') && body.includes('迎战'))
+  // D. 确定性击败魔化鼠（沿用 Math.random 隔离模式：保存真实随机 → mock → 恢复）
+  await clickByText('迎战')
+  await sleep(300)
+  await page.evaluate(() => {
+    window.__origRandom = Math.random.bind(Math)
+    Math.random = () => 0.99
+  })
+  await clickByText('普通攻击')
+  await sleep(300)
+  await page.evaluate(() => {
+    Math.random = window.__origRandom
+  })
+  await clickByText('返回冒险')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-022-D: 矿洞余患可完成', body.includes('矿洞余患') && body.includes('可完成'))
+  check('P1-022-D: 矿洞余患已确认', body.includes('矿洞余患已确认。'))
+  check('P1-022-D: 当前目标：返回青石村向铁匠复命', body.includes('当前目标：返回青石村向铁匠复命。'))
+  const remnantOreAfter = body.match(/铁矿石\s*×(\d+)/)
+  check(
+    'P1-022-D: 铁矿石数量 = 战前 + 1',
+    remnantOreBefore !== null && remnantOreAfter !== null && Number(remnantOreAfter[1]) === Number(remnantOreBefore[1]) + 1,
+  )
+  // E. 返回铁匠提交
+  await clickByText('青石村')
+  await sleep(300)
+  await clickByText('提交任务')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-022-E: 矿洞余患已完成', body.includes('矿洞余患') && body.includes('已完成'))
+  const remnantGoldAfter = body.match(/金币\s*(\d+)/)
+  check(
+    'P1-022-E: 金币精确 +10（提交后 = 提交前 + 10）',
+    remnantGoldBefore !== null && remnantGoldAfter !== null && Number(remnantGoldAfter[1]) === Number(remnantGoldBefore[1]) + 10,
+  )
+  // F. 主线零回归
+  check('P1-022-F: 追寻黄金兔子王进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
+  check('P1-022-F: 巢穴复查完成', body.includes('巢穴复查完成。'))
+  check('P1-022-F: 下一步目的地【待补充】', body.includes('下一步目的地：【待补充】'))
+  check('P1-022-F: 采药受阻已完成', body.includes('采药受阻') && body.includes('已完成'))
+  // G. Save/Continue：支线均已完成，不重新出现为可接受
+  await clickByText('保存游戏')
+  await clickByText('返回主菜单')
+  await clickByText('继续游戏')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-022-G: Continue 后矿洞余患已完成', body.includes('矿洞余患') && body.includes('已完成'))
+  check('P1-022-G: Continue 后采药受阻已完成', body.includes('采药受阻') && body.includes('已完成'))
+  check('P1-022-G: Continue 后追寻黄金兔子王进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
+  check('P1-022-G: Continue 后巢穴复查完成', body.includes('巢穴复查完成。'))
+  await clickByText('返回主菜单')
+
   // TM-P1-015：战斗中使用治疗药水（独立最小段：默认骑士 + 村外草原魔化兔；魔化兔零修改 HP8/DEF11/atk+2/dmg2）
   // P1-007-R1 模式：段首只保存一次真实 Math.random
   await page.evaluate(() => {

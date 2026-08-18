@@ -107,6 +107,11 @@ function applyQuestDiscovery(gameState: GameState, questId: string): GameState |
     const villageQuest = gameState.quests.find((q) => q.questId === 'quest_village_monsters')
     if (villageQuest?.status !== 'completed') return null
   }
+  // TM-P1-022：第二条支线《矿洞余患》窄特判——仅《矿洞清理》completed 才能发现；不建 prerequisite 系统
+  if (questId === 'quest_blacksmith_mine_remnant') {
+    const mineQuest = gameState.quests.find((q) => q.questId === 'quest_mine_cleanup')
+    if (mineQuest?.status !== 'completed') return null
+  }
   const index = gameState.quests.findIndex((q) => q.questId === questId)
   if (index < 0) {
     return {
@@ -408,8 +413,9 @@ export const useGameStore = create<GameStoreState>()((set) => ({
           }
         }
       }
-      // 魔化鼠固定战利品（TM-P0-020）+《矿洞清理》任务推进（TM-P1-005）：
-      // 废弃矿洞击败魔化鼠 → 铁矿石 +1（重复胜利堆叠同一 entry）；若任务 in_progress 则同一次胜利推进为 completable
+      // 魔化鼠固定战利品（TM-P0-020）+《矿洞清理》任务推进（TM-P1-005）+《矿洞余患》支线推进（TM-P1-022）：
+      // 废弃矿洞击败魔化鼠 → 铁矿石 +1（重复胜利堆叠同一 entry）；若《矿洞清理》in_progress 则同一次胜利推进为 completable；
+      // 若《矿洞余患》支线 in_progress 则同一次胜利同时推进为 completable（二者互不排斥，均走既有状态机）
       if (enemyId === 'corrupted_rat' && location.id === 'abandoned_mine') {
         const inv = s.gameState.inventory
         const idx = inv.findIndex((e) => e.itemId === 'iron_ore')
@@ -419,22 +425,16 @@ export const useGameStore = create<GameStoreState>()((set) => ({
           idx < 0 ||
           (Number.isSafeInteger(current) && current >= 1 && Number.isSafeInteger(current + 1))
         // 战利品异常不阻断任务推进（P0-020 安全语义）：inventory 保持原样，任务仍可推进
-        const next = applyQuestTransition(s.gameState, 'quest_mine_cleanup', 'completable')
-        if (next) {
-          const inventory = lootOk
-            ? idx >= 0
-              ? inv.map((e, i) => (i === idx ? { ...e, quantity: current + 1 } : e))
-              : [...inv, { itemId: 'iron_ore', quantity: 1 }]
-            : inv
-          return { gameState: { ...next, inventory } }
-        }
-        if (lootOk) {
-          const inventory =
-            idx >= 0
-              ? inv.map((e, i) => (i === idx ? { ...e, quantity: current + 1 } : e))
-              : [...inv, { itemId: 'iron_ore', quantity: 1 }]
-          return { gameState: { ...s.gameState, inventory } }
-        }
+        let next = applyQuestTransition(s.gameState, 'quest_mine_cleanup', 'completable') ?? s.gameState
+        // TM-P1-022：同一次胜利叠加支线推进（不写 if/else 互斥；支线已非 in_progress 时 applyQuestTransition 返回 null 即不推进）
+        const withSide = applyQuestTransition(next, 'quest_blacksmith_mine_remnant', 'completable')
+        if (withSide) next = withSide
+        const inventory = lootOk
+          ? idx >= 0
+            ? inv.map((e, i) => (i === idx ? { ...e, quantity: current + 1 } : e))
+            : [...inv, { itemId: 'iron_ore', quantity: 1 }]
+          : inv
+        return { gameState: { ...next, inventory } }
       }
       // 《草原狼影》任务推进（TM-P1-010）：村外草原击败魔化狼且任务 in_progress → completable；无战利品（金币只在回村提交时获得）
       if (enemyId === 'corrupted_wolf' && location.id === 'village_grassland') {

@@ -157,10 +157,10 @@ describe('TM-P0-002-R1：关键内容身份锁', () => {
     expect(desc).not.toContain('迁徙')
   })
 
-  it('注册表数量与 ID 未被改动（无新增黄金兔子王条目；TM-P1-005 新增《矿洞清理》、TM-P1-010 新增《草原狼影》、TM-P1-017 新增《追寻黄金兔子王》、TM-P1-021 新增《采药受阻》）', () => {
+  it('注册表数量与 ID 未被改动（无新增黄金兔子王条目；TM-P1-005 新增《矿洞清理》、TM-P1-010 新增《草原狼影》、TM-P1-017 新增《追寻黄金兔子王》、TM-P1-021 新增《采药受阻》、TM-P1-022 新增《矿洞余患》）', () => {
     expect(Object.keys(ENEMIES)).toHaveLength(4)
     expect(Object.keys(NPCS)).toHaveLength(3)
-    expect(Object.keys(QUESTS)).toHaveLength(5)
+    expect(Object.keys(QUESTS)).toHaveLength(6)
     expect(getEnemy('golden_rabbit_king')).toBeUndefined()
   })
 
@@ -189,6 +189,19 @@ describe('TM-P0-002-R1：关键内容身份锁', () => {
     expect(quest?.summary).toContain('魔化野兽')
     expect(quest?.summary).toContain('村外草原')
     expect(quest?.summary).toContain('查看采药区域')
+  })
+
+  // TM-P1-022：第二条正式支线注册表锁定（复用废弃矿洞/魔化鼠/战斗系统；goldReward 10 走 generic 提交路径）
+  it('TM-P1-022：《矿洞余患》注册表定义锁定（title/giver/goldReward 10/summary 含关键文案）', () => {
+    const quest = getQuest('quest_blacksmith_mine_remnant')
+    expect(quest).toBeDefined()
+    expect(quest?.id).toBe('quest_blacksmith_mine_remnant')
+    expect(quest?.title).toBe('矿洞余患')
+    expect(quest?.giverNpcId).toBe('blacksmith')
+    expect(quest?.goldReward).toBe(10)
+    expect(quest?.summary).toContain('矿洞清理')
+    expect(quest?.summary).toContain('废弃矿洞')
+    expect(quest?.summary).toContain('魔化鼠')
   })
 })
 

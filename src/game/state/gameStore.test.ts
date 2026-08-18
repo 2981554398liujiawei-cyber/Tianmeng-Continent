@@ -4150,3 +4150,185 @@ describe('TM-P1-021：首条正式支线《采药受阻》（药师发布）', (
     expect(useGameStore.getState().hasSave).toBe(false)
   })
 })
+
+describe('TM-P1-022：第二条支线《矿洞余患》（铁匠发布）', () => {
+  const mineRemnantQuest = () => useGameStore.getState().gameState?.quests.find((q) => q.questId === 'quest_blacksmith_mine_remnant')
+  const goldenQuest = () => useGameStore.getState().gameState?.quests.find((q) => q.questId === 'quest_golden_rabbit_search')
+  const herbQuest = () => useGameStore.getState().gameState?.quests.find((q) => q.questId === 'quest_apothecary_herb_route')
+  const ironOre = () => useGameStore.getState().gameState?.inventory.find((e) => e.itemId === 'iron_ore')
+  const snapshot = () => JSON.stringify(useGameStore.getState().gameState)
+
+  /** 完成《矿洞清理》（支线发现前置；也顺带完成第一主线） */
+  const seedMineCleanupCompleted = () => {
+    useGameStore.getState().newGame()
+    useGameStore.getState().discoverQuest('quest_village_monsters')
+    useGameStore.getState().acceptQuest('quest_village_monsters')
+    useGameStore.getState().travelToLocation('village_grassland')
+    useGameStore.getState().resolveCombatVictory('corrupted_rabbit')
+    useGameStore.getState().travelToLocation('qingshi_village')
+    useGameStore.getState().completeQuest('quest_village_monsters')
+    useGameStore.getState().discoverQuest('quest_mine_cleanup')
+    useGameStore.getState().acceptQuest('quest_mine_cleanup')
+    useGameStore.getState().travelToLocation('abandoned_mine')
+    useGameStore.getState().resolveCombatVictory('corrupted_rat')
+    useGameStore.getState().travelToLocation('qingshi_village')
+    useGameStore.getState().completeQuest('quest_mine_cleanup')
+  }
+
+  /** 走到支线 in_progress（接受后，青石村） */
+  const seedRemnantInProgress = () => {
+    seedMineCleanupCompleted()
+    useGameStore.getState().discoverQuest('quest_blacksmith_mine_remnant')
+    useGameStore.getState().acceptQuest('quest_blacksmith_mine_remnant')
+  }
+
+  /** 直接构造支线状态运行态 */
+  const seedRemnantStatus = (status: QuestStatus) => {
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return {
+        gameState: {
+          ...s.gameState,
+          quests: s.gameState.quests.map((q) =>
+            q.questId === 'quest_blacksmith_mine_remnant' ? { ...q, status } : q,
+          ),
+        },
+      }
+    })
+  }
+
+  it('A. 矿洞清理未 completed → discover 支线 false', () => {
+    useGameStore.getState().newGame()
+    useGameStore.getState().discoverQuest('quest_village_monsters')
+    useGameStore.getState().acceptQuest('quest_village_monsters')
+    useGameStore.getState().travelToLocation('village_grassland')
+    useGameStore.getState().resolveCombatVictory('corrupted_rabbit')
+    useGameStore.getState().travelToLocation('qingshi_village')
+    useGameStore.getState().completeQuest('quest_village_monsters')
+    expect(useGameStore.getState().discoverQuest('quest_blacksmith_mine_remnant')).toBe(false)
+    expect(mineRemnantQuest()).toBeUndefined()
+  })
+
+  it('B. 矿洞清理 completed → discover true / available', () => {
+    seedMineCleanupCompleted()
+    expect(useGameStore.getState().discoverQuest('quest_blacksmith_mine_remnant')).toBe(true)
+    expect(mineRemnantQuest()?.status).toBe('available')
+    expect(mineRemnantQuest()?.stage).toBe(0)
+  })
+
+  it('C. accept → in_progress', () => {
+    seedMineCleanupCompleted()
+    useGameStore.getState().discoverQuest('quest_blacksmith_mine_remnant')
+    expect(useGameStore.getState().acceptQuest('quest_blacksmith_mine_remnant')).toBe(true)
+    expect(mineRemnantQuest()?.status).toBe('in_progress')
+  })
+
+  it('D. 非 corrupted_rat 胜利 → 不推进支线（corrupted_rabbit 无副作用，GameState 完全不变）', () => {
+    seedRemnantInProgress()
+    useGameStore.getState().travelToLocation('village_grassland')
+    const before = snapshot()
+    expect(useGameStore.getState().resolveCombatVictory('corrupted_rabbit')).toBe(true)
+    expect(mineRemnantQuest()?.status).toBe('in_progress')
+    expect(snapshot()).toBe(before)
+  })
+
+  it('E. corrupted_rat 但不在 abandoned_mine → 不推进', () => {
+    seedRemnantInProgress()
+    // 支线 in_progress 时 corrupted_rat 只在废弃矿洞配置；直接伪造当前地点（村外草原无 rat 配置，resolveCombatVictory 会被 enemyIds 校验拒绝）
+    useGameStore.getState().travelToLocation('village_grassland')
+    const before = snapshot()
+    expect(useGameStore.getState().resolveCombatVictory('corrupted_rat')).toBe(false)
+    expect(snapshot()).toBe(before)
+  })
+
+  it('F. 支线 available → rat victory 不推进', () => {
+    seedMineCleanupCompleted()
+    useGameStore.getState().discoverQuest('quest_blacksmith_mine_remnant')
+    useGameStore.getState().travelToLocation('abandoned_mine')
+    useGameStore.getState().resolveCombatVictory('corrupted_rat')
+    expect(mineRemnantQuest()?.status).toBe('available')
+  })
+
+  it('G. 支线 in_progress + 合法 rat victory → status=completable + stage=0', () => {
+    seedRemnantInProgress()
+    useGameStore.getState().travelToLocation('abandoned_mine')
+    useGameStore.getState().resolveCombatVictory('corrupted_rat')
+    expect(mineRemnantQuest()?.status).toBe('completable')
+    expect(mineRemnantQuest()?.stage).toBe(0)
+  })
+
+  it('H. 同次胜利仍获得 iron_ore +1', () => {
+    seedRemnantInProgress()
+    useGameStore.getState().travelToLocation('abandoned_mine')
+    const before = ironOre()?.quantity ?? 0
+    useGameStore.getState().resolveCombatVictory('corrupted_rat')
+    expect(ironOre()?.quantity).toBe(before + 1)
+  })
+
+  it('I. 已 completable 后再打 rat → 支线保持 completable（不回退/重复推进）', () => {
+    seedRemnantInProgress()
+    useGameStore.getState().travelToLocation('abandoned_mine')
+    useGameStore.getState().resolveCombatVictory('corrupted_rat')
+    expect(mineRemnantQuest()?.status).toBe('completable')
+    useGameStore.getState().resolveCombatVictory('corrupted_rat')
+    expect(mineRemnantQuest()?.status).toBe('completable')
+    expect(mineRemnantQuest()?.stage).toBe(0)
+  })
+
+  it('J. generic completeQuest → completed + gold 精确 +10', () => {
+    seedRemnantInProgress()
+    useGameStore.getState().travelToLocation('abandoned_mine')
+    useGameStore.getState().resolveCombatVictory('corrupted_rat')
+    useGameStore.getState().travelToLocation('qingshi_village')
+    const goldBefore = useGameStore.getState().gameState!.player.gold
+    expect(useGameStore.getState().completeQuest('quest_blacksmith_mine_remnant')).toBe(true)
+    expect(mineRemnantQuest()?.status).toBe('completed')
+    expect(useGameStore.getState().gameState!.player.gold).toBe(goldBefore + 10)
+  })
+
+  it('K. 除 iron_ore+1/支线 QuestState/提交 gold+10 外无其他状态变化', () => {
+    seedRemnantInProgress()
+    useGameStore.getState().travelToLocation('abandoned_mine')
+    const beforePlayer = useGameStore.getState().gameState!.player
+    const beforeEquipment = useGameStore.getState().gameState!.equipment
+    const beforeWorld = useGameStore.getState().gameState!.world
+    const beforeOre = ironOre()?.quantity ?? 0
+    // 打 rat：只应发生 iron_ore +1 与支线 QuestState 推进（player/equipment/world 除 quests 外不变）
+    useGameStore.getState().resolveCombatVictory('corrupted_rat')
+    const mid = useGameStore.getState().gameState!
+    expect(mid.player).toEqual(beforePlayer)
+    expect(mid.equipment).toEqual(beforeEquipment)
+    expect(mid.world).toEqual(beforeWorld)
+    expect(ironOre()?.quantity).toBe(beforeOre + 1)
+    expect(mineRemnantQuest()?.status).toBe('completable')
+    // 回青石村提交：只应 gold +10 与该支线 QuestState→completed
+    useGameStore.getState().travelToLocation('qingshi_village')
+    const travelWorld = useGameStore.getState().gameState!.world
+    const goldBefore = useGameStore.getState().gameState!.player.gold
+    useGameStore.getState().completeQuest('quest_blacksmith_mine_remnant')
+    const after = useGameStore.getState().gameState!
+    expect(after.player).toEqual({ ...mid.player, gold: goldBefore + 10 })
+    expect(after.inventory).toEqual(mid.inventory)
+    expect(after.equipment).toEqual(mid.equipment)
+    expect(after.world).toEqual(travelWorld)
+    expect(mineRemnantQuest()?.status).toBe('completed')
+  })
+
+  it('L. 黄金兔子第四主线完全不变（本卡流程不创建/不推进；E2E 层在完整存档上验证四 flag 保持）', () => {
+    seedRemnantInProgress()
+    useGameStore.getState().travelToLocation('abandoned_mine')
+    useGameStore.getState().resolveCombatVictory('corrupted_rat')
+    useGameStore.getState().travelToLocation('qingshi_village')
+    useGameStore.getState().completeQuest('quest_blacksmith_mine_remnant')
+    expect(goldenQuest()).toBeUndefined()
+    expect(herbQuest()).toBeUndefined()
+  })
+
+  it('M. 不自动保存', () => {
+    seedRemnantInProgress()
+    useGameStore.getState().travelToLocation('abandoned_mine')
+    useGameStore.getState().resolveCombatVictory('corrupted_rat')
+    expect(mineRemnantQuest()?.status).toBe('completable')
+    expect(useGameStore.getState().hasSave).toBe(false)
+  })
+})

@@ -466,6 +466,20 @@ TM-P1-021（首条正式支线《采药受阻》——药师发布，暂停主�
 - Store 单测 18 项 A-O：A 第一主线未完成 discover false/B completed discover true+available/C 重复 discover false/D accept in_progress/E 不在草原 inspect false/F 支线不存在 false/G available/completable/completed false/H 首次 inspect true+checked true+completable+stage 0/I checked=false 可执行/J checked=true 重复 false 同一引用不变/K 非 boolean flag（"yes"/1/0.5）false 同一引用原值保留/L inspect 无金币/HP/MP/物品副作用/M completeQuest 后 completed+gold 精确 +10/N 除 gold 与该 QuestState 外其他状态不变/O inspect 不自动保存
 - 30 项 E2E（直接继续 P1-020 已保存档：A Continue 后兔王巢穴→村外草原→青石村+黄金主线进行中+巢穴复查完成+【待补充】/B 附近委托出现药师入口+采药受阻可接受+描述来自注册表/C 接受后进行中+当前目标：前往村外草原查看采药区域+记录金币/D 草原剧情块文案+查看采药区域按钮 enabled/E 点击→固定结果+可以回青石村向药师复命+采药区域已查看+当前目标：返回青石村向药师复命+可完成+按钮精确消失/F 返回青石村提交→已完成+金币严格 +10/G Lv.2 不变+maxHP/maxMP 不变+兔子的路径 ×1+黄金主线 in_progress+巢穴复查完成/H Save/Continue 后采药受阻已完成+黄金主线保持+草原无采药调查按钮）
 
+TM-P1-022（第二条支线《矿洞余患》——铁匠发布，复用废弃矿洞/魔化鼠/战斗系统）：
+- quests.ts 新增 quest_blacksmith_mine_remnant：title 矿洞余患 / summary「矿洞清理后，铁匠仍担心里面还有魔化鼠活动，希望你再去废弃矿洞确认一次。」/ giverNpcId blacksmith / goldReward 10；QuestDefinition 零扩展
+- 发现门槛（窄特判，未建 prerequisite 系统）：Store discoverQuest 仅 quest_mine_cleanup.status===completed 才允许发现；GamePage localQuests 同步相同门槛
+- 完全复用现有生命周期 discoverQuest/acceptQuest/completeQuest（undiscovered→available→in_progress→completable→completed），未新增任务进度 action
+- 战斗推进（resolveCombatVictory 窄分支）：abandoned_mine + corrupted_rat 胜利 + 支线 in_progress → 同一次胜利支线 status→completable（stage 保持 0）；与《矿洞清理》in_progress 推进互不排斥（同一胜利可同时推进两任务，未写 if/else 互斥）；iron_ore +1 原有掉落保持（战利品非支线额外奖励）
+- 无额外支线 flag（不建 remnant_rat_killed/mine_checked/second_rat_defeated——Quest status 已足够表达）
+- 任务日志：in_progress「当前目标：前往废弃矿洞处理残余的魔化鼠。」；completable「矿洞余患已确认。/当前目标：返回青石村向铁匠复命。」（无新矿洞 lore）
+- 提交复用 generic completeQuest（completable→completed + goldReward 10 走 generic 金币奖励，未新增 completeMineRemnantQuest/rewardMineRemnant）；除 iron_ore+1（战斗战利品）、支线 QuestState、提交 gold+10 外无其他状态变化（无等级/XP/HP/MP/装备/药水/关系/属性/新物品）
+- 黄金兔子主线完全冻结：继续 in_progress/stage 0/asked 两 true/village_inquiry_reported true/rabbit_lair_rechecked true/巢穴复查完成/【待补充】；《采药受阻》保持 completed
+- schema 不变、SAVE_VERSION=1；locations.ts/npcs.ts/items.ts/enemies.ts/App.tsx/CombatPage.tsx/types/storage/rules/content 定义零修改；git diff 仅 quests.ts + content.test.ts + gameStore.ts + gameStore.test.ts + GamePage.tsx + qa/e2e.mjs + README
+- content 测试：QUESTS toHaveLength(6) + 支线注册表定义锁定（title/giver/goldReward 10/summary 关键文案）+ 无新增敌人/NPC
+- Store 单测 14 项 A-M：A 矿洞清理未 completed discover false/B completed discover true+available/C accept in_progress/D 非 corrupted_rat 胜利不推进（corrupted_rabbit 无副作用 GameState 完全不变）/E corrupted_rat 但不在废弃矿洞不推进/F 支线 available 时 rat 胜利不推进/G in_progress+合法 rat 胜利→completable+stage 0/H 同次胜利仍 iron_ore +1/I 已 completable 再打 rat 保持 completable 不回退/J generic completeQuest→completed+gold 精确 +10/K 除 iron_ore+1/支线 QuestState/提交 gold+10 外无其他状态变化（打 rat 后 player/equipment/world 全等；提交后仅 gold 与支线 QuestState 变）/L 黄金兔子第四主线完全不变（本卡流程不创建/不推进）+采药受阻不创建/M 不自动保存
+- 24 项 E2E（直接继续 P1-021 已保存档：A Continue 后采药受阻已完成+黄金主线进行中+巢穴复查完成+【待补充】/B 附近委托出现铁匠入口+矿洞余患可接受（发布者铁匠）+接受后进行中+当前目标：前往废弃矿洞处理残余的魔化鼠+记录金币/铁矿石/C 前往废弃矿洞魔化鼠仍存在可迎战/D 确定性击败（Math.random 隔离 0.99）→矿洞余患可完成+矿洞余患已确认+当前目标：返回青石村向铁匠复命+铁矿石 = 战前 + 1/E 返回青石村提交→已完成+金币精确 +10/F 主线零回归（黄金主线进行中+巢穴复查完成+【待补充】+采药受阻已完成）/G Save/Continue 后矿洞余患已完成+采药受阻已完成+黄金主线进行中+巢穴复查完成+支线不重新出现为可接受）
+
 ## 目录结构
 
 ```

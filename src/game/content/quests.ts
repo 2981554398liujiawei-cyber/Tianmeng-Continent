@@ -51,4 +51,12 @@ export const QUESTS: Record<string, QuestDefinition> = {
     giverNpcId: 'apothecary',
     goldReward: 10,
   },
+  // TM-P1-022：第二条正式支线（铁匠发布；复用废弃矿洞/魔化鼠/战斗系统；仅《矿洞清理》完成后可发现；无专属 flag/action，胜利窄分支推进 + generic 提交 goldReward 10）
+  quest_blacksmith_mine_remnant: {
+    id: 'quest_blacksmith_mine_remnant',
+    title: '矿洞余患',
+    summary: '矿洞清理后，铁匠仍担心里面还有魔化鼠活动，希望你再去废弃矿洞确认一次。',
+    giverNpcId: 'blacksmith',
+    goldReward: 10,
+  },
 }

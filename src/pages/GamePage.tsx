@@ -129,6 +129,10 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
     if (quest.id === 'quest_apothecary_herb_route') {
       return gameState.quests.some((q) => q.questId === 'quest_village_monsters' && q.status === 'completed')
     }
+    // TM-P1-022：UI 侧窄前置（与 Store discoverQuest 一致）——《矿洞余患》支线仅在《矿洞清理》completed 后可见
+    if (quest.id === 'quest_blacksmith_mine_remnant') {
+      return gameState.quests.some((q) => q.questId === 'quest_mine_cleanup' && q.status === 'completed')
+    }
     return true
   })
   // TM-P0-015：附近人物 = 常驻当前地点的注册 NPC（动态过滤，不硬编码列表）
@@ -822,6 +826,16 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
                     <div className="mt-1 text-xs text-bone-400">
                       <p className="text-gold-300">采药区域已查看。</p>
                       <p className="mt-1">当前目标：返回青石村向药师复命。</p>
+                    </div>
+                  )}
+                  {/* TM-P1-022：支线《矿洞余患》进度提示——接受后显示目标；魔化鼠胜利推进 completable 后显示已确认+新目标（无专属 flag，Quest status 表达状态） */}
+                  {qs.questId === 'quest_blacksmith_mine_remnant' && qs.status === 'in_progress' && (
+                    <p className="mt-1 text-xs text-bone-400">当前目标：前往废弃矿洞处理残余的魔化鼠。</p>
+                  )}
+                  {qs.questId === 'quest_blacksmith_mine_remnant' && qs.status === 'completable' && (
+                    <div className="mt-1 text-xs text-bone-400">
+                      <p className="text-gold-300">矿洞余患已确认。</p>
+                      <p className="mt-1">当前目标：返回青石村向铁匠复命。</p>
                     </div>
                   )}
                   {canSubmit && (
