@@ -95,6 +95,8 @@ interface GameStoreState {
   inspectApothecaryHerbRoute: () => boolean
   /** 离开青石村前往天龙城（TM-P1-023）：一次性区域跨越 action——青石村 + 黄金主线 in_progress/stage 0 + 四剧情 flag 均 true + rabbit_path 合法持有（安全整数>=1）+ examined/reported true + 已接触未完成的两条支线（available/in_progress/completable）阻止时成功，只改 world.currentLocationId='tianlong_city'（无 qingshi_departed flag）；任何非法前置/异常 flag/quantity 全部拒绝且完全不变；player/inventory/equipment/quests/flags/npcStates/completedEvents 全不变、不自动保存 */
   departQingshiVillageToTianlongCity: () => boolean
+  /** 向王财询问黑石塔附近的遭遇（TM-P1-024）：第五主线第一次剧情交接专属窄 action——当前位置 tianlong_city + quest_wangcai_trouble in_progress + wangcai_briefed undefined/false 时成功，原子写 quest.flags.wangcai_briefed=true（status 保持 in_progress、stage 保持 0）；非 boolean 异常 flag（"yes"/1/0.5）整次拒绝且完全不变（不修复）；已 true 重复调用 false 且 GameState 同一引用；无金币/HP/MP/物品/装备/关系/flags/completedEvents 副作用、不自动保存 */
+  askWangcaiAboutTrouble: () => boolean
 }
 
 /** 任务发现：不存在 → 创建 available；undiscovered → available；其余状态不重复创建。非法返回 null（TM-P0-006） */
@@ -1067,6 +1069,30 @@ export const useGameStore = create<GameStoreState>()((set) => ({
           world: { ...s.gameState.world, currentLocationId: 'tianlong_city' },
         },
       }
+    })
+    return changed
+  },
+
+  askWangcaiAboutTrouble: () => {
+    let changed = false
+    set((s) => {
+      if (!s.gameState) return {}
+      // 必须在天龙城（王财所在地）
+      if (s.gameState.world.currentLocationId !== 'tianlong_city') return {}
+      const questIndex = s.gameState.quests.findIndex((q) => q.questId === 'quest_wangcai_trouble')
+      if (questIndex < 0) return {}
+      const quest = s.gameState.quests[questIndex]
+      if (!quest) return {}
+      if (quest.status !== 'in_progress') return {}
+      // TM-P1-024：wangcai_briefed 只允许 undefined/false/true；非 boolean（"yes"/1/0.5）整次拒绝且完全不变（不修复）；已 true 重复调用拒绝
+      const briefed = quest.flags.wangcai_briefed
+      if (typeof briefed !== 'undefined' && typeof briefed !== 'boolean') return {}
+      if (briefed === true) return {}
+      changed = true
+      // TM-P1-024：成功只写 quest.flags.wangcai_briefed=true（status 保持 in_progress、stage 保持 0；无奖励/状态污染，不自动保存）
+      const nextQuests = [...s.gameState.quests]
+      nextQuests[questIndex] = { ...quest, flags: { ...quest.flags, wangcai_briefed: true } }
+      return { gameState: { ...s.gameState, quests: nextQuests } }
     })
     return changed
   },

@@ -68,6 +68,7 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
   const recheckGoldenRabbitMapAtLair = useGameStore((s) => s.recheckGoldenRabbitMapAtLair)
   const inspectApothecaryHerbRoute = useGameStore((s) => s.inspectApothecaryHerbRoute)
   const departQingshiVillageToTianlongCity = useGameStore((s) => s.departQingshiVillageToTianlongCity)
+  const askWangcaiAboutTrouble = useGameStore((s) => s.askWangcaiAboutTrouble)
   const [saveResult, setSaveResult] = useState<'saved' | 'failed' | null>(null)
   const [travelError, setTravelError] = useState(false)
   // TM-P0-015：活动对话 NPC（仅 UI 本地状态，不进入 GameState / 存档）
@@ -136,6 +137,9 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
   const mineRemnantBlocking =
     mineRemnantQuest?.status === 'available' || mineRemnantQuest?.status === 'in_progress' || mineRemnantQuest?.status === 'completable'
   const sideQuestsBlocking = herbQuestBlocking || mineRemnantBlocking
+  /** TM-P1-024：第五主线《商人王财的麻烦》QuestState（只读；王财对话剧情从 flags.wangcai_briefed 驱动） */
+  const wangcaiQuest = gameState.quests.find((q) => q.questId === 'quest_wangcai_trouble')
+  const wangcaiBriefed = wangcaiQuest?.flags.wangcai_briefed === true
   // TM-P0-006：附近委托 = 给予者位于当前地点的注册任务（不写死地点 ID）
   const localQuests = Object.values(QUESTS).filter((quest) => {
     const giver = getNpc(quest.giverNpcId)
@@ -608,6 +612,22 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
                   </div>
                 )
               )}
+              {/* TM-P1-024：向王财询问黑石塔附近的遭遇——第五主线 in_progress 且未说明时显示入口（仅剧情标记驱动，不依赖 npcs.ts 改动）；成功后按钮消失并显示固定说明（黑石塔仍不开放） */}
+              {activeNpc.id === 'merchant_wangcai' && wangcaiQuest?.status === 'in_progress' && (
+                wangcaiBriefed ? (
+                  <div className="mb-3 rounded border border-gold-500/40 bg-ink-900/40 p-3">
+                    <p className="text-bone-200">王财告诉你，几天前他在黑石塔附近遭到魔物袭击，混乱中遗失了妻子的夔峒项链。</p>
+                    <p className="mt-1 text-bone-300">他希望你能前去调查，并设法找回项链。</p>
+                  </div>
+                ) : (
+                  <div className="mb-3 rounded border border-ink-600 bg-ink-900/40 p-3">
+                    <p className="mb-2 text-xs text-bone-300">马科让你来了解王财最近遇到的麻烦。</p>
+                    <Button variant="primary" onClick={() => askWangcaiAboutTrouble()}>
+                      询问黑石塔附近的遭遇
+                    </Button>
+                  </div>
+                )
+              )}
               <Button variant="ghost" onClick={() => setActiveNpcId(null)}>
                 结束交谈
               </Button>
@@ -895,6 +915,20 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
                     <div className="mt-1 text-xs text-bone-400">
                       <p className="text-gold-300">矿洞余患已确认。</p>
                       <p className="mt-1">当前目标：返回青石村向铁匠复命。</p>
+                    </div>
+                  )}
+                  {/* TM-P1-024：第五主线《商人王财的麻烦》进度提示——接受后显示目标；向王财询问后显示已了解+新目标+黑石塔待开放（本卡不开放黑石塔、不完成任务） */}
+                  {qs.questId === 'quest_wangcai_trouble' && qs.status === 'in_progress' && (
+                    <div className="mt-1 text-xs text-bone-400">
+                      {wangcaiBriefed ? (
+                        <>
+                          <p className="text-gold-300">已向王财了解情况。</p>
+                          <p className="mt-1">当前目标：调查黑石塔附近的情况。</p>
+                          <p className="mt-1">黑石塔：【待开放】</p>
+                        </>
+                      ) : (
+                        <p>当前目标：返回天龙城，找到商人王财了解情况。</p>
+                      )}
                     </div>
                   )}
                   {canSubmit && (

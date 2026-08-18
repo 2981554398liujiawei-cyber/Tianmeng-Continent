@@ -4695,3 +4695,201 @@ describe('TM-P1-023：离开青石村前往天龙城（区域跨越）', () => {
     expect(useGameStore.getState().hasSave).toBe(false)
   })
 })
+
+describe('TM-P1-024：天龙城第一段——向王财询问黑石塔遭遇（第五主线剧情交接）', () => {
+  const wangcaiQuest = () => useGameStore.getState().gameState?.quests.find((q) => q.questId === 'quest_wangcai_trouble')
+  const goldenQuest = () => useGameStore.getState().gameState?.quests.find((q) => q.questId === 'quest_golden_rabbit_search')
+  const currentLocation = () => useGameStore.getState().gameState?.world.currentLocationId
+  const snapshot = () => JSON.stringify(useGameStore.getState().gameState)
+
+  /** 走到武馆接取第五主线（在天龙城、任务 in_progress、未 brief） */
+  const seedWangcaiInProgress = () => {
+    useGameStore.getState().newGame()
+    // 直接构造：newGame 后补足武馆与任务（本卡不依赖青石村全链；仅测试 ask 动作语义）
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return {
+        gameState: {
+          ...s.gameState,
+          world: { ...s.gameState.world, currentLocationId: 'tianlong_city' },
+          quests: [
+            ...s.gameState.quests,
+            {
+              questId: 'quest_wangcai_trouble',
+              status: 'in_progress',
+              stage: 0,
+              flags: {},
+            },
+          ],
+        },
+      }
+    })
+  }
+
+  /** 直接构造 wangcai_briefed 运行态 */
+  const seedWangcaiBriefed = (value: string | number | boolean | undefined) => {
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return {
+        gameState: {
+          ...s.gameState,
+          quests: s.gameState.quests.map((q) => {
+            if (q.questId !== 'quest_wangcai_trouble') return q
+            if (value === undefined) {
+              const nextFlags = { ...q.flags }
+              delete nextFlags.wangcai_briefed
+              return { ...q, flags: nextFlags }
+            }
+            return { ...q, flags: { ...q.flags, wangcai_briefed: value } }
+          }),
+        },
+      }
+    })
+  }
+
+  it('A. 无 gameState → ask false', () => {
+    useGameStore.setState({ gameState: null })
+    expect(useGameStore.getState().askWangcaiAboutTrouble()).toBe(false)
+  })
+
+  it('B. 不在 tianlong_city → false', () => {
+    seedWangcaiInProgress()
+    // 直接改位置（tianlong_city 与青石村不相邻，travelToLocation 无法表达）
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return { gameState: { ...s.gameState, world: { ...s.gameState.world, currentLocationId: 'qingshi_village' } } }
+    })
+    const before = snapshot()
+    expect(useGameStore.getState().askWangcaiAboutTrouble()).toBe(false)
+    expect(snapshot()).toBe(before)
+  })
+
+  it('C. quest 不存在 → false', () => {
+    seedWangcaiInProgress()
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return { gameState: { ...s.gameState, quests: s.gameState.quests.filter((q) => q.questId !== 'quest_wangcai_trouble') } }
+    })
+    const before = snapshot()
+    expect(useGameStore.getState().askWangcaiAboutTrouble()).toBe(false)
+    expect(snapshot()).toBe(before)
+  })
+
+  it.each([
+    ['available', 'available'],
+    ['completable', 'completable'],
+    ['completed', 'completed'],
+  ] as const)('D/E/F. quest %s → false', (_label, status) => {
+    seedWangcaiInProgress()
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return {
+        gameState: {
+          ...s.gameState,
+          quests: s.gameState.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, status } : q)),
+        },
+      }
+    })
+    const before = snapshot()
+    expect(useGameStore.getState().askWangcaiAboutTrouble()).toBe(false)
+    expect(snapshot()).toBe(before)
+  })
+
+  it('G. in_progress + 未 brief → true + wangcai_briefed=true', () => {
+    seedWangcaiInProgress()
+    expect(useGameStore.getState().askWangcaiAboutTrouble()).toBe(true)
+    expect(wangcaiQuest()?.flags.wangcai_briefed).toBe(true)
+  })
+
+  it('H. wangcai_briefed=false → 可成功 true', () => {
+    seedWangcaiInProgress()
+    seedWangcaiBriefed(false)
+    expect(useGameStore.getState().askWangcaiAboutTrouble()).toBe(true)
+    expect(wangcaiQuest()?.flags.wangcai_briefed).toBe(true)
+  })
+
+  it('I. 已 true → false 且 GameState 同一引用', () => {
+    seedWangcaiInProgress()
+    seedWangcaiBriefed(true)
+    const before = useGameStore.getState().gameState
+    expect(useGameStore.getState().askWangcaiAboutTrouble()).toBe(false)
+    expect(useGameStore.getState().gameState).toBe(before)
+  })
+
+  it.each([
+    ['"yes"', 'yes'],
+    ['1', 1],
+    ['0.5', 0.5],
+  ])('J. wangcai_briefed 非 boolean（%s）→ false 且同一引用不变（不修复）', (_label, invalidValue) => {
+    seedWangcaiInProgress()
+    seedWangcaiBriefed(invalidValue)
+    const before = useGameStore.getState().gameState
+    expect(useGameStore.getState().askWangcaiAboutTrouble()).toBe(false)
+    expect(useGameStore.getState().gameState).toBe(before)
+    expect(wangcaiQuest()?.flags.wangcai_briefed).toBe(invalidValue)
+  })
+
+  it('K. 成功后 status 仍 in_progress、stage 仍 0', () => {
+    seedWangcaiInProgress()
+    useGameStore.getState().askWangcaiAboutTrouble()
+    expect(wangcaiQuest()?.status).toBe('in_progress')
+    expect(wangcaiQuest()?.stage).toBe(0)
+  })
+
+  it('L. 成功只改变该 QuestState flag（其他字段/其他 quests 全不变）', () => {
+    seedWangcaiInProgress()
+    const before = useGameStore.getState().gameState!
+    const beforeQuests = JSON.stringify(before.quests)
+    useGameStore.getState().askWangcaiAboutTrouble()
+    const after = useGameStore.getState().gameState!
+    expect(after.player).toEqual(before.player)
+    expect(after.inventory).toEqual(before.inventory)
+    expect(after.equipment).toEqual(before.equipment)
+    expect(after.world).toEqual(before.world)
+    // 只有 wangcai_trouble 的 flags 增加 wangcai_briefed=true
+    const changed = after.quests.map((q) => JSON.stringify(q)).join('\n') !== beforeQuests
+    expect(changed).toBe(true)
+    const otherQuests = after.quests.filter((q) => q.questId !== 'quest_wangcai_trouble')
+    const otherBefore = before.quests.filter((q) => q.questId !== 'quest_wangcai_trouble')
+    expect(JSON.stringify(otherQuests)).toBe(JSON.stringify(otherBefore))
+  })
+
+  it('M. player/inventory/equipment/world/其他 quests/npcStates 全不变', () => {
+    seedWangcaiInProgress()
+    const beforePlayer = useGameStore.getState().gameState!.player
+    const beforeInventory = useGameStore.getState().gameState!.inventory
+    const beforeEquipment = useGameStore.getState().gameState!.equipment
+    const beforeWorld = useGameStore.getState().gameState!.world
+    const beforeNpcStates = useGameStore.getState().gameState!.world.npcStates
+    useGameStore.getState().askWangcaiAboutTrouble()
+    const after = useGameStore.getState().gameState!
+    expect(after.player).toEqual(beforePlayer)
+    expect(after.inventory).toEqual(beforeInventory)
+    expect(after.equipment).toEqual(beforeEquipment)
+    expect(after.world).toEqual(beforeWorld)
+    expect(after.world.npcStates).toEqual(beforeNpcStates)
+    // 未创建马科/王财 npcState
+    expect(after.world.npcStates.knight_captain_make).toBeUndefined()
+    expect(after.world.npcStates.merchant_wangcai).toBeUndefined()
+  })
+
+  it('N. 黄金兔子主线完全不变（本卡流程不创建/不推进；ask 只改 wangcai flag）', () => {
+    seedWangcaiInProgress()
+    const beforeOtherQuests = JSON.stringify(
+      useGameStore.getState().gameState!.quests.filter((q) => q.questId !== 'quest_wangcai_trouble'),
+    )
+    useGameStore.getState().askWangcaiAboutTrouble()
+    expect(goldenQuest()).toBeUndefined()
+    const afterOtherQuests = JSON.stringify(
+      useGameStore.getState().gameState!.quests.filter((q) => q.questId !== 'quest_wangcai_trouble'),
+    )
+    expect(afterOtherQuests).toBe(beforeOtherQuests)
+  })
+
+  it('O. 不自动保存', () => {
+    seedWangcaiInProgress()
+    useGameStore.getState().askWangcaiAboutTrouble()
+    expect(wangcaiQuest()?.flags.wangcai_briefed).toBe(true)
+    expect(useGameStore.getState().hasSave).toBe(false)
+  })
+})

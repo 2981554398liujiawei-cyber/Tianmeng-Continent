@@ -2782,7 +2782,7 @@ try {
     if (!container) return []
     return [...container.querySelectorAll('button')].map((b) => b.textContent.trim())
   })
-  check('P1-023-F: 可前往按钮为空 []（天龙城无连接）', JSON.stringify(departTravelButtons) === JSON.stringify([]))
+  check('P1-023-F: 可前往按钮精确 [武馆]（P1-024 起天龙城连接武馆）', JSON.stringify(departTravelButtons) === JSON.stringify(['武馆']))
   check('P1-023-F: 无返回青石村按钮', !body.includes('返回青石村'))
   // G. 无副作用精确比较
   const departAfterLevel = body.match(/Lv\.(\d+)/)
@@ -2822,6 +2822,149 @@ try {
   check('P1-023-I: Continue 后无青石村返回按钮', !body.includes('返回青石村'))
   check('P1-023-I: Continue 后追寻黄金兔子王进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
   check('P1-023-I: Continue 后兔子的路径 ×1', body.includes('兔子的路径 ×1'))
+  await clickByText('返回主菜单')
+
+  // TM-P1-024：天龙城第一段——武馆、马科与商人王财（直接继续 P1-023 Save/Continue 后的天龙城档）
+  // A. Continue：在天龙城，黄金主线保持，可前往精确 ['武馆']
+  await clickByText('继续游戏')
+  await sleep(300)
+  body = await bodyText()
+  const wangcaiLocBefore = await page.evaluate(() => {
+    const label = [...document.querySelectorAll('p')].find((el) => el.textContent.trim() === '当前位置')
+    if (!label) return null
+    const section = label.closest('section')
+    if (!section) return null
+    const idEl = [...section.querySelectorAll('p')].find((el) => /^[a-z_]+$/.test(el.textContent.trim()))
+    return idEl ? idEl.textContent.trim() : null
+  })
+  check('P1-024-A: 当前位置 = tianlong_city', wangcaiLocBefore === 'tianlong_city')
+  check('P1-024-A: 追寻黄金兔子王进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
+  check('P1-024-A: 兔子的路径 ×1', body.includes('兔子的路径 ×1'))
+  const tianlongTravelButtons = await page.evaluate(() => {
+    const label = [...document.querySelectorAll('p')].find((el) => el.textContent.trim() === '可前往：')
+    if (!label) return []
+    const container = label.parentElement
+    if (!container) return []
+    return [...container.querySelectorAll('button')].map((b) => b.textContent.trim())
+  })
+  check('P1-024-A: 天龙城可前往按钮精确 [武馆]', JSON.stringify(tianlongTravelButtons) === JSON.stringify(['武馆']))
+  // B. 前往武馆
+  await clickByText('武馆')
+  await sleep(300)
+  body = await bodyText()
+  const martialHallLoc = await page.evaluate(() => {
+    const label = [...document.querySelectorAll('p')].find((el) => el.textContent.trim() === '当前位置')
+    if (!label) return null
+    const section = label.closest('section')
+    if (!section) return null
+    const idEl = [...section.querySelectorAll('p')].find((el) => /^[a-z_]+$/.test(el.textContent.trim()))
+    return idEl ? idEl.textContent.trim() : null
+  })
+  check('P1-024-B: 当前位置 = tianlong_martial_hall', martialHallLoc === 'tianlong_martial_hall')
+  check('P1-024-B: 地点武馆', body.includes('武馆'))
+  const hallTravelButtons = await page.evaluate(() => {
+    const label = [...document.querySelectorAll('p')].find((el) => el.textContent.trim() === '可前往：')
+    if (!label) return []
+    const container = label.parentElement
+    if (!container) return []
+    return [...container.querySelectorAll('button')].map((b) => b.textContent.trim())
+  })
+  check('P1-024-B: 武馆可前往按钮精确 [天龙城]', JSON.stringify(hallTravelButtons) === JSON.stringify(['天龙城']))
+  check('P1-024-B: 附近人物马科（骑士队长）', body.includes('马科') && body.includes('骑士队长'))
+  // C. 接取第五主线
+  check('P1-024-C: 附近委托出现马科入口', body.includes('马科似乎有事相托'))
+  await clickByText('查看委托')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-024-C: 发布者：马科 可接受', body.includes('发布者：马科') && body.includes('可接受'))
+  await clickByText('接受任务')
+  await sleep(200)
+  body = await bodyText()
+  check('P1-024-C: 商人王财的麻烦进行中', body.includes('商人王财的麻烦') && body.includes('进行中'))
+  check('P1-024-C: 当前目标：返回天龙城找到商人王财', body.includes('当前目标：返回天龙城，找到商人王财了解情况。'))
+  const wangcaiBeforeLevel = body.match(/Lv\.(\d+)/)
+  const wangcaiBeforeHp = body.match(/生命\s*(\d+)\s*\/\s*(\d+)/)
+  const wangcaiBeforeMp = body.match(/灵力\s*(\d+)\s*\/\s*(\d+)/)
+  const wangcaiBeforeGold = body.match(/金币\s*(\d+)/)
+  const wangcaiBeforeMapCount = body.match(/兔子的路径 ×(\d+)/)
+  // D. 返回天龙城找王财（附近人物卡片按钮统一为「交谈」）
+  await clickByText('天龙城')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-024-D: 附近人物王财（商人）', body.includes('王财') && body.includes('商人'))
+  await clickByText('交谈')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-024-D: 王财对话剧情入口文案', body.includes('马科让你来了解王财最近遇到的麻烦。'))
+  check('P1-024-D: 询问黑石塔附近的遭遇按钮 enabled', (await buttonDisabled('询问黑石塔附近的遭遇')) === false)
+  // E. 询问王财
+  await clickByText('询问黑石塔附近的遭遇')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-024-E: 王财说明固定文案（夔峒项链）', body.includes('王财告诉你，几天前他在黑石塔附近遭到魔物袭击，混乱中遗失了妻子的夔峒项链。'))
+  check('P1-024-E: 王财希望调查找回项链', body.includes('他希望你能前去调查，并设法找回项链。'))
+  check('P1-024-E: 询问按钮消失', (await page.evaluate(() => [...document.querySelectorAll('button')].some((b) => b.textContent.trim() === '询问黑石塔附近的遭遇'))) === false)
+  await clickByText('结束交谈')
+  await sleep(200)
+  body = await bodyText()
+  check('P1-024-E: 任务日志已向王财了解情况', body.includes('已向王财了解情况。'))
+  check('P1-024-E: 当前目标：调查黑石塔附近的情况', body.includes('当前目标：调查黑石塔附近的情况。'))
+  check('P1-024-E: 黑石塔：【待开放】', body.includes('黑石塔：【待开放】'))
+  // F. 任务不能完成
+  check('P1-024-F: 无可完成/提交任务/已完成（商人王财的麻烦仍进行中）', !body.includes('提交任务') && !body.includes('可完成') && body.includes('商人王财的麻烦') && body.includes('进行中'))
+  // G. 黑石塔不能前往
+  const tianlongTravelAfter = await page.evaluate(() => {
+    const label = [...document.querySelectorAll('p')].find((el) => el.textContent.trim() === '可前往：')
+    if (!label) return []
+    const container = label.parentElement
+    if (!container) return []
+    return [...container.querySelectorAll('button')].map((b) => b.textContent.trim())
+  })
+  check('P1-024-G: 天龙城移动按钮仍精确 [武馆]', JSON.stringify(tianlongTravelAfter) === JSON.stringify(['武馆']))
+  check('P1-024-G: 无黑石塔/城外按钮', !body.includes('黑石塔') || body.includes('黑石塔：【待开放】'))
+  check('P1-024-G: 无前往黑石塔', !body.includes('前往黑石塔') && !body.includes('城外'))
+  // H. 无副作用
+  const wangcaiAfterLevel = body.match(/Lv\.(\d+)/)
+  const wangcaiAfterHp = body.match(/生命\s*(\d+)\s*\/\s*(\d+)/)
+  const wangcaiAfterMp = body.match(/灵力\s*(\d+)\s*\/\s*(\d+)/)
+  const wangcaiAfterGold = body.match(/金币\s*(\d+)/)
+  const wangcaiAfterMapCount = body.match(/兔子的路径 ×(\d+)/)
+  check(
+    'P1-024-H: 接任务前后 Lv/HP/MP/gold/地图数全不变',
+    wangcaiBeforeLevel !== null && wangcaiAfterLevel !== null && wangcaiBeforeLevel[1] === wangcaiAfterLevel[1] &&
+      wangcaiBeforeHp !== null && wangcaiAfterHp !== null && wangcaiBeforeHp[1] === wangcaiAfterHp[1] && wangcaiBeforeHp[2] === wangcaiAfterHp[2] &&
+      wangcaiBeforeMp !== null && wangcaiAfterMp !== null && wangcaiBeforeMp[1] === wangcaiAfterMp[1] && wangcaiBeforeMp[2] === wangcaiAfterMp[2] &&
+      wangcaiBeforeGold !== null && wangcaiAfterGold !== null && wangcaiBeforeGold[1] === wangcaiAfterGold[1] &&
+      wangcaiBeforeMapCount !== null && wangcaiAfterMapCount !== null && wangcaiBeforeMapCount[1] === wangcaiAfterMapCount[1],
+  )
+  check('P1-024-H: 黄金兔子主线仍进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
+  check('P1-024-H: 巢穴复查完成', body.includes('巢穴复查完成。'))
+  check('P1-024-H: 具体目的地【待补充】', body.includes('具体目的地：【待补充】'))
+  // I. Save/Continue
+  await clickByText('保存游戏')
+  await clickByText('返回主菜单')
+  await clickByText('继续游戏')
+  await sleep(300)
+  body = await bodyText()
+  const wangcaiLocAfter = await page.evaluate(() => {
+    const label = [...document.querySelectorAll('p')].find((el) => el.textContent.trim() === '当前位置')
+    if (!label) return null
+    const section = label.closest('section')
+    if (!section) return null
+    const idEl = [...section.querySelectorAll('p')].find((el) => /^[a-z_]+$/.test(el.textContent.trim()))
+    return idEl ? idEl.textContent.trim() : null
+  })
+  check('P1-024-I: Continue 后当前位置 = tianlong_city', wangcaiLocAfter === 'tianlong_city')
+  check('P1-024-I: 商人王财的麻烦进行中', body.includes('商人王财的麻烦') && body.includes('进行中'))
+  check('P1-024-I: 已向王财了解情况', body.includes('已向王财了解情况。'))
+  check('P1-024-I: 黑石塔：【待开放】', body.includes('黑石塔：【待开放】'))
+  check('P1-024-I: 追寻黄金兔子王进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
+  // I：再次打开王财——显示已说明剧情，无询问按钮
+  await clickByText('交谈')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-024-I: 王财已说明剧情（无询问按钮）', body.includes('王财告诉你，几天前他在黑石塔附近遭到魔物袭击，混乱中遗失了妻子的夔峒项链。') && !body.includes('询问黑石塔附近的遭遇'))
+  await clickByText('结束交谈')
   await clickByText('返回主菜单')
 
   // TM-P1-015：战斗中使用治疗药水（独立最小段：默认骑士 + 村外草原魔化兔；魔化兔零修改 HP8/DEF11/atk+2/dmg2）

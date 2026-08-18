@@ -47,25 +47,37 @@ describe('TM-P0-002：内容注册表交叉引用一致性', () => {
 })
 
 describe('TM-P0-002：内容数量与指定条目', () => {
-  it('地点 5 个：青石村/村外草原/废弃矿洞/兔王巢穴/天龙城', () => {
-    expect(Object.keys(LOCATIONS)).toHaveLength(5)
+  it('地点 6 个：青石村/村外草原/废弃矿洞/兔王巢穴/天龙城/武馆', () => {
+    expect(Object.keys(LOCATIONS)).toHaveLength(6)
     expect(getLocation('qingshi_village')?.name).toBe('青石村')
     expect(getLocation('village_grassland')?.name).toBe('村外草原')
     expect(getLocation('abandoned_mine')?.name).toBe('废弃矿洞')
     expect(getLocation('rabbit_lair')?.name).toBe('兔王巢穴')
     expect(getLocation('tianlong_city')?.name).toBe('天龙城')
+    expect(getLocation('tianlong_martial_hall')?.name).toBe('武馆')
   })
 
-  // TM-P1-023：天龙城落点锁定——本卡只做区域切换与落点：connections=[]（单向不可返回）enemyIds=[]（无假内容）
-  it('TM-P1-023：天龙城注册表定义锁定（id/name/description/connections=[]/enemyIds=[]）', () => {
+  // TM-P1-023：天龙城落点锁定——本卡只做区域切换与落点；TM-P1-024 起 connections=['tianlong_martial_hall']（双向武馆）、enemyIds=[]（无假内容）
+  it('TM-P1-023：天龙城注册表定义锁定（id/name/description/enemyIds=[]/无 requiredFlag）', () => {
     const city = getLocation('tianlong_city')
     expect(city).toBeDefined()
     expect(city?.id).toBe('tianlong_city')
     expect(city?.name).toBe('天龙城')
     expect(city?.description).toContain('天龙王朝的皇城')
-    expect(city?.connections).toEqual([])
     expect(city?.enemyIds).toEqual([])
     expect(city?.requiredFlag).toBeUndefined()
+  })
+
+  // TM-P1-024：天龙城第一段子区域——武馆（双向连接天龙城；无敌人）+ 天龙城连接更新
+  it('TM-P1-024：武馆注册表定义锁定（id/name=武馆/connections=[tianlong_city]/enemyIds=[]）', () => {
+    const hall = getLocation('tianlong_martial_hall')
+    expect(hall).toBeDefined()
+    expect(hall?.id).toBe('tianlong_martial_hall')
+    expect(hall?.name).toBe('武馆')
+    expect(hall?.connections).toEqual(['tianlong_city'])
+    expect(hall?.enemyIds).toEqual([])
+    expect(hall?.requiredFlag).toBeUndefined()
+    expect(getLocation('tianlong_city')?.connections).toEqual(['tianlong_martial_hall'])
   })
 
   it('连接关系符合设定', () => {
@@ -78,11 +90,13 @@ describe('TM-P0-002：内容数量与指定条目', () => {
     expect(getLocation('rabbit_lair')?.requiredFlag).toBe('rabbit_lair_unlocked')
   })
 
-  it('NPC 3 个：村长/铁匠/药师，均位于青石村', () => {
-    expect(Object.keys(NPCS)).toHaveLength(3)
-    for (const npc of Object.values(NPCS)) {
-      expect(npc.locationId).toBe('qingshi_village')
-    }
+  it('NPC 5 个：村长/铁匠/药师位于青石村，马科位于武馆，王财位于天龙城', () => {
+    expect(Object.keys(NPCS)).toHaveLength(5)
+    expect(getNpc('village_elder')?.locationId).toBe('qingshi_village')
+    expect(getNpc('blacksmith')?.locationId).toBe('qingshi_village')
+    expect(getNpc('apothecary')?.locationId).toBe('qingshi_village')
+    expect(getNpc('knight_captain_make')?.locationId).toBe('tianlong_martial_hall')
+    expect(getNpc('merchant_wangcai')?.locationId).toBe('tianlong_city')
   })
 
   it('敌人 4 个且等级符合设定', () => {
@@ -170,11 +184,38 @@ describe('TM-P0-002-R1：关键内容身份锁', () => {
     expect(desc).not.toContain('迁徙')
   })
 
-  it('注册表数量与 ID 未被改动（无新增黄金兔子王条目；TM-P1-005 新增《矿洞清理》、TM-P1-010 新增《草原狼影》、TM-P1-017 新增《追寻黄金兔子王》、TM-P1-021 新增《采药受阻》、TM-P1-022 新增《矿洞余患》）', () => {
+  it('注册表数量与 ID 未被改动（无新增黄金兔子王条目；TM-P1-005 新增《矿洞清理》、TM-P1-010 新增《草原狼影》、TM-P1-017 新增《追寻黄金兔子王》、TM-P1-021 新增《采药受阻》、TM-P1-022 新增《矿洞余患》、TM-P1-024 新增《商人王财的麻烦》与马科/王财）', () => {
     expect(Object.keys(ENEMIES)).toHaveLength(4)
-    expect(Object.keys(NPCS)).toHaveLength(3)
-    expect(Object.keys(QUESTS)).toHaveLength(6)
+    expect(Object.keys(NPCS)).toHaveLength(5)
+    expect(Object.keys(QUESTS)).toHaveLength(7)
     expect(getEnemy('golden_rabbit_king')).toBeUndefined()
+  })
+
+  // TM-P1-024：第五正式主线 + 天龙城 NPC 注册表锁定（无 goldReward、本卡不完成任务；马科/王财无 relationship）
+  it('TM-P1-024：《商人王财的麻烦》注册表定义锁定（title/giver=马科/无 goldReward/summary 含关键文案）', () => {
+    const quest = getQuest('quest_wangcai_trouble')
+    expect(quest).toBeDefined()
+    expect(quest?.id).toBe('quest_wangcai_trouble')
+    expect(quest?.title).toBe('商人王财的麻烦')
+    expect(quest?.giverNpcId).toBe('knight_captain_make')
+    expect(quest?.goldReward).toBeUndefined()
+    expect(quest?.summary).toContain('商人王财')
+    expect(quest?.summary).toContain('黑石塔')
+  })
+
+  it('TM-P1-024：马科/王财 NPC 定义锁定（name/role/location/summary 含关键文案）', () => {
+    const make = getNpc('knight_captain_make')
+    expect(make).toBeDefined()
+    expect(make?.name).toBe('马科')
+    expect(make?.role).toBe('骑士队长')
+    expect(make?.locationId).toBe('tianlong_martial_hall')
+    expect(make?.summary).toContain('武馆')
+    const wangcai = getNpc('merchant_wangcai')
+    expect(wangcai).toBeDefined()
+    expect(wangcai?.name).toBe('王财')
+    expect(wangcai?.role).toBe('商人')
+    expect(wangcai?.locationId).toBe('tianlong_city')
+    expect(wangcai?.summary).toContain('头疼')
   })
 
   // TM-P1-017：第四正式主线任务注册表锁定（本卡只建立目标不新增地图/敌人）

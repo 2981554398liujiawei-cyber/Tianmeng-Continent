@@ -59,4 +59,11 @@ export const QUESTS: Record<string, QuestDefinition> = {
     giverNpcId: 'blacksmith',
     goldReward: 10,
   },
+  // TM-P1-024：第五正式主线《商人王财的麻烦》（武馆骑士队长马科发布；无 goldReward、本卡不允许完成任务；入口直接复用 localQuests，不建额外发现 prerequisite）
+  quest_wangcai_trouble: {
+    id: 'quest_wangcai_trouble',
+    title: '商人王财的麻烦',
+    summary: '骑士队长马科请你找到商人王财，了解他最近在黑石塔附近遇到的麻烦。',
+    giverNpcId: 'knight_captain_make',
+  },
 }

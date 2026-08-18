@@ -47,7 +47,16 @@ export const LOCATIONS: Record<string, LocationDefinition> = {
     id: 'tianlong_city',
     name: '天龙城',
     description: '天龙王朝的皇城。高大的城墙、宽阔的街道与成片建筑构成这座繁华城市。',
-    connections: [],
+    // TM-P1-024：天龙城与武馆双向连接（本卡唯一城市子区域；黑石塔仍不开放）
+    connections: ['tianlong_martial_hall'],
+    enemyIds: [],
+  },
+  // TM-P1-024：天龙城第一段子区域——武馆（骑士队长马科驻地；无敌人、无其他连接）
+  tianlong_martial_hall: {
+    id: 'tianlong_martial_hall',
+    name: '武馆',
+    description: '天龙城中的武馆，来往的武者与守卫在这里操练，兵器碰撞声不时从场中传来。',
+    connections: ['tianlong_city'],
     enemyIds: [],
   },
 }
