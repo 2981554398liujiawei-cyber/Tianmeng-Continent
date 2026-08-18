@@ -2163,29 +2163,40 @@ try {
   body = await bodyText()
   check('P1-017-B: 追寻黄金兔子王状态可接受', body.includes('追寻黄金兔子王') && body.includes('可接受'))
   check('P1-017-B: 任务描述含《兔子的路径》与具体目的地【待补充】', body.includes('《兔子的路径》指向黄金兔子王所在之地') && body.includes('具体目的地：【待补充】'))
+  // D 前置：接受任务前真实记录金币（P1-017-R1：不能只证明存在金币数字）
+  const p1017GoldBefore = body.match(/金币\s*(\d+)/)
   // C. 接受任务 → 进行中（附近委托入口消失，任务日志显示进行中）
   await clickByText('接受任务')
   await sleep(200)
   body = await bodyText()
   check('P1-017-C: 接受后任务日志显示追寻黄金兔子王进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
   check('P1-017-C: 接受后附近委托入口消失', !body.includes('查看委托'))
-  // D. 主线状态保持：Lv.2 / 金币不变 / 地图 ×1 / 阶段完成 / 【待补充】
-  const p1017GoldBefore = body.match(/金币\s*(\d+)/)
-  check('P1-017-D: 接受后金币数值保持（无即时奖励）', p1017GoldBefore !== null)
+  // D. 主线状态保持：Lv.2 / 金币不变（before===after 精确对比）/ 地图 ×1 / 阶段完成 / 【待补充】
+  const p1017GoldAfter = body.match(/金币\s*(\d+)/)
+  check(
+    'P1-017-D: 接受任务前后金币精确相等（无即时奖励）',
+    p1017GoldBefore !== null && p1017GoldAfter !== null && p1017GoldAfter[1] === p1017GoldBefore[1],
+  )
   check('P1-017-D: 青石村阶段完成 panel 仍保留', body.includes('青石村阶段完成'))
   check('P1-017-D: 下一步目的地仍【待补充】', body.includes('下一步目的地：【待补充】'))
   check('P1-017-D: 兔子的路径仍 ×1（发现/接受不消耗）', body.includes('兔子的路径 ×1'))
   check('P1-017-D: 等级仍 Lv.2', body.includes('Lv.2'))
-  // E. 没有新移动入口：可前往区域仍只有现有合法连接（村外草原/废弃矿洞），无黄金兔子王/【待补充】/下一章形式的新地点按钮
+  // E. 没有新移动入口：从「当前位置」section 内精确读取真实可前往 button 文本集合，排序后精确等于 村外草原+废弃矿洞（P1-017-R1：不得用模糊文本代替）
   check('P1-017-E: 无前往黄金兔子王按钮', !body.includes('前往黄金兔子王'))
   check('P1-017-E: 无前往【待补充】按钮', !body.includes('前往【待补充】'))
   check('P1-017-E: 无进入下一章按钮', !body.includes('下一章') && !body.includes('进入新区域'))
-  const p1017TravelArea = await page.evaluate(() => {
-    const labels = [...document.querySelectorAll('p')].filter((el) => el.textContent.includes('可前往'))
-    const area = labels[0]?.parentElement?.textContent ?? ''
-    return area
+  const p1017TravelButtons = await page.evaluate(() => {
+    const label = [...document.querySelectorAll('p')].find((el) => el.textContent.trim() === '可前往：')
+    if (!label) return []
+    const container = label.parentElement
+    if (!container) return []
+    const names = [...container.querySelectorAll('button')].map((b) => b.textContent.trim())
+    return names.sort()
   })
-  check('P1-017-E: 可前往区仅现有合法连接（村外草原/废弃矿洞）', p1017TravelArea.includes('村外草原') && p1017TravelArea.includes('废弃矿洞') && !p1017TravelArea.includes('黄金兔子王'))
+  check(
+    'P1-017-E: 可前往按钮精确等于 [废弃矿洞, 村外草原]（无任何第三个移动入口）',
+    JSON.stringify(p1017TravelButtons) === JSON.stringify(['废弃矿洞', '村外草原']),
+  )
   // F. Save / Continue：第四任务进行中保持
   await clickByText('保存游戏')
   await clickByText('返回主菜单')
