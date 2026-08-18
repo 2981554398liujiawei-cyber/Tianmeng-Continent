@@ -310,6 +310,16 @@ TM-P1-006（骑士职业技能「骑士重击」——职业差异继续落地�
 - 7 个 combat 单测（无武器 STR14→8/铁剑+2→10/固定比普攻高 2（多 STR）/天然20 10→20 伤/天然1 0/武器参数安全 RangeError/KNIGHT_POWER_STRIKE_MP_COST===2）+ 11 个 Store 单测（knight 6→4/2→0/1 不足 false/mage·warrior·ranger false 全不变/无 gameState false/mp=-1 false/mp>maxMp false/成功只改 mp 其余全不变/不自动保存）+ 26 项 E2E（A 默认骑士显示骑士重击（2 灵力）启用且无法术攻击/B 连续三次重击逐次 6→4→2→0 且魔化兔持续 8/8+**玩家 HP 三次锁定不变（readHps）**+禁用+灵力不足+普攻仍启用/C MP0 普攻天然20 胜利离开前仍 0/6/D 休整恢复 6/6/E 重击天然20 你的骑士重击+暴击造成 16 点伤害+战斗胜利+**致死后玩家 HP 未下降且无「魔化兔的攻击：」（敌人未行动）**/F 战斗后 4/6 保存 Continue 仍 4/6/G 法师只有法术攻击无骑士重击）
 - TM-P1-006-R1（补齐骑士战斗防回归证据）：B 段每回合天然1后用 readHps 明确断言玩家 HP 不变（三次 X→X→X→X，敌人三次天然1 均未造成伤害，不只靠 Math.random=0 推断）；E 段天然20 致死后断言玩家 HP===beforeStrikePlayerHp 且 body 不含「魔化兔的攻击：」（锁定 enemyShouldCounter=false 敌人不行动）；仅 qa/e2e.mjs 修改（正式玩法代码零修改），MP 逐次 6→4→2→0、魔化兔 8/8、重击 disabled、灵力不足、普攻 enabled 等原断言全保留
 
+TM-P1-007（游侠职业技能「迅捷突袭」——职业差异继续落地，机制与法师/骑士不同）：
+- combat.ts 新增纯函数 `getRangerSwiftStrikeAttackBonus(agi, level)` = AGI 属性修正 + 熟练加值 + 2（复用 getAttributeModifier/getProficiencyBonus，未复制 D20 公式；Lv1 AGI8→+3/AGI10→+4/AGI14→+6/AGI16→+7）与 `getRangerSwiftStrikeDamage(agi, weaponDamageBonus?)` = getPlayerAttackDamage(agi, weaponDamageBonus) + 2（刻意把 AGI 作为攻击属性传给封板物理伤害公式，普通攻击用 STR；未新增通用「任意属性攻击」系统）；weaponDamageBonus 非法（-1/NaN/1.5/Infinity）沿用 RangeError，结果非有限抛 RangeError
+- **不消费 MP**：未新增 RANGER_SWIFT_STRIKE_MP_COST/spendRangerMp 等，也不调用现有 mage/knight MP Action；点击前后 player.mp 完全不变
+- **每场战斗一次**：CombatPage 局部 `rangerSwiftStrikeUsed` useState(false)（等价 boolean，不抽象次数系统；未新增 abilityCharges/combatCharges/usesPerCombat/SkillUsageState/CooldownState）；不进入 GameState/WorldState/Character/localStorage/completedEvents/flags；新 CombatPage 实例天然 false（下一场/战败后再战自动重置，无 reset Store Action）
+- 攻击复用现有体系：performAttack(getRangerSwiftStrikeAttackBonus(agi, level), enemy.defense, getRangerSwiftStrikeDamage(agi, weaponDamageBonus)) → resolveAttack/AttackResult（未新增 RangerAttackResult/SwiftStrikeResult/resolveRangerAttack/rollRangerAttack）；天然20 暴击×2（AGI10 base6→12 伤，足以击败魔化兔 HP8）/天然1 大失败 0；铁剑 weaponDamageBonus 正常参与
+- 使用次数消费时机：点击迅捷突袭且满足 profession==='ranger' + phase==='active' + rangerSwiftStrikeUsed===false → **先**将本场使用状态置 true 再执行攻击（命中/未命中/天然20/天然1 都消耗本场次数，不只有命中才消耗）；使用后按钮保持可见但 disabled +「本场战斗已使用」，即使天然1 敌人存活也不得再次使用，普通攻击继续 available
+- CombatPage 隔离：仅 ranger 显示「迅捷突袭」（无灵力消耗文案）；knight 只显示骑士重击（2 灵力）、mage 只显示法术攻击（2 灵力），均不显示迅捷突袭；warrior 只有普通攻击；游侠 MP0 也不影响迅捷突袭使用资格、不显示「灵力不足」；lastPlayerAction 扩展 'ranger_swift_strike'（仅页面本地）；日志「你的迅捷突袭：」；继续共用 applyPlayerAttack/resolvePlayerStrike（未复制敌人扣血/victory/反击/defeat 判定）；未击杀正常反击、击杀不反击
+- **gameStore.ts 零修改**（未新增任何 ranger Store Action——与法师/骑士的机制区别）；ProfessionInfo 零修改（无 skills[]/abilities[]/combatActions[]，游侠描述「行走于荒野的猎手，眼明手快，熟悉草木。」未动）；GameState schema 不变、SAVE_VERSION 仍 1
+- 7 个 combat 单测（A AGI 加值 Lv1 四个值/B 无武器伤害 6/8/C 铁剑+2 8/D 证明使用 AGI（函数只接受 agi、接口无 STR 参数）/E 天然20 12 伤/F 天然1 0/G weapon -1/NaN/1.5/Infinity RangeError）+ 21 项 E2E（A 游侠显示迅捷突袭启用且无法术攻击/骑士重击/B 天然1 后你的迅捷突袭+大失败+魔化兔 8/8+玩家 HP 不变+MP 仍 6/6+迅捷突袭禁用+本场战斗已使用+普攻仍启用/C 迅捷突袭保持禁用（disabled 状态锁定）/D 普攻天然20 胜利且 MP 仍未变/E 第二场迅捷突袭重新启用且无残留（局部 boolean 随新 CombatPage 重置）/F 天然20 暴击造成 12 点伤害+战斗胜利+致死后玩家 HP 未下降+无魔化兔的攻击+MP 仍 6/6；另在 P1-001-B 法师段与 P1-006-A 骑士段补充「不显示迅捷突袭」隔离断言）
+
 ## 目录结构
 
 ```

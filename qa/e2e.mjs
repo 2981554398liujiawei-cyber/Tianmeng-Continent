@@ -1029,6 +1029,7 @@ try {
   check('P1-001-B: 显示灵力 6 / 6', body.includes('6 / 6'))
   check('P1-001-B: 显示法术攻击（2 灵力）', body.includes('法术攻击（2 灵力）'))
   check('P1-001-B: 法术按钮启用', (await buttonDisabled('法术攻击')) === false)
+  check('P1-001-B: 法师不显示骑士重击/迅捷突袭', !body.includes('骑士重击') && !body.includes('迅捷突袭'))
 
   // C. 灵力耗尽：法术天然1 + 敌天然1，连续施法三次并逐次断言 MP 6→4→2→0
   await page.evaluate(() => {
@@ -1441,7 +1442,7 @@ try {
   check('P1-006-A: 显示灵力 6 / 6', body.includes('6 / 6'))
   check('P1-006-A: 显示骑士重击（2 灵力）', body.includes('骑士重击（2 灵力）'))
   check('P1-006-A: 骑士重击按钮启用', (await buttonDisabled('骑士重击')) === false)
-  check('P1-006-A: 不显示法术攻击', !body.includes('法术攻击'))
+  check('P1-006-A: 不显示法术攻击/迅捷突袭', !body.includes('法术攻击') && !body.includes('迅捷突袭'))
 
   // B. 逐次 MP 消费：骑士重击天然1 + 敌天然1，6→4→2→0（魔化兔保持 8/8，玩家 HP 逐回合锁定不变）
   let initialPlayerHp = readHps(await bodyText()).player
@@ -1543,6 +1544,82 @@ try {
   })
   await clickByText('普通攻击')
   await sleep(300)
+  await page.evaluate(() => {
+    Math.random = window.__origRandom
+  })
+  await clickByText('返回冒险')
+  await clickByText('返回主菜单')
+
+  // P1-007：游侠职业技能「迅捷突袭」（每场一次、不耗 MP、AGI 攻击）
+  // A. 游侠拥有迅捷突袭（无法术攻击/骑士重击）
+  await clickByText('新游戏')
+  await clickLabel('游侠')
+  await clickByText('确认进入天梦大陆')
+  await clickByText('村外草原')
+  await clickByText('迎战')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-007-A: 战斗页职业显示游侠', body.includes('游侠'))
+  check('P1-007-A: 显示普通攻击与迅捷突袭', body.includes('普通攻击') && body.includes('迅捷突袭'))
+  check('P1-007-A: 迅捷突袭按钮启用', (await buttonDisabled('迅捷突袭')) === false)
+  check('P1-007-A: 游侠不显示法术攻击/骑士重击', !body.includes('法术攻击') && !body.includes('骑士重击'))
+
+  // B. 天然1仍消耗本场次数：敌 HP/玩家 HP/MP 均不变
+  const rangerInitialHp = readHps(await bodyText()).player
+  await page.evaluate(() => {
+    window.__origRandom = Math.random.bind(Math)
+    Math.random = () => 0.0
+  })
+  await clickByText('迅捷突袭')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-007-B: 显示你的迅捷突袭与大失败', body.includes('你的迅捷突袭') && body.includes('大失败'))
+  check('P1-007-B: 天然1后魔化兔仍 HP 8 / 8', body.includes('8 / 8'))
+  check('P1-007-B: 天然1后玩家 HP 不变', readHps(body).player === rangerInitialHp)
+  check('P1-007-B: 天然1后玩家 MP 不变（仍 6 / 6）', body.includes('6 / 6'))
+  check('P1-007-B: 迅捷突袭禁用+本场战斗已使用', (await buttonDisabled('迅捷突袭')) === true && body.includes('本场战斗已使用'))
+  check('P1-007-B: 普通攻击仍启用', (await buttonDisabled('普通攻击')) === false)
+
+  // C. 不能再次使用（disabled 状态锁定）
+  check('P1-007-C: 迅捷突袭保持禁用', (await buttonDisabled('迅捷突袭')) === true)
+
+  // D. 普通攻击继续结束战斗（与迅捷突袭使用状态互不影响）
+  await page.evaluate(() => {
+    window.__origRandom = Math.random.bind(Math)
+    Math.random = () => 0.99
+  })
+  await clickByText('普通攻击')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-007-D: 普通攻击战斗胜利', body.includes('战斗胜利'))
+  check('P1-007-D: MP 仍未变化（仍 6 / 6）', body.includes('6 / 6'))
+  await page.evaluate(() => {
+    Math.random = window.__origRandom
+  })
+
+  // E. 下一场战斗迅捷突袭重新可用（局部 boolean 随新 CombatPage 重置；返回冒险后仍在村外草原）
+  await clickByText('返回冒险')
+  await clickByText('迎战')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-007-E: 第二场迅捷突袭重新启用', (await buttonDisabled('迅捷突袭')) === false)
+  check('P1-007-E: 无本场战斗已使用残留', !body.includes('本场战斗已使用'))
+
+  // F. 真实迅捷突袭暴击：AGI10 base 6 暴击 12 击败魔化兔，无敌人反击，MP 保持
+  const beforeSwiftHp = readHps(await bodyText()).player
+  await page.evaluate(() => {
+    window.__origRandom = Math.random.bind(Math)
+    Math.random = () => 0.99
+  })
+  await clickByText('迅捷突袭')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-007-F: 显示你的迅捷突袭', body.includes('你的迅捷突袭'))
+  check('P1-007-F: 暴击造成 12 点伤害', body.includes('暴击') && body.includes('造成 12 点伤害'))
+  check('P1-007-F: 迅捷突袭暴击战斗胜利', body.includes('战斗胜利'))
+  check('P1-007-F: 致死后玩家 HP 未下降（敌人不反击）', readHps(body).player === beforeSwiftHp)
+  check('P1-007-F: 无魔化兔的攻击（敌人未行动）', !body.includes('魔化兔的攻击：'))
+  check('P1-007-F: MP 仍 6 / 6（不消费 MP）', body.includes('6 / 6'))
   await page.evaluate(() => {
     Math.random = window.__origRandom
   })

@@ -66,6 +66,25 @@ export function getKnightPowerStrikeDamage(str: number, weaponDamageBonus = 0): 
   return damage
 }
 
+// ---- Phase 1：游侠职业技能「迅捷突袭」（TM-P1-007）----
+
+/** 游侠迅捷突袭攻击加值：AGI 属性修正 + 熟练加值 + 2（复用已封板 d20 公式） */
+export function getRangerSwiftStrikeAttackBonus(agi: number, level: number): number {
+  return getAttributeModifier(agi) + getProficiencyBonus(level) + 2
+}
+
+/**
+ * 游侠迅捷突袭伤害 = 以 AGI 为攻击属性的物理伤害 + 2（TM-P1-007）。
+ * 刻意把 AGI 传给封板 getPlayerAttackDamage（普通攻击用 STR）；未新增通用「任意属性攻击」系统。
+ */
+export function getRangerSwiftStrikeDamage(agi: number, weaponDamageBonus = 0): number {
+  const damage = getPlayerAttackDamage(agi, weaponDamageBonus) + 2
+  if (!Number.isFinite(damage)) {
+    throw new RangeError('迅捷突袭伤害溢出')
+  }
+  return damage
+}
+
 export type AttackOutcome = 'critical_hit' | 'hit' | 'miss' | 'critical_miss'
 
 export interface AttackResult {

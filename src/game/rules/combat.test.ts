@@ -8,6 +8,8 @@ import {
   getPlayerAttackDamage,
   getPlayerBasicDamage,
   getPlayerDefense,
+  getRangerSwiftStrikeAttackBonus,
+  getRangerSwiftStrikeDamage,
   KNIGHT_POWER_STRIKE_MP_COST,
   MAGE_SPELL_MP_COST,
   performAttack,
@@ -313,5 +315,52 @@ describe('TM-P1-006：骑士职业技能「骑士重击」', () => {
 
   it('KNIGHT_POWER_STRIKE_MP_COST === 2（唯一业务常量）', () => {
     expect(KNIGHT_POWER_STRIKE_MP_COST).toBe(2)
+  })
+})
+
+describe('TM-P1-007：游侠职业技能「迅捷突袭」', () => {
+  it('A. AGI 攻击加值（Lv1）：AGI8→+3 / AGI10→+4 / AGI14→+6 / AGI16→+7', () => {
+    expect(getRangerSwiftStrikeAttackBonus(8, 1)).toBe(3)
+    expect(getRangerSwiftStrikeAttackBonus(10, 1)).toBe(4)
+    expect(getRangerSwiftStrikeAttackBonus(14, 1)).toBe(6)
+    expect(getRangerSwiftStrikeAttackBonus(16, 1)).toBe(7)
+  })
+
+  it('B. 无武器伤害：AGI10 → 6，AGI14 → 8', () => {
+    expect(getRangerSwiftStrikeDamage(10)).toBe(6)
+    expect(getRangerSwiftStrikeDamage(14)).toBe(8)
+  })
+
+  it('C. 铁剑：AGI10 + weaponDamageBonus=2 → 8', () => {
+    expect(getRangerSwiftStrikeDamage(10, 2)).toBe(8)
+  })
+
+  it('D. 证明使用 AGI：函数只接受 AGI 参数，STR16/AGI10 结果由 AGI10 得出（接口无 STR 参数）', () => {
+    // 接口签名只接受 agi（+可选 weaponBonus），不接收 STR
+    const fn = getRangerSwiftStrikeDamage as unknown as (str: number, agi: number) => number
+    // 用 STR16 冒充第一个参数会被当作 agi 之外的调用错误——类型层面不可行；这里断言 signature 参数个数为 1（+可选）
+    expect(getRangerSwiftStrikeDamage.length).toBe(1)
+    expect(getRangerSwiftStrikeDamage(10)).toBe(6) // AGI10 → 6，而非 STR16 的 8
+  })
+
+  it('E. 天然20：AGI10 baseDamage 6 → 暴击 12 伤害（复用 resolveAttack）', () => {
+    const result = resolveAttack(20, getRangerSwiftStrikeAttackBonus(10, 1), 10, getRangerSwiftStrikeDamage(10))
+    expect(result.outcome).toBe('critical_hit')
+    expect(result.hit).toBe(true)
+    expect(result.damage).toBe(12)
+  })
+
+  it('F. 天然1：迅捷突袭大失败 0 伤害（复用 resolveAttack）', () => {
+    const result = resolveAttack(1, getRangerSwiftStrikeAttackBonus(10, 1), 10, getRangerSwiftStrikeDamage(10))
+    expect(result.outcome).toBe('critical_miss')
+    expect(result.hit).toBe(false)
+    expect(result.damage).toBe(0)
+  })
+
+  it('G. 武器参数非法：-1/NaN/1.5/Infinity 抛 RangeError（复用 getPlayerAttackDamage 校验）', () => {
+    expect(() => getRangerSwiftStrikeDamage(10, -1)).toThrow(RangeError)
+    expect(() => getRangerSwiftStrikeDamage(10, Number.NaN)).toThrow(RangeError)
+    expect(() => getRangerSwiftStrikeDamage(10, 1.5)).toThrow(RangeError)
+    expect(() => getRangerSwiftStrikeDamage(10, Number.POSITIVE_INFINITY)).toThrow(RangeError)
   })
 })

@@ -7,6 +7,8 @@ import {
   getKnightPowerStrikeDamage,
   getMageSpellAttackBonus,
   getMageSpellDamage,
+  getRangerSwiftStrikeAttackBonus,
+  getRangerSwiftStrikeDamage,
   KNIGHT_POWER_STRIKE_MP_COST,
   MAGE_SPELL_MP_COST,
   getPlayerAttackBonus,
@@ -53,8 +55,12 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
   const [phase, setPhase] = useState<CombatPhase>('active')
   const [lastPlayerAttack, setLastPlayerAttack] = useState<AttackResult | null>(null)
   const [lastEnemyAttack, setLastEnemyAttack] = useState<AttackResult | null>(null)
-  /** TM-P1-001/006：最近一次玩家行动类型（仅页面本地，不进入 GameState）——区分「你的攻击/你的法术攻击/你的骑士重击」 */
-  const [lastPlayerAction, setLastPlayerAction] = useState<'basic' | 'mage_spell' | 'knight_power_strike' | null>(null)
+  /** TM-P1-001/006/007：最近一次玩家行动类型（仅页面本地，不进入 GameState）——区分「你的攻击/你的法术攻击/你的骑士重击/你的迅捷突袭」 */
+  const [lastPlayerAction, setLastPlayerAction] = useState<
+    'basic' | 'mage_spell' | 'knight_power_strike' | 'ranger_swift_strike' | null
+  >(null)
+  /** TM-P1-007：游侠迅捷突袭本场战斗是否已使用（仅页面本地；新 CombatPage 天然重置，不进入 GameState） */
+  const [rangerSwiftStrikeUsed, setRangerSwiftStrikeUsed] = useState(false)
 
   if (!gameState) {
     return (
@@ -121,8 +127,21 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
     applyPlayerAttack(strikeResult, 'knight_power_strike')
   }
 
-  /** TM-P1-001/006：普通攻击/法术攻击/骑士重击共用的最小局部结算（不建 ActionSystem/TurnManager） */
-  const applyPlayerAttack = (attack: AttackResult, action: 'basic' | 'mage_spell' | 'knight_power_strike') => {
+  /** TM-P1-007：游侠迅捷突袭——每场战斗一次，不消费 MP，AGI 攻击；点击即消耗本场次数（命中/未命中/暴击/大失败都是已使用） */
+  const handleRangerSwiftStrike = () => {
+    if (phase !== 'active' || rangerSwiftStrikeUsed) return
+    // 先标记本场已使用，再执行攻击（未命中/大失败也消耗本场次数）
+    setRangerSwiftStrikeUsed(true)
+    const strikeResult = performAttack(
+      getRangerSwiftStrikeAttackBonus(player.attributes.agi, player.level),
+      enemy.defense,
+      getRangerSwiftStrikeDamage(player.attributes.agi, weaponDamageBonus),
+    )
+    applyPlayerAttack(strikeResult, 'ranger_swift_strike')
+  }
+
+  /** TM-P1-001/006/007：普通攻击/法术攻击/骑士重击/迅捷突袭共用的最小局部结算（不建 ActionSystem/TurnManager） */
+  const applyPlayerAttack = (attack: AttackResult, action: 'basic' | 'mage_spell' | 'knight_power_strike' | 'ranger_swift_strike') => {
     setLastPlayerAttack(attack)
     setLastPlayerAction(action)
     setLastEnemyAttack(null)
@@ -201,7 +220,9 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
                   ? '你的法术攻击：'
                   : lastPlayerAction === 'knight_power_strike'
                     ? '你的骑士重击：'
-                    : '你的攻击：'}
+                    : lastPlayerAction === 'ranger_swift_strike'
+                      ? '你的迅捷突袭：'
+                      : '你的攻击：'}
               </span>
               {attackLine(lastPlayerAttack, enemy.name)}
             </p>
@@ -241,6 +262,19 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
                   骑士重击（{KNIGHT_POWER_STRIKE_MP_COST} 灵力）
                 </Button>
                 {player.mp < KNIGHT_POWER_STRIKE_MP_COST && <span className="text-xs text-red-300">灵力不足</span>}
+              </div>
+            )}
+            {/* TM-P1-007：仅游侠显示迅捷突袭（不消费 MP、每场一次；使用后禁用+本场战斗已使用，普通攻击不受影响） */}
+            {player.profession === 'ranger' && (
+              <div className="flex flex-col items-center gap-1">
+                <Button
+                  variant="primary"
+                  disabled={rangerSwiftStrikeUsed}
+                  onClick={handleRangerSwiftStrike}
+                >
+                  迅捷突袭
+                </Button>
+                {rangerSwiftStrikeUsed && <span className="text-xs text-bone-500">本场战斗已使用</span>}
               </div>
             )}
           </div>
