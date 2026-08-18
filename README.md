@@ -562,6 +562,22 @@ TM-P1-027（黑石塔二层：武馆休整、僵尸与黑法师——二层入�
 - Store 单测 53 项（R1-R7 武馆休整：HP 未满/MP 未满/HP0 → true 且恢复满、全满 → false 不变、非武馆 → false、成功仅 hp/mp 改变、无 autosave；U1-U4 解锁二层：target undefined/false → true 且只写 target flag、13 项拒绝（错误位置/任务不存在/status/stage/briefed/unlocked/soldier/captain/target 已 true/"yes"/1/0.5）false 且完整不变、无 autosave；Z1-Z6 僵尸胜利：合法只写 flag/任务保持/无奖励/重复无副作用/11 项拒绝/无 autosave；M1-M8 黑法师胜利：僵尸未击败拒绝/合法只写 flag/任务保持/无奖励/重复无副作用/7 项拒绝/黄金深比较不变/无 autosave）
 - 34 项 E2E（直接继续 P1-026 Save/Continue 后的黑石塔一层清场档：A 当前位置 floor1+士兵/队长已击败+无附近威胁+移动按钮含黑石塔二层 disabled/B 存档注入 HP=1 → 武馆休整入口+休整后 HP=maxHp → 保存满血档（不恢复 P1-026 战后残血）/C 一层士兵/队长状态保持+继续深入块+解锁后二层按钮 enabled/D 进入二层只看到僵尸 Lv.4+无黑法师卡片/E 僵尸战（0.99 确定性）胜利+僵尸消失+黑法师出现/F 黑法师战胜利+无附近威胁+二层前段清场剧情+黑石塔二层深处：【待开放】/G 任务进行中+黑石塔二层：入口区域已清理+当前目标继续向深处推进+无可完成/提交+黄金主线进行中+兔子的路径 ×1/H 负路径：注入 zombie 未击败二层档 → 僵尸可见+黑法师不可见+页面无任何黑法师按钮（正式入口不可达）/I 恢复清场档后二层清场状态保持；另按任务卡到期窄改 P1-025-C 与 P1-026-H 断言：一层移动按钮区含「黑石塔二层」（disabled，未解锁）——原「精确 [天龙城]」断言随 connections 变化更新；P1-025/P1-026 其余核心回归全部保留）
 
+TM-P1-028（黑石塔二层深处：骷髅战士——入口区清场后正式开放预告过的第三只；不新建「二层深处」Location，用剧情阶段控制入口区→深处；三层仍【待开放】）：
+- 继续生产实际游戏内容，不增加新系统：black_stone_tower_floor2 仍代表整个二层，未新建 Location/三层 unlock flag/action
+- enemies.ts 新增 skeleton_warrior：Lv.5、tags ['undead']、maxHp 20、defense 13、attackBonus 4、damage 4、name 骷髅战士；继续现有普通确定性 D20 战斗；无技能系统/重击/格挡/眩晕/亡灵抗性/特殊 AI/掉落
+- black_stone_tower_floor2.enemyIds 严格顺序 ['tower_zombie','black_mage','skeleton_warrior']
+- 骷髅战士出现条件（GamePage visibleEnemies 严格 boolean）：location=black_stone_tower_floor2 + quest_wangcai_trouble in_progress/stage 0 + wangcai_briefed===true + black_stone_tower_unlocked===true + black_stone_tower_floor2_unlocked===true + floor1_soldier_defeated===true + floor1_captain_defeated===true + floor2_zombie_defeated===true + floor2_black_mage_defeated===true + floor2_skeleton_warrior_defeated undefined/false；"yes"/1/0.5 malformed 拒绝不得当作 false
+- UI guard（visibleEnemies）+ App.handleEngage guard + Store resolveCombatVictory guard 三层一致：'skeleton_warrior' 战斗入口与胜利均需上述全前置；malformed warrior flag 拒绝且完整 GameState 不变
+- resolveCombatVictory('skeleton_warrior')：合法首次胜利只写 quest.flags.floor2_skeleton_warrior_defeated=true；任务保持 status=in_progress/stage=0；无 XP/金币/等级/装备/掉落/恢复/关系变化/npcState/world flag/战后剧情；重复拒绝；不自动保存
+- 击败后剧情（二层深处块）：「小厅中的骷髅战士已经倒下。/你仔细搜索了周围，依然没有发现王财遗失的夔峒项链。/小厅后方，一道向上的石阶通往黑石塔更高处。/黑石塔三层：【待开放】」（真正推进「找项链」主线，但不创建三层）
+- 任务日志最终态（七态）：「黑石塔一层：已击败骷髅士兵。/黑石塔一层：骷髅队长已击败，未发现夔峒项链。/黑石塔二层：入口区域已清理。/黑石塔二层深处：骷髅战士已击败，仍未发现夔峒项链。/当前目标：继续调查黑石塔更高处。/黑石塔三层：【待开放】」；quest_wangcai_trouble 仍不可提交
+- 入口区清场剧情（zombie+mage 击败、warrior 未击败时）：「二层前段的僵尸与黑法师已经被清理。/曲折的通道继续向深处延伸，前方小厅中出现了更强的骷髅战士，挡住继续深入的道路。」（P1-027 的「黑石塔二层深处：【待开放】」句被骷髅战士正式开放取代）
+- 黄金兔子长期线继续完全冻结：in_progress/stage 0/四 flag true/rabbit_path ×1；未创建 black_stone_tower_floor3/骷髅女妖/夔峒项链 ItemDefinition/掉落系统/BossSystem/DungeonEngine/EncounterManager/LootSystem/新 NPC/新 Quest/新装备/新药水
+- schema 不变、SAVE_VERSION=1；quests.ts/npcs.ts/items.ts/professions.ts/CombatPage.tsx/types/storage/rules 零修改；git diff 仅 enemies.ts + locations.ts + content.test.ts + gameStore.ts + gameStore.test.ts + GamePage.tsx + App.tsx + qa/e2e.mjs + README（不含 qa/*.png）
+- content 测试：ENEMIES toHaveLength(9)（+skeleton_warrior 完整锁定 level 5/undead/20-13-4-4）+ floor2.enemyIds 精确 ['tower_zombie','black_mage','skeleton_warrior'] + 无 skeleton_witch/black_stone_tower_floor3 + NPC/QUEST/ITEM 数量不变
+- Store 单测新增 W 组（W1 入口区两敌未全部击败（僵尸未击败/黑法师未击败）拒绝且不变/W2 合法胜利只写 warrior flag/W3 任务保持 in_progress/stage 0/W4 无奖励（player/inventory/equipment 全不变）/W5 重复胜利 false 同一引用/W6 it.each 14 项拒绝（错误 location/任务不存在/available/stage 1/briefed false/二层未解锁/soldier/captain/zombie "yes"/mage 1/warrior true/"yes"/1/0.5）false 且完整不变/W7 黄金深比较不变/W8 不 autosave）
+- E2E 新增 P1-028 段（继续 P1-027 二层清场档，存档注入满 HP/MP 后）：A Continue → 二层只出现骷髅战士 Lv.5+入口区清场剧情保留+无僵尸/黑法师卡片/B 记录战前 Lv/maxHP/maxMP/gold/rabbit_path/C 0.99 确定性骷髅战士战胜利返回冒险/D 骷髅战士消失+无附近威胁+击败后剧情四句（小厅中的骷髅战士已经倒下/仍未发现夔峒项链/石阶通往黑石塔更高处/黑石塔三层：【待开放】）/E 任务进行中+黑石塔二层深处：骷髅战士已击败，仍未发现夔峒项链+当前目标：继续调查黑石塔更高处+无可完成/提交/F 战前后 Lv/maxHP/maxMP/gold/rabbit_path 精确全不变/G 黄金主线进行中+兔子的路径 ×1/H Save/Continue 后当前位置 floor2+日志最终态保持+无附近威胁+黄金主线进行中；另按任务卡到期窄改 P1-027-F/G/H/I 断言：二层深处【待开放】被骷髅战士开放取代（无该句+骷髅战士 Lv.5 迎战）、当前目标改为击败骷髅战士、zombie 未击败时骷髅战士同样不可见、清场档在二层显示骷髅战士；P1-027 其余核心回归保留）
+
 ## 目录结构
 
 ```

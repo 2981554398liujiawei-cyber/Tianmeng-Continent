@@ -108,7 +108,8 @@ describe('TM-P0-002：内容数量与指定条目', () => {
     expect(floor2?.description).toContain('曲折的黑石通道向深处延伸')
     expect(floor2?.requiredFlag).toBe('black_stone_tower_floor2_unlocked')
     expect(floor2?.connections).toEqual(['black_stone_tower_floor1'])
-    expect(floor2?.enemyIds).toEqual(['tower_zombie', 'black_mage'])
+    // TM-P1-028：二层严格固定顺序三敌（僵尸→黑法师→骷髅战士）
+    expect(floor2?.enemyIds).toEqual(['tower_zombie', 'black_mage', 'skeleton_warrior'])
     // 二层连接一层；本卡不建三层
     expect(getLocation('black_stone_tower_floor3')).toBeUndefined()
   })
@@ -132,8 +133,8 @@ describe('TM-P0-002：内容数量与指定条目', () => {
     expect(getNpc('merchant_wangcai')?.locationId).toBe('tianlong_city')
   })
 
-  it('敌人 8 个且等级符合设定', () => {
-    expect(Object.keys(ENEMIES)).toHaveLength(8)
+  it('敌人 9 个且等级符合设定', () => {
+    expect(Object.keys(ENEMIES)).toHaveLength(9)
     expect(getEnemy('corrupted_rabbit')?.level).toBe(1)
     expect(getEnemy('corrupted_rat')?.level).toBe(1)
     expect(getEnemy('corrupted_wolf')?.level).toBe(2)
@@ -142,6 +143,7 @@ describe('TM-P0-002：内容数量与指定条目', () => {
     expect(getEnemy('skeleton_captain')?.level).toBe(4)
     expect(getEnemy('tower_zombie')?.level).toBe(4)
     expect(getEnemy('black_mage')?.level).toBe(4)
+    expect(getEnemy('skeleton_warrior')?.level).toBe(5)
   })
 
   // TM-P1-025：骷髅士兵完整锁定（普通战斗规则，无技能/状态/抗性/掉落）
@@ -200,6 +202,21 @@ describe('TM-P0-002：内容数量与指定条目', () => {
     expect(blackMage?.defense).toBe(11)
     expect(blackMage?.attackBonus).toBe(5)
     expect(blackMage?.damage).toBe(4)
+  })
+
+  // TM-P1-028：骷髅战士完整锁定（二层深处第三场——普通 D20 战斗；无技能系统/重击/格挡/眩晕/亡灵抗性/特殊 AI/掉落）
+  it('TM-P1-028：骷髅战士注册表定义锁定（id/name/level=5/tags/maxHp/defense/attackBonus/damage）', () => {
+    const warrior = getEnemy('skeleton_warrior')
+    expect(warrior).toBeDefined()
+    expect(warrior?.id).toBe('skeleton_warrior')
+    expect(warrior?.name).toBe('骷髅战士')
+    expect(warrior?.level).toBe(5)
+    expect(warrior?.description).toContain('骷髅战士')
+    expect(warrior?.tags).toEqual(['undead'])
+    expect(warrior?.maxHp).toBe(20)
+    expect(warrior?.defense).toBe(13)
+    expect(warrior?.attackBonus).toBe(4)
+    expect(warrior?.damage).toBe(4)
   })
 
   it('任务 quest_village_monsters 由村长发布', () => {
@@ -279,13 +296,14 @@ describe('TM-P0-002-R1：关键内容身份锁', () => {
     expect(desc).not.toContain('迁徙')
   })
 
-  it('注册表数量与 ID 未被改动（无新增黄金兔子王条目；TM-P1-005 新增《矿洞清理》、TM-P1-010 新增《草原狼影》、TM-P1-017 新增《追寻黄金兔子王》、TM-P1-021 新增《采药受阻》、TM-P1-022 新增《矿洞余患》、TM-P1-024 新增《商人王财的麻烦》与马科/王财、TM-P1-025 新增骷髅士兵、TM-P1-026 新增骷髅队长、TM-P1-027 新增僵尸/黑法师与黑石塔二层）', () => {
-    expect(Object.keys(ENEMIES)).toHaveLength(8)
+  it('注册表数量与 ID 未被改动（无新增黄金兔子王条目；TM-P1-005 新增《矿洞清理》、TM-P1-010 新增《草原狼影》、TM-P1-017 新增《追寻黄金兔子王》、TM-P1-021 新增《采药受阻》、TM-P1-022 新增《矿洞余患》、TM-P1-024 新增《商人王财的麻烦》与马科/王财、TM-P1-025 新增骷髅士兵、TM-P1-026 新增骷髅队长、TM-P1-027 新增僵尸/黑法师与黑石塔二层、TM-P1-028 新增骷髅战士）', () => {
+    expect(Object.keys(ENEMIES)).toHaveLength(9)
     expect(Object.keys(NPCS)).toHaveLength(5)
     expect(Object.keys(QUESTS)).toHaveLength(7)
     expect(Object.keys(ITEMS)).toHaveLength(5)
     expect(getEnemy('golden_rabbit_king')).toBeUndefined()
-    expect(getEnemy('skeleton_warrior')).toBeUndefined()
+    // TM-P1-028：骷髅战士已注册（本卡新增）；仍无骷髅女妖/三层
+    expect(getEnemy('skeleton_warrior')).toBeDefined()
     expect(getEnemy('skeleton_witch')).toBeUndefined()
   })
 

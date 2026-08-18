@@ -121,6 +121,27 @@ export default function App() {
         return
       }
     }
+    // TM-P1-028：二层骷髅战士正式战斗入口硬守——额外要求 floor2_zombie_defeated===true 且 floor2_black_mage_defeated===true（入口区两敌未全部击败不得提前 engage 骷髅战士）+ floor2_skeleton_warrior_defeated 非 true
+    if (enemyId === 'skeleton_warrior') {
+      const towerQuest = state.quests.find((q) => q.questId === 'quest_wangcai_trouble')
+      const warriorFlag = towerQuest?.flags.floor2_skeleton_warrior_defeated
+      const warriorOk = warriorFlag !== true && (typeof warriorFlag === 'undefined' || typeof warriorFlag === 'boolean')
+      if (
+        state.world.currentLocationId !== 'black_stone_tower_floor2' ||
+        towerQuest?.status !== 'in_progress' ||
+        towerQuest?.stage !== 0 ||
+        towerQuest?.flags.wangcai_briefed !== true ||
+        state.world.flags.black_stone_tower_unlocked !== true ||
+        state.world.flags.black_stone_tower_floor2_unlocked !== true ||
+        towerQuest?.flags.floor1_soldier_defeated !== true ||
+        towerQuest?.flags.floor1_captain_defeated !== true ||
+        towerQuest?.flags.floor2_zombie_defeated !== true ||
+        towerQuest?.flags.floor2_black_mage_defeated !== true ||
+        !warriorOk
+      ) {
+        return
+      }
+    }
     setCombatEnemyId(enemyId)
     setScreen('combat')
   }

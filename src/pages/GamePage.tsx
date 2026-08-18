@@ -159,6 +159,8 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
   const towerFloor2UnlockPending = towerFloor2UnlockFlag === undefined || towerFloor2UnlockFlag === false
   const floor2ZombieDefeated = wangcaiQuest?.flags.floor2_zombie_defeated === true
   const floor2BlackMageDefeated = wangcaiQuest?.flags.floor2_black_mage_defeated === true
+  /** TM-P1-028：二层深处骷髅战士清场（只读）——驱动骷髅战士可见性与三层预告剧情 */
+  const floor2SkeletonWarriorDefeated = wangcaiQuest?.flags.floor2_skeleton_warrior_defeated === true
   // TM-P0-006：附近委托 = 给予者位于当前地点的注册任务（不写死地点 ID）
   const localQuests = Object.values(QUESTS).filter((quest) => {
     const giver = getNpc(quest.giverNpcId)
@@ -592,15 +594,28 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
           </section>
         )}
 
-      {/* TM-P1-027：黑石塔二层清场剧情 —— 僵尸与黑法师均击败后显示固定文案（骷髅战士只作为剧情文本出现；本卡不建骷髅战士 EnemyDefinition；无按钮） */}
-      {world.currentLocationId === 'black_stone_tower_floor2' && floor2ZombieDefeated && floor2BlackMageDefeated && (
+      {/* TM-P1-027/P1-028：黑石塔二层入口区清场剧情 —— 僵尸与黑法师均击败后显示固定文案（骷髅战士只作为剧情文本预告，直到本卡击败前仍镇守深处） */}
+      {world.currentLocationId === 'black_stone_tower_floor2' &&
+        floor2ZombieDefeated &&
+        floor2BlackMageDefeated &&
+        !floor2SkeletonWarriorDefeated && (
+          <section className="rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
+            <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">二层前段</h3>
+            <p className="leading-relaxed text-bone-200">二层前段的僵尸与黑法师已经被清理。</p>
+            <p className="mt-1 leading-relaxed text-bone-200">
+              曲折的通道继续向深处延伸，前方小厅中出现了更强的骷髅战士，挡住继续深入的道路。
+            </p>
+          </section>
+        )}
+
+      {/* TM-P1-028：骷髅战士击败后固定剧情（找项链主线推进；不创建三层） */}
+      {world.currentLocationId === 'black_stone_tower_floor2' && floor2SkeletonWarriorDefeated && (
         <section className="rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
-          <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">二层前段</h3>
-          <p className="leading-relaxed text-bone-200">二层前段的僵尸与黑法师已经被清理。</p>
-          <p className="mt-1 leading-relaxed text-bone-200">
-            曲折的通道继续向深处延伸，前方小厅中出现了更强的骷髅战士，挡住继续深入的道路。
-          </p>
-          <p className="mt-2 text-gold-300">黑石塔二层深处：【待开放】</p>
+          <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">二层深处</h3>
+          <p className="leading-relaxed text-bone-200">小厅中的骷髅战士已经倒下。</p>
+          <p className="mt-1 leading-relaxed text-bone-200">你仔细搜索了周围，依然没有发现王财遗失的夔峒项链。</p>
+          <p className="mt-1 leading-relaxed text-bone-200">小厅后方，一道向上的石阶通往黑石塔更高处。</p>
+          <p className="mt-2 text-gold-300">黑石塔三层：【待开放】</p>
         </section>
       )}
 
@@ -879,6 +894,24 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
                 return false
               }
             }
+            // TM-P1-028：二层骷髅战士可见性窄条件（严格 boolean）——额外要求 floor2_zombie_defeated===true 且 floor2_black_mage_defeated===true（入口区两敌未全部击败不显示骷髅战士）+ floor2_skeleton_warrior_defeated 非 true
+            if (threat.id === 'skeleton_warrior') {
+              const warriorFlag = wangcaiQuest?.flags.floor2_skeleton_warrior_defeated
+              const warriorOk = warriorFlag !== true && (typeof warriorFlag === 'undefined' || typeof warriorFlag === 'boolean')
+              if (
+                !towerQuestInProgress ||
+                !wangcaiBriefed ||
+                !towerUnlocked ||
+                !towerFloor2Unlocked ||
+                floor1SoldierDefeated !== true ||
+                floor1CaptainDefeated !== true ||
+                floor2ZombieDefeated !== true ||
+                floor2BlackMageDefeated !== true ||
+                !warriorOk
+              ) {
+                return false
+              }
+            }
             return true
           })
         if (visibleEnemies.length === 0) return null
@@ -1095,6 +1128,15 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
                           <p className="mt-1">当前目标：继续深入黑石塔。</p>
                           <p className="mt-1">黑石塔二层：【待开放】</p>
                         </>
+                      ) : !floor2SkeletonWarriorDefeated ? (
+                        <>
+                          <p className="text-gold-300">已向王财了解情况。</p>
+                          <p className="mt-1 text-gold-300">黑石塔路线已确认。</p>
+                          <p className="mt-1 text-gold-300">黑石塔一层：已击败骷髅士兵。</p>
+                          <p className="mt-1 text-gold-300">黑石塔一层：骷髅队长已击败，未发现夔峒项链。</p>
+                          <p className="mt-1 text-gold-300">黑石塔二层：入口区域已清理。</p>
+                          <p className="mt-1">当前目标：击败骷髅战士。</p>
+                        </>
                       ) : (
                         <>
                           <p className="text-gold-300">已向王财了解情况。</p>
@@ -1102,8 +1144,9 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
                           <p className="mt-1 text-gold-300">黑石塔一层：已击败骷髅士兵。</p>
                           <p className="mt-1 text-gold-300">黑石塔一层：骷髅队长已击败，未发现夔峒项链。</p>
                           <p className="mt-1 text-gold-300">黑石塔二层：入口区域已清理。</p>
-                          <p className="mt-1">当前目标：继续向黑石塔二层深处推进。</p>
-                          <p className="mt-1">黑石塔二层深处：【待开放】</p>
+                          <p className="mt-1 text-gold-300">黑石塔二层深处：骷髅战士已击败，仍未发现夔峒项链。</p>
+                          <p className="mt-1">当前目标：继续调查黑石塔更高处。</p>
+                          <p className="mt-1">黑石塔三层：【待开放】</p>
                         </>
                       )}
                     </div>

@@ -70,13 +70,14 @@ export const LOCATIONS: Record<string, LocationDefinition> = {
     // TM-P1-026：一层普通敌人骷髅士兵 + 一层 Boss 骷髅队长（同一场景节点；不建新大厅 Location）
     enemyIds: ['skeleton_soldier', 'skeleton_captain'],
   },
-  // TM-P1-027：黑石塔二层（入口固定顺序战斗：僵尸→黑法师；二层深处与三层本卡不开放；未解锁时移动按钮可见但 disabled）
+  // TM-P1-027/P1-028：黑石塔二层（严格固定顺序战斗：僵尸→黑法师→骷髅战士；深度由剧情阶段控制，本卡不新建「二层深处」Location；三层未开放；未解锁时移动按钮可见但 disabled）
   black_stone_tower_floor2: {
     id: 'black_stone_tower_floor2',
     name: '黑石塔二层',
     description: '曲折的黑石通道向深处延伸，腐败气息与幽暗魔力混在潮冷的空气中。',
     requiredFlag: 'black_stone_tower_floor2_unlocked',
     connections: ['black_stone_tower_floor1'],
-    enemyIds: ['tower_zombie', 'black_mage'],
+    // TM-P1-028：二层严格固定顺序三敌（僵尸→黑法师→骷髅战士）
+    enemyIds: ['tower_zombie', 'black_mage', 'skeleton_warrior'],
   },
 }

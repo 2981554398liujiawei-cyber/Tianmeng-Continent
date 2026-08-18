@@ -108,4 +108,16 @@ export const ENEMIES: Record<string, EnemyDefinition> = {
     attackBonus: 5,
     damage: 4,
   },
+  // TM-P1-028：黑石塔二层深处骷髅战士（入口区清场后出现的第三只；固定顺序战斗第三场；继续现有普通确定性 D20 战斗；无技能系统/重击/格挡/眩晕/亡灵抗性/特殊 AI/掉落）
+  skeleton_warrior: {
+    id: 'skeleton_warrior',
+    name: '骷髅战士',
+    level: 5,
+    description: '手持锈蚀战刀的骷髅战士，浑身骨甲残破却仍透着凶悍的气息，镇守着黑石塔二层深处的小厅。',
+    tags: ['undead'],
+    maxHp: 20,
+    defense: 13,
+    attackBonus: 4,
+    damage: 4,
+  },
 }

@@ -3467,14 +3467,18 @@ try {
   await sleep(300)
   body = await bodyText()
   check('P1-027-F: 黑法师战斗胜利返回冒险', body.includes('当前位置'))
-  check('P1-027-F: 无附近威胁/迎战（两敌均消失）', !body.includes('附近威胁') && !body.includes('迎战'))
+  // P1-028 到期调整：黑法师消失后骷髅战士出现，附近威胁区仍有骷髅战士（无僵尸/黑法师卡片）
+  check('P1-027-F: 僵尸/黑法师卡片均消失', !body.includes('僵尸 · Lv.4') && !body.includes('黑法师 · Lv.4'))
   check('P1-027-F: 二层前段清场剧情', body.includes('二层前段的僵尸与黑法师已经被清理。'))
   check('P1-027-F: 骷髅战士剧情文本', body.includes('前方小厅中出现了更强的骷髅战士，挡住继续深入的道路。'))
-  check('P1-027-F: 黑石塔二层深处：【待开放】', body.includes('黑石塔二层深处：【待开放】'))
+  // P1-028 到期调整：二层深处【待开放】被骷髅战士正式开放取代
+  check('P1-027-F: 无黑石塔二层深处：【待开放】', !body.includes('黑石塔二层深处：【待开放】'))
+  check('P1-027-F: 骷髅战士出现 Lv.5 迎战（预告正式开放）', body.includes('骷髅战士 · Lv.5') && body.includes('迎战'))
   // G. 任务最终状态
   check('P1-027-G: 商人王财的麻烦进行中', body.includes('商人王财的麻烦') && body.includes('进行中'))
   check('P1-027-G: 黑石塔二层：入口区域已清理', body.includes('黑石塔二层：入口区域已清理。'))
-  check('P1-027-G: 当前目标：继续向黑石塔二层深处推进', body.includes('当前目标：继续向黑石塔二层深处推进。'))
+  // P1-028 到期调整：入口区清场后当前目标变为击败骷髅战士
+  check('P1-027-G: 当前目标：击败骷髅战士', body.includes('当前目标：击败骷髅战士。'))
   check('P1-027-G: 无可完成/提交任务/已完成', !body.includes('提交任务') && !body.includes('可完成'))
   check('P1-027-G: 黄金兔子主线仍进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
   check('P1-027-G: 兔子的路径 ×1', body.includes('兔子的路径 ×1'))
@@ -3501,10 +3505,12 @@ try {
   body = await bodyText()
   check('P1-027-H: 僵尸未击败时僵尸可见', body.includes('僵尸 · Lv.4') && body.includes('迎战'))
   check('P1-027-H: 黑法师不可见（无法经正式入口挑战）', !body.includes('黑法师 · Lv.4'))
+  // P1-028 到期调整：入口区两敌未全部击败时骷髅战士同样不可见
+  check('P1-027-H: 骷髅战士不可见', !body.includes('骷髅战士 · Lv.5'))
   const engageableButtons = await page.evaluate(() =>
-    [...document.querySelectorAll('button')].filter((b) => b.textContent.includes('黑法师')).map((b) => b.textContent.trim()),
+    [...document.querySelectorAll('button')].filter((b) => b.textContent.includes('黑法师') || b.textContent.includes('骷髅战士')).map((b) => b.textContent.trim()),
   )
-  check('P1-027-H: 页面无任何黑法师按钮', engageableButtons.length === 0)
+  check('P1-027-H: 页面无任何黑法师/骷髅战士按钮', engageableButtons.length === 0)
   // I. 恢复二层清场档（负路径注入不污染存档）
   await page.evaluate((saveStr) => {
     localStorage.setItem('tianmeng_continent_save', saveStr)
@@ -3514,7 +3520,103 @@ try {
   await clickByText('继续游戏')
   await sleep(300)
   body = await bodyText()
-  check('P1-027-I: 恢复清场档后二层清场状态保持', body.includes('二层前段的僵尸与黑法师已经被清理。') && body.includes('黑石塔二层深处：【待开放】'))
+  // P1-028 到期调整：清场档在二层显示骷髅战士（入口区剧情保留，深处【待开放】删除）
+  check(
+    'P1-027-I: 恢复清场档后二层清场状态保持',
+    body.includes('二层前段的僵尸与黑法师已经被清理。') && body.includes('骷髅战士 · Lv.5') && !body.includes('黑石塔二层深处：【待开放】'),
+  )
+  await clickByText('返回主菜单')
+
+  // ================= TM-P1-028：黑石塔二层深处骷髅战士 =================
+  // 起点：P1-027 二层清场档（floor2ClearedSave 已恢复，zombie+mage 均击败；主菜单）
+  // 存档注入满 HP/MP（P1-027 战后残血不足以打满血 HP20 骷髅战士；P1-027-B 同模式测试手段）
+  await page.evaluate(() => {
+    const raw = localStorage.getItem('tianmeng_continent_save')
+    if (!raw) return
+    const save = JSON.parse(raw)
+    save.gameState.player.hp = save.gameState.player.maxHp
+    save.gameState.player.mp = save.gameState.player.maxMp
+    localStorage.setItem('tianmeng_continent_save', JSON.stringify(save))
+  })
+  await page.reload()
+  await sleep(600)
+  // A. Continue → 二层只出现骷髅战士 Lv.5（僵尸/黑法师均消失；入口区清场剧情保留）
+  await clickByText('继续游戏')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-028-A: 当前位置 black_stone_tower_floor2', body.includes('当前位置') && body.includes('black_stone_tower_floor2'))
+  check('P1-028-A: 二层入口区清场剧情保留', body.includes('二层前段的僵尸与黑法师已经被清理。'))
+  check('P1-028-A: 只看到骷髅战士 Lv.5 迎战', body.includes('骷髅战士 · Lv.5') && body.includes('迎战'))
+  check('P1-028-A: 无僵尸/黑法师卡片', !body.includes('僵尸 · Lv.4') && !body.includes('黑法师 · Lv.4'))
+  // B. 记录战前状态（HP/MP 允许战斗变化）
+  const warriorBeforeLevel = body.match(/Lv\.(\d+)/)
+  const warriorBeforeHp = body.match(/生命\s*(\d+)\s*\/\s*(\d+)/)
+  const warriorBeforeMp = body.match(/灵力\s*(\d+)\s*\/\s*(\d+)/)
+  const warriorBeforeGold = body.match(/金币\s*(\d+)/)
+  const warriorBeforeMapCount = body.match(/兔子的路径 ×(\d+)/)
+  // C. 挑战骷髅战士（Math.random 隔离 0.99）→ 确定性胜利
+  await clickByText('迎战')
+  await sleep(300)
+  await page.evaluate(() => {
+    window.__origRandom = Math.random.bind(Math)
+    Math.random = () => 0.99
+  })
+  for (let i = 0; i < 24; i += 1) {
+    const combatBody = await page.evaluate(() => document.body.innerText)
+    if (combatBody.includes('返回冒险')) break
+    if (combatBody.includes('普通攻击')) {
+      await page.evaluate(() => [...document.querySelectorAll('button')].find((b) => b.textContent.includes('普通攻击'))?.click())
+      await sleep(300)
+    } else {
+      break
+    }
+  }
+  await page.evaluate(() => {
+    Math.random = window.__origRandom
+  })
+  await clickByText('返回冒险')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-028-C: 骷髅战士战斗胜利返回冒险', body.includes('当前位置'))
+  // D. 骷髅战士消失 + 无附近威胁 + 击败后剧情四句
+  check('P1-028-D: 骷髅战士消失', !body.includes('骷髅战士 · Lv.5'))
+  check('P1-028-D: 无附近威胁/迎战', !body.includes('附近威胁') && !body.includes('迎战'))
+  check('P1-028-D: 小厅中的骷髅战士已经倒下', body.includes('小厅中的骷髅战士已经倒下。'))
+  check('P1-028-D: 仍未发现夔峒项链', body.includes('你仔细搜索了周围，依然没有发现王财遗失的夔峒项链。'))
+  check('P1-028-D: 石阶通往黑石塔更高处', body.includes('小厅后方，一道向上的石阶通往黑石塔更高处。'))
+  check('P1-028-D: 黑石塔三层：【待开放】', body.includes('黑石塔三层：【待开放】'))
+  // E. 任务日志最终态 + 不可提交
+  check('P1-028-E: 商人王财的麻烦进行中', body.includes('商人王财的麻烦') && body.includes('进行中'))
+  check('P1-028-E: 黑石塔二层深处：骷髅战士已击败，仍未发现夔峒项链', body.includes('黑石塔二层深处：骷髅战士已击败，仍未发现夔峒项链。'))
+  check('P1-028-E: 当前目标：继续调查黑石塔更高处', body.includes('当前目标：继续调查黑石塔更高处。'))
+  check('P1-028-E: 无可完成/提交任务', !body.includes('提交任务') && !body.includes('可完成'))
+  // F. 无奖励精确比较（Lv/maxHP/maxMP/gold/背包/rabbit_path 全不变）
+  const warriorAfterLevel = body.match(/Lv\.(\d+)/)
+  const warriorAfterHp = body.match(/生命\s*(\d+)\s*\/\s*(\d+)/)
+  const warriorAfterMp = body.match(/灵力\s*(\d+)\s*\/\s*(\d+)/)
+  const warriorAfterGold = body.match(/金币\s*(\d+)/)
+  const warriorAfterMapCount = body.match(/兔子的路径 ×(\d+)/)
+  check(
+    'P1-028-F: 战前后 Lv/maxHP/maxMP/gold/rabbit_path 精确全不变',
+    warriorBeforeLevel !== null && warriorAfterLevel !== null && warriorBeforeLevel[1] === warriorAfterLevel[1] &&
+      warriorBeforeHp !== null && warriorAfterHp !== null && warriorBeforeHp[2] === warriorAfterHp[2] &&
+      warriorBeforeMp !== null && warriorAfterMp !== null && warriorBeforeMp[2] === warriorAfterMp[2] &&
+      warriorBeforeGold !== null && warriorAfterGold !== null && warriorBeforeGold[1] === warriorAfterGold[1] &&
+      warriorBeforeMapCount !== null && warriorAfterMapCount !== null && warriorBeforeMapCount[1] === warriorAfterMapCount[1],
+  )
+  // G. 黄金兔子主线冻结
+  check('P1-028-G: 黄金兔子主线仍进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
+  check('P1-028-G: 兔子的路径 ×1', body.includes('兔子的路径 ×1'))
+  // H. Save/Continue 状态保持
+  await clickByText('保存游戏')
+  await clickByText('返回主菜单')
+  await clickByText('继续游戏')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-028-H: 读档后当前位置 floor2', body.includes('当前位置') && body.includes('black_stone_tower_floor2'))
+  check('P1-028-H: 日志最终态保持', body.includes('黑石塔二层深处：骷髅战士已击败，仍未发现夔峒项链。') && body.includes('当前目标：继续调查黑石塔更高处。') && body.includes('黑石塔三层：【待开放】'))
+  check('P1-028-H: 无附近威胁/迎战', !body.includes('附近威胁') && !body.includes('迎战'))
+  check('P1-028-H: 黄金兔子主线仍进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
   await clickByText('返回主菜单')
 
   // TM-P1-015：战斗中使用治疗药水（独立最小段：默认骑士 + 村外草原魔化兔；魔化兔零修改 HP8/DEF11/atk+2/dmg2）

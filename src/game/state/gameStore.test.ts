@@ -6043,4 +6043,110 @@ describe('TM-P1-027：黑石塔二层——武馆休整、僵尸与黑法师', (
     expect(wangcaiQuest()?.flags.floor2_black_mage_defeated).toBe(true)
     expect(useGameStore.getState().hasSave).toBe(false)
   })
+
+  // ---------- resolveCombatVictory('skeleton_warrior')（TM-P1-028） ----------
+
+  /** 走到二层且僵尸+黑法师均已击败（可打骷髅战士的完整合法状态） */
+  const seedWarriorReady = () => {
+    seedBlackMageReady()
+    useGameStore.getState().resolveCombatVictory('black_mage')
+  }
+
+  it('W1. 入口区两敌未全部击败 → 骷髅战士胜利拒绝（false 且完整 GameState unchanged）', () => {
+    // 僵尸未击败（黑法师也未击败）
+    seedFloor2Ready()
+    const before = useGameStore.getState().gameState
+    expect(useGameStore.getState().resolveCombatVictory('skeleton_warrior')).toBe(false)
+    expect(useGameStore.getState().gameState).toBe(before)
+    expect(wangcaiQuest()?.flags.floor2_skeleton_warrior_defeated).toBeUndefined()
+    // 僵尸已击败但黑法师未击败
+    seedBlackMageReady()
+    const before2 = useGameStore.getState().gameState
+    expect(useGameStore.getState().resolveCombatVictory('skeleton_warrior')).toBe(false)
+    expect(useGameStore.getState().gameState).toBe(before2)
+    expect(wangcaiQuest()?.flags.floor2_skeleton_warrior_defeated).toBeUndefined()
+  })
+
+  it('W2. 合法骷髅战士胜利 → true 且只写 floor2_skeleton_warrior_defeated=true', () => {
+    seedWarriorReady()
+    expect(wangcaiQuest()?.flags.floor2_skeleton_warrior_defeated).toBeUndefined()
+    expect(useGameStore.getState().resolveCombatVictory('skeleton_warrior')).toBe(true)
+    expect(wangcaiQuest()?.flags.floor2_skeleton_warrior_defeated).toBe(true)
+  })
+
+  it('W3. 骷髅战士胜利后任务保持 in_progress/stage 0', () => {
+    seedWarriorReady()
+    useGameStore.getState().resolveCombatVictory('skeleton_warrior')
+    expect(wangcaiQuest()?.status).toBe('in_progress')
+    expect(wangcaiQuest()?.stage).toBe(0)
+  })
+
+  it('W4. 骷髅战士胜利无 XP/金币/item/装备/治疗奖励', () => {
+    seedWarriorReady()
+    const beforePlayer = useGameStore.getState().gameState!.player
+    const beforeInventory = useGameStore.getState().gameState!.inventory
+    const beforeEquipment = useGameStore.getState().gameState!.equipment
+    useGameStore.getState().resolveCombatVictory('skeleton_warrior')
+    const after = useGameStore.getState().gameState!
+    expect(after.player).toEqual(beforePlayer)
+    expect(after.inventory).toEqual(beforeInventory)
+    expect(after.equipment).toEqual(beforeEquipment)
+  })
+
+  it('W5. 骷髅战士重复胜利无额外副作用（第二次 false 且 GameState 同一引用）', () => {
+    seedWarriorReady()
+    useGameStore.getState().resolveCombatVictory('skeleton_warrior')
+    const before = useGameStore.getState().gameState
+    expect(useGameStore.getState().resolveCombatVictory('skeleton_warrior')).toBe(false)
+    expect(useGameStore.getState().gameState).toBe(before)
+    expect(wangcaiQuest()?.flags.floor2_skeleton_warrior_defeated).toBe(true)
+  })
+
+  it.each([
+    ['错误 location', (s: GameState) => ({ ...s, world: { ...s.world, currentLocationId: 'tianlong_city' } })],
+    ['任务不存在', (s: GameState) => ({ ...s, quests: s.quests.filter((q) => q.questId !== 'quest_wangcai_trouble') })],
+    ['任务 available', (s: GameState) => ({ ...s, quests: s.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, status: 'available' as const } : q)) })],
+    ['任务 stage 1', (s: GameState) => ({ ...s, quests: s.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, stage: 1 } : q)) })],
+    ['wangcai_briefed 非 true', (s: GameState) => ({ ...s, quests: s.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, flags: { ...q.flags, wangcai_briefed: false } } : q)) })],
+    ['二层未解锁', (s: GameState) => ({ ...s, world: { ...s.world, flags: { ...s.world.flags, black_stone_tower_floor2_unlocked: false } } })],
+    ['floor1_soldier_defeated 非 true', (s: GameState) => ({ ...s, quests: s.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, flags: { ...q.flags, floor1_soldier_defeated: false } } : q)) })],
+    ['floor1_captain_defeated 非 true', (s: GameState) => ({ ...s, quests: s.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, flags: { ...q.flags, floor1_captain_defeated: false } } : q)) })],
+    ['zombie flag "yes"', (s: GameState) => ({ ...s, quests: s.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, flags: { ...q.flags, floor2_zombie_defeated: 'yes' as unknown as boolean } } : q)) })],
+    ['mage flag 1', (s: GameState) => ({ ...s, quests: s.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, flags: { ...q.flags, floor2_black_mage_defeated: 1 as unknown as boolean } } : q)) })],
+    ['warrior flag true', (s: GameState) => ({ ...s, quests: s.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, flags: { ...q.flags, floor2_skeleton_warrior_defeated: true } } : q)) })],
+    ['warrior flag "yes"', (s: GameState) => ({ ...s, quests: s.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, flags: { ...q.flags, floor2_skeleton_warrior_defeated: 'yes' as unknown as boolean } } : q)) })],
+    ['warrior flag 1', (s: GameState) => ({ ...s, quests: s.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, flags: { ...q.flags, floor2_skeleton_warrior_defeated: 1 as unknown as boolean } } : q)) })],
+    ['warrior flag 0.5', (s: GameState) => ({ ...s, quests: s.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, flags: { ...q.flags, floor2_skeleton_warrior_defeated: 0.5 as unknown as boolean } } : q)) })],
+  ])('W6. 骷髅战士胜利拒绝：%s（false 且完整 GameState unchanged）', (_label, mutate) => {
+    seedWarriorReady()
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return { gameState: mutate(s.gameState) }
+    })
+    const before = useGameStore.getState().gameState
+    expect(useGameStore.getState().resolveCombatVictory('skeleton_warrior')).toBe(false)
+    expect(useGameStore.getState().gameState).toBe(before)
+  })
+
+  it('W7. 黄金兔子 QuestState 整体深比较不变（骷髅战士胜利后）', () => {
+    seedWarriorReady()
+    const beforeGolden = JSON.stringify(goldenQuest())
+    useGameStore.getState().resolveCombatVictory('skeleton_warrior')
+    const afterGolden = JSON.stringify(goldenQuest())
+    expect(afterGolden).toBe(beforeGolden)
+    const golden = goldenQuest()
+    expect(golden?.status).toBe('in_progress')
+    expect(golden?.stage).toBe(0)
+    expect(golden?.flags.asked_blacksmith).toBe(true)
+    expect(golden?.flags.asked_apothecary).toBe(true)
+    expect(golden?.flags.village_inquiry_reported).toBe(true)
+    expect(golden?.flags.rabbit_lair_rechecked).toBe(true)
+  })
+
+  it('W8. 骷髅战士胜利不自动保存', () => {
+    seedWarriorReady()
+    useGameStore.getState().resolveCombatVictory('skeleton_warrior')
+    expect(wangcaiQuest()?.flags.floor2_skeleton_warrior_defeated).toBe(true)
+    expect(useGameStore.getState().hasSave).toBe(false)
+  })
 })

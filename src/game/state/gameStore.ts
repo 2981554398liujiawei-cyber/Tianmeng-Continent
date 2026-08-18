@@ -482,6 +482,27 @@ export const useGameStore = create<GameStoreState>()((set) => ({
           return {}
         }
       }
+      // TM-P1-028：二层骷髅战士（固定顺序第三场）完整前置守卫——额外要求 floor2_zombie_defeated===true 且 floor2_black_mage_defeated===true（入口区两敌未全部击败不得挑战骷髅战士）+ floor2_skeleton_warrior_defeated undefined/false；否则拒绝
+      if (enemyId === 'skeleton_warrior' && location.id === 'black_stone_tower_floor2') {
+        const quest = s.gameState.quests.find((q) => q.questId === 'quest_wangcai_trouble')
+        const warriorFlag = quest?.flags.floor2_skeleton_warrior_defeated
+        const warriorOk = warriorFlag !== true && (typeof warriorFlag === 'undefined' || typeof warriorFlag === 'boolean')
+        if (
+          !quest ||
+          quest.status !== 'in_progress' ||
+          quest.stage !== 0 ||
+          quest.flags.wangcai_briefed !== true ||
+          s.gameState.world.flags.black_stone_tower_unlocked !== true ||
+          s.gameState.world.flags.black_stone_tower_floor2_unlocked !== true ||
+          quest.flags.floor1_soldier_defeated !== true ||
+          quest.flags.floor1_captain_defeated !== true ||
+          quest.flags.floor2_zombie_defeated !== true ||
+          quest.flags.floor2_black_mage_defeated !== true ||
+          !warriorOk
+        ) {
+          return {}
+        }
+      }
       ok = true
       // 《村外异动》任务推进：村外草原击败魔化兔 → completable（复用封板状态机）
       if (enemyId === 'corrupted_rabbit' && location.id === 'village_grassland') {
@@ -578,6 +599,18 @@ export const useGameStore = create<GameStoreState>()((set) => ({
           if (quest) {
             const nextQuests = [...s.gameState.quests]
             nextQuests[questIndex] = { ...quest, flags: { ...quest.flags, floor2_black_mage_defeated: true } }
+            return { gameState: { ...s.gameState, quests: nextQuests } }
+          }
+        }
+      }
+      // 黑石塔二层骷髅战士（TM-P1-028）：合法首次胜利只写 quest.flags.floor2_skeleton_warrior_defeated=true（守卫已在 ok=true 前完成：入口区僵尸+黑法师均已击败）；status/stage 不变；无 XP/金币/等级/装备/掉落/恢复/关系/npcState/world flag/战后剧情；不自动保存
+      if (enemyId === 'skeleton_warrior' && location.id === 'black_stone_tower_floor2') {
+        const questIndex = s.gameState.quests.findIndex((q) => q.questId === 'quest_wangcai_trouble')
+        if (questIndex >= 0) {
+          const quest = s.gameState.quests[questIndex]
+          if (quest) {
+            const nextQuests = [...s.gameState.quests]
+            nextQuests[questIndex] = { ...quest, flags: { ...quest.flags, floor2_skeleton_warrior_defeated: true } }
             return { gameState: { ...s.gameState, quests: nextQuests } }
           }
         }
