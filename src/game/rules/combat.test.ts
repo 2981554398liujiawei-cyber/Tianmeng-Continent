@@ -12,6 +12,7 @@ import {
   getRangerSwiftStrikeDamage,
   KNIGHT_POWER_STRIKE_MP_COST,
   MAGE_SPELL_MP_COST,
+  WARRIOR_SUPPRESS_STRIKE_MP_COST,
   performAttack,
   resolveAttack,
   resolvePlayerStrike,
@@ -362,5 +363,14 @@ describe('TM-P1-007：游侠职业技能「迅捷突袭」', () => {
     expect(() => getRangerSwiftStrikeDamage(10, Number.NaN)).toThrow(RangeError)
     expect(() => getRangerSwiftStrikeDamage(10, 1.5)).toThrow(RangeError)
     expect(() => getRangerSwiftStrikeDamage(10, Number.POSITIVE_INFINITY)).toThrow(RangeError)
+  })
+})
+
+describe('TM-P1-008：战士职业技能「压制猛击」', () => {
+  it('WARRIOR_SUPPRESS_STRIKE_MP_COST === 2（唯一业务常量；不新增战士伤害函数，攻击公式等同普通攻击）', () => {
+    expect(WARRIOR_SUPPRESS_STRIKE_MP_COST).toBe(2)
+    // 无战士专属伤害函数：压制猛击伤害直接复用 getPlayerAttackDamage（CombatPage 不再调用其他公式）
+    expect(getPlayerAttackDamage(14)).toBe(6)
+    expect(getPlayerAttackDamage(14, 2)).toBe(8)
   })
 })

@@ -1029,7 +1029,7 @@ try {
   check('P1-001-B: 显示灵力 6 / 6', body.includes('6 / 6'))
   check('P1-001-B: 显示法术攻击（2 灵力）', body.includes('法术攻击（2 灵力）'))
   check('P1-001-B: 法术按钮启用', (await buttonDisabled('法术攻击')) === false)
-  check('P1-001-B: 法师不显示骑士重击/迅捷突袭', !body.includes('骑士重击') && !body.includes('迅捷突袭'))
+  check('P1-001-B: 法师不显示骑士重击/迅捷突袭/压制猛击', !body.includes('骑士重击') && !body.includes('迅捷突袭') && !body.includes('压制猛击'))
 
   // C. 灵力耗尽：法术天然1 + 敌天然1，连续施法三次并逐次断言 MP 6→4→2→0
   await page.evaluate(() => {
@@ -1442,7 +1442,7 @@ try {
   check('P1-006-A: 显示灵力 6 / 6', body.includes('6 / 6'))
   check('P1-006-A: 显示骑士重击（2 灵力）', body.includes('骑士重击（2 灵力）'))
   check('P1-006-A: 骑士重击按钮启用', (await buttonDisabled('骑士重击')) === false)
-  check('P1-006-A: 不显示法术攻击/迅捷突袭', !body.includes('法术攻击') && !body.includes('迅捷突袭'))
+  check('P1-006-A: 不显示法术攻击/迅捷突袭/压制猛击', !body.includes('法术攻击') && !body.includes('迅捷突袭') && !body.includes('压制猛击'))
 
   // B. 逐次 MP 消费：骑士重击天然1 + 敌天然1，6→4→2→0（魔化兔保持 8/8，玩家 HP 逐回合锁定不变）
   let initialPlayerHp = readHps(await bodyText()).player
@@ -1566,7 +1566,7 @@ try {
   check('P1-007-A: 战斗页职业显示游侠', body.includes('游侠'))
   check('P1-007-A: 显示普通攻击与迅捷突袭', body.includes('普通攻击') && body.includes('迅捷突袭'))
   check('P1-007-A: 迅捷突袭按钮启用', (await buttonDisabled('迅捷突袭')) === false)
-  check('P1-007-A: 游侠不显示法术攻击/骑士重击', !body.includes('法术攻击') && !body.includes('骑士重击'))
+  check('P1-007-A: 游侠不显示法术攻击/骑士重击/压制猛击', !body.includes('法术攻击') && !body.includes('骑士重击') && !body.includes('压制猛击'))
 
   // B. 天然1仍消耗本场次数：敌 HP/玩家 HP/MP 均不变
   const rangerInitialHp = readHps(await bodyText()).player
@@ -1633,6 +1633,107 @@ try {
   check('P1-007-R1: 段末 Math.random 已恢复真实实现（不污染后续测试）', randomRestored === true)
   await clickByText('返回冒险')
   await clickByText('返回主菜单')
+
+  // P1-008：战士职业技能「压制猛击」（2 灵力；命中且敌人未死 → 本次敌人不反击；未命中 → 正常反击）
+  // 本段只保存一次真实 Math.random（P1-008-R1 模式：mock 不泄漏给后续测试）
+  await page.evaluate(() => {
+    window.__p1008OriginalRandom = Math.random.bind(Math)
+  })
+  // A. 战士技能隔离：仅显示压制猛击（2 灵力），无其他职业技能
+  await clickByText('新游戏')
+  await clickLabel('战士')
+  await clickByText('确认进入天梦大陆')
+  await clickByText('村外草原')
+  await clickByText('迎战')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-008-A: 战斗页职业显示战士', body.includes('战士'))
+  check('P1-008-A: 显示灵力 6 / 6', body.includes('6 / 6'))
+  check('P1-008-A: 显示压制猛击（2 灵力）', body.includes('压制猛击（2 灵力）'))
+  check('P1-008-A: 压制猛击按钮启用', (await buttonDisabled('压制猛击')) === false)
+  check('P1-008-A: 战士不显示法术攻击/骑士重击/迅捷突袭', !body.includes('法术攻击') && !body.includes('骑士重击') && !body.includes('迅捷突袭'))
+
+  // B. 命中压制成功：D20 7 + 攻击加值 4 = 11 命中魔化兔 DEF11；STR14 无武器伤害 6 → 兔 HP 8→2，本次敌人不反击
+  const warriorInitialHp = readHps(await bodyText()).player
+  await page.evaluate(() => {
+    Math.random = () => 0.3 // D20 = floor(0.3*20)+1 = 7
+  })
+  await clickByText('压制猛击')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-008-B: 显示你的压制猛击', body.includes('你的压制猛击'))
+  check('P1-008-B: 命中并造成 6 点伤害', body.includes('命中') && body.includes('造成 6 点伤害'))
+  check('P1-008-B: MP 6→4', body.includes('4 / 6'))
+  check('P1-008-B: 魔化兔 HP 8→2', body.includes('2 / 8'))
+  check('P1-008-B: 玩家 HP 不变（压制反击未发生）', readHps(body).player === warriorInitialHp)
+  check('P1-008-B: 无魔化兔的攻击（敌人未行动）', !body.includes('魔化兔的攻击：'))
+  check('P1-008-B: 战斗仍在进行（phase active）', body.includes('普通攻击') && (await buttonDisabled('普通攻击')) === false)
+  check('P1-008-B: 压制猛击仍启用（MP4 足够，无本场次数限制）', (await buttonDisabled('压制猛击')) === false)
+
+  // C. 未命中不压制：第二次压制猛击天然1 + 敌人天然20 → MP 4→2、敌 HP 仍 2、敌人反击且玩家 HP 下降
+  await page.evaluate(() => {
+    let i = 0
+    const seq = [0.0, 0.99]
+    Math.random = () => seq[i++ % 2]
+  })
+  await clickByText('压制猛击')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-008-C: 显示你的压制猛击：大失败', body.includes('你的压制猛击') && body.includes('大失败'))
+  check('P1-008-C: MP 4→2', body.includes('2 / 6'))
+  check('P1-008-C: 魔化兔仍 HP 2 / 8（未命中不造成伤害）', body.includes('2 / 8'))
+  check('P1-008-C: 出现魔化兔的攻击（未命中正常反击）', body.includes('魔化兔的攻击：'))
+  check('P1-008-C: 玩家 HP 明确下降（敌人天然20 反击）', readHps(body).player < warriorInitialHp)
+
+  // D. 普通攻击天然20 结束战斗（普攻不消费 MP）
+  await page.evaluate(() => {
+    Math.random = () => 0.99
+  })
+  await clickByText('普通攻击')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-008-D: 普通攻击战斗胜利', body.includes('战斗胜利'))
+  check('P1-008-D: MP 仍 2 / 6（普通攻击不消费 MP）', body.includes('2 / 6'))
+
+  // E. 返回青石村休整：HP 恢复满、MP 2→6（复用既有休整规则）
+  await clickByText('返回冒险')
+  await clickByText('青石村')
+  await clickByText('休整')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-008-E: 休整后灵力 6 / 6', body.includes('6 / 6'))
+  const restHpMatch = body.match(/生命\s*(\d+)\s*\/\s*(\d+)/)
+  check('P1-008-E: 休整后生命恢复满（当前 HP === 上限）', restHpMatch !== null && restHpMatch[1] === restHpMatch[2])
+
+  // F. Save / Continue 保留 MP：再战一场压制猛击天然20 击杀，MP 6→4，保存后 Continue 仍 4/6
+  await clickByText('村外草原')
+  await clickByText('迎战')
+  await sleep(300)
+  await page.evaluate(() => {
+    Math.random = () => 0.99
+  })
+  await clickByText('压制猛击')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-008-F: 压制猛击天然20 暴击胜利', body.includes('战斗胜利') && body.includes('暴击'))
+  await clickByText('返回冒险')
+  body = await bodyText()
+  check('P1-008-F: 战斗后灵力 4 / 6', body.includes('4 / 6'))
+  await clickByText('保存游戏')
+  await clickByText('返回主菜单')
+  await clickByText('继续游戏')
+  body = await bodyText()
+  check('P1-008-F: Continue 后灵力仍 4 / 6', body.includes('4 / 6'))
+  await clickByText('返回主菜单')
+  // P1-008-R1 模式：确定性断言——段末 Math.random 与段首保存的真实函数同一引用
+  const p1008Restored = await page.evaluate(() => {
+    const original = window.__p1008OriginalRandom
+    Math.random = original
+    const isOriginal = Math.random === original
+    delete window.__p1008OriginalRandom
+    return isOriginal
+  })
+  check('P1-008-R1: 段末 Math.random 已恢复真实实现（不污染后续测试）', p1008Restored === true)
 
   // R2：运行期间存档改坏 → 触发一次 load → Continue 禁用且不进入游戏页
   await clickByText('新游戏')

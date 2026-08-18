@@ -85,6 +85,11 @@ export function getRangerSwiftStrikeDamage(agi: number, weaponDamageBonus = 0): 
   return damage
 }
 
+// ---- Phase 1：战士职业技能「压制猛击」（TM-P1-008）----
+
+/** 压制猛击灵力消耗（唯一业务常量，CombatPage 与 Store 都读取它） */
+export const WARRIOR_SUPPRESS_STRIKE_MP_COST = 2
+
 export type AttackOutcome = 'critical_hit' | 'hit' | 'miss' | 'critical_miss'
 
 export interface AttackResult {

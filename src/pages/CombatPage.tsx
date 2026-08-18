@@ -11,6 +11,7 @@ import {
   getRangerSwiftStrikeDamage,
   KNIGHT_POWER_STRIKE_MP_COST,
   MAGE_SPELL_MP_COST,
+  WARRIOR_SUPPRESS_STRIKE_MP_COST,
   getPlayerAttackBonus,
   getPlayerAttackDamage,
   getPlayerDefense,
@@ -49,15 +50,21 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
   const damagePlayer = useGameStore((s) => s.damagePlayer)
   const spendMageSpellMp = useGameStore((s) => s.spendMageSpellMp)
   const spendKnightPowerStrikeMp = useGameStore((s) => s.spendKnightPowerStrikeMp)
+  const spendWarriorSuppressStrikeMp = useGameStore((s) => s.spendWarriorSuppressStrikeMp)
   const enemy = getEnemy(enemyId)
 
   const [enemyCurrentHp, setEnemyCurrentHp] = useState(enemy?.maxHp ?? 0)
   const [phase, setPhase] = useState<CombatPhase>('active')
   const [lastPlayerAttack, setLastPlayerAttack] = useState<AttackResult | null>(null)
   const [lastEnemyAttack, setLastEnemyAttack] = useState<AttackResult | null>(null)
-  /** TM-P1-001/006/007：最近一次玩家行动类型（仅页面本地，不进入 GameState）——区分「你的攻击/你的法术攻击/你的骑士重击/你的迅捷突袭」 */
+  /** TM-P1-001/006/007/008：最近一次玩家行动类型（仅页面本地，不进入 GameState）——区分「你的攻击/你的法术攻击/你的骑士重击/你的迅捷突袭/你的压制猛击」 */
   const [lastPlayerAction, setLastPlayerAction] = useState<
-    'basic' | 'mage_spell' | 'knight_power_strike' | 'ranger_swift_strike' | null
+    | 'basic'
+    | 'mage_spell'
+    | 'knight_power_strike'
+    | 'ranger_swift_strike'
+    | 'warrior_suppress_strike'
+    | null
   >(null)
   /** TM-P1-007：游侠迅捷突袭本场战斗是否已使用（仅页面本地；新 CombatPage 天然重置，不进入 GameState） */
   const [rangerSwiftStrikeUsed, setRangerSwiftStrikeUsed] = useState(false)
@@ -140,8 +147,24 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
     applyPlayerAttack(strikeResult, 'ranger_swift_strike')
   }
 
-  /** TM-P1-001/006/007：普通攻击/法术攻击/骑士重击/迅捷突袭共用的最小局部结算（不建 ActionSystem/TurnManager） */
-  const applyPlayerAttack = (attack: AttackResult, action: 'basic' | 'mage_spell' | 'knight_power_strike' | 'ranger_swift_strike') => {
+  /** TM-P1-008：战士压制猛击——先消费灵力，成功才掷骰；攻击公式完全等同普通攻击，命中后本次敌人不反击 */
+  const handleWarriorSuppressStrike = () => {
+    if (phase !== 'active') return
+    // 唯一灵力消费入口：false → 不掷骰、不改敌人 HP、不触发敌人行动、不改最近攻击记录
+    if (!spendWarriorSuppressStrikeMp()) return
+    const strikeResult = performAttack(
+      getPlayerAttackBonus(player.attributes.str, player.level),
+      enemy.defense,
+      getPlayerAttackDamage(player.attributes.str, weaponDamageBonus),
+    )
+    applyPlayerAttack(strikeResult, 'warrior_suppress_strike')
+  }
+
+  /** TM-P1-001/006/007/008：普通攻击/法术攻击/骑士重击/迅捷突袭/压制猛击共用的最小局部结算（不建 ActionSystem/TurnManager） */
+  const applyPlayerAttack = (
+    attack: AttackResult,
+    action: 'basic' | 'mage_spell' | 'knight_power_strike' | 'ranger_swift_strike' | 'warrior_suppress_strike',
+  ) => {
     setLastPlayerAttack(attack)
     setLastPlayerAction(action)
     setLastEnemyAttack(null)
@@ -151,6 +174,12 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
     if (!strike.enemyShouldCounter) {
       // 致死攻击 → 胜利，且敌人不得反击
       setPhase(strike.phase)
+      return
+    }
+
+    // TM-P1-008：压制猛击命中且敌人存活 → 压制本次反击（本次行动结束，不执行敌人 performAttack）
+    // 未命中（miss/天然1）不压制 → 敌人正常反击；普通攻击反击规则完全不变（只作用于 warrior_suppress_strike 行动）
+    if (action === 'warrior_suppress_strike' && attack.hit) {
       return
     }
 
@@ -222,7 +251,9 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
                     ? '你的骑士重击：'
                     : lastPlayerAction === 'ranger_swift_strike'
                       ? '你的迅捷突袭：'
-                      : '你的攻击：'}
+                      : lastPlayerAction === 'warrior_suppress_strike'
+                        ? '你的压制猛击：'
+                        : '你的攻击：'}
               </span>
               {attackLine(lastPlayerAttack, enemy.name)}
             </p>
@@ -275,6 +306,19 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
                   迅捷突袭
                 </Button>
                 {rangerSwiftStrikeUsed && <span className="text-xs text-bone-500">本场战斗已使用</span>}
+              </div>
+            )}
+            {/* TM-P1-008：仅战士显示压制猛击；灵力不足时禁用但普通攻击不受影响（无本场次数限制，MP 足够即可再用） */}
+            {player.profession === 'warrior' && (
+              <div className="flex flex-col items-center gap-1">
+                <Button
+                  variant="primary"
+                  disabled={player.mp < WARRIOR_SUPPRESS_STRIKE_MP_COST}
+                  onClick={handleWarriorSuppressStrike}
+                >
+                  压制猛击（{WARRIOR_SUPPRESS_STRIKE_MP_COST} 灵力）
+                </Button>
+                {player.mp < WARRIOR_SUPPRESS_STRIKE_MP_COST && <span className="text-xs text-red-300">灵力不足</span>}
               </div>
             )}
           </div>
