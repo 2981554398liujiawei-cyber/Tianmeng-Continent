@@ -91,6 +91,8 @@ interface GameStoreState {
   reportGoldenRabbitVillageInvestigation: () => boolean
   /** 返回兔王巢穴复查《兔子的路径》（TM-P1-020）：第四任务专属窄 action——当前位置 rabbit_lair + 任务 in_progress + 前三调查 flag 均 === true + 未复查时成功，只写 quest.flags.rabbit_lair_rechecked=true；四个相关 flag 任一非 boolean 整体拒绝；rabbit_path 非法 quantity（0/-1/1.5/NaN/Infinity/缺失）拒绝；examined 非 true 拒绝；重复复查拒绝；不改 status/stage、不消耗地图、无奖励、不自动保存 */
   recheckGoldenRabbitMapAtLair: () => boolean
+  /** 查看村外草原采药区域（TM-P1-021）：支线专属窄 action——当前位置 village_grassland + quest_apothecary_herb_route in_progress + grassland_checked undefined/false 时成功，原子写 flags.grassland_checked=true 且 status→completable（stage 保持 0）；重复（true）/非 boolean 异常 flag/非法前置全部拒绝且完全不变；无金币/HP/MP/物品副作用、不自动保存 */
+  inspectApothecaryHerbRoute: () => boolean
 }
 
 /** 任务发现：不存在 → 创建 available；undiscovered → available；其余状态不重复创建。非法返回 null（TM-P0-006） */
@@ -99,6 +101,11 @@ function applyQuestDiscovery(gameState: GameState, questId: string): GameState |
   // TM-P1-017：第四主线《追寻黄金兔子王》窄特判——仅 rabbit_path_reported===true（非严格 true 如 undefined/false/"true"/"yes"/1/0 均不解锁）才能发现；不修复异常 flag
   if (questId === 'quest_golden_rabbit_search' && gameState.world.flags.rabbit_path_reported !== true) {
     return null
+  }
+  // TM-P1-021：首条支线《采药受阻》窄特判——仅《村外异动》completed（第一主线完成）才能发现；不建 prerequisite 系统
+  if (questId === 'quest_apothecary_herb_route') {
+    const villageQuest = gameState.quests.find((q) => q.questId === 'quest_village_monsters')
+    if (villageQuest?.status !== 'completed') return null
   }
   const index = gameState.quests.findIndex((q) => q.questId === questId)
   if (index < 0) {
@@ -988,6 +995,31 @@ export const useGameStore = create<GameStoreState>()((set) => ({
       // TM-P1-020：成功只写 quest.flags.rabbit_lair_rechecked=true（前三 flag 保持 true；status 仍 in_progress、stage 仍 0；地图不消耗/无奖励/不自动保存）
       const nextQuests = [...s.gameState.quests]
       nextQuests[questIndex] = { ...quest, flags: { ...quest.flags, rabbit_lair_rechecked: true } }
+      return { gameState: { ...s.gameState, quests: nextQuests } }
+    })
+    return changed
+  },
+
+  inspectApothecaryHerbRoute: () => {
+    let changed = false
+    set((s) => {
+      if (!s.gameState) return {}
+      // 必须在村外草原（采药区域所在地）
+      if (s.gameState.world.currentLocationId !== 'village_grassland') return {}
+      // 支线必须存在且 in_progress（可接受后才有调查动作）
+      const questIndex = s.gameState.quests.findIndex((q) => q.questId === 'quest_apothecary_herb_route')
+      if (questIndex < 0) return {}
+      const quest = s.gameState.quests[questIndex]
+      if (!quest || quest.status !== 'in_progress') return {}
+      // TM-P1-021：grassland_checked flag 安全——只允许 undefined/false/true；非 boolean 已存在值（"yes"/1/0.5）拒绝且不静默覆盖
+      const checkedFlag = quest.flags.grassland_checked
+      if (checkedFlag !== undefined && typeof checkedFlag !== 'boolean') return {}
+      // 已调查（true）重复拒绝
+      if (checkedFlag === true) return {}
+      changed = true
+      // TM-P1-021：成功原子写 flags.grassland_checked=true 且 status→completable（stage 保持 0；金币/等级/HP/MP/物品/装备/关系/world.flags/completedEvents 全不变；不自动保存）
+      const nextQuests = [...s.gameState.quests]
+      nextQuests[questIndex] = { ...quest, status: 'completable', flags: { ...quest.flags, grassland_checked: true } }
       return { gameState: { ...s.gameState, quests: nextQuests } }
     })
     return changed

@@ -452,6 +452,20 @@ TM-P1-020（返回兔王巢穴复查《兔子的路径》）：
 - Store 单测 27 项 A-S：A 无 gameState false/B 不在 rabbit_lair false/C 第四任务不存在 false 全不变/D available/completable/completed false/E asked_blacksmith !== true false/F asked_apothecary !== true false/G village_inquiry_reported !== true false/H 无 rabbit_path false/I quantity 0/-1/1.5/NaN/Infinity false 同一引用不变/J rabbit_path_examined !== true false/K 全前置合法 true+rechecked=true/L rechecked=false 可改 true/M rechecked=true 重复 false 同一引用不变/N 四 flag 任一非 boolean（"yes"/1/0.5）拒绝且原样保留/O 成功后前三 flag 保持 true/P status 仍 in_progress+stage 仍 0/Q rabbit_path 仍 ×1（复查不消耗地图）/R player/inventory/equipment/world/其他 quests/npcStates 全不变+examined 保持/S 不自动保存
 - 31 项 E2E（直接继续 P1-019 已保存复命完成档：A Continue 后进行中+村内调查已汇报+当前目标：返回兔王巢穴重新比对地图/B 青石村可前往按钮精确等于 [废弃矿洞, 村外草原]→村外草原→兔王巢穴+currentLocationId===rabbit_lair/C Boss 清场回归（无附近威胁 section+无嘟嘟兔+无迎战按钮+地图 ×1）/D 巢穴复查剧情块文案+重新比对地图按钮 enabled/E 点击复查→固定结果+【待补充】+按钮消失/F 任务状态进行中+2/2+村内调查已汇报+巢穴复查完成+【待补充】+当前目标消失+无可完成/提交/G 复查前后 Lv/HP/MP/金币/地图数精确相等/H Save/Continue 后巢穴复查完成+【待补充】+进行中+地图 ×1+重进巢穴无按钮/无嘟嘟兔/无威胁 section/地图仍 ×1/复查完成保留）
 
+TM-P1-021（首条正式支线《采药受阻》——药师发布，暂停主线堆叠补游玩量）：
+- quests.ts 新增 quest_apothecary_herb_route：title 采药受阻 / summary「村外魔化野兽让采药变得不安全。药师希望你去村外草原查看采药区域的情况。」/ giverNpcId apothecary / goldReward 10；QuestDefinition 零扩展
+- 发现前置（窄特判，不建 prerequisite 系统）：Store discoverQuest 仅当 quest_village_monsters.status===completed 才允许发现；GamePage localQuests 同步相同门槛
+- 复用现有任务生命周期 discoverQuest/acceptQuest/completeQuest（undiscovered→available→in_progress→completable→completed）
+- 新增窄 Store Action `inspectApothecaryHerbRoute(): boolean`（支线专属）：village_grassland + 支线 in_progress + grassland_checked undefined/false 时成功，原子写 flags.grassland_checked=true 且 status→completable（stage 保持 0）；true 重复拒绝同一引用不变；非 boolean 异常 flag（"yes"/1/0.5）拒绝不修复；无金币/HP/MP/物品/关系副作用、不自动保存
+- 草原剧情块（in_progress 或已查看时显示）：未调查「药师常来这一带采药。附近魔化野兽的活动让这里变得不再安全。」+ 按钮「查看采药区域」；成功「你检查了附近的采药区域，确认魔化野兽的活动确实影响了这里。/可以回青石村向药师复命了。」按钮消失（无草药/采集物/危险值/随机结果）
+- 任务日志：接受后「当前目标：前往村外草原查看采药区域。」；调查后「采药区域已查看。/当前目标：返回青石村向药师复命。」
+- 提交复用现有 completeQuest（completable→completed + goldReward 10 走 generic 金币奖励，无专属奖励 action）；除 gold +10 外等级/HP/MP/物品/装备/关系/world.flags/npcStates/completedEvents 全不变；不赠送治疗药水
+- 黄金兔子主线零修改：继续 in_progress/stage 0/asked 两 true/village_inquiry_reported true/rabbit_lair_rechecked true/巢穴复查完成/【待补充】
+- schema 不变、SAVE_VERSION=1；locations.ts/npcs.ts/items.ts/enemies.ts/App.tsx/CombatPage.tsx/types/storage/rules/content 定义零修改；git diff 仅 quests.ts + content.test.ts + gameStore.ts + gameStore.test.ts + GamePage.tsx + qa/e2e.mjs + README
+- content 测试：QUESTS toHaveLength(5) + 支线注册表定义锁定（title/giver/goldReward 10/summary 关键文案）+ 无新增敌人/NPC
+- Store 单测 18 项 A-O：A 第一主线未完成 discover false/B completed discover true+available/C 重复 discover false/D accept in_progress/E 不在草原 inspect false/F 支线不存在 false/G available/completable/completed false/H 首次 inspect true+checked true+completable+stage 0/I checked=false 可执行/J checked=true 重复 false 同一引用不变/K 非 boolean flag（"yes"/1/0.5）false 同一引用原值保留/L inspect 无金币/HP/MP/物品副作用/M completeQuest 后 completed+gold 精确 +10/N 除 gold 与该 QuestState 外其他状态不变/O inspect 不自动保存
+- 30 项 E2E（直接继续 P1-020 已保存档：A Continue 后兔王巢穴→村外草原→青石村+黄金主线进行中+巢穴复查完成+【待补充】/B 附近委托出现药师入口+采药受阻可接受+描述来自注册表/C 接受后进行中+当前目标：前往村外草原查看采药区域+记录金币/D 草原剧情块文案+查看采药区域按钮 enabled/E 点击→固定结果+可以回青石村向药师复命+采药区域已查看+当前目标：返回青石村向药师复命+可完成+按钮精确消失/F 返回青石村提交→已完成+金币严格 +10/G Lv.2 不变+maxHP/maxMP 不变+兔子的路径 ×1+黄金主线 in_progress+巢穴复查完成/H Save/Continue 后采药受阻已完成+黄金主线保持+草原无采药调查按钮）
+
 ## 目录结构
 
 ```

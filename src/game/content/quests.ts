@@ -43,4 +43,12 @@ export const QUESTS: Record<string, QuestDefinition> = {
     summary: '《兔子的路径》指向黄金兔子王所在之地。具体目的地：【待补充】',
     giverNpcId: 'village_elder',
   },
+  // TM-P1-021：首条正式支线（药师发布；复用现有地点/NPC/任务系统；仅第一主线完成后可发现；goldReward 10 走 generic 提交路径，无专属奖励 action）
+  quest_apothecary_herb_route: {
+    id: 'quest_apothecary_herb_route',
+    title: '采药受阻',
+    summary: '村外魔化野兽让采药变得不安全。药师希望你去村外草原查看采药区域的情况。',
+    giverNpcId: 'apothecary',
+    goldReward: 10,
+  },
 }

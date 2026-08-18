@@ -157,10 +157,10 @@ describe('TM-P0-002-R1：关键内容身份锁', () => {
     expect(desc).not.toContain('迁徙')
   })
 
-  it('注册表数量与 ID 未被改动（无新增黄金兔子王条目；TM-P1-005 新增《矿洞清理》、TM-P1-010 新增《草原狼影》、TM-P1-017 新增《追寻黄金兔子王》）', () => {
+  it('注册表数量与 ID 未被改动（无新增黄金兔子王条目；TM-P1-005 新增《矿洞清理》、TM-P1-010 新增《草原狼影》、TM-P1-017 新增《追寻黄金兔子王》、TM-P1-021 新增《采药受阻》）', () => {
     expect(Object.keys(ENEMIES)).toHaveLength(4)
     expect(Object.keys(NPCS)).toHaveLength(3)
-    expect(Object.keys(QUESTS)).toHaveLength(4)
+    expect(Object.keys(QUESTS)).toHaveLength(5)
     expect(getEnemy('golden_rabbit_king')).toBeUndefined()
   })
 
@@ -176,6 +176,19 @@ describe('TM-P0-002-R1：关键内容身份锁', () => {
     expect(quest?.summary).toContain('黄金兔子王')
     expect(quest?.summary).toContain('具体目的地：【待补充】')
     // 不测试额外不存在的 lore
+  })
+
+  // TM-P1-021：首条正式支线注册表锁定（复用现有 NPC/地点/任务系统；goldReward 10 走 generic 提交路径）
+  it('TM-P1-021：《采药受阻》注册表定义锁定（title/giver/goldReward 10/summary 含关键文案）', () => {
+    const quest = getQuest('quest_apothecary_herb_route')
+    expect(quest).toBeDefined()
+    expect(quest?.id).toBe('quest_apothecary_herb_route')
+    expect(quest?.title).toBe('采药受阻')
+    expect(quest?.giverNpcId).toBe('apothecary')
+    expect(quest?.goldReward).toBe(10)
+    expect(quest?.summary).toContain('魔化野兽')
+    expect(quest?.summary).toContain('村外草原')
+    expect(quest?.summary).toContain('查看采药区域')
   })
 })
 

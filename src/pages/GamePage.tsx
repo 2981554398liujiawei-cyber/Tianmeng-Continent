@@ -66,6 +66,7 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
   const consultGoldenRabbitSearchNpc = useGameStore((s) => s.consultGoldenRabbitSearchNpc)
   const reportGoldenRabbitVillageInvestigation = useGameStore((s) => s.reportGoldenRabbitVillageInvestigation)
   const recheckGoldenRabbitMapAtLair = useGameStore((s) => s.recheckGoldenRabbitMapAtLair)
+  const inspectApothecaryHerbRoute = useGameStore((s) => s.inspectApothecaryHerbRoute)
   const [saveResult, setSaveResult] = useState<'saved' | 'failed' | null>(null)
   const [travelError, setTravelError] = useState(false)
   // TM-P0-015：活动对话 NPC（仅 UI 本地状态，不进入 GameState / 存档）
@@ -104,6 +105,10 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
   const goldenVillageInquiryReported = goldenSearchQuest?.flags.village_inquiry_reported === true
   /** TM-P1-020：兔王巢穴是否已复查《兔子的路径》（只读 QuestState.flags） */
   const goldenLairRechecked = goldenSearchQuest?.flags.rabbit_lair_rechecked === true
+  /** TM-P1-021：支线《采药受阻》QuestState（只读；草原调查状态从 flags 读取） */
+  const herbQuest = gameState.quests.find((q) => q.questId === 'quest_apothecary_herb_route')
+  const herbInProgress = herbQuest?.status === 'in_progress'
+  const herbGrasslandChecked = herbQuest?.flags.grassland_checked === true
   // TM-P0-006：附近委托 = 给予者位于当前地点的注册任务（不写死地点 ID）
   const localQuests = Object.values(QUESTS).filter((quest) => {
     const giver = getNpc(quest.giverNpcId)
@@ -119,6 +124,10 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
     // TM-P1-017：UI 侧窄前置（与 Store discoverQuest 一致）——《追寻黄金兔子王》仅在向村长汇报《兔子的路径》后可见
     if (quest.id === 'quest_golden_rabbit_search') {
       return world.flags.rabbit_path_reported === true
+    }
+    // TM-P1-021：UI 侧窄前置（与 Store discoverQuest 一致）——《采药受阻》支线仅在《村外异动》completed 后可见
+    if (quest.id === 'quest_apothecary_herb_route') {
+      return gameState.quests.some((q) => q.questId === 'quest_village_monsters' && q.status === 'completed')
     }
     return true
   })
@@ -387,6 +396,23 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
             <p className="mb-3 text-bone-300">你带着《兔子的路径》返回兔王巢穴，准备重新比对地图上的标记。</p>
             <Button variant="primary" onClick={() => recheckGoldenRabbitMapAtLair()}>
               重新比对地图
+            </Button>
+          </section>
+        )
+      )}
+
+      {/* TM-P1-021：村外草原采药区域调查 —— 支线 in_progress（未调查入口）或已查看（成功结果）时显示；成功后按钮消失并显示固定结果（无草药/采集物/危险值/随机结果） */}
+      {world.currentLocationId === 'village_grassland' && (herbInProgress || herbGrasslandChecked) && (
+        herbGrasslandChecked ? (
+          <section className="rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
+            <p className="text-bone-200">你检查了附近的采药区域，确认魔化野兽的活动确实影响了这里。</p>
+            <p className="mt-2 text-bone-300">可以回青石村向药师复命了。</p>
+          </section>
+        ) : (
+          <section className="rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
+            <p className="mb-3 text-bone-300">药师常来这一带采药。附近魔化野兽的活动让这里变得不再安全。</p>
+            <Button variant="primary" onClick={() => inspectApothecaryHerbRoute()}>
+              查看采药区域
             </Button>
           </section>
         )
@@ -787,6 +813,16 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
                   )}
                   {qs.questId === 'quest_golden_rabbit_search' && goldenLairRechecked && (
                     <p className="mt-1 text-xs text-gold-300">巢穴复查完成。</p>
+                  )}
+                  {/* TM-P1-021：支线《采药受阻》进度提示——接受后显示目标；调查成功后显示已查看+新目标（调查后任务即 completable，任务卡下方出现提交任务按钮走 generic 奖励） */}
+                  {qs.questId === 'quest_apothecary_herb_route' && qs.status === 'in_progress' && (
+                    <p className="mt-1 text-xs text-bone-400">当前目标：前往村外草原查看采药区域。</p>
+                  )}
+                  {qs.questId === 'quest_apothecary_herb_route' && herbGrasslandChecked && (
+                    <div className="mt-1 text-xs text-bone-400">
+                      <p className="text-gold-300">采药区域已查看。</p>
+                      <p className="mt-1">当前目标：返回青石村向药师复命。</p>
+                    </div>
                   )}
                   {canSubmit && (
                     <div className="mt-2">

@@ -3935,3 +3935,218 @@ describe('TM-P1-020：返回兔王巢穴复查《兔子的路径》', () => {
     expect(useGameStore.getState().hasSave).toBe(false)
   })
 })
+
+describe('TM-P1-021：首条正式支线《采药受阻》（药师发布）', () => {
+  const flags = () => useGameStore.getState().gameState?.world.flags
+  const rabbitPath = () => useGameStore.getState().gameState?.inventory.find((e) => e.itemId === 'rabbit_path')
+  const herbQuest = () => useGameStore.getState().gameState?.quests.find((q) => q.questId === 'quest_apothecary_herb_route')
+  const goldenQuest = () => useGameStore.getState().gameState?.quests.find((q) => q.questId === 'quest_golden_rabbit_search')
+  const snapshot = () => JSON.stringify(useGameStore.getState().gameState)
+
+  /** 完成第一主线《村外异动》（支线发现前置） */
+  const seedVillageMonstersCompleted = () => {
+    useGameStore.getState().newGame()
+    useGameStore.getState().discoverQuest('quest_village_monsters')
+    useGameStore.getState().acceptQuest('quest_village_monsters')
+    useGameStore.getState().travelToLocation('village_grassland')
+    useGameStore.getState().resolveCombatVictory('corrupted_rabbit')
+    useGameStore.getState().travelToLocation('qingshi_village')
+    useGameStore.getState().completeQuest('quest_village_monsters')
+  }
+
+  /** 走到支线 in_progress（接受后，青石村） */
+  const seedHerbInProgress = () => {
+    seedVillageMonstersCompleted()
+    useGameStore.getState().discoverQuest('quest_apothecary_herb_route')
+    useGameStore.getState().acceptQuest('quest_apothecary_herb_route')
+  }
+
+  /** 直接构造支线 flag 运行态（undefined 表示移除该 key） */
+  const seedHerbFlag = (flagKey: string, value: string | number | boolean | undefined) => {
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return {
+        gameState: {
+          ...s.gameState,
+          quests: s.gameState.quests.map((q) => {
+            if (q.questId !== 'quest_apothecary_herb_route') return q
+            if (value === undefined) {
+              const nextFlags = { ...q.flags }
+              delete nextFlags[flagKey]
+              return { ...q, flags: nextFlags }
+            }
+            return { ...q, flags: { ...q.flags, [flagKey]: value } }
+          }),
+        },
+      }
+    })
+  }
+
+  /** 直接构造支线状态运行态 */
+  const seedHerbStatus = (status: QuestStatus) => {
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return {
+        gameState: {
+          ...s.gameState,
+          quests: s.gameState.quests.map((q) =>
+            q.questId === 'quest_apothecary_herb_route' ? { ...q, status } : q,
+          ),
+        },
+      }
+    })
+  }
+
+  it('A. 第一主线未完成 → 支线 discover false', () => {
+    useGameStore.getState().newGame()
+    expect(useGameStore.getState().discoverQuest('quest_apothecary_herb_route')).toBe(false)
+    expect(herbQuest()).toBeUndefined()
+  })
+
+  it('B. 第一主线 completed → discover true / available', () => {
+    seedVillageMonstersCompleted()
+    expect(useGameStore.getState().discoverQuest('quest_apothecary_herb_route')).toBe(true)
+    expect(herbQuest()?.status).toBe('available')
+    expect(herbQuest()?.stage).toBe(0)
+  })
+
+  it('C. 重复 discover → false', () => {
+    seedVillageMonstersCompleted()
+    useGameStore.getState().discoverQuest('quest_apothecary_herb_route')
+    expect(useGameStore.getState().discoverQuest('quest_apothecary_herb_route')).toBe(false)
+  })
+
+  it('D. accept → in_progress', () => {
+    seedVillageMonstersCompleted()
+    useGameStore.getState().discoverQuest('quest_apothecary_herb_route')
+    expect(useGameStore.getState().acceptQuest('quest_apothecary_herb_route')).toBe(true)
+    expect(herbQuest()?.status).toBe('in_progress')
+  })
+
+  it('E. 不在 village_grassland → inspect false', () => {
+    seedHerbInProgress()
+    const before = snapshot()
+    expect(useGameStore.getState().inspectApothecaryHerbRoute()).toBe(false)
+    expect(snapshot()).toBe(before)
+  })
+
+  it('F. 支线不存在 → false', () => {
+    seedHerbInProgress()
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return { gameState: { ...s.gameState, quests: s.gameState.quests.filter((q) => q.questId !== 'quest_apothecary_herb_route') } }
+    })
+    useGameStore.getState().travelToLocation('village_grassland')
+    const before = snapshot()
+    expect(useGameStore.getState().inspectApothecaryHerbRoute()).toBe(false)
+    expect(snapshot()).toBe(before)
+  })
+
+  it('G. available/completable/completed → false', () => {
+    seedHerbInProgress()
+    useGameStore.getState().travelToLocation('village_grassland')
+    for (const status of ['available', 'completable', 'completed'] as const) {
+      seedHerbStatus(status)
+      const before = snapshot()
+      expect(useGameStore.getState().inspectApothecaryHerbRoute()).toBe(false)
+      expect(snapshot()).toBe(before)
+    }
+  })
+
+  it('H. 首次 inspect → true + grassland_checked=true + status=completable + stage=0', () => {
+    seedHerbInProgress()
+    useGameStore.getState().travelToLocation('village_grassland')
+    expect(useGameStore.getState().inspectApothecaryHerbRoute()).toBe(true)
+    expect(herbQuest()?.flags.grassland_checked).toBe(true)
+    expect(herbQuest()?.status).toBe('completable')
+    expect(herbQuest()?.stage).toBe(0)
+  })
+
+  it('I. grassland_checked=false → 可执行', () => {
+    seedHerbInProgress()
+    useGameStore.getState().travelToLocation('village_grassland')
+    seedHerbFlag('grassland_checked', false)
+    expect(useGameStore.getState().inspectApothecaryHerbRoute()).toBe(true)
+    expect(herbQuest()?.flags.grassland_checked).toBe(true)
+  })
+
+  it('J. grassland_checked=true 重复 → false 且同一引用不变', () => {
+    seedHerbInProgress()
+    useGameStore.getState().travelToLocation('village_grassland')
+    useGameStore.getState().inspectApothecaryHerbRoute()
+    const before = useGameStore.getState().gameState
+    expect(useGameStore.getState().inspectApothecaryHerbRoute()).toBe(false)
+    expect(useGameStore.getState().gameState).toBe(before)
+  })
+
+  it.each([
+    ['grassland_checked 非 boolean ("yes")', 'yes'],
+    ['grassland_checked 非 boolean (1)', 1],
+    ['grassland_checked 非 boolean (0.5)', 0.5],
+  ])('K. %s → false 且同一引用不变、原值保留', (_label, invalidValue) => {
+    seedHerbInProgress()
+    useGameStore.getState().travelToLocation('village_grassland')
+    seedHerbFlag('grassland_checked', invalidValue)
+    const before = useGameStore.getState().gameState
+    expect(useGameStore.getState().inspectApothecaryHerbRoute()).toBe(false)
+    expect(useGameStore.getState().gameState).toBe(before)
+    expect(herbQuest()?.flags.grassland_checked).toBe(invalidValue)
+  })
+
+  it('L. inspect 无金币/HP/MP/物品等副作用', () => {
+    seedHerbInProgress()
+    useGameStore.getState().travelToLocation('village_grassland')
+    const beforePlayer = useGameStore.getState().gameState!.player
+    const beforeInventory = useGameStore.getState().gameState!.inventory
+    const beforeEquipment = useGameStore.getState().gameState!.equipment
+    const beforeWorld = useGameStore.getState().gameState!.world
+    const beforeOtherQuests = useGameStore.getState().gameState!.quests.filter((q) => q.questId !== 'quest_apothecary_herb_route')
+    useGameStore.getState().inspectApothecaryHerbRoute()
+    const after = useGameStore.getState().gameState!
+    expect(after.player).toEqual(beforePlayer)
+    expect(after.inventory).toEqual(beforeInventory)
+    expect(after.equipment).toEqual(beforeEquipment)
+    expect(after.world).toEqual(beforeWorld)
+    expect(after.quests.filter((q) => q.questId !== 'quest_apothecary_herb_route')).toEqual(beforeOtherQuests)
+    expect(flags()?.rabbit_path_reported).toBeUndefined()
+  })
+
+  it('M. completeQuest 后 → completed + gold 精确 +10', () => {
+    seedHerbInProgress()
+    useGameStore.getState().travelToLocation('village_grassland')
+    useGameStore.getState().inspectApothecaryHerbRoute()
+    useGameStore.getState().travelToLocation('qingshi_village')
+    const goldBefore = useGameStore.getState().gameState!.player.gold
+    expect(useGameStore.getState().completeQuest('quest_apothecary_herb_route')).toBe(true)
+    expect(herbQuest()?.status).toBe('completed')
+    expect(useGameStore.getState().gameState!.player.gold).toBe(goldBefore + 10)
+  })
+
+  it('N. 除 gold 与该 QuestState 外其他状态不变', () => {
+    seedHerbInProgress()
+    useGameStore.getState().travelToLocation('village_grassland')
+    useGameStore.getState().inspectApothecaryHerbRoute()
+    useGameStore.getState().travelToLocation('qingshi_village')
+    const beforePlayer = useGameStore.getState().gameState!.player
+    const beforeInventory = useGameStore.getState().gameState!.inventory
+    const beforeEquipment = useGameStore.getState().gameState!.equipment
+    const beforeWorld = useGameStore.getState().gameState!.world
+    const beforeOtherQuests = useGameStore.getState().gameState!.quests.filter((q) => q.questId !== 'quest_apothecary_herb_route')
+    const goldBefore = beforePlayer.gold
+    useGameStore.getState().completeQuest('quest_apothecary_herb_route')
+    const after = useGameStore.getState().gameState!
+    expect(after.player).toEqual({ ...beforePlayer, gold: goldBefore + 10 })
+    expect(after.inventory).toEqual(beforeInventory)
+    expect(after.equipment).toEqual(beforeEquipment)
+    expect(after.world).toEqual(beforeWorld)
+    expect(after.quests.filter((q) => q.questId !== 'quest_apothecary_herb_route')).toEqual(beforeOtherQuests)
+  })
+
+  it('O. inspect 不自动保存', () => {
+    seedHerbInProgress()
+    useGameStore.getState().travelToLocation('village_grassland')
+    useGameStore.getState().inspectApothecaryHerbRoute()
+    expect(herbQuest()?.status).toBe('completable')
+    expect(useGameStore.getState().hasSave).toBe(false)
+  })
+})

@@ -2170,7 +2170,7 @@ try {
   await sleep(200)
   body = await bodyText()
   check('P1-017-C: 接受后任务日志显示追寻黄金兔子王进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
-  check('P1-017-C: 接受后附近委托入口消失', !body.includes('查看委托'))
+  check('P1-017-C: 接受后第四任务委托入口消失（村长似乎有事相托不再显示；药师支线入口不受影响）', !body.includes('村长似乎有事相托'))
   // D. 主线状态保持：Lv.2 / 金币不变（before===after 精确对比）/ 地图 ×1 / 阶段完成 / 【待补充】
   const p1017GoldAfter = body.match(/金币\s*(\d+)/)
   check(
@@ -2489,6 +2489,94 @@ try {
   check('P1-020-H: 重进巢穴无附近威胁 section', !body.includes('附近威胁'))
   check('P1-020-H: 重进巢穴地图仍 ×1', body.includes('兔子的路径 ×1'))
   check('P1-020-H: 重进巢穴复查完成保留', body.includes('巢穴复查完成。'))
+  await clickByText('返回主菜单')
+
+  // TM-P1-021：首条正式支线《采药受阻》（药师发布；直接继续 P1-020 已保存档，当前位于兔王巢穴）
+  // A. Continue 后返回青石村：兔王巢穴 → 村外草原 → 青石村；黄金主线保持
+  await clickByText('继续游戏')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-021-A: Continue 后在兔王巢穴', body.includes('兔王巢穴'))
+  await clickByText('村外草原')
+  await sleep(200)
+  await clickByText('青石村')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-021-A: 黄金主线仍进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
+  check('P1-021-A: 巢穴复查完成保留', body.includes('巢穴复查完成。'))
+  check('P1-021-A: 下一步目的地【待补充】', body.includes('下一步目的地：【待补充】'))
+  // B. 药师委托出现
+  check('P1-021-B: 附近委托出现药师入口', body.includes('药师似乎有事相托'))
+  await clickByText('查看委托')
+  body = await bodyText()
+  check('P1-021-B: 采药受阻可接受', body.includes('采药受阻') && body.includes('可接受'))
+  check('P1-021-B: 描述来自注册表', body.includes('村外魔化野兽让采药变得不安全。药师希望你去村外草原查看采药区域的情况。'))
+  // C. 接受
+  await clickByText('接受任务')
+  await sleep(200)
+  body = await bodyText()
+  check('P1-021-C: 采药受阻进行中', body.includes('采药受阻') && body.includes('进行中'))
+  check('P1-021-C: 当前目标：前往村外草原查看采药区域', body.includes('当前目标：前往村外草原查看采药区域。'))
+  const herbGoldBefore = body.match(/金币\s*(\d+)/)
+  check('P1-021-C: 记录金币成功', herbGoldBefore !== null)
+  // D. 前往草原
+  await clickByText('村外草原')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-021-D: 草原剧情块文案', body.includes('药师常来这一带采药。附近魔化野兽的活动让这里变得不再安全。'))
+  check('P1-021-D: 查看采药区域按钮 enabled', (await buttonDisabled('查看采药区域')) === false)
+  // E. 调查
+  await clickByText('查看采药区域')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-021-E: 调查固定结果', body.includes('你检查了附近的采药区域，确认魔化野兽的活动确实影响了这里。'))
+  check('P1-021-E: 可以回青石村向药师复命', body.includes('可以回青石村向药师复命了。'))
+  check('P1-021-E: 采药区域已查看', body.includes('采药区域已查看。'))
+  check('P1-021-E: 当前目标：返回青石村向药师复命', body.includes('当前目标：返回青石村向药师复命。'))
+  check('P1-021-E: 任务状态可完成', body.includes('采药受阻') && body.includes('可完成'))
+  const herbButtonAfter = await page.evaluate(() =>
+    [...document.querySelectorAll('button')].some((b) => b.textContent.trim() === '查看采药区域'),
+  )
+  check('P1-021-E: 查看采药区域按钮消失', herbButtonAfter === false)
+  // F. 返回并提交
+  await clickByText('青石村')
+  await sleep(300)
+  body = await bodyText()
+  await clickByText('提交任务')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-021-F: 采药受阻已完成', body.includes('采药受阻') && body.includes('已完成'))
+  const herbGoldAfter = body.match(/金币\s*(\d+)/)
+  check(
+    'P1-021-F: 金币严格 +10（完成后 = 完成前 + 10）',
+    herbGoldBefore !== null && herbGoldAfter !== null && Number(herbGoldAfter[1]) === Number(herbGoldBefore[1]) + 10,
+  )
+  // G. 无副作用：Lv/maxHP/maxMP/兔子的路径/黄金主线
+  const herbAfterLevel = body.match(/Lv\.(\d+)/)
+  const herbAfterMaxHp = body.match(/生命\s*\d+\s*\/\s*(\d+)/)
+  const herbAfterMaxMp = body.match(/灵力\s*\d+\s*\/\s*(\d+)/)
+  check('P1-021-G: 等级不变（Lv.2）', herbAfterLevel !== null && herbAfterLevel[1] === '2')
+  check('P1-021-G: maxHP/maxMP 不变', herbAfterMaxHp !== null && herbAfterMaxHp[1] === '24' && herbAfterMaxMp !== null && herbAfterMaxMp[1] === '7')
+  check('P1-021-G: 兔子的路径仍 ×1', body.includes('兔子的路径 ×1'))
+  check('P1-021-G: 黄金主线仍 in_progress', body.includes('追寻黄金兔子王') && body.includes('进行中'))
+  check('P1-021-G: 巢穴复查完成仍保留', body.includes('巢穴复查完成。'))
+  // H. Save/Continue：采药受阻已完成；黄金主线保持；无采药调查按钮
+  await clickByText('保存游戏')
+  await clickByText('返回主菜单')
+  await clickByText('继续游戏')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-021-H: Continue 后采药受阻已完成', body.includes('采药受阻') && body.includes('已完成'))
+  check('P1-021-H: Continue 后黄金主线进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
+  check('P1-021-H: Continue 后巢穴复查完成', body.includes('巢穴复查完成。'))
+  check('P1-021-H: Continue 后下一步目的地【待补充】', body.includes('下一步目的地：【待补充】'))
+  await clickByText('村外草原')
+  await sleep(300)
+  body = await bodyText()
+  const herbButtonAfterContinue = await page.evaluate(() =>
+    [...document.querySelectorAll('button')].some((b) => b.textContent.trim() === '查看采药区域'),
+  )
+  check('P1-021-H: 草原无采药调查按钮', herbButtonAfterContinue === false)
   await clickByText('返回主菜单')
 
   // TM-P1-015：战斗中使用治疗药水（独立最小段：默认骑士 + 村外草原魔化兔；魔化兔零修改 HP8/DEF11/atk+2/dmg2）
