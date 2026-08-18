@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import {
   getCombatPhaseAfterEnemyAttack,
+  getKnightPowerStrikeDamage,
   getMageSpellAttackBonus,
   getMageSpellDamage,
   getPlayerAttackBonus,
   getPlayerAttackDamage,
   getPlayerBasicDamage,
   getPlayerDefense,
+  KNIGHT_POWER_STRIKE_MP_COST,
   MAGE_SPELL_MP_COST,
   performAttack,
   resolveAttack,
@@ -268,5 +270,48 @@ describe('TM-P1-001：法师法术攻击规则', () => {
 
   it('MAGE_SPELL_MP_COST === 2（唯一业务常量）', () => {
     expect(MAGE_SPELL_MP_COST).toBe(2)
+  })
+})
+
+describe('TM-P1-006：骑士职业技能「骑士重击」', () => {
+  it('A. 无武器：STR14 → 普通攻击 6，骑士重击 8', () => {
+    expect(getPlayerAttackDamage(14)).toBe(6)
+    expect(getKnightPowerStrikeDamage(14)).toBe(8)
+  })
+
+  it('B. 铁剑：STR14 + weaponDamageBonus=2 → 普通攻击 8，骑士重击 10', () => {
+    expect(getPlayerAttackDamage(14, 2)).toBe(8)
+    expect(getKnightPowerStrikeDamage(14, 2)).toBe(10)
+  })
+
+  it('C. 固定比普通攻击高 2（多 STR 输入）', () => {
+    for (const str of [8, 10, 12, 14, 16, 18, 20]) {
+      expect(getKnightPowerStrikeDamage(str)).toBe(getPlayerAttackDamage(str) + 2)
+      expect(getKnightPowerStrikeDamage(str, 2)).toBe(getPlayerAttackDamage(str, 2) + 2)
+    }
+  })
+
+  it('D. 天然20：骑士重击伤害 10 → 暴击 20 伤害（复用 resolveAttack，必中）', () => {
+    const result = resolveAttack(20, getPlayerAttackBonus(14, 1), 10, getKnightPowerStrikeDamage(14, 2))
+    expect(result.outcome).toBe('critical_hit')
+    expect(result.hit).toBe(true)
+    expect(result.damage).toBe(20)
+  })
+
+  it('E. 天然1：骑士重击大失败 0 伤害（复用 resolveAttack）', () => {
+    const result = resolveAttack(1, getPlayerAttackBonus(14, 1), 10, getKnightPowerStrikeDamage(14))
+    expect(result.outcome).toBe('critical_miss')
+    expect(result.hit).toBe(false)
+    expect(result.damage).toBe(0)
+  })
+
+  it('F. 武器参数安全语义沿用：负数/NaN/小数 weaponDamageBonus 仍抛 RangeError', () => {
+    expect(() => getKnightPowerStrikeDamage(14, -1)).toThrow(RangeError)
+    expect(() => getKnightPowerStrikeDamage(14, Number.NaN)).toThrow(RangeError)
+    expect(() => getKnightPowerStrikeDamage(14, 2.5)).toThrow(RangeError)
+  })
+
+  it('KNIGHT_POWER_STRIKE_MP_COST === 2（唯一业务常量）', () => {
+    expect(KNIGHT_POWER_STRIKE_MP_COST).toBe(2)
   })
 })

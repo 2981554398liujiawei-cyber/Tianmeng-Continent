@@ -5,7 +5,7 @@ import { checkTravel } from '../rules/exploration'
 import { canTransitionQuestStatus } from '../rules/quest'
 import { getEnemy, getItem, getLocation, getNpc, getQuest } from '../content'
 import { performD20Check, CHECK_DC, type D20CheckResult } from '../rules/d20'
-import { MAGE_SPELL_MP_COST } from '../rules/combat'
+import { KNIGHT_POWER_STRIKE_MP_COST, MAGE_SPELL_MP_COST } from '../rules/combat'
 
 /** TM-P1-003：《村外异动》完成后村长一次性回应事件 ID（唯一代码来源，GamePage 亦读取） */
 export const VILLAGE_ELDER_POST_QUEST_EVENT_ID = 'village_elder_post_quest_response'
@@ -50,6 +50,8 @@ interface GameStoreState {
   failQuest: (questId: string) => boolean
   /** 村长任务后一次性回应选择（TM-P1-003）：仅 completed 且在村长处且未回应过才可执行；reassure→信任+1 / resolve→尊敬+1 */
   respondToVillageElderAfterQuest: (choice: 'reassure' | 'resolve') => boolean
+  /** 骑士重击灵力消费（TM-P1-006）：仅 knight 且 mp>=2 成功，mp-=2；失败 false 且 GameState 完全不变 */
+  spendKnightPowerStrikeMp: () => boolean
 
   /** 战斗伤害：hp = max(0, hp - amount)，仅正整数伤害，不设通用 setPlayerHp（TM-P0-008） */
   damagePlayer: (amount: number) => boolean
@@ -588,6 +590,29 @@ export const useGameStore = create<GameStoreState>()((set) => ({
         gameState: {
           ...s.gameState,
           player: { ...player, mp: player.mp - MAGE_SPELL_MP_COST },
+        },
+      }
+    })
+    return spent
+  },
+
+  spendKnightPowerStrikeMp: () => {
+    let spent = false
+    set((s) => {
+      if (!s.gameState) return {}
+      const player = s.gameState.player
+      // 职业边界：仅骑士可以使用骑士重击
+      if (player.profession !== 'knight') return {}
+      // 数据安全：maxMp 非负安全整数 / mp 非负安全整数且在 [0, maxMp] 内
+      if (!Number.isSafeInteger(player.maxMp) || player.maxMp < 0) return {}
+      if (!Number.isSafeInteger(player.mp) || player.mp < 0 || player.mp > player.maxMp) return {}
+      // 灵力不足：mp < 消耗 → 拒绝且状态完全不变
+      if (player.mp < KNIGHT_POWER_STRIKE_MP_COST) return {}
+      spent = true
+      return {
+        gameState: {
+          ...s.gameState,
+          player: { ...player, mp: player.mp - KNIGHT_POWER_STRIKE_MP_COST },
         },
       }
     })

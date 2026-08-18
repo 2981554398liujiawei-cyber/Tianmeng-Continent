@@ -301,6 +301,14 @@ TM-P1-005（第二个正式任务《矿洞清理》——内容纵向扩展）�
 - 未新增地点/敌人/NPC/物品；未建任务 DSL/QuestEngine/新 QuestStatus/经验升级/铁匠关系系统/新对话树；GameState schema 不变、SAVE_VERSION 仍 1
 - 12 个 Store 单测（A 注册内容固定/B 前置未完成拒绝发现且全不变/C 第一任务完成后可发现 available/D 正常接受 in_progress/E 正式魔化鼠胜利 completable+铁矿石+1 同次更新/F available 时不推进但铁矿石+1/G completable 重复胜利不重复推进矿石继续+1/H 战利品异常任务仍推进 inventory 不变/I 提交后 completed gold 70→85/J 无额外副作用（flags/completedEvents/npcStates/hp/mp/inventory/equipment 保持、blacksmith NpcState 不创建）/K 重复完成 false 仍 85/L 不自动保存）+ 14 项 E2E（A 新游戏无入口+村外异动保持/B 第一任务完成后铁匠委托出现+金币 70/C 矿洞清理可接受（发布者铁匠）+进行中/D 废弃矿洞魔化鼠迎战/E 同次胜利铁矿石×1+可完成/F 提交后已完成金币 85/G 铁匠无关系 UI+村长关系保持 1/0/H Continue 后任务/金币/铁矿石保持）
 
+TM-P1-006（骑士职业技能「骑士重击」——职业差异继续落地）：
+- combat.ts 新增唯一业务常量 `KNIGHT_POWER_STRIKE_MP_COST = 2`（CombatPage 与 Store 都读取它，JSX/E2E 未维护第二常量）与纯函数 `getKnightPowerStrikeDamage(str, weaponDamageBonus?) = getPlayerAttackDamage(str, weaponDamageBonus) + 2`（复用封板公式，未复制普通攻击伤害算法）；weaponDamageBonus 非法（-1/NaN/小数）沿用 RangeError，最终结果非有限正整数抛 RangeError
+- 骑士重击命中公式完全等同普通攻击：getPlayerAttackBonus(str, level)（未新增 getKnightAttackBonus/额外命中）；攻击 enemy.defense；复用 performAttack/resolveAttack/AttackResult（未新增 resolveKnightAttack/rollKnightAttack/PowerStrikeResult）；天然20 暴击×2（STR14+铁剑 10→20 伤）/天然1 大失败 0；**吃 weaponDamageBonus**（与法师法术攻击不吃武器不同：STR14 无武器普攻 6/重击 8，铁剑+2 普攻 8/重击 10）
+- Store 唯一新增灵力消费入口 `spendKnightPowerStrikeMp()`（未新增 spendMp/consumeCombatResource/useSkill/castAbility 通用接口）：成功条件 gameState + profession==='knight' + maxMp 非负安全整数 + mp 非负安全整数且 <=maxMp + mp>=2；成功 mp-=2（6→4/2→0，只改 player.mp）；不足（mp1）/非法职业（mage/warrior/ranger）/无 gameState/非法 MP（-1/越界）→ false 且 GameState 完全不变；不自动保存
+- CombatPage：仅 knight 显示 [骑士重击（2 灵力）]（消耗读 KNIGHT_POWER_STRIKE_MP_COST）；mage 只显示法术攻击（不显示骑士重击）、warrior/ranger 不显示（Store 单测锁定非法职业）；mp<2 时骑士重击 disabled +「灵力不足」而普通攻击仍 enabled（phase active 时）；使用顺序先 spendKnightPowerStrikeMp() 成功才掷骰（false 不掷骰/不改敌人 HP/不反击/不改最后攻击结果）；命中/未命中/天然20/天然1 均耗 2 MP；未击杀正常反击、击杀 victory 不反击（复用 resolvePlayerStrike）；普通/法术/重击共用 applyPlayerAttack 最小局部 helper（未新增 SkillExecutor/CombatAction/AbilitySystem/TurnManager）；lastPlayerAction 扩展 'knight_power_strike'（仅页面本地）；日志「你的骑士重击：」
+- 战斗后 MP 保留（不自动恢复）；青石村休整复用 restAtVillage 恢复；MP 随现有 Character 手动存档自然持久化（无新增存档字段）；未修改 ProfessionInfo（无 skills[]/abilities[]/combatActions[]）、未改职业名称/描述；未实现战士/游侠技能/技能树/体力怒气能量/冷却/技能点/盾牌/嘲讽/Buff；GameState schema 不变、SAVE_VERSION 仍 1
+- 7 个 combat 单测（无武器 STR14→8/铁剑+2→10/固定比普攻高 2（多 STR）/天然20 10→20 伤/天然1 0/武器参数安全 RangeError/KNIGHT_POWER_STRIKE_MP_COST===2）+ 11 个 Store 单测（knight 6→4/2→0/1 不足 false/mage·warrior·ranger false 全不变/无 gameState false/mp=-1 false/mp>maxMp false/成功只改 mp 其余全不变/不自动保存）+ 23 项 E2E（A 默认骑士显示骑士重击（2 灵力）启用且无法术攻击/B 连续三次重击逐次 6→4→2→0 且魔化兔持续 8/8+禁用+灵力不足+普攻仍启用/C MP0 普攻天然20 胜利离开前仍 0/6/D 休整恢复 6/6/E 重击天然20 你的骑士重击+暴击造成 16 点伤害+战斗胜利/F 战斗后 4/6 保存 Continue 仍 4/6/G 法师只有法术攻击无骑士重击）
+
 ## 目录结构
 
 ```

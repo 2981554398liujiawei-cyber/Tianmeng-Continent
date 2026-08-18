@@ -1429,6 +1429,119 @@ try {
   check('P1-005-H: Continue 后金币 85 且铁矿石 ×1', body.includes('85') && body.includes('铁矿石') && body.includes('×1'))
   await clickByText('返回主菜单')
 
+  // P1-006：骑士职业技能「骑士重击」
+  // A. 默认骑士拥有职业技能（无法术攻击）
+  await clickByText('新游戏')
+  await clickByText('确认进入天梦大陆')
+  await clickByText('村外草原')
+  await clickByText('迎战')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-006-A: 战斗页职业显示骑士', body.includes('骑士'))
+  check('P1-006-A: 显示灵力 6 / 6', body.includes('6 / 6'))
+  check('P1-006-A: 显示骑士重击（2 灵力）', body.includes('骑士重击（2 灵力）'))
+  check('P1-006-A: 骑士重击按钮启用', (await buttonDisabled('骑士重击')) === false)
+  check('P1-006-A: 不显示法术攻击', !body.includes('法术攻击'))
+
+  // B. 逐次 MP 消费：骑士重击天然1 + 敌天然1，6→4→2→0（魔化兔保持 8/8，玩家不受伤）
+  await page.evaluate(() => {
+    window.__origRandom = Math.random.bind(Math)
+    Math.random = () => 0.0
+  })
+  await clickByText('骑士重击')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-006-B: 第一次重击后灵力 4 / 6', body.includes('4 / 6'))
+  check('P1-006-B: 第一次重击后魔化兔仍 HP 8 / 8', body.includes('8 / 8'))
+  await clickByText('骑士重击')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-006-B: 第二次重击后灵力 2 / 6', body.includes('2 / 6'))
+  check('P1-006-B: 第二次重击后魔化兔仍 HP 8 / 8', body.includes('8 / 8'))
+  await clickByText('骑士重击')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-006-B: 第三次重击后灵力 0 / 6', body.includes('0 / 6'))
+  check('P1-006-B: 第三次重击后魔化兔仍 HP 8 / 8', body.includes('8 / 8'))
+  check('P1-006-B: 骑士重击禁用+灵力不足', (await buttonDisabled('骑士重击')) === true && body.includes('灵力不足'))
+  check('P1-006-B: 普通攻击仍启用', (await buttonDisabled('普通攻击')) === false)
+  await page.evaluate(() => {
+    Math.random = window.__origRandom
+  })
+
+  // C. MP0 普通攻击天然20 胜利，MP 仍 0/6（普攻不消费 MP）
+  await page.evaluate(() => {
+    window.__origRandom = Math.random.bind(Math)
+    Math.random = () => 0.99
+  })
+  await clickByText('普通攻击')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-006-C: MP0 普通攻击战斗胜利', body.includes('战斗胜利'))
+  check('P1-006-C: 普通攻击后灵力仍 0 / 6', body.includes('0 / 6'))
+  await page.evaluate(() => {
+    Math.random = window.__origRandom
+  })
+
+  // D. 返回冒险 → 青石村休整恢复灵力
+  await clickByText('返回冒险')
+  await clickByText('青石村')
+  await clickByText('休整')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-006-D: 休整后灵力 6 / 6', body.includes('6 / 6'))
+
+  // E. 真实骑士重击命中：天然20，STR14 重击伤害 8 暴击 16 击败魔化兔，MP 6→4，敌人不反击
+  await clickByText('村外草原')
+  await clickByText('迎战')
+  await sleep(300)
+  await page.evaluate(() => {
+    window.__origRandom = Math.random.bind(Math)
+    Math.random = () => 0.99
+  })
+  await clickByText('骑士重击')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-006-E: 显示你的骑士重击', body.includes('你的骑士重击'))
+  check('P1-006-E: 暴击造成 16 点伤害', body.includes('暴击') && body.includes('造成 16 点伤害'))
+  check('P1-006-E: 骑士重击暴击战斗胜利', body.includes('战斗胜利'))
+  await page.evaluate(() => {
+    Math.random = window.__origRandom
+  })
+
+  // F. 战斗后 MP 保留 + Save/Continue
+  await clickByText('返回冒险')
+  body = await bodyText()
+  check('P1-006-F: 战斗后灵力 4 / 6', body.includes('4 / 6'))
+  await clickByText('保存游戏')
+  await clickByText('返回主菜单')
+  await clickByText('继续游戏')
+  body = await bodyText()
+  check('P1-006-F: Continue 后灵力仍 4 / 6', body.includes('4 / 6'))
+  await clickByText('返回主菜单')
+
+  // G. 法师隔离：创建法师后只有法术攻击，无骑士重击
+  await clickByText('新游戏')
+  await clickLabel('法师')
+  await clickByText('确认进入天梦大陆')
+  await clickByText('村外草原')
+  await clickByText('迎战')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-006-G: 法师显示法术攻击（2 灵力）', body.includes('法术攻击（2 灵力）'))
+  check('P1-006-G: 法师不显示骑士重击', !body.includes('骑士重击'))
+  await page.evaluate(() => {
+    window.__origRandom = Math.random.bind(Math)
+    Math.random = () => 0.99
+  })
+  await clickByText('普通攻击')
+  await sleep(300)
+  await page.evaluate(() => {
+    Math.random = window.__origRandom
+  })
+  await clickByText('返回冒险')
+  await clickByText('返回主菜单')
+
   // R2：运行期间存档改坏 → 触发一次 load → Continue 禁用且不进入游戏页
   await clickByText('新游戏')
   await clickByText('确认进入天梦大陆') // P004：默认预填合法，直接确认创建

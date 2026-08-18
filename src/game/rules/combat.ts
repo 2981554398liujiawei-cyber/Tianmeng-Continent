@@ -49,6 +49,23 @@ export function getMageSpellDamage(mnd: number): number {
   return Math.max(1, 6 + getAttributeModifier(mnd))
 }
 
+// ---- Phase 1：骑士职业技能「骑士重击」（TM-P1-006）----
+
+/** 骑士重击灵力消耗（唯一业务常量，CombatPage 与 Store 都读取它） */
+export const KNIGHT_POWER_STRIKE_MP_COST = 2
+
+/**
+ * 骑士重击伤害 = 普通攻击伤害 + 2（TM-P1-006）。
+ * 复用封板 getPlayerAttackDamage（含 weaponDamageBonus 校验与溢出保护）；最终结果必须可安全结算，否则抛 RangeError。
+ */
+export function getKnightPowerStrikeDamage(str: number, weaponDamageBonus = 0): number {
+  const damage = getPlayerAttackDamage(str, weaponDamageBonus) + 2
+  if (!Number.isFinite(damage)) {
+    throw new RangeError('骑士重击伤害溢出')
+  }
+  return damage
+}
+
 export type AttackOutcome = 'critical_hit' | 'hit' | 'miss' | 'critical_miss'
 
 export interface AttackResult {

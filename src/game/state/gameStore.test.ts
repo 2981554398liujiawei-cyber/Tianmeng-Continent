@@ -2117,3 +2117,119 @@ describe('TM-P1-005：第二个正式任务《矿洞清理》', () => {
     expect(useGameStore.getState().hasSave).toBe(false)
   })
 })
+
+describe('TM-P1-006：spendKnightPowerStrikeMp 骑士重击灵力消费', () => {
+  const mp = () => useGameStore.getState().gameState?.player.mp
+
+  /** 切换职业（`as never` 绕过 ProfessionId 编译检查）并设置 MP */
+  const setProfessionAndMp = (profession: string, value: number) => {
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return {
+        gameState: {
+          ...s.gameState,
+          player: {
+            ...s.gameState.player,
+            profession: profession as never,
+            mp: value,
+            maxMp: 6,
+          },
+        },
+      }
+    })
+  }
+
+  it('A. knight MP6 → true → 4', () => {
+    useGameStore.getState().newGame() // 默认 knight
+    setProfessionAndMp('knight', 6)
+    expect(useGameStore.getState().spendKnightPowerStrikeMp()).toBe(true)
+    expect(mp()).toBe(4)
+  })
+
+  it('B. knight MP2 → true → 0', () => {
+    useGameStore.getState().newGame()
+    setProfessionAndMp('knight', 2)
+    expect(useGameStore.getState().spendKnightPowerStrikeMp()).toBe(true)
+    expect(mp()).toBe(0)
+  })
+
+  it('C. knight MP1 → false，MP 仍 1（不足）', () => {
+    useGameStore.getState().newGame()
+    setProfessionAndMp('knight', 1)
+    expect(useGameStore.getState().spendKnightPowerStrikeMp()).toBe(false)
+    expect(mp()).toBe(1)
+  })
+
+  it('D. mage MP6 → false，GameState 完全不变', () => {
+    useGameStore.getState().newGame()
+    setProfessionAndMp('mage', 6)
+    const snapshot = JSON.stringify(useGameStore.getState().gameState)
+    expect(useGameStore.getState().spendKnightPowerStrikeMp()).toBe(false)
+    expect(JSON.stringify(useGameStore.getState().gameState)).toBe(snapshot)
+  })
+
+  it('E. warrior MP6 → false，GameState 完全不变', () => {
+    useGameStore.getState().newGame()
+    setProfessionAndMp('warrior', 6)
+    const snapshot = JSON.stringify(useGameStore.getState().gameState)
+    expect(useGameStore.getState().spendKnightPowerStrikeMp()).toBe(false)
+    expect(JSON.stringify(useGameStore.getState().gameState)).toBe(snapshot)
+  })
+
+  it('F. ranger MP6 → false，GameState 完全不变', () => {
+    useGameStore.getState().newGame()
+    setProfessionAndMp('ranger', 6)
+    const snapshot = JSON.stringify(useGameStore.getState().gameState)
+    expect(useGameStore.getState().spendKnightPowerStrikeMp()).toBe(false)
+    expect(JSON.stringify(useGameStore.getState().gameState)).toBe(snapshot)
+  })
+
+  it('G. 无 gameState → false', () => {
+    useGameStore.setState({ gameState: null })
+    expect(useGameStore.getState().spendKnightPowerStrikeMp()).toBe(false)
+  })
+
+  it('H. mp=-1 → false，GameState 完全不变（非法负 MP）', () => {
+    useGameStore.getState().newGame()
+    setProfessionAndMp('knight', -1)
+    const snapshot = JSON.stringify(useGameStore.getState().gameState)
+    expect(useGameStore.getState().spendKnightPowerStrikeMp()).toBe(false)
+    expect(JSON.stringify(useGameStore.getState().gameState)).toBe(snapshot)
+  })
+
+  it('I. mp>maxMp → false，GameState 完全不变（越界）', () => {
+    useGameStore.getState().newGame()
+    setProfessionAndMp('knight', 7)
+    const snapshot = JSON.stringify(useGameStore.getState().gameState)
+    expect(useGameStore.getState().spendKnightPowerStrikeMp()).toBe(false)
+    expect(JSON.stringify(useGameStore.getState().gameState)).toBe(snapshot)
+  })
+
+  it('J. 成功时除 player.mp 外全部不变（hp/maxHp/maxMp/gold/level/profession/attributes/inventory/equipment/quests/world）', () => {
+    useGameStore.getState().newGame()
+    setProfessionAndMp('knight', 6)
+    const before = useGameStore.getState().gameState!
+    useGameStore.getState().spendKnightPowerStrikeMp()
+    const after = useGameStore.getState().gameState!
+    expect(after.player.hp).toBe(before.player.hp)
+    expect(after.player.maxHp).toBe(before.player.maxHp)
+    expect(after.player.maxMp).toBe(before.player.maxMp)
+    expect(after.player.gold).toBe(before.player.gold)
+    expect(after.player.level).toBe(before.player.level)
+    expect(after.player.profession).toBe(before.player.profession)
+    expect(after.player.attributes).toEqual(before.player.attributes)
+    expect(after.inventory).toEqual(before.inventory)
+    expect(after.equipment).toEqual(before.equipment)
+    expect(after.quests).toEqual(before.quests)
+    expect(after.world).toEqual(before.world)
+    expect(after.player.mp).toBe(before.player.mp - 2)
+  })
+
+  it('K. 不自动保存：成功消费后 hasSave 仍 false', () => {
+    useGameStore.getState().newGame()
+    setProfessionAndMp('knight', 6)
+    useGameStore.getState().spendKnightPowerStrikeMp()
+    expect(mp()).toBe(4)
+    expect(useGameStore.getState().hasSave).toBe(false)
+  })
+})
