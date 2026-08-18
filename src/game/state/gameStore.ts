@@ -420,6 +420,24 @@ export const useGameStore = create<GameStoreState>()((set) => ({
           return {}
         }
       }
+      // TM-P1-026：骷髅队长一次性 Boss 清场（完整前置守卫）——黑石塔一层骷髅队长胜利必须：第五主线存在且 in_progress/stage 0 + wangcai_briefed===true + black_stone_tower_unlocked===true + floor1_soldier_defeated===true + floor1_captain_defeated undefined/false；
+      // 否则拒绝（false 且 GameState 完全不变，不置 ok）：士兵未击败/quest 不存在/非 in_progress/stage!=0/briefed 非 true/unlocked 非 true/captain 已 true 或非 boolean 一律拒绝
+      if (enemyId === 'skeleton_captain' && location.id === 'black_stone_tower_floor1') {
+        const quest = s.gameState.quests.find((q) => q.questId === 'quest_wangcai_trouble')
+        const captainFlag = quest?.flags.floor1_captain_defeated
+        const captainOk = captainFlag !== true && (typeof captainFlag === 'undefined' || typeof captainFlag === 'boolean')
+        if (
+          !quest ||
+          quest.status !== 'in_progress' ||
+          quest.stage !== 0 ||
+          quest.flags.wangcai_briefed !== true ||
+          s.gameState.world.flags.black_stone_tower_unlocked !== true ||
+          quest.flags.floor1_soldier_defeated !== true ||
+          !captainOk
+        ) {
+          return {}
+        }
+      }
       ok = true
       // 《村外异动》任务推进：村外草原击败魔化兔 → completable（复用封板状态机）
       if (enemyId === 'corrupted_rabbit' && location.id === 'village_grassland') {
@@ -481,6 +499,18 @@ export const useGameStore = create<GameStoreState>()((set) => ({
               nextQuests[questIndex] = { ...quest, flags: { ...quest.flags, floor1_soldier_defeated: true } }
               return { gameState: { ...s.gameState, quests: nextQuests } }
             }
+          }
+        }
+      }
+      // 黑石塔一层骷髅队长（TM-P1-026）：合法首次 Boss 胜利只新增 quest.flags.floor1_captain_defeated=true（守卫已在 ok=true 前完成：士兵已击败+任务 in_progress/stage 0+briefed===true+unlocked===true+captain undefined/false）；status 保持 in_progress、stage 保持 0、soldier_defeated 保持 true；无金币/经验/等级/属性/装备/道具/声望/关系/治疗奖励；不自动保存
+      if (enemyId === 'skeleton_captain' && location.id === 'black_stone_tower_floor1') {
+        const questIndex = s.gameState.quests.findIndex((q) => q.questId === 'quest_wangcai_trouble')
+        if (questIndex >= 0) {
+          const quest = s.gameState.quests[questIndex]
+          if (quest) {
+            const nextQuests = [...s.gameState.quests]
+            nextQuests[questIndex] = { ...quest, flags: { ...quest.flags, floor1_captain_defeated: true } }
+            return { gameState: { ...s.gameState, quests: nextQuests } }
           }
         }
       }

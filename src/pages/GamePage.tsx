@@ -145,6 +145,8 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
   const towerUnlocked = world.flags.black_stone_tower_unlocked === true
   const towerQuestInProgress = wangcaiQuest?.status === 'in_progress' && wangcaiQuest?.stage === 0
   const floor1SoldierDefeated = wangcaiQuest?.flags.floor1_soldier_defeated === true
+  /** TM-P1-026：一层骷髅队长清场（只读）——驱动 Boss 可见性与 Boss 后剧情 */
+  const floor1CaptainDefeated = wangcaiQuest?.flags.floor1_captain_defeated === true
   // TM-P1-025-R1：解锁入口窄守卫——unlock flag 只允许 undefined/false 视为「待解锁」（异常非 boolean 与已 true 一律不显示行动按钮，避免 UI 允许但 Store 拒绝的死按钮）
   const towerUnlockFlag = world.flags.black_stone_tower_unlocked
   const towerUnlockPending = towerUnlockFlag === undefined || towerUnlockFlag === false
@@ -504,15 +506,25 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
         </section>
       )}
 
-      {/* TM-P1-025：黑石塔一层清场剧情 —— 骷髅士兵击败后显示固定文案与骷髅队长踪迹（无按钮；骷髅队长本卡不开放战斗） */}
+      {/* TM-P1-025/P1-026：黑石塔一层剧情 —— 骷髅士兵击败后显示前两句（无【待开放】；此时附近威胁正式出现骷髅队长）；骷髅队长击败后显示 Boss 战后固定文案（无按钮；二层本卡不开放） */}
       {world.currentLocationId === 'black_stone_tower_floor1' && floor1SoldierDefeated && (
         <section className="rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
           <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">大厅深处</h3>
-          <p className="leading-relaxed text-bone-200">大厅中的骷髅士兵已经被击败。</p>
-          <p className="mt-1 leading-relaxed text-bone-200">
-            更深处传来沉重的骨骼碰撞声，一名身材高大的骷髅队长守在前方。
-          </p>
-          <p className="mt-2 text-gold-300">骷髅队长：【待开放】</p>
+          {!floor1CaptainDefeated ? (
+            <>
+              <p className="leading-relaxed text-bone-200">大厅中的骷髅士兵已经被击败。</p>
+              <p className="mt-1 leading-relaxed text-bone-200">
+                更深处传来沉重的骨骼碰撞声，一名身材高大的骷髅队长守在前方。
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="leading-relaxed text-bone-200">骷髅队长已经倒下。</p>
+              <p className="mt-1 leading-relaxed text-bone-200">你检查了骷髅队长与周围，没有发现夔峒项链。</p>
+              <p className="mt-1 leading-relaxed text-bone-200">通往黑石塔更深处的道路仍需继续调查。</p>
+              <p className="mt-2 text-gold-300">黑石塔二层：【待开放】</p>
+            </>
+          )}
         </section>
       )}
 
@@ -771,6 +783,12 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
               const defeatedOk = defeated !== true && (typeof defeated === 'undefined' || typeof defeated === 'boolean')
               if (!towerQuestInProgress || !wangcaiBriefed || !towerUnlocked || !defeatedOk) return false
             }
+            // TM-P1-026：骷髅队长可见性窄条件——士兵已击败（floor1_soldier_defeated===true）+ floor1_captain_defeated 非 true（undefined/false 才显示；异常非 boolean 不显示）
+            if (threat.id === 'skeleton_captain') {
+              const captainFlag = wangcaiQuest?.flags.floor1_captain_defeated
+              const captainOk = captainFlag !== true && (typeof captainFlag === 'undefined' || typeof captainFlag === 'boolean')
+              if (!towerQuestInProgress || !wangcaiBriefed || !towerUnlocked || floor1SoldierDefeated !== true || !captainOk) return false
+            }
             return true
           })
         if (visibleEnemies.length === 0) return null
@@ -954,7 +972,7 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
                       <p className="mt-1">当前目标：返回青石村向铁匠复命。</p>
                     </div>
                   )}
-                  {/* TM-P1-024/P1-025：第五主线《商人王财的麻烦》进度提示——接受后/询问后/解锁后/击败骷髅士兵后四态（黑石塔：【待开放】与骷髅队长：【待开放】为实现状态，非 lore） */}
+                  {/* TM-P1-024/P1-025/P1-026：第五主线《商人王财的麻烦》进度提示——五态（未询问/已询问未解锁/已解锁未清士兵/士兵清场未清队长/队长清场；黑石塔：【待开放】与黑石塔二层：【待开放】为实现状态，非 lore） */}
                   {qs.questId === 'quest_wangcai_trouble' && qs.status === 'in_progress' && (
                     <div className="mt-1 text-xs text-bone-400">
                       {!wangcaiBriefed ? (
@@ -971,13 +989,21 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
                           <p className="mt-1 text-gold-300">黑石塔路线已确认。</p>
                           <p className="mt-1">当前目标：前往黑石塔一层调查。</p>
                         </>
+                      ) : !floor1CaptainDefeated ? (
+                        <>
+                          <p className="text-gold-300">已向王财了解情况。</p>
+                          <p className="mt-1 text-gold-300">黑石塔路线已确认。</p>
+                          <p className="mt-1 text-gold-300">黑石塔一层：已击败骷髅士兵。</p>
+                          <p className="mt-1">当前目标：击败骷髅队长。</p>
+                        </>
                       ) : (
                         <>
                           <p className="text-gold-300">已向王财了解情况。</p>
                           <p className="mt-1 text-gold-300">黑石塔路线已确认。</p>
                           <p className="mt-1 text-gold-300">黑石塔一层：已击败骷髅士兵。</p>
-                          <p className="mt-1">当前目标：继续深入，处理骷髅队长。</p>
-                          <p className="mt-1">骷髅队长：【待开放】</p>
+                          <p className="mt-1 text-gold-300">黑石塔一层：骷髅队长已击败，未发现夔峒项链。</p>
+                          <p className="mt-1">当前目标：继续深入黑石塔。</p>
+                          <p className="mt-1">黑石塔二层：【待开放】</p>
                         </>
                       )}
                     </div>

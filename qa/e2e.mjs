@@ -3060,15 +3060,15 @@ try {
   await sleep(300)
   body = await bodyText()
   check('P1-025-D: 战斗胜利返回冒险', body.includes('当前位置'))
-  // E. 胜利后清场
+  // E. 胜利后清场（P1-026 到期调整：骷髅队长正式出现，无【待开放】；附近威胁只含骷髅队长）
   check('P1-025-E: 大厅中的骷髅士兵已经被击败', body.includes('大厅中的骷髅士兵已经被击败。'))
   check('P1-025-E: 骷髅队长踪迹剧情', body.includes('更深处传来沉重的骨骼碰撞声，一名身材高大的骷髅队长守在前方。'))
-  check('P1-025-E: 骷髅队长：【待开放】', body.includes('骷髅队长：【待开放】'))
-  check('P1-025-E: 无骷髅士兵/迎战/附近威胁', !body.includes('附近威胁') && !body.includes('迎战'))
-  // F. 任务状态
+  check('P1-025-E: 无骷髅队长：【待开放】', !body.includes('骷髅队长：【待开放】'))
+  check('P1-025-E: 无威胁卡片骷髅士兵；附近威胁仅骷髅队长', !body.includes('骷髅士兵 · Lv.3') && body.includes('骷髅队长') && body.includes('Lv.4') && body.includes('迎战'))
+  // F. 任务状态（P1-026 到期调整：战前目标改为击败骷髅队长）
   check('P1-025-F: 商人王财的麻烦进行中', body.includes('商人王财的麻烦') && body.includes('进行中'))
   check('P1-025-F: 黑石塔一层：已击败骷髅士兵', body.includes('黑石塔一层：已击败骷髅士兵。'))
-  check('P1-025-F: 当前目标：继续深入，处理骷髅队长', body.includes('当前目标：继续深入，处理骷髅队长。'))
+  check('P1-025-F: 当前目标：击败骷髅队长', body.includes('当前目标：击败骷髅队长。'))
   check('P1-025-F: 无可完成/提交任务/已完成', !body.includes('提交任务') && !body.includes('可完成'))
   // G. 无奖励（HP 允许正常战斗变化）
   const towerAfterLevel = body.match(/Lv\.(\d+)/)
@@ -3088,9 +3088,9 @@ try {
   await clickByText('黑石塔一层')
   await sleep(300)
   body = await bodyText()
-  check('P1-025-H: 再次进入仍无骷髅士兵', !body.includes('迎战') && !body.includes('附近威胁'))
-  check('P1-025-H: 骷髅队长待开放剧情仍在', body.includes('骷髅队长：【待开放】'))
-  // I. Save/Continue（黑石塔一层）
+  check('P1-025-H: 再次进入无威胁卡片骷髅士兵；附近威胁仅骷髅队长', !body.includes('骷髅士兵 · Lv.3') && body.includes('骷髅队长') && body.includes('Lv.4') && body.includes('迎战'))
+  check('P1-025-H: 骷髅队长踪迹剧情仍在', body.includes('更深处传来沉重的骨骼碰撞声，一名身材高大的骷髅队长守在前方。'))
+  // I. Save/Continue（黑石塔一层；P1-026 到期调整：无【待开放】，附近威胁仅骷髅队长）
   await clickByText('保存游戏')
   await clickByText('返回主菜单')
   await clickByText('继续游戏')
@@ -3108,8 +3108,8 @@ try {
   check('P1-025-I: 商人王财的麻烦进行中', body.includes('商人王财的麻烦') && body.includes('进行中'))
   check('P1-025-I: 黑石塔路线已确认', body.includes('黑石塔路线已确认。'))
   check('P1-025-I: 黑石塔一层：已击败骷髅士兵', body.includes('黑石塔一层：已击败骷髅士兵。'))
-  check('P1-025-I: 无骷髅士兵', !body.includes('附近威胁') && !body.includes('迎战'))
-  check('P1-025-I: 骷髅队长：【待开放】', body.includes('骷髅队长：【待开放】'))
+  check('P1-025-I: 无威胁卡片骷髅士兵', !body.includes('骷髅士兵 · Lv.3'))
+  check('P1-025-I: 无骷髅队长：【待开放】', !body.includes('骷髅队长：【待开放】'))
   check('P1-025-I: 黄金兔子主线仍进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
   check('P1-025-I: 兔子的路径 ×1', body.includes('兔子的路径 ×1'))
   await clickByText('返回主菜单')
@@ -3183,8 +3183,143 @@ try {
   await sleep(300)
   body = await bodyText()
   check('P1-025-R1: 恢复合法档后当前位置黑石塔一层', body.includes('当前位置'))
-  check('P1-025-R1: 恢复合法档后骷髅士兵清场状态保持', body.includes('大厅中的骷髅士兵已经被击败。') && body.includes('骷髅队长：【待开放】'))
+  check('P1-025-R1: 恢复合法档后骷髅士兵清场状态保持', body.includes('大厅中的骷髅士兵已经被击败。') && body.includes('更深处传来沉重的骨骼碰撞声，一名身材高大的骷髅队长守在前方。') && !body.includes('骷髅队长：【待开放】'))
   check('P1-025-R1: 恢复合法档后无动身调查按钮', !body.includes('动身调查黑石塔'))
+  await clickByText('返回主菜单')
+
+  // TM-P1-026：黑石塔一层——骷髅队长 Boss 战与项链线索推进（直接继续 P1-025 Save/Continue 后的黑石塔一层清场档）
+  // A. Continue：黑石塔一层 + 士兵清场 + 骷髅队长正式出现
+  await clickByText('继续游戏')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-026-A: 商人王财的麻烦进行中', body.includes('商人王财的麻烦') && body.includes('进行中'))
+  check('P1-026-A: 黑石塔一层：已击败骷髅士兵', body.includes('黑石塔一层：已击败骷髅士兵。'))
+  // B. Boss 正式出现（无【待开放】；附近威胁精确只剩骷髅队长）
+  check('P1-026-B: 骷髅士兵击败剧情', body.includes('大厅中的骷髅士兵已经被击败。'))
+  check('P1-026-B: 骷髅队长踪迹剧情', body.includes('更深处传来沉重的骨骼碰撞声，一名身材高大的骷髅队长守在前方。'))
+  check('P1-026-B: 无骷髅队长：【待开放】', !body.includes('骷髅队长：【待开放】'))
+  check('P1-026-B: 附近威胁仅骷髅队长 Lv.4', body.includes('附近威胁') && body.includes('骷髅队长') && body.includes('Lv.4') && body.includes('迎战'))
+  check('P1-026-B: 威胁卡片无骷髅士兵', !body.includes('骷髅士兵 · Lv.3'))
+  check('P1-026-B: 当前目标：击败骷髅队长', body.includes('当前目标：击败骷髅队长。'))
+  // C. 记录战前状态（HP/MP 允许战斗变化，不作为无副作用锁定）
+  const captainBeforeLevel = body.match(/Lv\.(\d+)/)
+  const captainBeforeMaxHp = body.match(/生命\s*(\d+)\s*\/\s*(\d+)/)
+  const captainBeforeMaxMp = body.match(/灵力\s*(\d+)\s*\/\s*(\d+)/)
+  const captainBeforeGold = body.match(/金币\s*(\d+)/)
+  const captainBeforeMapCount = body.match(/兔子的路径 ×(\d+)/)
+  const captainBeforeInventory = await page.evaluate(() => {
+    const label = [...document.querySelectorAll('p')].find((el) => el.textContent.trim() === '背包')
+    if (!label) return ''
+    const section = label.closest('section')
+    if (!section) return ''
+    return section.textContent.trim()
+  })
+  // D. 确定性 Boss 战（Math.random 隔离 0.99；骷髅队长 HP22 防御13 需多击）
+  await clickByText('迎战')
+  await sleep(300)
+  await page.evaluate(() => {
+    window.__origRandom = Math.random.bind(Math)
+    Math.random = () => 0.99
+  })
+  for (let i = 0; i < 16; i += 1) {
+    const combatBody = await page.evaluate(() => document.body.innerText)
+    if (combatBody.includes('返回冒险')) break
+    if (combatBody.includes('普通攻击')) {
+      await page.evaluate(() => [...document.querySelectorAll('button')].find((b) => b.textContent.includes('普通攻击'))?.click())
+      await sleep(300)
+    } else {
+      break
+    }
+  }
+  await page.evaluate(() => {
+    Math.random = window.__origRandom
+  })
+  await clickByText('返回冒险')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-026-D: 战斗胜利返回冒险', body.includes('当前位置'))
+  // E. Boss 清场（无附近威胁 section；无迎战）
+  check('P1-026-E: 骷髅队长已经倒下', body.includes('骷髅队长已经倒下。'))
+  check('P1-026-E: 未发现夔峒项链', body.includes('你检查了骷髅队长与周围，没有发现夔峒项链。'))
+  check('P1-026-E: 通往更深处的道路仍需继续调查', body.includes('通往黑石塔更深处的道路仍需继续调查。'))
+  check('P1-026-E: 黑石塔二层：【待开放】', body.includes('黑石塔二层：【待开放】'))
+  check('P1-026-E: 无附近威胁/迎战/威胁卡片骷髅士兵', !body.includes('附近威胁') && !body.includes('迎战') && !body.includes('骷髅士兵 · Lv.3'))
+  // F. 第五主线推进（不完成）
+  check('P1-026-F: 商人王财的麻烦进行中', body.includes('商人王财的麻烦') && body.includes('进行中'))
+  check('P1-026-F: 黑石塔一层：骷髅队长已击败未发现项链', body.includes('黑石塔一层：骷髅队长已击败，未发现夔峒项链。'))
+  check('P1-026-F: 当前目标：继续深入黑石塔', body.includes('当前目标：继续深入黑石塔。'))
+  check('P1-026-F: 无可完成/提交任务/已完成', !body.includes('提交任务') && !body.includes('可完成'))
+  // G. 无即时奖励（战前后精确比较）
+  const captainAfterLevel = body.match(/Lv\.(\d+)/)
+  const captainAfterMaxHp = body.match(/生命\s*(\d+)\s*\/\s*(\d+)/)
+  const captainAfterMaxMp = body.match(/灵力\s*(\d+)\s*\/\s*(\d+)/)
+  const captainAfterGold = body.match(/金币\s*(\d+)/)
+  const captainAfterMapCount = body.match(/兔子的路径 ×(\d+)/)
+  const captainAfterInventory = await page.evaluate(() => {
+    const label = [...document.querySelectorAll('p')].find((el) => el.textContent.trim() === '背包')
+    if (!label) return ''
+    const section = label.closest('section')
+    if (!section) return ''
+    return section.textContent.trim()
+  })
+  check(
+    'P1-026-G: 战前后 Lv/maxHP/maxMP/gold/地图数/inventory 全不变',
+    captainBeforeLevel !== null && captainAfterLevel !== null && captainBeforeLevel[1] === captainAfterLevel[1] &&
+      captainBeforeMaxHp !== null && captainAfterMaxHp !== null && captainBeforeMaxHp[2] === captainAfterMaxHp[2] &&
+      captainBeforeMaxMp !== null && captainAfterMaxMp !== null && captainBeforeMaxMp[2] === captainAfterMaxMp[2] &&
+      captainBeforeGold !== null && captainAfterGold !== null && captainBeforeGold[1] === captainAfterGold[1] &&
+      captainBeforeMapCount !== null && captainAfterMapCount !== null && captainBeforeMapCount[1] === captainAfterMapCount[1] &&
+      captainAfterInventory === captainBeforeInventory,
+  )
+  // H. 往返清场持久（一层移动按钮仍精确 [天龙城]，无二层按钮）
+  await clickByText('天龙城')
+  await sleep(300)
+  body = await bodyText()
+  const captainTravelBack = await page.evaluate(() => {
+    const label = [...document.querySelectorAll('p')].find((el) => el.textContent.trim() === '可前往：')
+    if (!label) return []
+    const container = label.parentElement
+    if (!container) return []
+    return [...container.querySelectorAll('button')].map((b) => b.textContent.trim())
+  })
+  check('P1-026-H: 天龙城可前往精确 [武馆, 黑石塔一层]', JSON.stringify(captainTravelBack) === JSON.stringify(['武馆', '黑石塔一层']))
+  await clickByText('黑石塔一层')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-026-H: 骷髅队长不复活（无迎战/附近威胁）', !body.includes('附近威胁') && !body.includes('迎战'))
+  check('P1-026-H: 骷髅士兵不复活', !body.includes('骷髅士兵 · Lv.3'))
+  check('P1-026-H: Boss 后剧情仍显示', body.includes('骷髅队长已经倒下。') && body.includes('黑石塔二层：【待开放】'))
+  const captainFloor1Travel = await page.evaluate(() => {
+    const label = [...document.querySelectorAll('p')].find((el) => el.textContent.trim() === '可前往：')
+    if (!label) return []
+    const container = label.parentElement
+    if (!container) return []
+    return [...container.querySelectorAll('button')].map((b) => b.textContent.trim())
+  })
+  check('P1-026-H: 一层移动按钮精确 [天龙城] 无二层', JSON.stringify(captainFloor1Travel) === JSON.stringify(['天龙城']))
+  // I. Save/Continue
+  await clickByText('保存游戏')
+  await clickByText('返回主菜单')
+  await clickByText('继续游戏')
+  await sleep(300)
+  body = await bodyText()
+  const captainFloor1Saved = await page.evaluate(() => {
+    const label = [...document.querySelectorAll('p')].find((el) => el.textContent.trim() === '当前位置')
+    if (!label) return null
+    const section = label.closest('section')
+    if (!section) return null
+    const idEl = [...section.querySelectorAll('p')].find((el) => /^[a-z0-9_]+$/.test(el.textContent.trim()))
+    return idEl ? idEl.textContent.trim() : null
+  })
+  check('P1-026-I: Continue 后当前位置 = black_stone_tower_floor1', captainFloor1Saved === 'black_stone_tower_floor1')
+  check('P1-026-I: 商人王财的麻烦进行中', body.includes('商人王财的麻烦') && body.includes('进行中'))
+  check('P1-026-I: 黑石塔一层：已击败骷髅士兵', body.includes('黑石塔一层：已击败骷髅士兵。'))
+  check('P1-026-I: 骷髅队长已击败未发现项链', body.includes('黑石塔一层：骷髅队长已击败，未发现夔峒项链。'))
+  check('P1-026-I: 当前目标：继续深入黑石塔', body.includes('当前目标：继续深入黑石塔。'))
+  check('P1-026-I: 黑石塔二层：【待开放】', body.includes('黑石塔二层：【待开放】'))
+  check('P1-026-I: 无附近威胁', !body.includes('附近威胁') && !body.includes('迎战'))
+  check('P1-026-I: 黄金兔子主线仍进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
+  check('P1-026-I: 兔子的路径 ×1', body.includes('兔子的路径 ×1'))
   await clickByText('返回主菜单')
 
   // TM-P1-015：战斗中使用治疗药水（独立最小段：默认骑士 + 村外草原魔化兔；魔化兔零修改 HP8/DEF11/atk+2/dmg2）

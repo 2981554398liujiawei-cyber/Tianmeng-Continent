@@ -66,6 +66,7 @@ export const LOCATIONS: Record<string, LocationDefinition> = {
     description: '黑石砌成的幽暗通道通向几处大厅，脚步声与骨骼摩擦声在塔内回荡。',
     requiredFlag: 'black_stone_tower_unlocked',
     connections: ['tianlong_city'],
-    enemyIds: ['skeleton_soldier'],
+    // TM-P1-026：一层普通敌人骷髅士兵 + 一层 Boss 骷髅队长（同一场景节点；不建新大厅 Location；二层本卡不创建）
+    enemyIds: ['skeleton_soldier', 'skeleton_captain'],
   },
 }

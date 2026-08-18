@@ -5318,3 +5318,278 @@ describe('TM-P1-025：黑石塔一层——解锁路线与骷髅士兵清场', (
     expect(useGameStore.getState().hasSave).toBe(false)
   })
 })
+
+describe('TM-P1-026：黑石塔一层——骷髅队长 Boss 战与项链线索推进', () => {
+  const wangcaiQuest = () => useGameStore.getState().gameState?.quests.find((q) => q.questId === 'quest_wangcai_trouble')
+  const goldenQuest = () => useGameStore.getState().gameState?.quests.find((q) => q.questId === 'quest_golden_rabbit_search')
+  const snapshot = () => JSON.stringify(useGameStore.getState().gameState)
+
+  /** 走到黑石塔一层 + 解锁 + 任务 in_progress/briefed + 士兵已击败（可打骷髅队长的完整合法状态） */
+  const seedCaptainFight = () => {
+    useGameStore.getState().newGame()
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return {
+        gameState: {
+          ...s.gameState,
+          world: { ...s.gameState.world, currentLocationId: 'tianlong_city', flags: { ...s.gameState.world.flags, black_stone_tower_unlocked: true } },
+          quests: [
+            {
+              questId: 'quest_golden_rabbit_search',
+              status: 'in_progress',
+              stage: 0,
+              flags: {
+                asked_blacksmith: true,
+                asked_apothecary: true,
+                village_inquiry_reported: true,
+                rabbit_lair_rechecked: true,
+              },
+            },
+            ...s.gameState.quests,
+            {
+              questId: 'quest_wangcai_trouble',
+              status: 'in_progress',
+              stage: 0,
+              flags: { wangcai_briefed: true, floor1_soldier_defeated: true },
+            },
+          ],
+        },
+      }
+    })
+    useGameStore.getState().travelToLocation('black_stone_tower_floor1')
+  }
+
+  /** 直接构造 wangcai quest flag/stage/status 运行态 */
+  const seedWangcaiFlag = (flagKey: string, value: string | number | boolean | undefined) => {
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return {
+        gameState: {
+          ...s.gameState,
+          quests: s.gameState.quests.map((q) => {
+            if (q.questId !== 'quest_wangcai_trouble') return q
+            if (value === undefined) {
+              const nextFlags = { ...q.flags }
+              delete nextFlags[flagKey]
+              return { ...q, flags: nextFlags }
+            }
+            return { ...q, flags: { ...q.flags, [flagKey]: value } }
+          }),
+        },
+      }
+    })
+  }
+  const seedWangcaiStatus = (status: QuestStatus) => {
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return {
+        gameState: {
+          ...s.gameState,
+          quests: s.gameState.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, status } : q)),
+        },
+      }
+    })
+  }
+  const seedWangcaiStage = (stage: number) => {
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return {
+        gameState: {
+          ...s.gameState,
+          quests: s.gameState.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, stage } : q)),
+        },
+      }
+    })
+  }
+  const seedWorldFlag = (flagKey: string, value: string | number | boolean | undefined) => {
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      const nextFlags = { ...s.gameState.world.flags }
+      if (value === undefined) delete nextFlags[flagKey]
+      else nextFlags[flagKey] = value as boolean
+      return { gameState: { ...s.gameState, world: { ...s.gameState.world, flags: nextFlags } } }
+    })
+  }
+
+  it('A. wrong location → false（不在黑石塔一层）', () => {
+    seedCaptainFight()
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return { gameState: { ...s.gameState, world: { ...s.gameState.world, currentLocationId: 'tianlong_city' } } }
+    })
+    const before = snapshot()
+    expect(useGameStore.getState().resolveCombatVictory('skeleton_captain')).toBe(false)
+    expect(snapshot()).toBe(before)
+  })
+
+  it('B. Wangcai quest 不存在 → false', () => {
+    seedCaptainFight()
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return { gameState: { ...s.gameState, quests: s.gameState.quests.filter((q) => q.questId !== 'quest_wangcai_trouble') } }
+    })
+    const before = snapshot()
+    expect(useGameStore.getState().resolveCombatVictory('skeleton_captain')).toBe(false)
+    expect(snapshot()).toBe(before)
+  })
+
+  it.each([
+    ['available', 'available'],
+    ['completable', 'completable'],
+    ['completed', 'completed'],
+  ] as const)('C. 非 in_progress（%s）→ false', (_label, status) => {
+    seedCaptainFight()
+    seedWangcaiStatus(status)
+    const before = snapshot()
+    expect(useGameStore.getState().resolveCombatVictory('skeleton_captain')).toBe(false)
+    expect(snapshot()).toBe(before)
+  })
+
+  it('D. stage != 0 → false', () => {
+    seedCaptainFight()
+    seedWangcaiStage(1)
+    const before = snapshot()
+    expect(useGameStore.getState().resolveCombatVictory('skeleton_captain')).toBe(false)
+    expect(snapshot()).toBe(before)
+  })
+
+  it.each([
+    ['undefined', undefined],
+    ['false', false],
+    ['"yes"', 'yes'],
+    ['1', 1],
+  ])('E. wangcai_briefed !== true（%s）→ false', (_label, briefedValue) => {
+    seedCaptainFight()
+    seedWangcaiFlag('wangcai_briefed', briefedValue)
+    const before = snapshot()
+    expect(useGameStore.getState().resolveCombatVictory('skeleton_captain')).toBe(false)
+    expect(snapshot()).toBe(before)
+  })
+
+  it('F. black_stone_tower_unlocked !== true → false', () => {
+    seedCaptainFight()
+    seedWorldFlag('black_stone_tower_unlocked', false)
+    const before = snapshot()
+    expect(useGameStore.getState().resolveCombatVictory('skeleton_captain')).toBe(false)
+    expect(snapshot()).toBe(before)
+  })
+
+  it.each([
+    ['undefined', undefined],
+    ['false', false],
+  ])('G. floor1_soldier_defeated !== true（%s）→ false', (_label, soldierValue) => {
+    seedCaptainFight()
+    seedWangcaiFlag('floor1_soldier_defeated', soldierValue)
+    const before = snapshot()
+    expect(useGameStore.getState().resolveCombatVictory('skeleton_captain')).toBe(false)
+    expect(snapshot()).toBe(before)
+  })
+
+  it('H. captain flag undefined → 首次合法胜利 true', () => {
+    seedCaptainFight()
+    expect(wangcaiQuest()?.flags.floor1_captain_defeated).toBeUndefined()
+    expect(useGameStore.getState().resolveCombatVictory('skeleton_captain')).toBe(true)
+  })
+
+  it('I. captain flag false → 首次合法胜利 true', () => {
+    seedCaptainFight()
+    seedWangcaiFlag('floor1_captain_defeated', false)
+    expect(useGameStore.getState().resolveCombatVictory('skeleton_captain')).toBe(true)
+  })
+
+  it('J. 成功 → floor1_captain_defeated=true', () => {
+    seedCaptainFight()
+    useGameStore.getState().resolveCombatVictory('skeleton_captain')
+    expect(wangcaiQuest()?.flags.floor1_captain_defeated).toBe(true)
+  })
+
+  it('K. captain=true → 重复 false 且 GameState 同一引用', () => {
+    seedCaptainFight()
+    seedWangcaiFlag('floor1_captain_defeated', true)
+    const before = useGameStore.getState().gameState
+    expect(useGameStore.getState().resolveCombatVictory('skeleton_captain')).toBe(false)
+    expect(useGameStore.getState().gameState).toBe(before)
+  })
+
+  it.each([
+    ['"yes"', 'yes'],
+    ['1', 1],
+    ['0.5', 0.5],
+  ])('L. captain 非 boolean（%s）→ false 且同一引用不变原值保留', (_label, invalidValue) => {
+    seedCaptainFight()
+    seedWangcaiFlag('floor1_captain_defeated', invalidValue)
+    const before = useGameStore.getState().gameState
+    expect(useGameStore.getState().resolveCombatVictory('skeleton_captain')).toBe(false)
+    expect(useGameStore.getState().gameState).toBe(before)
+    expect(wangcaiQuest()?.flags.floor1_captain_defeated).toBe(invalidValue)
+  })
+
+  it('M. 成功后 status 仍 in_progress/stage 仍 0/briefed 仍 true/soldier_defeated 仍 true', () => {
+    seedCaptainFight()
+    useGameStore.getState().resolveCombatVictory('skeleton_captain')
+    expect(wangcaiQuest()?.status).toBe('in_progress')
+    expect(wangcaiQuest()?.stage).toBe(0)
+    expect(wangcaiQuest()?.flags.wangcai_briefed).toBe(true)
+    expect(wangcaiQuest()?.flags.floor1_soldier_defeated).toBe(true)
+  })
+
+  it('N. 无金币/物品/装备/等级奖励', () => {
+    seedCaptainFight()
+    const beforePlayer = useGameStore.getState().gameState!.player
+    const beforeInventory = useGameStore.getState().gameState!.inventory
+    const beforeEquipment = useGameStore.getState().gameState!.equipment
+    useGameStore.getState().resolveCombatVictory('skeleton_captain')
+    const after = useGameStore.getState().gameState!
+    expect(after.player).toEqual(beforePlayer)
+    expect(after.inventory).toEqual(beforeInventory)
+    expect(after.equipment).toEqual(beforeEquipment)
+    // 无骷髅大剑/黑石/骨头/骷髅套装物品
+    expect(
+      after.inventory.every(
+        (e) => !e.itemId.includes('greatsword') && !e.itemId.includes('black_stone') && !e.itemId.includes('bone') && !e.itemId.includes('skull'),
+      ),
+    ).toBe(true)
+  })
+
+  it('O. 除本 Quest flag 外其他 GameState 不变', () => {
+    seedCaptainFight()
+    const beforePlayer = useGameStore.getState().gameState!.player
+    const beforeInventory = useGameStore.getState().gameState!.inventory
+    const beforeEquipment = useGameStore.getState().gameState!.equipment
+    const beforeWorld = useGameStore.getState().gameState!.world
+    const beforeOtherQuests = JSON.stringify(
+      useGameStore.getState().gameState!.quests.filter((q) => q.questId !== 'quest_wangcai_trouble'),
+    )
+    useGameStore.getState().resolveCombatVictory('skeleton_captain')
+    const after = useGameStore.getState().gameState!
+    expect(after.player).toEqual(beforePlayer)
+    expect(after.inventory).toEqual(beforeInventory)
+    expect(after.equipment).toEqual(beforeEquipment)
+    expect(after.world).toEqual(beforeWorld)
+    expect(
+      JSON.stringify(after.quests.filter((q) => q.questId !== 'quest_wangcai_trouble')),
+    ).toBe(beforeOtherQuests)
+  })
+
+  it('P. 黄金兔子 QuestState 整体深比较不变', () => {
+    seedCaptainFight()
+    const beforeGolden = JSON.stringify(goldenQuest())
+    useGameStore.getState().resolveCombatVictory('skeleton_captain')
+    const afterGolden = JSON.stringify(goldenQuest())
+    expect(afterGolden).toBe(beforeGolden)
+    const golden = goldenQuest()
+    expect(golden?.status).toBe('in_progress')
+    expect(golden?.stage).toBe(0)
+    expect(golden?.flags.asked_blacksmith).toBe(true)
+    expect(golden?.flags.asked_apothecary).toBe(true)
+    expect(golden?.flags.village_inquiry_reported).toBe(true)
+    expect(golden?.flags.rabbit_lair_rechecked).toBe(true)
+  })
+
+  it('Q. 不自动保存', () => {
+    seedCaptainFight()
+    useGameStore.getState().resolveCombatVictory('skeleton_captain')
+    expect(wangcaiQuest()?.flags.floor1_captain_defeated).toBe(true)
+    expect(useGameStore.getState().hasSave).toBe(false)
+  })
+})

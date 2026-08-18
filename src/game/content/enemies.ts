@@ -60,7 +60,7 @@ export const ENEMIES: Record<string, EnemyDefinition> = {
     attackBonus: 4,
     damage: 4,
   },
-  // TM-P1-025：黑石塔一层骷髅士兵（Lv.2 玩家进入第二地区后第一类普通敌人；无技能/状态/抗性/掉落——继续现有普通战斗规则；本卡不建骷髅队长 EnemyDefinition）
+  // TM-P1-025：黑石塔一层骷髅士兵（Lv.2 玩家进入第二地区后第一类普通敌人；无技能/状态/抗性/掉落——继续现有普通战斗规则）
   skeleton_soldier: {
     id: 'skeleton_soldier',
     name: '骷髅士兵',
@@ -71,5 +71,17 @@ export const ENEMIES: Record<string, EnemyDefinition> = {
     defense: 12,
     attackBonus: 3,
     damage: 3,
+  },
+  // TM-P1-026：黑石塔一层骷髅队长（一层 Boss——骷髅士兵头领；继续现有普通确定性 D20 战斗；无骨刺/反弹/重斩/击晕/Boss 技能系统/亡灵抗性/特殊 AI/掉落）
+  skeleton_captain: {
+    id: 'skeleton_captain',
+    name: '骷髅队长',
+    level: 4,
+    description: '身材高大的骷髅，双手握着大剑，是黑石塔一层骷髅士兵的头领。',
+    tags: ['undead', 'boss'],
+    maxHp: 22,
+    defense: 13,
+    attackBonus: 4,
+    damage: 4,
   },
 }

@@ -64,6 +64,24 @@ export default function App() {
         return
       }
     }
+    // TM-P1-026：骷髅队长正式战斗入口硬守（不只靠 UI）——当前位置黑石塔一层 + 第五主线 in_progress/stage 0 + wangcai_briefed===true + black_stone_tower_unlocked===true + floor1_soldier_defeated===true + floor1_captain_defeated undefined/false（true/非 boolean 异常 flag 一律拒绝）
+    if (enemyId === 'skeleton_captain') {
+      const towerQuest = state.quests.find((q) => q.questId === 'quest_wangcai_trouble')
+      const captainFlag = towerQuest?.flags.floor1_captain_defeated
+      const captainOk =
+        captainFlag !== true && (typeof captainFlag === 'undefined' || typeof captainFlag === 'boolean')
+      if (
+        state.world.currentLocationId !== 'black_stone_tower_floor1' ||
+        towerQuest?.status !== 'in_progress' ||
+        towerQuest?.stage !== 0 ||
+        towerQuest?.flags.wangcai_briefed !== true ||
+        state.world.flags.black_stone_tower_unlocked !== true ||
+        towerQuest?.flags.floor1_soldier_defeated !== true ||
+        !captainOk
+      ) {
+        return
+      }
+    }
     setCombatEnemyId(enemyId)
     setScreen('combat')
   }
