@@ -51,12 +51,15 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
   const spendMageSpellMp = useGameStore((s) => s.spendMageSpellMp)
   const spendKnightPowerStrikeMp = useGameStore((s) => s.spendKnightPowerStrikeMp)
   const spendWarriorSuppressStrikeMp = useGameStore((s) => s.spendWarriorSuppressStrikeMp)
+  const useHealingPotion = useGameStore((s) => s.useHealingPotion)
   const enemy = getEnemy(enemyId)
 
   const [enemyCurrentHp, setEnemyCurrentHp] = useState(enemy?.maxHp ?? 0)
   const [phase, setPhase] = useState<CombatPhase>('active')
   const [lastPlayerAttack, setLastPlayerAttack] = useState<AttackResult | null>(null)
   const [lastEnemyAttack, setLastEnemyAttack] = useState<AttackResult | null>(null)
+  /** TM-P1-015：最近一次成功药水行动的实际恢复量（仅战斗 UI 即时日志，不进入 GameState/存档） */
+  const [lastPotionHeal, setLastPotionHeal] = useState<number | null>(null)
   /** TM-P1-001/006/007/008：最近一次玩家行动类型（仅页面本地，不进入 GameState）——区分「你的攻击/你的法术攻击/你的骑士重击/你的迅捷突袭/你的压制猛击」 */
   const [lastPlayerAction, setLastPlayerAction] = useState<
     | 'basic'
@@ -96,6 +99,39 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
     equippedWeapon?.type === 'weapon' && Number.isInteger(equippedWeapon.weaponDamageBonus)
       ? (equippedWeapon.weaponDamageBonus ?? 0)
       : 0
+
+  const healingPotion = getItem('healing_potion')
+  const healingPotionAmount = healingPotion?.healAmount
+  // 库存直接读 Store（不维护 CombatPage 本地副本）；仅合法正整数数量计入可用药水
+  const healingPotionCount = gameState.inventory
+    .filter((entry) => entry.itemId === 'healing_potion' && Number.isSafeInteger(entry.quantity) && entry.quantity >= 1)
+    .reduce((total, entry) => total + entry.quantity, 0)
+
+  /** TM-P1-015：最小敌方反击 helper——保留既有 D20/伤害/失败阶段逻辑；普通攻击/职业技能与喝药行动共用，不建 TurnManager */
+  const applyEnemyCounter = () => {
+    const enemyResult = performAttack(enemy.attackBonus, playerDefense, enemy.damage)
+    setLastEnemyAttack(enemyResult)
+    if (enemyResult.hit) {
+      damagePlayer(enemyResult.damage)
+    }
+    // 玩家 HP 归零 → 失败（不出现负 HP，damagePlayer 已保证）
+    setPhase(getCombatPhaseAfterEnemyAttack(useGameStore.getState().gameState?.player.hp ?? 1))
+  }
+
+  /** TM-P1-015：治疗药水是一次完整玩家行动——Store 成功后记录实际恢复量、清除旧攻击日志，再让敌人立即正常反击 */
+  const handleUseHealingPotion = () => {
+    if (phase !== 'active') return
+    const hpBefore = player.hp
+    // Store 是最终权威：false 时不反击、不改敌 HP/日志/phase
+    if (!useHealingPotion()) return
+    const hpAfter = useGameStore.getState().gameState?.player.hp ?? hpBefore
+    setLastPlayerAttack(null)
+    setLastPlayerAction(null)
+    setLastPotionHeal(hpAfter - hpBefore)
+    setLastEnemyAttack(null)
+    // 成功喝药一定给仍存活的敌人一次正常 D20 反击（可命中/未命中/暴击/大失败/导致 defeat）
+    applyEnemyCounter()
+  }
 
   const handleAttack = () => {
     if (phase !== 'active') return
@@ -167,6 +203,7 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
   ) => {
     setLastPlayerAttack(attack)
     setLastPlayerAction(action)
+    setLastPotionHeal(null) // TM-P1-015：玩家下一次攻击/技能清除上一次药水日志（日志反映最近一次行动）
     setLastEnemyAttack(null)
 
     const strike = resolvePlayerStrike(enemyCurrentHp, attack)
@@ -184,13 +221,7 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
     }
 
     // 敌人存活则立即反击（同一套 performAttack）
-    const enemyResult = performAttack(enemy.attackBonus, playerDefense, enemy.damage)
-    setLastEnemyAttack(enemyResult)
-    if (enemyResult.hit) {
-      damagePlayer(enemyResult.damage)
-    }
-    // 玩家 HP 归零 → 失败（不出现负 HP，damagePlayer 已保证）
-    setPhase(getCombatPhaseAfterEnemyAttack(useGameStore.getState().gameState?.player.hp ?? 1))
+    applyEnemyCounter()
   }
 
   return (
@@ -240,7 +271,7 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
         </section>
       </div>
 
-      {(lastPlayerAttack || lastEnemyAttack) && (
+      {(lastPlayerAttack || lastEnemyAttack || lastPotionHeal !== null) && (
         <section className="rounded border border-ink-600 bg-ink-900/50 p-4 text-sm leading-relaxed text-bone-300">
           {lastPlayerAttack && (
             <p>
@@ -256,6 +287,11 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
                         : '你的攻击：'}
               </span>
               {attackLine(lastPlayerAttack, enemy.name)}
+            </p>
+          )}
+          {lastPotionHeal !== null && (
+            <p>
+              <span className="text-bone-500">你使用了治疗药水：恢复 {lastPotionHeal} 点生命。</span>
             </p>
           )}
           {lastEnemyAttack && (
@@ -319,6 +355,23 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
                   压制猛击（{WARRIOR_SUPPRESS_STRIKE_MP_COST} 灵力）
                 </Button>
                 {player.mp < WARRIOR_SUPPRESS_STRIKE_MP_COST && <span className="text-xs text-red-300">灵力不足</span>}
+              </div>
+            )}
+            {/* TM-P1-015：治疗药水——所有职业通用（不是职业技能，无 profession 条件）；healAmount 读注册表；满血/无药水禁用但普通攻击不受影响 */}
+            {healingPotionAmount !== undefined && (
+              <div className="flex flex-col items-center gap-1">
+                <Button
+                  variant="primary"
+                  disabled={player.hp >= player.maxHp || healingPotionCount <= 0}
+                  onClick={handleUseHealingPotion}
+                >
+                  使用治疗药水（+{healingPotionAmount} 生命）
+                </Button>
+                {healingPotionCount > 0 && <span className="text-xs text-bone-500">剩余：{healingPotionCount}</span>}
+                {healingPotionCount <= 0 && <span className="text-xs text-red-300">没有治疗药水</span>}
+                {healingPotionCount > 0 && player.hp >= player.maxHp && (
+                  <span className="text-xs text-bone-500">生命已满</span>
+                )}
               </div>
             )}
           </div>

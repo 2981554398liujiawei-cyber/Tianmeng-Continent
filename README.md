@@ -374,6 +374,17 @@ TM-P1-014（嘟嘟兔一次性 Boss 清场——Boss 生命周期闭环）：
 - 《兔子的路径》查看流程零回归：清场后巢穴仍显示 新的线索/兔子的路径 ×1/已查看文案【待补充】；无新 flag/event/schema；SAVE_VERSION=1；types/storage/items/enemies/locations/quests/combat/character 零修改；git diff 仅 gameStore.ts + gameStore.test.ts + GamePage.tsx + App.tsx + qa/e2e.mjs + README
 - Store 单测（P0-012 describe 语义更新，仍 6 组）：A 首次 true + rabbit_path ×1/B 第二次 resolveCombatVictory false 且 GameState 同一引用不变、仍只 ×1（正式流程先真胜一次再验拒绝）/C 预先已有地图伪造胜利 false 全不变/D 错误地点 false 全不变/E 首次 Boss 无额外副作用（player/equipment/quests/world 全不变）/F 不自动保存 + 10 项 E2E（B 清场后当前地点仍 rabbit_lair+整个附近威胁 section 不存在（精确检查威胁区，非 !body.includes('嘟嘟兔')）/C 离开再返回巢穴威胁区仍不存在+兔子的路径仍 ×1+新的线索仍显示+地图查看状态保持（无展开地图）/D Save/Continue 后重进巢穴嘟嘟兔仍不出现+威胁区 section 仍不存在+查看状态保持+地图仍 ×1）
 
+TM-P1-015（战斗中使用治疗药水——战斗资源闭环）：
+- CombatPage 直接复用现有 `useHealingPotion(): boolean`（未新增 useCombatPotion/consumeCombatItem/healInCombat/CombatInventoryAction；gameStore.ts 零修改，Store 仍是药水数量与 HP 的唯一 hard-state 权威）
+- 治疗药水是一次完整玩家行动：点击 → Store 成功（true）才继续本次行动；false 时不掷敌人骰、不触发反击、不改敌 HP/日志/phase
+- 药水按钮所有职业通用（warrior/knight/ranger/mage 均显示，非职业技能、无 profession 条件）；按钮文本「使用治疗药水（+8 生命）」的 8 读取 `getItem('healing_potion')?.healAmount` 注册表（CombatPage 未写业务常量 8）；库存数量直接读 Store（无本地副本），显示「剩余：N」
+- 满血禁用 + 「生命已满」（count>0 且满血）；无药水禁用 + 「没有治疗药水」（耗尽优先显示，无论是否满血）；普通攻击/职业技能不受影响
+- 喝药成功：恢复（受上限截断，实际恢复量写入日志「你使用了治疗药水：恢复 X 点生命。」——X 为实际值，20/22 时显示恢复 2 而非 8）、药水 -1、MP 完全不变（6/6）、敌 HP 完全不变（8/8）、lastPlayerAttack/lastPlayerAction 清空（不把上一轮攻击误显示成本轮）
+- 喝药后敌人立即一次正常 D20 反击（applyEnemyCounter 最小局部 helper：performAttack(enemy.attackBonus, playerDefense, enemy.damage) + setLastEnemyAttack + damagePlayer + getCombatPhaseAfterEnemyAttack）：可命中/未命中/暴击/大失败、可导致 defeat（喝药无免死保护）；普通攻击/职业技能/喝药共用同一反击路径
+- 攻击后清除药水日志（applyPlayerAttack 内 setLastPotionHeal(null)，日志反映最近一次行动）；战士压制猛击命中不反击逻辑未回归（先于通用反击 helper 处理）；致死攻击不反击保持；未建 TurnManager/CombatAction/ActionQueue/BattleCommand/CombatEngine/EffectResolver/ItemActionDefinition
+- schema 不变、SAVE_VERSION=1；gameStore.ts/items.ts/combat.ts/types/storage/App.tsx/GamePage.tsx/content 零修改；git diff 仅 CombatPage.tsx + qa/e2e.mjs + README
+- 21 项 E2E（独立最小段，P1-007-R1 随机隔离：A 满血药水禁用+生命已满+普攻可用/B 两轮 [玩家1,敌20] 受伤 22→14+魔化兔 8/8 未伤+药水可用/C 第一瓶恢复 8（14→22）+敌普通命中反击→20/22+药水 2→1+日志「恢复 8 点生命」+「魔化兔的攻击：」/D 无你的攻击/骑士重击日志（喝药非攻击）+敌 HP 不变/E 第二瓶上限截断实际恢复 2（20→22）+敌天然1 大失败+药水 1→0+日志「恢复 2 点生命」/F 没有治疗药水+按钮禁用+普攻仍可用+灵力 6/6+敌 8/8/G 后续普攻天然20 暴击正常胜利/R1 段末 Math.random 恢复真实实现）
+
 ## 目录结构
 
 ```

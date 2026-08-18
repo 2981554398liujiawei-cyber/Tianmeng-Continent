@@ -2028,6 +2028,90 @@ try {
   })
   check('P1-010-R1: 段末 Math.random 已恢复真实实现（不污染后续测试）', p1010Restored === true)
 
+  // TM-P1-015：战斗中使用治疗药水（独立最小段：默认骑士 + 村外草原魔化兔；魔化兔零修改 HP8/DEF11/atk+2/dmg2）
+  // P1-007-R1 模式：段首只保存一次真实 Math.random
+  await page.evaluate(() => {
+    window.__p1015OriginalRandom = Math.random.bind(Math)
+  })
+  await clickByText('新游戏')
+  await clickByText('确认进入天梦大陆')
+  await clickByText('村外草原')
+  await clickByText('迎战')
+  await sleep(300)
+  body = await bodyText()
+  // A. 满血时禁用：药水 disabled + 生命已满；普通攻击仍可用
+  check('P1-015-A: 满血时药水按钮禁用且显示生命已满', (await buttonDisabled('使用治疗药水（+8 生命）')) === true && body.includes('生命已满'))
+  check('P1-015-A: 满血时普通攻击仍可用', (await buttonDisabled('普通攻击')) === false)
+  // B. 确定性受伤：两轮 [玩家天然1, 敌天然20] → 22→18→14（敌暴击 2×2=4）；魔化兔 8/8 未受伤
+  await page.evaluate(() => {
+    const seq = [0, 0.99, 0, 0.99]
+    let i = 0
+    Math.random = () => seq[Math.min(i++, seq.length - 1)]
+  })
+  await clickByText('普通攻击')
+  await sleep(250)
+  await clickByText('普通攻击')
+  await sleep(250)
+  body = await bodyText()
+  check('P1-015-B: 两轮大失败受伤后生命 14 / 22', body.includes('14 / 22'))
+  check('P1-015-B: 魔化兔 8 / 8 未受伤', body.includes('8 / 8'))
+  check('P1-015-B: 受伤后药水按钮可用', (await buttonDisabled('使用治疗药水（+8 生命）')) === false)
+  // C. 第一瓶：恢复 14→22（实际+8），敌普通命中反击 2 伤 → 20/22；药水 2→1
+  await page.evaluate(() => {
+    const seq = [0.5] // 敌普通命中（非暴击非天然1）
+    let i = 0
+    Math.random = () => seq[Math.min(i++, seq.length - 1)]
+  })
+  await clickByText('使用治疗药水（+8 生命）')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-015-C: 第一瓶后生命 20 / 22', body.includes('20 / 22'))
+  check('P1-015-C: 魔化兔仍 8 / 8', body.includes('8 / 8'))
+  check('P1-015-C: 灵力仍 6 / 6', body.includes('6 / 6'))
+  check('P1-015-C: 药水剩余 1', body.includes('剩余：1'))
+  check('P1-015-C: 日志显示恢复 8 点生命', body.includes('你使用了治疗药水：恢复 8 点生命。'))
+  check('P1-015-C: 日志显示魔化兔的攻击', body.includes('魔化兔的攻击：'))
+  // D. 喝药是治疗行动不是攻击：无玩家攻击/技能日志；敌 HP 不变
+  check('P1-015-D: 无你的攻击/骑士重击日志', !body.includes('你的攻击：') && !body.includes('你的骑士重击：'))
+  // E. 第二瓶：上限截断实际恢复 2（20→22），敌天然1 大失败；药水 1→0
+  await page.evaluate(() => {
+    const seq = [0] // 敌天然1 大失败
+    let i = 0
+    Math.random = () => seq[Math.min(i++, seq.length - 1)]
+  })
+  await clickByText('使用治疗药水（+8 生命）')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-015-E: 第二瓶后生命 22 / 22', body.includes('22 / 22'))
+  check('P1-015-E: 日志显示实际恢复 2 点生命（非8）', body.includes('你使用了治疗药水：恢复 2 点生命。'))
+  check('P1-015-E: 魔化兔的攻击且大失败', body.includes('魔化兔的攻击：') && body.includes('大失败'))
+  // F. 库存耗尽：没有治疗药水 + disabled + 普通攻击仍可用 + MP 6/6 + 魔化兔 8/8
+  check('P1-015-F: 显示没有治疗药水', body.includes('没有治疗药水'))
+  check('P1-015-F: 药水按钮禁用', (await buttonDisabled('使用治疗药水（+8 生命）')) === true)
+  check('P1-015-F: 普通攻击仍可用', (await buttonDisabled('普通攻击')) === false)
+  check('P1-015-F: 灵力仍 6 / 6 且魔化兔 8 / 8', body.includes('6 / 6') && body.includes('8 / 8'))
+  // G. 继续正常战斗：玩家天然20 暴击 12 伤击杀魔化兔（8HP）
+  await page.evaluate(() => {
+    const seq = [0.99]
+    let i = 0
+    Math.random = () => seq[Math.min(i++, seq.length - 1)]
+  })
+  await clickByText('普通攻击')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-015-G: 后续普攻正常暴击胜利', body.includes('战斗胜利') && body.includes('暴击'))
+  await clickByText('返回冒险')
+  await clickByText('返回主菜单')
+  // P1-007-R1 模式：确定性断言——段末 Math.random 与段首保存的真实函数同一引用
+  const p1015Restored = await page.evaluate(() => {
+    const original = window.__p1015OriginalRandom
+    Math.random = original
+    const isOriginal = Math.random === original
+    delete window.__p1015OriginalRandom
+    return isOriginal
+  })
+  check('P1-015-R1: 段末 Math.random 已恢复真实实现（不污染后续测试）', p1015Restored === true)
+
   // R2：运行期间存档改坏 → 触发一次 load → Continue 禁用且不进入游戏页
   await clickByText('新游戏')
   await clickByText('确认进入天梦大陆') // P004：默认预填合法，直接确认创建
