@@ -145,6 +145,9 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
   const towerUnlocked = world.flags.black_stone_tower_unlocked === true
   const towerQuestInProgress = wangcaiQuest?.status === 'in_progress' && wangcaiQuest?.stage === 0
   const floor1SoldierDefeated = wangcaiQuest?.flags.floor1_soldier_defeated === true
+  // TM-P1-025-R1：解锁入口窄守卫——unlock flag 只允许 undefined/false 视为「待解锁」（异常非 boolean 与已 true 一律不显示行动按钮，避免 UI 允许但 Store 拒绝的死按钮）
+  const towerUnlockFlag = world.flags.black_stone_tower_unlocked
+  const towerUnlockPending = towerUnlockFlag === undefined || towerUnlockFlag === false
   // TM-P0-006：附近委托 = 给予者位于当前地点的注册任务（不写死地点 ID）
   const localQuests = Object.values(QUESTS).filter((quest) => {
     const giver = getNpc(quest.giverNpcId)
@@ -490,8 +493,8 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
         </section>
       )}
 
-      {/* TM-P1-025：黑石塔调查入口 —— 天龙城 + 已向王财了解情况且尚未解锁时显示；只调用 Store action（不直接写 world flag） */}
-      {world.currentLocationId === 'tianlong_city' && wangcaiQuest?.status === 'in_progress' && wangcaiBriefed && !towerUnlocked && (
+      {/* TM-P1-025：黑石塔调查入口 —— 天龙城 + 第五主线 in_progress/stage 0 + 已向王财了解情况 + unlock flag undefined/false（待解锁）时显示；只调用 Store action（不直接写 world flag）；stage!=0 或 unlock flag 异常非 boolean/已 true 一律不显示，避免死按钮 */}
+      {world.currentLocationId === 'tianlong_city' && towerQuestInProgress && wangcaiBriefed && towerUnlockPending && (
         <section className="rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
           <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">黑石塔调查</h3>
           <p className="leading-relaxed text-bone-200">王财提供的情况已经足够，你可以动身前往黑石塔调查。</p>

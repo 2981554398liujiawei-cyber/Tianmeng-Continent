@@ -3114,6 +3114,79 @@ try {
   check('P1-025-I: 兔子的路径 ×1', body.includes('兔子的路径 ×1'))
   await clickByText('返回主菜单')
 
+  // TM-P1-025-R1：黑石塔解锁 UI 守卫对齐——stage!=0 或 unlock flag 异常非 boolean 时不得出现「动身调查黑石塔」死按钮（沿用存档注入模式）
+  const towerSaveBackup = await page.evaluate(() => localStorage.getItem('tianmeng_continent_save'))
+  check('P1-025-R1: 合法存档已备份', towerSaveBackup !== null)
+  const injectTowerSave = async (label, mutateFn, expectEntry) => {
+    await page.evaluate(
+      ({ saveStr, mutateKey }) => {
+        const save = JSON.parse(saveStr)
+        const mutate = JSON.parse(mutateKey)
+        // eslint-disable-next-line no-eval
+        eval(mutate.fn)(save.gameState)
+        localStorage.setItem('tianmeng_continent_save', JSON.stringify(save))
+      },
+      { saveStr: towerSaveBackup, mutateKey: JSON.stringify({ fn: mutateFn.toString() }) },
+    )
+    await page.reload({ waitUntil: 'networkidle0' })
+    await sleep(400)
+    const continueDisabledAfter = await continueDisabled()
+    if (continueDisabledAfter) {
+      // 存档被 loadGame 拒绝 → 无法进入游戏页 → UI 层面自然无入口（更强保证）
+      check(`P1-025-R1: ${label} → 存档无效无法进入游戏页，UI 无动身调查按钮`, !expectEntry)
+      return
+    }
+    await clickByText('继续游戏')
+    await sleep(300)
+    const injectedBody = await bodyText()
+    check(`P1-025-R1: ${label} → 无「动身调查黑石塔」`, expectEntry ? injectedBody.includes('动身调查黑石塔') : !injectedBody.includes('动身调查黑石塔'))
+    await clickByText('返回主菜单')
+  }
+  // E. 基础注入档：天龙城 + unlock=false + stage0 + briefed + 清 defeated → 入口存在
+  await injectTowerSave('unlock=false + stage0 → 入口存在', (gs) => {
+    gs.world.currentLocationId = 'tianlong_city'
+    gs.world.flags.black_stone_tower_unlocked = false
+    const q = gs.quests.find((qq) => qq.questId === 'quest_wangcai_trouble')
+    if (q) {
+      q.stage = 0
+      delete q.flags.floor1_soldier_defeated
+    }
+  }, true)
+  // A. stage=1 → 无按钮
+  await injectTowerSave('stage=1 → 无动身调查按钮', (gs) => {
+    gs.world.currentLocationId = 'tianlong_city'
+    gs.world.flags.black_stone_tower_unlocked = false
+    const q = gs.quests.find((qq) => qq.questId === 'quest_wangcai_trouble')
+    if (q) {
+      q.stage = 1
+      delete q.flags.floor1_soldier_defeated
+    }
+  }, false)
+  // B/C/D. unlock 异常非 boolean → 无按钮
+  await injectTowerSave('unlock="yes" → 无动身调查按钮', (gs) => {
+    gs.world.currentLocationId = 'tianlong_city'
+    gs.world.flags.black_stone_tower_unlocked = 'yes'
+  }, false)
+  await injectTowerSave('unlock=1 → 无动身调查按钮', (gs) => {
+    gs.world.currentLocationId = 'tianlong_city'
+    gs.world.flags.black_stone_tower_unlocked = 1
+  }, false)
+  await injectTowerSave('unlock=0.5 → 无动身调查按钮', (gs) => {
+    gs.world.currentLocationId = 'tianlong_city'
+    gs.world.flags.black_stone_tower_unlocked = 0.5
+  }, false)
+  // F. 恢复正式合法存档（P1-025-I 档：黑石塔一层清场状态）→ 零回归
+  await page.evaluate((saveStr) => localStorage.setItem('tianmeng_continent_save', saveStr), towerSaveBackup)
+  await page.reload({ waitUntil: 'networkidle0' })
+  await sleep(400)
+  await clickByText('继续游戏')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-025-R1: 恢复合法档后当前位置黑石塔一层', body.includes('当前位置'))
+  check('P1-025-R1: 恢复合法档后骷髅士兵清场状态保持', body.includes('大厅中的骷髅士兵已经被击败。') && body.includes('骷髅队长：【待开放】'))
+  check('P1-025-R1: 恢复合法档后无动身调查按钮', !body.includes('动身调查黑石塔'))
+  await clickByText('返回主菜单')
+
   // TM-P1-015：战斗中使用治疗药水（独立最小段：默认骑士 + 村外草原魔化兔；魔化兔零修改 HP8/DEF11/atk+2/dmg2）
   // P1-007-R1 模式：段首只保存一次真实 Math.random
   await page.evaluate(() => {
