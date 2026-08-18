@@ -2303,6 +2303,98 @@ try {
   await clickByText('结束交谈')
   await clickByText('返回主菜单')
 
+  // TM-P1-019：村内调查复命——向村长汇报两人均无法辨认地图（直接继续 P1-018 已保存的 2/2 档）
+  // A. Continue：进行中 + 地图线索调查 2/2
+  await clickByText('继续游戏')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-019-A: 追寻黄金兔子王进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
+  check('P1-019-A: 地图线索调查 2 / 2', body.includes('地图线索调查：2 / 2'))
+  // C 前置：复命前记录 Lv/HP/MP/金币/地图数/位置
+  const rep2BeforeLevel = body.match(/Lv\.(\d+)/)
+  const rep2BeforeHp = body.match(/生命\s*(\d+)\s*\/\s*(\d+)/)
+  const rep2BeforeMp = body.match(/灵力\s*(\d+)\s*\/\s*(\d+)/)
+  const rep2BeforeGold = body.match(/金币\s*(\d+)/)
+  const rep2BeforeMapCount = body.match(/兔子的路径 ×(\d+)/)
+  const rep2BeforeLocation = await page.evaluate(() => {
+    const label = [...document.querySelectorAll('p')].find((el) => el.textContent.trim() === '当前位置')
+    if (!label) return null
+    const section = label.closest('section')
+    if (!section) return null
+    const idEl = [...section.querySelectorAll('p')].find((el) => /^[a-z_]+$/.test(el.textContent.trim()))
+    return idEl ? idEl.textContent.trim() : null
+  })
+  // B. 村长出现新复命入口（与 P1-016 地图汇报入口严格分开）
+  await clickNthTalk(0)
+  body = await bodyText()
+  check('P1-019-B: 村长对话显示复命入口文案', body.includes('你已经问过铁匠和药师，但两人都无法辨认地图上的标记。'))
+  check('P1-019-B: 向村长汇报调查结果按钮 enabled', (await buttonDisabled('向村长汇报调查结果')) === false)
+  check('P1-019-B: P1-016 旧入口不重复出现（无向村长展示地图按钮）', !body.includes('向村长展示《兔子的路径》'))
+  // C. 复命前 trust/respect
+  const rep2BeforeTrustRespect = body.includes('信任：1') && body.includes('尊敬：0')
+  // D. 点击复命
+  await clickByText('向村长汇报调查结果')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-019-D: 已复命固定文案（告诉村长）', body.includes('你已经把调查结果告诉了村长。'))
+  check('P1-019-D: 村里没人能够确认地图标记', body.includes('村里目前没人能够确认地图上的标记。'))
+  check('P1-019-D: 下一步目的地：【待补充】', body.includes('下一步目的地：【待补充】'))
+  check('P1-019-D: 复命按钮消失', !body.includes('向村长汇报调查结果'))
+  await clickByText('结束交谈')
+  // E. 任务仍进行中：任务日志 2/2 + 村内调查已汇报 + 【待补充】+ 无完成/提交
+  body = await bodyText()
+  check('P1-019-E: 追寻黄金兔子王进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
+  check('P1-019-E: 地图线索调查 2 / 2', body.includes('地图线索调查：2 / 2'))
+  check('P1-019-E: 村内调查已汇报', body.includes('村内调查已汇报。'))
+  check('P1-019-E: 下一步目的地：【待补充】', body.includes('下一步目的地：【待补充】'))
+  check('P1-019-E: 原 2/2 调查结果保留', body.includes('你已经向铁匠和药师打听过，但仍无法确认地图指向的具体地点。'))
+  check('P1-019-E: 第四任务状态标签仍进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
+  check('P1-019-E: 无提交任务按钮（不可完成/不可提交）', !body.includes('提交任务') && !body.includes('可完成'))
+  // F. 无副作用精确比较
+  const rep2AfterLevel = body.match(/Lv\.(\d+)/)
+  const rep2AfterHp = body.match(/生命\s*(\d+)\s*\/\s*(\d+)/)
+  const rep2AfterMp = body.match(/灵力\s*(\d+)\s*\/\s*(\d+)/)
+  const rep2AfterGold = body.match(/金币\s*(\d+)/)
+  const rep2AfterMapCount = body.match(/兔子的路径 ×(\d+)/)
+  check(
+    'P1-019-F: 复命前后等级/生命/灵力/金币/地图数全不变',
+    rep2BeforeLevel !== null && rep2AfterLevel !== null && rep2BeforeLevel[1] === rep2AfterLevel[1] &&
+      rep2BeforeHp !== null && rep2AfterHp !== null && rep2BeforeHp[1] === rep2AfterHp[1] && rep2BeforeHp[2] === rep2AfterHp[2] &&
+      rep2BeforeMp !== null && rep2AfterMp !== null && rep2BeforeMp[1] === rep2AfterMp[1] && rep2BeforeMp[2] === rep2AfterMp[2] &&
+      rep2BeforeGold !== null && rep2AfterGold !== null && rep2BeforeGold[1] === rep2AfterGold[1] &&
+      rep2BeforeMapCount !== null && rep2AfterMapCount !== null && rep2BeforeMapCount[1] === rep2AfterMapCount[1],
+  )
+  check('P1-019-F: 当前位置仍 qingshi_village', rep2BeforeLocation === 'qingshi_village')
+  await clickNthTalk(0)
+  body = await bodyText()
+  check('P1-019-F: 村长 trust 1 respect 0 保持（复命无关系奖励）', body.includes('信任：1') && body.includes('尊敬：0') && rep2BeforeTrustRespect)
+  await clickByText('结束交谈')
+  // G. 移动按钮精确锁定 [废弃矿洞, 村外草原]
+  const p1019TravelButtons = await page.evaluate(() => {
+    const label = [...document.querySelectorAll('p')].find((el) => el.textContent.trim() === '可前往：')
+    if (!label) return []
+    const container = label.parentElement
+    if (!container) return []
+    return [...container.querySelectorAll('button')].map((b) => b.textContent.trim()).sort()
+  })
+  check('P1-019-G: 可前往按钮精确等于 [废弃矿洞, 村外草原]', JSON.stringify(p1019TravelButtons) === JSON.stringify(['废弃矿洞', '村外草原']))
+  // H. Save/Continue 保持复命状态；重开村长已汇报文案无按钮
+  await clickByText('保存游戏')
+  await clickByText('返回主菜单')
+  await clickByText('继续游戏')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-019-H: Continue 后追寻黄金兔子王进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
+  check('P1-019-H: Continue 后地图线索调查 2 / 2', body.includes('地图线索调查：2 / 2'))
+  check('P1-019-H: Continue 后村内调查已汇报', body.includes('村内调查已汇报。'))
+  check('P1-019-H: Continue 后下一步目的地【待补充】', body.includes('下一步目的地：【待补充】'))
+  await clickNthTalk(0)
+  body = await bodyText()
+  check('P1-019-H: 重开村长显示已复命文案', body.includes('你已经把调查结果告诉了村长。'))
+  check('P1-019-H: 重开村长无复命按钮', !body.includes('向村长汇报调查结果'))
+  await clickByText('结束交谈')
+  await clickByText('返回主菜单')
+
   // TM-P1-015：战斗中使用治疗药水（独立最小段：默认骑士 + 村外草原魔化兔；魔化兔零修改 HP8/DEF11/atk+2/dmg2）
   // P1-007-R1 模式：段首只保存一次真实 Math.random
   await page.evaluate(() => {

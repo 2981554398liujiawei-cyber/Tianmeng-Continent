@@ -87,6 +87,8 @@ interface GameStoreState {
   reportRabbitPathToVillageElder: () => boolean
   /** 向村中两人打听地图线索（TM-P1-018）：第四任务专属窄 action——青石村 + quest_golden_rabbit_search in_progress + npcId 为 blacksmith/apothecary 时成功，只写该任务 QuestState.flags.asked_{npcId}=true；重复/非 boolean 异常 flag/非法前置全部拒绝且完全不变；无奖励/不建 npcState/不改 stage/不推进 completable、不自动保存 */
   consultGoldenRabbitSearchNpc: (npcId: 'blacksmith' | 'apothecary') => boolean
+  /** 向村长复命村内调查（TM-P1-019）：第四任务专属窄 action——青石村 + 任务 in_progress + 两人均已询问（asked 均 === true）+ 未复命时成功，只写 quest.flags.village_inquiry_reported=true；三个相关 flag 任一非 boolean 整体拒绝（R1 原则）；重复复命/未问完/非法前置全部拒绝且完全不变；不改 status/stage/询问 flag、无奖励、不建 npcState、不自动保存 */
+  reportGoldenRabbitVillageInvestigation: () => boolean
 }
 
 /** 任务发现：不存在 → 创建 available；undiscovered → available；其余状态不重复创建。非法返回 null（TM-P0-006） */
@@ -911,6 +913,39 @@ export const useGameStore = create<GameStoreState>()((set) => ({
       // TM-P1-018：成功只写该任务 QuestState.flags.asked_{npcId}=true（其他状态完全不变；不建 npcState/不改 stage/不推进 completable/无奖励/不自动保存）
       const nextQuests = [...s.gameState.quests]
       nextQuests[questIndex] = { ...quest, flags: { ...quest.flags, [flagKey]: true } }
+      return { gameState: { ...s.gameState, quests: nextQuests } }
+    })
+    return changed
+  },
+
+  reportGoldenRabbitVillageInvestigation: () => {
+    let changed = false
+    set((s) => {
+      if (!s.gameState) return {}
+      // 必须在青石村（村长常驻青石村）
+      if (s.gameState.world.currentLocationId !== 'qingshi_village') return {}
+      // 第四任务必须存在且 in_progress（stage 保持 0，具体目的地未确定，本卡不推进）
+      const questIndex = s.gameState.quests.findIndex((q) => q.questId === 'quest_golden_rabbit_search')
+      if (questIndex < 0) return {}
+      const quest = s.gameState.quests[questIndex]
+      if (!quest || quest.status !== 'in_progress') return {}
+      // TM-P1-019：三个相关 flag 完整校验（R1 原则）——各自只允许 undefined/boolean；任一非 boolean 已存在值整体拒绝且完全不变（不静默覆盖）
+      const blacksmithFlag = quest.flags.asked_blacksmith
+      const apothecaryFlag = quest.flags.asked_apothecary
+      const reportedFlag = quest.flags.village_inquiry_reported
+      const malformed =
+        (blacksmithFlag !== undefined && typeof blacksmithFlag !== 'boolean') ||
+        (apothecaryFlag !== undefined && typeof apothecaryFlag !== 'boolean') ||
+        (reportedFlag !== undefined && typeof reportedFlag !== 'boolean')
+      if (malformed) return {}
+      // 两人必须均已询问（严格 === true；0/2、1/2 均不可复命）
+      if (blacksmithFlag !== true || apothecaryFlag !== true) return {}
+      // 已复命（true）重复拒绝
+      if (reportedFlag === true) return {}
+      changed = true
+      // TM-P1-019：成功只写 quest.flags.village_inquiry_reported=true（两个 asked flag 保持 true；status 仍 in_progress、stage 仍 0；不建 npcState/无奖励/不自动保存）
+      const nextQuests = [...s.gameState.quests]
+      nextQuests[questIndex] = { ...quest, flags: { ...quest.flags, village_inquiry_reported: true } }
       return { gameState: { ...s.gameState, quests: nextQuests } }
     })
     return changed

@@ -64,6 +64,7 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
   const inspectRabbitPath = useGameStore((s) => s.inspectRabbitPath)
   const reportRabbitPathToVillageElder = useGameStore((s) => s.reportRabbitPathToVillageElder)
   const consultGoldenRabbitSearchNpc = useGameStore((s) => s.consultGoldenRabbitSearchNpc)
+  const reportGoldenRabbitVillageInvestigation = useGameStore((s) => s.reportGoldenRabbitVillageInvestigation)
   const [saveResult, setSaveResult] = useState<'saved' | 'failed' | null>(null)
   const [travelError, setTravelError] = useState(false)
   // TM-P0-015：活动对话 NPC（仅 UI 本地状态，不进入 GameState / 存档）
@@ -98,6 +99,8 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
   const goldenAskedBlacksmith = goldenSearchQuest?.flags.asked_blacksmith === true
   const goldenAskedApothecary = goldenSearchQuest?.flags.asked_apothecary === true
   const goldenInvestigationCount = (goldenAskedBlacksmith ? 1 : 0) + (goldenAskedApothecary ? 1 : 0)
+  /** TM-P1-019：村内调查是否已向村长复命（只读 QuestState.flags；复命后任务日志显示阶段提示） */
+  const goldenVillageInquiryReported = goldenSearchQuest?.flags.village_inquiry_reported === true
   // TM-P0-006：附近委托 = 给予者位于当前地点的注册任务（不写死地点 ID）
   const localQuests = Object.values(QUESTS).filter((quest) => {
     const giver = getNpc(quest.giverNpcId)
@@ -449,6 +452,23 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
                   <p className="mt-1 text-bone-300">下一步目的地：【待补充】</p>
                 </div>
               )}
+              {/* TM-P1-019：向村长复命村内调查——第四任务 in_progress + 调查 2/2 + 未复命时显示入口（与 P1-016 地图汇报入口严格分开）；成功后按钮消失并显示固定文案 */}
+              {activeNpc.id === 'village_elder' && goldenSearchInProgress && goldenInvestigationCount === 2 && (
+                goldenVillageInquiryReported ? (
+                  <div className="mb-3 rounded border border-gold-500/40 bg-ink-900/40 p-3">
+                    <p className="text-bone-200">你已经把调查结果告诉了村长。</p>
+                    <p className="mt-1 text-bone-300">村里目前没人能够确认地图上的标记。</p>
+                    <p className="mt-1 text-bone-300">下一步目的地：【待补充】</p>
+                  </div>
+                ) : (
+                  <div className="mb-3 rounded border border-ink-600 bg-ink-900/40 p-3">
+                    <p className="mb-2 text-xs text-bone-300">你已经问过铁匠和药师，但两人都无法辨认地图上的标记。</p>
+                    <Button variant="primary" onClick={() => reportGoldenRabbitVillageInvestigation()}>
+                      向村长汇报调查结果
+                    </Button>
+                  </div>
+                )
+              )}
               {/* TM-P1-018：向铁匠打听地图——第四任务 in_progress 且未询问时显示入口；成功后隐藏按钮并显示固定回复（剧情块在 greeting 之后，不修改 npcs.ts） */}
               {activeNpc.id === 'blacksmith' && goldenSearchInProgress && (
                 goldenAskedBlacksmith ? (
@@ -736,6 +756,10 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
                       <p>你已经向铁匠和药师打听过，但仍无法确认地图指向的具体地点。</p>
                       <p className="mt-1 text-bone-300">下一步目的地：【待补充】</p>
                     </div>
+                  )}
+                  {/* TM-P1-019：复命后阶段提示——保留 2/2 调查结果，额外显示已汇报（不覆盖历史进度） */}
+                  {qs.questId === 'quest_golden_rabbit_search' && goldenVillageInquiryReported && (
+                    <p className="mt-1 text-xs text-gold-300">村内调查已汇报。</p>
                   )}
                   {canSubmit && (
                     <div className="mt-2">

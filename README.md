@@ -423,6 +423,20 @@ TM-P1-018（《追寻黄金兔子王》第一步——向村中两人打听地�
 - Store 单测 22 项 A-R+R1-a/b：A 无 gameState false/B 第四任务不存在 false 全不变/C available false/D completed/completable false/E 不在青石村 false/F 非法 npcId（运行时强转 innkeeper）false 全不变/G 首次问铁匠 true+asked_blacksmith true/H 首次问药师 true+asked_apothecary true/I 铁匠重复 false 同一引用不变/J 药师重复 false 同一引用不变/K flag=false 可改 true/L+M 非 boolean 异常 flag（"yes"/1）拒绝且原样保留/N 问完一人 status 仍 in_progress+stage 仍 0/O 两人问完两 flag true+status 仍 in_progress+stage 仍 0/P rabbit_path 仍 ×1/Q player/inventory/equipment/world/其他 quests 全不变+不建 npcState（blacksmith/apothecary 均 undefined）+reported 保持/R 不自动保存 + R1-a asked_blacksmith="yes" 咨询 apothecary false 同一引用不变两 flag 原样/R1-b asked_apothecary=1 咨询 blacksmith false 同一引用不变两 flag 原样
 - 27 项 E2E（直接继续 P1-017 第四任务 in_progress 档：A Continue 后进行中+地图线索调查 0/2/B 铁匠打听入口 enabled→点击→固定回复+按钮消失+1/2/C 仍进行中+无提交任务按钮/D 药师打听入口→点击→固定回复+按钮消失/E 2/2+调查结果固定文案+【待补充】+仍进行中/F 调查前后 Lv/HP/MP/金币/地图数精确相等+村长信任 1 尊敬 0 不变/G 可前往按钮精确等于 [废弃矿洞, 村外草原]/H Save/Continue 后 2/2 保持+重开铁匠/药师显示已询问回复且无打听按钮）
 
+TM-P1-019（村内调查复命——向村长汇报两人均无法辨认地图）：
+- 新增窄 Store Action `reportGoldenRabbitVillageInvestigation(): boolean`（第四任务专属；未扩成 reportQuestProgress/advanceMainStory/completeInvestigation/StoryAction）
+- 成功前置全满足：gameState 存在 + 当前位置 qingshi_village + quest_golden_rabbit_search 存在且 in_progress + asked_blacksmith===true + asked_apothecary===true + village_inquiry_reported 为 undefined/false；否则 false 且 GameState 完全不变
+- 三个相关 flag 完整校验（R1 原则）：asked_blacksmith/asked_apothecary/village_inquiry_reported 各自只允许 undefined/boolean；任一非 boolean 已存在值（"yes"/1/0.5）整次拒绝且完全不变（不静默覆盖）；village_inquiry_reported=false 视为尚未汇报可 false→true；已 true 重复复命拒绝且同一引用不变
+- 0/2、1/2（含只有一人询问）均不可复命
+- 成功后只写 quest.flags.village_inquiry_reported=true：两个 asked flag 保持 true；status 仍 in_progress、stage 仍 0；不 markQuestCompletable/completeQuest/stage+1（具体目的地未确定）
+- 村长对话复命入口（第四任务 in_progress + 调查 2/2 + 未复命）：「你已经问过铁匠和药师，但两人都无法辨认地图上的标记。」+ 按钮「向村长汇报调查结果」；与 P1-016「向村长展示《兔子的路径》」旧入口严格分开（P1-016 已复命不重复出现）
+- 点击只调用 Store action（GamePage 不直接改 QuestState.flags）；成功隐藏按钮（不留 disabled）+ 固定文案「你已经把调查结果告诉了村长。/村里目前没人能够确认地图上的标记。/下一步目的地：【待补充】」（不虚构下一城市/森林/古道/王国/商队/公会/地图专家/神殿/坐标）
+- 任务日志：复命后保留「地图线索调查：2 / 2」+ 原 2/2 调查结果「你已经向铁匠和药师打听过，但仍无法确认地图指向的具体地点。」+ 额外「村内调查已汇报。」+「下一步目的地：【待补充】」（不覆盖历史进度）
+- 无任何奖励（金币/等级/HP/MP/物品/world.flags/completedEvents 全 +0）；村长 trust/respect 精确保持；铁匠/药师 npcStates 仍 undefined（不建立关系）；兔子的路径仍 ×1；无新移动入口（可前往按钮保持 村外草原/废弃矿洞）
+- schema 不变、SAVE_VERSION=1；quests.ts/npcs.ts/locations.ts/items.ts/enemies.ts/App.tsx/CombatPage.tsx/types/storage/rules/content 零修改；git diff 仅 gameStore.ts + gameStore.test.ts + GamePage.tsx + qa/e2e.mjs + README
+- Store 单测 23 项 A-T+O：A 无 gameState false/B 第四任务不存在 false 全不变/C status available false/D completable/completed false/E 不在青石村 false/F 0/2（两人均未询问）false/G 只有 asked_blacksmith=true（1/2）false/H 只有 asked_apothecary=true（1/2）false/I 两人都 true → report true + village_inquiry_reported=true/J reported=false 可改 true/K reported=true 重复 false 同一引用不变/L+M+N 非 boolean 异常 flag（"yes"/1，三个 flag 各 2 组）拒绝且原样保留/O 交叉异常（asked_blacksmith=true + asked_apothecary="yes" + reported=false）整体拒绝/P 成功后两 asked 保持 true + reported=true/Q status 仍 in_progress + stage 仍 0/R rabbit_path 仍 ×1/S player/inventory/equipment/world/其他 quests/npcStates 全不变（village_elder 关系保持）+reported 保持/T 不自动保存
+- 26 项 E2E（直接继续 P1-018 已保存 2/2 档：A Continue 后进行中+地图线索调查 2/2/B 村长复命入口文案+按钮 enabled+P1-016 旧入口不重复出现/C 复命前记录 Lv/HP/MP/金币/地图数/位置/trust/respect/D 点击复命→固定文案（告诉村长+无人确认+【待补充】）+按钮消失/E 任务日志 2/2+村内调查已汇报+【待补充】+原 2/2 结果保留+第四任务状态标签进行中+无提交任务按钮/F 复命前后 Lv/HP/MP/金币/地图数精确相等+位置仍 qingshi_village+村长 trust 1 respect 0 保持/G 可前往按钮精确等于 [废弃矿洞, 村外草原]/H Save/Continue 后进行中+2/2+村内调查已汇报+【待补充】+重开村长已复命文案无按钮）
+
 ## 目录结构
 
 ```

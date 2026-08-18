@@ -3408,3 +3408,241 @@ describe('TM-P1-018：向村中两人打听《追寻黄金兔子王》地图线�
     expect(useGameStore.getState().hasSave).toBe(false)
   })
 })
+
+describe('TM-P1-019：向村长复命村内调查（两人均无法辨认地图）', () => {
+  const flags = () => useGameStore.getState().gameState?.world.flags
+  const rabbitPath = () => useGameStore.getState().gameState?.inventory.find((e) => e.itemId === 'rabbit_path')
+  const goldenQuest = () => useGameStore.getState().gameState?.quests.find((q) => q.questId === 'quest_golden_rabbit_search')
+  const snapshot = () => JSON.stringify(useGameStore.getState().gameState)
+
+  /** 走到两人均已询问（复用 P1-018 完整前置链） */
+  const seedBothAsked = () => {
+    useGameStore.getState().newGame()
+    useGameStore.getState().discoverQuest('quest_village_monsters')
+    useGameStore.getState().acceptQuest('quest_village_monsters')
+    useGameStore.getState().travelToLocation('village_grassland')
+    useGameStore.getState().resolveCombatVictory('corrupted_rabbit')
+    useGameStore.getState().travelToLocation('qingshi_village')
+    useGameStore.getState().completeQuest('quest_village_monsters')
+    useGameStore.getState().discoverQuest('quest_mine_cleanup')
+    useGameStore.getState().acceptQuest('quest_mine_cleanup')
+    useGameStore.getState().travelToLocation('abandoned_mine')
+    useGameStore.getState().resolveCombatVictory('corrupted_rat')
+    useGameStore.getState().travelToLocation('qingshi_village')
+    useGameStore.getState().completeQuest('quest_mine_cleanup')
+    useGameStore.getState().discoverQuest('quest_grassland_wolf')
+    useGameStore.getState().acceptQuest('quest_grassland_wolf')
+    useGameStore.getState().travelToLocation('village_grassland')
+    useGameStore.getState().resolveCombatVictory('corrupted_wolf')
+    useGameStore.getState().travelToLocation('qingshi_village')
+    useGameStore.getState().completeQuest('quest_grassland_wolf')
+    useGameStore.getState().addItem('rabbit_path', 1)
+    useGameStore.getState().inspectRabbitPath()
+    useGameStore.getState().reportRabbitPathToVillageElder()
+    useGameStore.getState().discoverQuest('quest_golden_rabbit_search')
+    useGameStore.getState().acceptQuest('quest_golden_rabbit_search')
+    useGameStore.getState().consultGoldenRabbitSearchNpc('blacksmith')
+    useGameStore.getState().consultGoldenRabbitSearchNpc('apothecary')
+  }
+
+  /** 直接构造任务 flag 运行态（undefined 表示从 flags 中移除该 key，模拟从未设置） */
+  const seedQuestFlag = (flagKey: string, value: string | number | boolean | undefined) => {
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return {
+        gameState: {
+          ...s.gameState,
+          quests: s.gameState.quests.map((q) => {
+            if (q.questId !== 'quest_golden_rabbit_search') return q
+            if (value === undefined) {
+              const nextFlags = { ...q.flags }
+              delete nextFlags[flagKey]
+              return { ...q, flags: nextFlags }
+            }
+            return { ...q, flags: { ...q.flags, [flagKey]: value } }
+          }),
+        },
+      }
+    })
+  }
+
+  /** 直接构造任务状态运行态 */
+  const seedQuestStatus = (status: QuestStatus) => {
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return {
+        gameState: {
+          ...s.gameState,
+          quests: s.gameState.quests.map((q) =>
+            q.questId === 'quest_golden_rabbit_search' ? { ...q, status } : q,
+          ),
+        },
+      }
+    })
+  }
+
+  it('A. 无 gameState → false', () => {
+    useGameStore.setState({ gameState: null })
+    expect(useGameStore.getState().reportGoldenRabbitVillageInvestigation()).toBe(false)
+  })
+
+  it('B. 第四任务不存在 → false', () => {
+    seedBothAsked()
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return { gameState: { ...s.gameState, quests: s.gameState.quests.filter((q) => q.questId !== 'quest_golden_rabbit_search') } }
+    })
+    const before = snapshot()
+    expect(useGameStore.getState().reportGoldenRabbitVillageInvestigation()).toBe(false)
+    expect(snapshot()).toBe(before)
+  })
+
+  it('C. status available → false', () => {
+    seedBothAsked()
+    seedQuestStatus('available')
+    const before = snapshot()
+    expect(useGameStore.getState().reportGoldenRabbitVillageInvestigation()).toBe(false)
+    expect(snapshot()).toBe(before)
+  })
+
+  it('D. status completable/completed → false', () => {
+    seedBothAsked()
+    seedQuestStatus('completable')
+    const beforeCompletable = snapshot()
+    expect(useGameStore.getState().reportGoldenRabbitVillageInvestigation()).toBe(false)
+    expect(snapshot()).toBe(beforeCompletable)
+    seedQuestStatus('completed')
+    const beforeCompleted = snapshot()
+    expect(useGameStore.getState().reportGoldenRabbitVillageInvestigation()).toBe(false)
+    expect(snapshot()).toBe(beforeCompleted)
+  })
+
+  it('E. 不在 qingshi_village → false', () => {
+    seedBothAsked()
+    useGameStore.getState().travelToLocation('village_grassland')
+    const before = snapshot()
+    expect(useGameStore.getState().reportGoldenRabbitVillageInvestigation()).toBe(false)
+    expect(snapshot()).toBe(before)
+  })
+
+  it('F. 0/2（两人均未询问）→ false', () => {
+    seedBothAsked()
+    seedQuestFlag('asked_blacksmith', undefined)
+    seedQuestFlag('asked_apothecary', undefined)
+    const before = snapshot()
+    expect(useGameStore.getState().reportGoldenRabbitVillageInvestigation()).toBe(false)
+    expect(snapshot()).toBe(before)
+  })
+
+  it('G. 只有 asked_blacksmith=true（1/2）→ false', () => {
+    seedBothAsked()
+    seedQuestFlag('asked_apothecary', undefined)
+    const before = snapshot()
+    expect(useGameStore.getState().reportGoldenRabbitVillageInvestigation()).toBe(false)
+    expect(snapshot()).toBe(before)
+  })
+
+  it('H. 只有 asked_apothecary=true（1/2）→ false', () => {
+    seedBothAsked()
+    seedQuestFlag('asked_blacksmith', undefined)
+    const before = snapshot()
+    expect(useGameStore.getState().reportGoldenRabbitVillageInvestigation()).toBe(false)
+    expect(snapshot()).toBe(before)
+  })
+
+  it('I. 两人都 true → report true 且 village_inquiry_reported=true', () => {
+    seedBothAsked()
+    expect(useGameStore.getState().reportGoldenRabbitVillageInvestigation()).toBe(true)
+    expect(goldenQuest()?.flags.village_inquiry_reported).toBe(true)
+  })
+
+  it('J. village_inquiry_reported=false → 可成功改 true', () => {
+    seedBothAsked()
+    seedQuestFlag('village_inquiry_reported', false)
+    expect(useGameStore.getState().reportGoldenRabbitVillageInvestigation()).toBe(true)
+    expect(goldenQuest()?.flags.village_inquiry_reported).toBe(true)
+  })
+
+  it('K. village_inquiry_reported=true 重复 → false 且 GameState 同一引用不变', () => {
+    seedBothAsked()
+    useGameStore.getState().reportGoldenRabbitVillageInvestigation()
+    const before = useGameStore.getState().gameState
+    expect(useGameStore.getState().reportGoldenRabbitVillageInvestigation()).toBe(false)
+    expect(useGameStore.getState().gameState).toBe(before)
+  })
+
+  it.each([
+    ['asked_blacksmith 非 boolean ("yes")', 'asked_blacksmith', 'yes'],
+    ['asked_blacksmith 非 boolean (1)', 'asked_blacksmith', 1],
+    ['asked_apothecary 非 boolean ("yes")', 'asked_apothecary', 'yes'],
+    ['asked_apothecary 非 boolean (1)', 'asked_apothecary', 1],
+    ['village_inquiry_reported 非 boolean ("yes")', 'village_inquiry_reported', 'yes'],
+    ['village_inquiry_reported 非 boolean (1)', 'village_inquiry_reported', 1],
+  ])('L/M/N. %s → false 且完全不变（不静默覆盖）', (_label, flagKey, invalidValue) => {
+    seedBothAsked()
+    seedQuestFlag(flagKey, invalidValue)
+    const before = snapshot()
+    expect(useGameStore.getState().reportGoldenRabbitVillageInvestigation()).toBe(false)
+    expect(snapshot()).toBe(before)
+    expect(goldenQuest()?.flags[flagKey]).toBe(invalidValue)
+  })
+
+  it('O. 交叉异常整体拒绝：asked_blacksmith=true + asked_apothecary="yes" + reported=false → false', () => {
+    seedBothAsked()
+    seedQuestFlag('asked_apothecary', 'yes')
+    seedQuestFlag('village_inquiry_reported', false)
+    const before = snapshot()
+    expect(useGameStore.getState().reportGoldenRabbitVillageInvestigation()).toBe(false)
+    expect(snapshot()).toBe(before)
+    expect(goldenQuest()?.flags.asked_apothecary).toBe('yes')
+    expect(goldenQuest()?.flags.village_inquiry_reported).toBe(false)
+  })
+
+  it('P. 成功后：两 asked 保持 true + village_inquiry_reported=true', () => {
+    seedBothAsked()
+    useGameStore.getState().reportGoldenRabbitVillageInvestigation()
+    expect(goldenQuest()?.flags.asked_blacksmith).toBe(true)
+    expect(goldenQuest()?.flags.asked_apothecary).toBe(true)
+    expect(goldenQuest()?.flags.village_inquiry_reported).toBe(true)
+  })
+
+  it('Q. status 仍 in_progress、stage 仍 0', () => {
+    seedBothAsked()
+    useGameStore.getState().reportGoldenRabbitVillageInvestigation()
+    expect(goldenQuest()?.status).toBe('in_progress')
+    expect(goldenQuest()?.stage).toBe(0)
+  })
+
+  it('R. rabbit_path 仍 ×1', () => {
+    seedBothAsked()
+    useGameStore.getState().reportGoldenRabbitVillageInvestigation()
+    expect(rabbitPath()?.quantity).toBe(1)
+  })
+
+  it('S. player/inventory/equipment/world/其他 quests/npcStates 全部不变（无奖励、不建关系）', () => {
+    seedBothAsked()
+    const beforePlayer = useGameStore.getState().gameState!.player
+    const beforeInventory = useGameStore.getState().gameState!.inventory
+    const beforeEquipment = useGameStore.getState().gameState!.equipment
+    const beforeWorld = useGameStore.getState().gameState!.world
+    const beforeOtherQuests = useGameStore.getState().gameState!.quests.filter((q) => q.questId !== 'quest_golden_rabbit_search')
+    useGameStore.getState().reportGoldenRabbitVillageInvestigation()
+    const after = useGameStore.getState().gameState!
+    expect(after.player).toEqual(beforePlayer)
+    expect(after.inventory).toEqual(beforeInventory)
+    expect(after.equipment).toEqual(beforeEquipment)
+    expect(after.world).toEqual(beforeWorld)
+    expect(after.quests.filter((q) => q.questId !== 'quest_golden_rabbit_search')).toEqual(beforeOtherQuests)
+    expect(after.world.npcStates.blacksmith).toBeUndefined()
+    expect(after.world.npcStates.apothecary).toBeUndefined()
+    expect(after.world.npcStates.village_elder).toEqual(beforeWorld.npcStates.village_elder)
+    expect(flags()?.rabbit_path_reported).toBe(true)
+  })
+
+  it('T. 不自动保存：复命后 hasSave 仍 false', () => {
+    seedBothAsked()
+    useGameStore.getState().reportGoldenRabbitVillageInvestigation()
+    expect(goldenQuest()?.flags.village_inquiry_reported).toBe(true)
+    expect(useGameStore.getState().hasSave).toBe(false)
+  })
+})
