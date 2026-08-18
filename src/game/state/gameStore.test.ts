@@ -2348,3 +2348,152 @@ describe('TM-P1-008：spendWarriorSuppressStrikeMp 战士压制猛击灵力消�
     expect(useGameStore.getState().hasSave).toBe(false)
   })
 })
+
+describe('TM-P1-010：第三个正式任务《草原狼影》', () => {
+  const wolfQuest = () =>
+    useGameStore.getState().gameState?.quests.find((q) => q.questId === 'quest_grassland_wolf')
+  const gold = () => useGameStore.getState().gameState?.player.gold
+
+  /** 正式完成《村外异动》（金币 70）与《矿洞清理》（金币 85），当前在青石村 */
+  const completeTwoQuests = () => {
+    useGameStore.getState().newGame()
+    useGameStore.getState().discoverQuest('quest_village_monsters')
+    useGameStore.getState().acceptQuest('quest_village_monsters')
+    useGameStore.getState().travelToLocation('village_grassland')
+    useGameStore.getState().resolveCombatVictory('corrupted_rabbit')
+    useGameStore.getState().travelToLocation('qingshi_village')
+    useGameStore.getState().completeQuest('quest_village_monsters')
+    useGameStore.getState().discoverQuest('quest_mine_cleanup')
+    useGameStore.getState().acceptQuest('quest_mine_cleanup')
+    useGameStore.getState().travelToLocation('abandoned_mine')
+    useGameStore.getState().resolveCombatVictory('corrupted_rat')
+    useGameStore.getState().travelToLocation('qingshi_village')
+    useGameStore.getState().completeQuest('quest_mine_cleanup')
+  }
+
+  it('A. 注册内容：quest_grassland_wolf 标题/发布者/奖励固定', () => {
+    const def = getQuest('quest_grassland_wolf')
+    expect(def?.title).toBe('草原狼影')
+    expect(def?.summary).toContain('魔化狼')
+    expect(def?.giverNpcId).toBe('village_elder')
+    expect(def?.goldReward).toBe(25)
+  })
+
+  it('B. 前置未完成拒绝发现：新游戏 discoverQuest 返回 false 且 GameState 完全不变', () => {
+    useGameStore.getState().newGame()
+    const snapshot = JSON.stringify(useGameStore.getState().gameState)
+    expect(useGameStore.getState().discoverQuest('quest_grassland_wolf')).toBe(false)
+    expect(JSON.stringify(useGameStore.getState().gameState)).toBe(snapshot)
+    expect(wolfQuest()).toBeUndefined()
+  })
+
+  it('C. 仅《矿洞清理》完成后可发现：discover → true → available（不依赖村长回应关系）', () => {
+    completeTwoQuests()
+    expect(useGameStore.getState().discoverQuest('quest_grassland_wolf')).toBe(true)
+    expect(wolfQuest()?.status).toBe('available')
+  })
+
+  it('D. 正常接受：available → in_progress（复用 acceptQuest）', () => {
+    completeTwoQuests()
+    useGameStore.getState().discoverQuest('quest_grassland_wolf')
+    expect(useGameStore.getState().acceptQuest('quest_grassland_wolf')).toBe(true)
+    expect(wolfQuest()?.status).toBe('in_progress')
+  })
+
+  it('E. 正式魔化狼胜利：草原 + in_progress → completable（复用 applyQuestTransition）', () => {
+    completeTwoQuests()
+    useGameStore.getState().discoverQuest('quest_grassland_wolf')
+    useGameStore.getState().acceptQuest('quest_grassland_wolf')
+    useGameStore.getState().travelToLocation('village_grassland')
+    useGameStore.getState().resolveCombatVictory('corrupted_wolf')
+    expect(wolfQuest()?.status).toBe('completable')
+  })
+
+  it('F. 魔化狼胜利不产生战利品/事件/关系/地点副作用', () => {
+    completeTwoQuests()
+    useGameStore.getState().discoverQuest('quest_grassland_wolf')
+    useGameStore.getState().acceptQuest('quest_grassland_wolf')
+    useGameStore.getState().travelToLocation('village_grassland')
+    const before = useGameStore.getState().gameState!
+    useGameStore.getState().resolveCombatVictory('corrupted_wolf')
+    const after = useGameStore.getState().gameState!
+    expect(after.inventory).toEqual(before.inventory)
+    expect(after.world.flags).toEqual(before.world.flags)
+    expect(after.world.completedEvents).toEqual(before.world.completedEvents)
+    expect(after.world.npcStates).toEqual(before.world.npcStates)
+    expect(after.player.gold).toBe(before.player.gold)
+    expect(after.player.hp).toBe(before.player.hp)
+    expect(after.player.mp).toBe(before.player.mp)
+  })
+
+  it('G. available 状态下魔化狼胜利不推进任务（保持 available）', () => {
+    completeTwoQuests()
+    useGameStore.getState().discoverQuest('quest_grassland_wolf')
+    useGameStore.getState().travelToLocation('village_grassland')
+    useGameStore.getState().resolveCombatVictory('corrupted_wolf')
+    expect(wolfQuest()?.status).toBe('available')
+  })
+
+  it('H. completable 后再次胜利不重复推进（保持 completable）', () => {
+    completeTwoQuests()
+    useGameStore.getState().discoverQuest('quest_grassland_wolf')
+    useGameStore.getState().acceptQuest('quest_grassland_wolf')
+    useGameStore.getState().travelToLocation('village_grassland')
+    useGameStore.getState().resolveCombatVictory('corrupted_wolf')
+    useGameStore.getState().resolveCombatVictory('corrupted_wolf')
+    expect(wolfQuest()?.status).toBe('completable')
+  })
+
+  it('I. 提交任务：completable + gold85 → true → completed + gold110', () => {
+    completeTwoQuests()
+    useGameStore.getState().discoverQuest('quest_grassland_wolf')
+    useGameStore.getState().acceptQuest('quest_grassland_wolf')
+    useGameStore.getState().travelToLocation('village_grassland')
+    useGameStore.getState().resolveCombatVictory('corrupted_wolf')
+    useGameStore.getState().travelToLocation('qingshi_village')
+    expect(gold()).toBe(85)
+    expect(useGameStore.getState().completeQuest('quest_grassland_wolf')).toBe(true)
+    expect(wolfQuest()?.status).toBe('completed')
+    expect(gold()).toBe(110)
+  })
+
+  it('J. 重复提交 false 且金币仍 110', () => {
+    completeTwoQuests()
+    useGameStore.getState().discoverQuest('quest_grassland_wolf')
+    useGameStore.getState().acceptQuest('quest_grassland_wolf')
+    useGameStore.getState().travelToLocation('village_grassland')
+    useGameStore.getState().resolveCombatVictory('corrupted_wolf')
+    useGameStore.getState().travelToLocation('qingshi_village')
+    useGameStore.getState().completeQuest('quest_grassland_wolf')
+    expect(useGameStore.getState().completeQuest('quest_grassland_wolf')).toBe(false)
+    expect(gold()).toBe(110)
+  })
+
+  it('K. 村长关系在第三任务完成前后完全一致（信任 1 / 尊敬 0，无 trust+1/respect 副作用）', () => {
+    completeTwoQuests()
+    useGameStore.getState().discoverQuest('quest_grassland_wolf')
+    useGameStore.getState().acceptQuest('quest_grassland_wolf')
+    useGameStore.getState().travelToLocation('village_grassland')
+    useGameStore.getState().resolveCombatVictory('corrupted_wolf')
+    useGameStore.getState().travelToLocation('qingshi_village')
+    const before = useGameStore.getState().gameState!.world.npcStates.village_elder
+    useGameStore.getState().completeQuest('quest_grassland_wolf')
+    const after = useGameStore.getState().gameState!.world.npcStates.village_elder
+    expect(before?.relationship.trust).toBe(1)
+    expect(before?.relationship.respect).toBe(0)
+    expect(after?.relationship.trust).toBe(1)
+    expect(after?.relationship.respect).toBe(0)
+  })
+
+  it('L. 不自动保存：完成《草原狼影》后 hasSave 仍 false', () => {
+    completeTwoQuests()
+    useGameStore.getState().discoverQuest('quest_grassland_wolf')
+    useGameStore.getState().acceptQuest('quest_grassland_wolf')
+    useGameStore.getState().travelToLocation('village_grassland')
+    useGameStore.getState().resolveCombatVictory('corrupted_wolf')
+    useGameStore.getState().travelToLocation('qingshi_village')
+    useGameStore.getState().completeQuest('quest_grassland_wolf')
+    expect(wolfQuest()?.status).toBe('completed')
+    expect(useGameStore.getState().hasSave).toBe(false)
+  })
+})

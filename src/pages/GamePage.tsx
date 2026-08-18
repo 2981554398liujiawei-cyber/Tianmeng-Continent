@@ -86,6 +86,10 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
     if (quest.id === 'quest_mine_cleanup') {
       return gameState.quests.some((q) => q.questId === 'quest_village_monsters' && q.status === 'completed')
     }
+    // TM-P1-010：UI 侧窄前置（与 Store discoverQuest 一致）——《草原狼影》仅在《矿洞清理》完成后可见
+    if (quest.id === 'quest_grassland_wolf') {
+      return gameState.quests.some((q) => q.questId === 'quest_mine_cleanup' && q.status === 'completed')
+    }
     return true
   })
   // TM-P0-015：附近人物 = 常驻当前地点的注册 NPC（动态过滤，不硬编码列表）
@@ -453,6 +457,11 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
             {location!.enemyIds!.map((enemyId) => {
               const threat = getEnemy(enemyId)
               if (!threat) return null
+              // TM-P1-010：魔化狼只在《草原狼影》进行中时可见（undiscovered/available/completable/completed/failed 均隐藏；魔化兔不受影响）
+              if (enemyId === 'corrupted_wolf') {
+                const wolfQuest = gameState.quests.find((q) => q.questId === 'quest_grassland_wolf')
+                if (wolfQuest?.status !== 'in_progress') return null
+              }
               const cannotFight = player.hp <= 0
               return (
                 <div key={enemyId} className="rounded border border-ink-600 bg-ink-900/40 p-3">

@@ -28,4 +28,12 @@ export const QUESTS: Record<string, QuestDefinition> = {
     giverNpcId: 'blacksmith',
     goldReward: 15,
   },
+  // TM-P1-010：第三个正式任务（复用既有 corrupted_wolf 敌人；仅矿洞清理完成后可发现；奖励走 generic goldReward，无关系/世界副作用）
+  quest_grassland_wolf: {
+    id: 'quest_grassland_wolf',
+    title: '草原狼影',
+    summary: '矿洞的威胁暂时平息后，村长提到草原上出现了魔化狼的踪迹，希望你前去处理。',
+    giverNpcId: 'village_elder',
+    goldReward: 25,
+  },
 }

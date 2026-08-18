@@ -157,10 +157,10 @@ describe('TM-P0-002-R1：关键内容身份锁', () => {
     expect(desc).not.toContain('迁徙')
   })
 
-  it('注册表数量与 ID 未被改动（无新增黄金兔子王条目；TM-P1-005 新增《矿洞清理》）', () => {
+  it('注册表数量与 ID 未被改动（无新增黄金兔子王条目；TM-P1-005 新增《矿洞清理》、TM-P1-010 新增《草原狼影》）', () => {
     expect(Object.keys(ENEMIES)).toHaveLength(4)
     expect(Object.keys(NPCS)).toHaveLength(3)
-    expect(Object.keys(QUESTS)).toHaveLength(2)
+    expect(Object.keys(QUESTS)).toHaveLength(3)
     expect(getEnemy('golden_rabbit_king')).toBeUndefined()
   })
 })
@@ -208,14 +208,19 @@ describe('TM-P0-008：地点遭遇敌人数据一致性', () => {
 
   it('四地点遭遇配置符合任务卡', () => {
     expect(getLocation('qingshi_village')?.enemyIds).toEqual([])
-    expect(getLocation('village_grassland')?.enemyIds).toEqual(['corrupted_rabbit'])
+    // TM-P1-010：草原投放既有 corrupted_wolf（追加在魔化兔之后，不替换）
+    expect(getLocation('village_grassland')?.enemyIds).toEqual(['corrupted_rabbit', 'corrupted_wolf'])
     expect(getLocation('abandoned_mine')?.enemyIds).toEqual(['corrupted_rat'])
     expect(getLocation('rabbit_lair')?.enemyIds).toEqual(['dudu_rabbit'])
   })
 
-  it('corrupted_wolf 未放入正式地点遭遇', () => {
+  it('corrupted_wolf 仅投放于村外草原（其他地点无）', () => {
     for (const loc of Object.values(LOCATIONS)) {
-      expect(loc.enemyIds ?? []).not.toContain('corrupted_wolf')
+      if (loc.id === 'village_grassland') {
+        expect(loc.enemyIds ?? []).toContain('corrupted_wolf')
+      } else {
+        expect(loc.enemyIds ?? []).not.toContain('corrupted_wolf')
+      }
     }
   })
 

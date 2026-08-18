@@ -24,7 +24,8 @@ export const LOCATIONS: Record<string, LocationDefinition> = {
     name: '村外草原',
     description: '青石村外连绵的草坡，风吹草低，隐隐可见远处巢穴的轮廓。',
     connections: ['qingshi_village', 'rabbit_lair'],
-    enemyIds: ['corrupted_rabbit'],
+    // TM-P1-010：投放既有 corrupted_wolf（数据零修改）；正式可见性仍由任务状态（仅 in_progress）在 GamePage/App 双守
+    enemyIds: ['corrupted_rabbit', 'corrupted_wolf'],
   },
   abandoned_mine: {
     id: 'abandoned_mine',

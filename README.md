@@ -329,6 +329,15 @@ TM-P1-008（战士职业技能「压制猛击」——四职业首个能力闭�
 - 无持续控制：压制只作用于当前这一击之后原本会发生的立即反击，不产生眩晕/沉默/压制状态/下一回合不能行动/enemy debuff/statusEffects；战斗后 MP 保留（不自动恢复）；青石村休整复用 restAtVillage 恢复（HP 满+MP 2→6/6）；Save+Continue 保留剩余 MP（4/6）；GameState schema 不变、SAVE_VERSION 仍 1
 - 1 个 combat 单测（WARRIOR_SUPPRESS_STRIKE_MP_COST===2 + 复用 getPlayerAttackDamage 14→6/铁剑 8）+ 11 个 Store 单测（warrior 6→4/2→0/1 不足 false/knight·mage·ranger false 全不变/无 gameState false/mp=-1 false/mp>maxMp false/成功只改 mp 其余全不变/不自动保存）+ 26 项 E2E（A 战士显示压制猛击（2 灵力）启用且无法术攻击/骑士重击/迅捷突袭/B D20 7+4=11 命中 6 伤：MP 6→4+魔化兔 8→2+玩家 HP 不变+无魔化兔的攻击+phase active+压制猛击仍启用（无次数限制）/C 天然1+敌天然20：MP 4→2+魔化兔仍 2/8+大失败+出现魔化兔的攻击+玩家 HP 明确下降（未命中不压制）/D 普攻天然20 胜利且 MP 仍 2/6/E 休整后 HP 满+MP 6/6/F 压制猛击天然20 暴击胜利+战斗后 4/6+保存 Continue 仍 4/6/R1 段末 Math.random 已恢复真实实现；另在 P1-001-B 法师、P1-006-A 骑士、P1-007-A 游侠段补充「不显示压制猛击」隔离断言）
 
+TM-P1-010（第三个正式任务《草原狼影》——复用既有 corrupted_wolf，青石村内容扩展）：
+- quests.ts 新增 `quest_grassland_wolf`（标题「草原狼影」/ 发布者 village_elder / goldReward 25 / summary 提及魔化狼）；QuestDefinition 未扩展
+- 唯一解锁条件：仅 `quest_mine_cleanup.status === 'completed'` 才允许 discoverQuest('quest_grassland_wolf')（Store discoverQuest 窄前置 + GamePage localQuests 双守；未建通用 prerequisite 系统）；不依赖村长 trust/respect/VILLAGE_ELDER_POST_QUEST_EVENT_ID/reassure/resolve（玩家是否完成 P1-003 回应不影响第三任务）
+- locations.ts：village_grassland.enemyIds 追加 'corrupted_wolf'（保持 ['corrupted_rabbit', 'corrupted_wolf'] 顺序，不替换魔化兔）；corrupted_wolf 数据零修改（Lv.2 / HP12 / DEF12 / attack+3 / damage3）
+- **魔化狼受任务状态控制**（undiscovered/available→隐藏；in_progress→显示；completable/completed/failed→隐藏）：GamePage 附近威胁按 quest_grassland_wolf.status!=='in_progress' 过滤；App handleEngage('corrupted_wolf') 再窄校验 status==='in_progress' 否则拒绝进入 CombatPage（不只靠 UI 隐藏；未建通用 EncounterCondition/EnemySpawnRule 系统）；魔化兔继续一直按原规则存在
+- resolveCombatVictory：仅 enemyId==='corrupted_wolf' && location==='village_grassland' 时经 applyQuestTransition 推进 quest_grassland_wolf → completable（复用状态机，不手写 quest status）；**无战利品**（不奖励铁矿石/药水/装备/rabbit_path/金币/新物品，金币只在回村提交时获得）；available/completable 状态胜利均不推进（状态机天然守住）
+- completeQuest('quest_grassland_wolf')：generic goldReward +25（新游戏 50→村外异动 70→矿洞清理 85→草原狼影 110）；**无关系副作用**（completeQuest 的村长 trust+1 奖励继续只属于 quest_village_monsters，第三任务完成前后村长关系完全一致）；无 world.flags/completedEvents/新地点解锁副作用
+- 12 个 Store 单测（A 注册身份固定/B 前置未完成拒绝发现且全不变/C 矿洞完成后可发现 available/D 正常接受 in_progress/E 草原 in_progress 狼胜利 completable/F 狼胜利无战利品/事件/关系/地点副作用/G available 状态胜利不推进/H completable 重复胜利不重复推进/I completable+85 → completed+110/J 重复提交 false 仍 110/K 村长关系前后完全一致（信任1/尊敬0）/L 不自动保存）+ 18 项 E2E（A 新游戏无草原狼影+草原只有魔化兔无魔化狼/B 完成村外异动后仍无草原狼影/C 完成矿洞清理后金币 85+草原狼影可接受（发布者村长）/D 接受后进行中+草原魔化兔仍存在且魔化狼出现/E engageEnemy('魔化狼') 精准定位（多敌人卡片）：战斗页魔化狼 Lv.2 HP 12/12 防御 12+天然20 暴击 12 伤一次击杀胜利/F 胜利后可完成+附近威胁区魔化狼消失且魔化兔仍存在（任务生命周期控制，非永久刷怪）/G 提交后已完成+金币 110+村长关系信任1/尊敬0 不变/H Save+Continue 保持已完成+110+草原不显示魔化狼/R1 段末 Math.random 已恢复真实实现）
+
 ## 目录结构
 
 ```

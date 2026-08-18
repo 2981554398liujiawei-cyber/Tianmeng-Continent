@@ -1735,6 +1735,163 @@ try {
   })
   check('P1-008-R1: 段末 Math.random 已恢复真实实现（不污染后续测试）', p1008Restored === true)
 
+  // P1-010：第三个正式任务《草原狼影》（复用既有 corrupted_wolf；仅《矿洞清理》完成后由村长发布）
+  // 本段只保存一次真实 Math.random（P1-007-R1 模式：mock 不泄漏给后续测试）
+  await page.evaluate(() => {
+    window.__p1010OriginalRandom = Math.random.bind(Math)
+  })
+  // 多敌人卡片精准定位：先找名字所在元素，再向上找含「迎战」按钮的最近卡片容器（只用于解决多敌人卡片，不引入测试框架）
+  const engageEnemy = async (enemyName) => {
+    await page.evaluate((n) => {
+      const nameEl = [...document.querySelectorAll('p')].find((p) => p.textContent.includes(n))
+      if (!nameEl) throw new Error('未找到敌人卡片: ' + n)
+      let card = nameEl
+      while (card && card !== document.body) {
+        if (card.tagName === 'DIV' && card.textContent.includes('迎战')) {
+          const btn = [...card.querySelectorAll('button')].find((b) => b.textContent.includes('迎战'))
+          if (!btn) throw new Error('卡片内未找到迎战按钮: ' + n)
+          btn.click()
+          return
+        }
+        card = card.parentElement
+      }
+      throw new Error('未找到迎战按钮: ' + n)
+    }, enemyName)
+    await sleep(300)
+  }
+
+  // A. 新游戏：不存在《草原狼影》；草原无魔化狼（只有魔化兔）
+  await clickByText('新游戏')
+  await clickByText('确认进入天梦大陆')
+  body = await bodyText()
+  check('P1-010-A: 新游戏青石村无草原狼影', !body.includes('草原狼影'))
+  check('P1-010-A: 村外异动原入口保持', body.includes('村长似乎有事相托。'))
+  await clickByText('村外草原')
+  body = await bodyText()
+  check('P1-010-A: 草原只有魔化兔、无魔化狼', body.includes('魔化兔') && !body.includes('魔化狼'))
+
+  // B. 正式完成《村外异动》：仍无《草原狼影》
+  await clickByText('青石村')
+  await clickByText('查看委托')
+  await clickByText('接受任务')
+  await clickByText('村外草原')
+  await clickByText('迎战')
+  await sleep(300)
+  await page.evaluate(() => {
+    Math.random = () => 0.99
+  })
+  await clickByText('普通攻击')
+  await sleep(300)
+  await clickByText('返回冒险')
+  await clickByText('青石村')
+  await clickByText('提交任务')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-010-B: 村外异动完成且金币 70', body.includes('已完成') && body.includes('70'))
+  check('P1-010-B: 第一任务完成后仍无草原狼影', !body.includes('草原狼影'))
+
+  // C. 正式完成《矿洞清理》：金币 85，村长新委托《草原狼影》出现（发布者：村长 可接受）
+  await clickByText('查看委托')
+  await clickByText('接受任务')
+  await clickByText('废弃矿洞')
+  await clickByText('迎战')
+  await sleep(300)
+  await page.evaluate(() => {
+    Math.random = () => 0.99
+  })
+  await clickByText('普通攻击')
+  await sleep(300)
+  await clickByText('返回冒险')
+  await clickByText('青石村')
+  await clickByText('提交任务')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-010-C: 矿洞清理完成且金币 85', body.includes('矿洞清理') && body.includes('已完成') && body.includes('85'))
+  await clickByText('查看委托')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-010-C: 草原狼影可接受（发布者村长）', body.includes('草原狼影') && body.includes('发布者：村长') && body.includes('可接受'))
+
+  // D. 接受后：进行中；草原魔化兔仍存在且魔化狼出现
+  await clickByText('接受任务')
+  body = await bodyText()
+  check('P1-010-D: 草原狼影进行中', body.includes('草原狼影') && body.includes('进行中'))
+  await clickByText('村外草原')
+  body = await bodyText()
+  check('P1-010-D: 魔化兔仍存在且魔化狼出现', body.includes('魔化兔') && body.includes('魔化狼'))
+
+  // E. 精准进入魔化狼战斗：Lv.2 / HP 12/12 / 防御 12；骑士 STR14 普攻天然20 暴击 12 伤一次击杀
+  await engageEnemy('魔化狼')
+  body = await bodyText()
+  check(
+    'P1-010-E: 战斗页魔化狼 Lv.2 HP 12 / 12 防御 12',
+    body.includes('魔化狼') && body.includes('Lv.2') && body.includes('12 / 12') && body.includes('防御 12'),
+  )
+  await page.evaluate(() => {
+    Math.random = () => 0.99
+  })
+  await clickByText('普通攻击')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-010-E: 魔化狼战斗胜利', body.includes('战斗胜利'))
+
+  // F. 胜利后返回：任务可完成；魔化狼从威胁列表消失（任务生命周期控制，非永久刷怪），魔化兔仍存在
+  // （委托 summary 含「魔化狼」文本，因此用「附近威胁」区域精确断言，不检查整页）
+  await clickByText('返回冒险')
+  body = await bodyText()
+  check('P1-010-F: 草原狼影可完成', body.includes('草原狼影') && body.includes('可完成'))
+  const threatsAfterWolf = await page.evaluate(() => {
+    const heading = [...document.querySelectorAll('h3')].find((h) => h.textContent.includes('附近威胁'))
+    if (!heading) return null
+    const section = heading.closest('section')
+    return section ? section.textContent : ''
+  })
+  check(
+    'P1-010-F: 附近威胁区魔化狼消失且魔化兔仍存在',
+    threatsAfterWolf !== null && !threatsAfterWolf.includes('魔化狼') && threatsAfterWolf.includes('魔化兔'),
+  )
+
+  // G. 回村提交：金币 85→110；村长关系不受第三任务影响（信任：1 尊敬：0）
+  await clickByText('青石村')
+  await clickByText('提交任务')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-010-G: 草原狼影已完成且金币 110', body.includes('草原狼影') && body.includes('已完成') && body.includes('110'))
+  await clickNthTalk(0)
+  body = await bodyText()
+  check('P1-010-G: 村长关系保持 信任：1 尊敬：0（第三任务无关系副作用）', body.includes('信任：1') && body.includes('尊敬：0'))
+  await clickByText('结束交谈')
+
+  // H. Save + Continue：任务完成/金币 110 保持；草原不再显示魔化狼
+  await clickByText('保存游戏')
+  await clickByText('返回主菜单')
+  await clickByText('继续游戏')
+  body = await bodyText()
+  check('P1-010-H: Continue 后草原狼影已完成且金币 110', body.includes('草原狼影') && body.includes('已完成') && body.includes('110'))
+  await clickByText('村外草原')
+  body = await bodyText()
+  const threatsAfterContinue = await page.evaluate(() => {
+    const heading = [...document.querySelectorAll('h3')].find((h) => h.textContent.includes('附近威胁'))
+    if (!heading) return null
+    const section = heading.closest('section')
+    return section ? section.textContent : ''
+  })
+  check(
+    'P1-010-H: Continue 后附近威胁区不显示魔化狼且魔化兔仍存在',
+    threatsAfterContinue !== null && !threatsAfterContinue.includes('魔化狼') && threatsAfterContinue.includes('魔化兔'),
+  )
+  await clickByText('青石村')
+  await clickByText('返回主菜单')
+  // P1-007-R1 模式：确定性断言——段末 Math.random 与段首保存的真实函数同一引用
+  const p1010Restored = await page.evaluate(() => {
+    const original = window.__p1010OriginalRandom
+    Math.random = original
+    const isOriginal = Math.random === original
+    delete window.__p1010OriginalRandom
+    return isOriginal
+  })
+  check('P1-010-R1: 段末 Math.random 已恢复真实实现（不污染后续测试）', p1010Restored === true)
+
   // R2：运行期间存档改坏 → 触发一次 load → Continue 禁用且不进入游戏页
   await clickByText('新游戏')
   await clickByText('确认进入天梦大陆') // P004：默认预填合法，直接确认创建

@@ -193,6 +193,13 @@ export const useGameStore = create<GameStoreState>()((set) => ({
         )
         if (!villageMonstersCompleted) return {}
       }
+      // TM-P1-010：窄前置——仅《草原狼影》要求《矿洞清理》已完成才可发现（与村长回应关系无关）
+      if (questId === 'quest_grassland_wolf') {
+        const mineCleanupCompleted = s.gameState.quests.some(
+          (q) => q.questId === 'quest_mine_cleanup' && q.status === 'completed',
+        )
+        if (!mineCleanupCompleted) return {}
+      }
       const next = applyQuestDiscovery(s.gameState, questId)
       if (!next) return {}
       changed = true
@@ -366,6 +373,11 @@ export const useGameStore = create<GameStoreState>()((set) => ({
               : [...inv, { itemId: 'iron_ore', quantity: 1 }]
           return { gameState: { ...s.gameState, inventory } }
         }
+      }
+      // 《草原狼影》任务推进（TM-P1-010）：村外草原击败魔化狼且任务 in_progress → completable；无战利品（金币只在回村提交时获得）
+      if (enemyId === 'corrupted_wolf' && location.id === 'village_grassland') {
+        const next = applyQuestTransition(s.gameState, 'quest_grassland_wolf', 'completable')
+        if (next) return { gameState: next }
       }
       // 合法胜利但无持久效果（其他敌人 / 重复嘟嘟兔胜利 / 任务不在推进条件）：其余状态全部不变
       return {}

@@ -37,6 +37,11 @@ export default function App() {
     if (!enemy) return
     const location = getLocation(state.world.currentLocationId)
     if (!location?.enemyIds?.includes(enemyId)) return
+    // TM-P1-010：魔化狼必须《草原狼影》进行中才可进入战斗（不只靠 UI 隐藏；非 in_progress 一律拒绝）
+    if (enemyId === 'corrupted_wolf') {
+      const wolfQuest = state.quests.find((q) => q.questId === 'quest_grassland_wolf')
+      if (wolfQuest?.status !== 'in_progress') return
+    }
     setCombatEnemyId(enemyId)
     setScreen('combat')
   }
