@@ -3334,6 +3334,27 @@ describe('TM-P1-018：向村中两人打听《追寻黄金兔子王》地图线�
     expect(goldenQuest()?.flags[flagKey]).toBe(invalidValue)
   })
 
+  // TM-P1-018-R1：交叉异常——另一相关 flag 非 boolean 时，本次调查也必须整次拒绝
+  it('R1-a. asked_blacksmith="yes" 且咨询 apothecary → false 且同一引用不变、两 flag 均原样', () => {
+    seedGoldenInProgress()
+    seedQuestFlag('asked_blacksmith', 'yes')
+    const before = useGameStore.getState().gameState
+    expect(useGameStore.getState().consultGoldenRabbitSearchNpc('apothecary')).toBe(false)
+    expect(useGameStore.getState().gameState).toBe(before)
+    expect(goldenQuest()?.flags.asked_blacksmith).toBe('yes')
+    expect(goldenQuest()?.flags.asked_apothecary).toBeUndefined()
+  })
+
+  it('R1-b. asked_apothecary=1 且咨询 blacksmith → false 且同一引用不变、两 flag 均原样', () => {
+    seedGoldenInProgress()
+    seedQuestFlag('asked_apothecary', 1)
+    const before = useGameStore.getState().gameState
+    expect(useGameStore.getState().consultGoldenRabbitSearchNpc('blacksmith')).toBe(false)
+    expect(useGameStore.getState().gameState).toBe(before)
+    expect(goldenQuest()?.flags.asked_apothecary).toBe(1)
+    expect(goldenQuest()?.flags.asked_blacksmith).toBeUndefined()
+  })
+
   it('N. 问完一人 status 仍 in_progress、stage 仍 0', () => {
     seedGoldenInProgress()
     useGameStore.getState().consultGoldenRabbitSearchNpc('blacksmith')

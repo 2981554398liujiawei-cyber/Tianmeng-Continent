@@ -413,14 +413,14 @@ TM-P1-017（第四正式主线目标《追寻黄金兔子王》——第二段�
 TM-P1-018（《追寻黄金兔子王》第一步——向村中两人打听地图线索）：
 - 新增窄 Store Action `consultGoldenRabbitSearchNpc(npcId: 'blacksmith' | 'apothecary'): boolean`（第四任务专属；未扩成 consultNpc/askNpcAboutQuest/DialogueAction/InvestigationEngine）
 - 成功前置全满足：gameState 存在 + 当前位置 qingshi_village + quest_golden_rabbit_search 存在且 status in_progress + npcId 为 blacksmith/apothecary；否则 false 且 GameState 完全不变
-- 使用 QuestState.flags 记录（不新增 world flag、无 schema 扩展）：asked_blacksmith=true / asked_apothecary=true；false 视为未询问可改 true；重复询问（true）拒绝且同一引用不变；非 boolean 异常旧 flag（"yes"/1）拒绝且不静默覆盖
+- 使用 QuestState.flags 记录（不新增 world flag、无 schema 扩展）：asked_blacksmith=true / asked_apothecary=true；false 视为未询问可改 true；重复询问（true）拒绝且同一引用不变；非 boolean 异常旧 flag（"yes"/1）拒绝且不静默覆盖——**R1 完整校验**：写任何调查 flag 前同时验证两个相关 flag（各自只允许 undefined/false/true），任一个为非 boolean 已存在值整次拒绝且完全不变（交叉场景：asked_blacksmith="yes" 咨询 apothecary 也拒绝，反之亦然）
 - 不改 stage（保持 0，不建 stage 状态机）；不推进 completable/completed（具体目的地未确定）；两人问完 status 仍 in_progress
 - 铁匠对话（in_progress 且未询问）：「你把《兔子的路径》拿给铁匠辨认。」+ 按钮「向铁匠打听地图」→ 成功隐藏按钮 + 固定回复「铁匠看了看地图，摇了摇头：“这上面的路线，我认不出来。”」（不增加任何地点/道路/城市/势力 lore）
 - 药师对话：「你请药师看看《兔子的路径》上的标记。」+ 「向药师打听地图」→ 成功隐藏按钮 + 「药师仔细辨认了一会儿：“我也没见过这处标记。”」；剧情块在 greeting 之后（npcs.ts 零修改，原 greeting 保留）
 - 任务日志调查进度：第四任务 in_progress 时显示「地图线索调查：X / 2」（严格从 QuestState flags 读取，0/2→1/2→2/2）；2/2 额外显示「你已经向铁匠和药师打听过，但仍无法确认地图指向的具体地点。/下一步目的地：【待补充】」（本卡结尾，不虚构下一地区）
 - 无任何奖励（金币/等级/HP/MP/关系/物品/world.flags/completedEvents 全 +0）；不建立/修改 npcState（铁匠/药师关系零变化）；不依赖职业/属性/D20/随机判定；兔子的路径仍 ×1；无新移动入口（可前往按钮保持 村外草原/废弃矿洞）
 - schema 不变、SAVE_VERSION=1；quests.ts/npcs.ts/locations.ts/items.ts/enemies.ts/App.tsx/CombatPage.tsx/types/storage/rules/content 零修改；git diff 仅 gameStore.ts + gameStore.test.ts + GamePage.tsx + qa/e2e.mjs + README
-- Store 单测 20 项 A-R：A 无 gameState false/B 第四任务不存在 false 全不变/C available false/D completed/completable false/E 不在青石村 false/F 非法 npcId（运行时强转 innkeeper）false 全不变/G 首次问铁匠 true+asked_blacksmith true/H 首次问药师 true+asked_apothecary true/I 铁匠重复 false 同一引用不变/J 药师重复 false 同一引用不变/K flag=false 可改 true/L+M 非 boolean 异常 flag（"yes"/1）拒绝且原样保留/N 问完一人 status 仍 in_progress+stage 仍 0/O 两人问完两 flag true+status 仍 in_progress+stage 仍 0/P rabbit_path 仍 ×1/Q player/inventory/equipment/world/其他 quests 全不变+不建 npcState（blacksmith/apothecary 均 undefined）+reported 保持/R 不自动保存
+- Store 单测 22 项 A-R+R1-a/b：A 无 gameState false/B 第四任务不存在 false 全不变/C available false/D completed/completable false/E 不在青石村 false/F 非法 npcId（运行时强转 innkeeper）false 全不变/G 首次问铁匠 true+asked_blacksmith true/H 首次问药师 true+asked_apothecary true/I 铁匠重复 false 同一引用不变/J 药师重复 false 同一引用不变/K flag=false 可改 true/L+M 非 boolean 异常 flag（"yes"/1）拒绝且原样保留/N 问完一人 status 仍 in_progress+stage 仍 0/O 两人问完两 flag true+status 仍 in_progress+stage 仍 0/P rabbit_path 仍 ×1/Q player/inventory/equipment/world/其他 quests 全不变+不建 npcState（blacksmith/apothecary 均 undefined）+reported 保持/R 不自动保存 + R1-a asked_blacksmith="yes" 咨询 apothecary false 同一引用不变两 flag 原样/R1-b asked_apothecary=1 咨询 blacksmith false 同一引用不变两 flag 原样
 - 27 项 E2E（直接继续 P1-017 第四任务 in_progress 档：A Continue 后进行中+地图线索调查 0/2/B 铁匠打听入口 enabled→点击→固定回复+按钮消失+1/2/C 仍进行中+无提交任务按钮/D 药师打听入口→点击→固定回复+按钮消失/E 2/2+调查结果固定文案+【待补充】+仍进行中/F 调查前后 Lv/HP/MP/金币/地图数精确相等+村长信任 1 尊敬 0 不变/G 可前往按钮精确等于 [废弃矿洞, 村外草原]/H Save/Continue 后 2/2 保持+重开铁匠/药师显示已询问回复且无打听按钮）
 
 ## 目录结构

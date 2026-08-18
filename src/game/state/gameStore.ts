@@ -898,9 +898,15 @@ export const useGameStore = create<GameStoreState>()((set) => ({
       // 非法 npcId（运行时强转）拒绝
       if (npcId !== 'blacksmith' && npcId !== 'apothecary') return {}
       const flagKey = npcId === 'blacksmith' ? 'asked_blacksmith' : 'asked_apothecary'
-      const existing = quest.flags[flagKey]
-      // 已询问（true）重复拒绝；已存在但非 boolean 的异常旧值拒绝（不静默覆盖）
-      if (existing === true || (existing !== undefined && typeof existing !== 'boolean')) return {}
+      // TM-P1-018-R1：写任何调查 flag 前同时验证两个相关 flag——各自只允许 undefined/false/true；任一个为非 boolean 已存在值（"yes"/1/0.5 等）整次拒绝且完全不变（不静默覆盖）
+      const blacksmithFlag = quest.flags.asked_blacksmith
+      const apothecaryFlag = quest.flags.asked_apothecary
+      const malformed =
+        (blacksmithFlag !== undefined && typeof blacksmithFlag !== 'boolean') ||
+        (apothecaryFlag !== undefined && typeof apothecaryFlag !== 'boolean')
+      if (malformed) return {}
+      // 当前 NPC 已询问（true）重复拒绝
+      if (quest.flags[flagKey] === true) return {}
       changed = true
       // TM-P1-018：成功只写该任务 QuestState.flags.asked_{npcId}=true（其他状态完全不变；不建 npcState/不改 stage/不推进 completable/无奖励/不自动保存）
       const nextQuests = [...s.gameState.quests]
