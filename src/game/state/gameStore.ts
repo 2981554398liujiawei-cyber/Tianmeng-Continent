@@ -366,6 +366,11 @@ export const useGameStore = create<GameStoreState>()((set) => ({
       const location = getLocation(s.gameState.world.currentLocationId)
       if (!location) return {}
       if (!location.enemyIds?.includes(enemyId)) return {}
+      // TM-P1-014：嘟嘟兔一次性 Boss 清场（最终防线）——兔王巢穴且背包已有《兔子的路径》时，重复/伪造胜利拒绝（false 且 GameState 完全不变，不置 ok）
+      if (enemyId === 'dudu_rabbit' && location.id === 'rabbit_lair') {
+        const hasPath = s.gameState.inventory.some((e) => e.itemId === 'rabbit_path')
+        if (hasPath) return {}
+      }
       ok = true
       // 《村外异动》任务推进：村外草原击败魔化兔 → completable（复用封板状态机）
       if (enemyId === 'corrupted_rabbit' && location.id === 'village_grassland') {

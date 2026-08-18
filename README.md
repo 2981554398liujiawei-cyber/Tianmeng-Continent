@@ -366,6 +366,14 @@ TM-P1-013（《兔子的路径》正式查看与后续线索占位——Boss 战
 - 12 个 Store 单测（A 无 gameState false/B 无 rabbit_path false 全不变/C quantity=0 false/D quantity=-1 false/E quantity=1.5 false/F 合法 ×1+flag 不存在 → true+examined=true/G 成功后仍 ×1/H 成功只改 flags.rabbit_path_examined 其余全不变/I flag=false → true 成功/J flag=true 重复 false 全不变/K flag 为字符串/数字 false 全不变/L 不自动保存）+ 11 项 E2E（A Boss 战前无展开地图且无具体地点占位/B 获得地图后展开地图 enabled 且未查看前不显示【待补充】/C 点击展开地图后显示固定文案+【待补充】+按钮消失+兔子的路径仍 ×1/D 查看前后等级/生命/灵力/金币/位置全不变/E Save/Continue 后已查看文案保持+无展开地图按钮）
 - TM-P1-013-R1（补齐异常 quantity 与当前位置 QA 证据）：非法 quantity 单测不再用 addItem（其入参拦截使 0/-1/1.5 根本进不了 inventory，属假覆盖）——改为 useGameStore.setState 直接构造真实 inventory 异常运行态，it.each 覆盖 quantity=0/-1/1.5/NaN/Infinity 五项，每项断言 inspectRabbitPath()===false 且 gameState **同一引用**不变（不依赖 JSON.stringify，避免 NaN/Infinity 转换失真）、examined 未写成 true、异常值原样存在；E2E「位置不变」不再用 body.includes('兔王巢穴') 模糊文本——新增从「当前位置」区域确定性读取 location.id（rabbit_lair），断言查看前 ==='rabbit_lair'、查看后与查看前完全相等；仅 gameStore.test.ts + qa/e2e.mjs 修改（正式玩法代码零修改）
 
+TM-P1-014（嘟嘟兔一次性 Boss 清场——Boss 生命周期闭环）：
+- **清场证据复用既有唯一战利品**：`gameState.inventory.some(e => e.itemId === 'rabbit_path')`（不新增 dudu_rabbit_defeated flag/completedEvent/BossState/DefeatedEnemies；未建通用 Boss 生命周期系统）
+- Store 最终防线：resolveCombatVictory 在置 ok=true 之前检查——enemyId==='dudu_rabbit' 且 location.id==='rabbit_lair' 且背包已有 rabbit_path → **false 且 GameState 完全不变**（重复/伪造胜利拒绝；旧行为「第二次胜利 true」已改）；首次胜利行为完全保留（true + rabbit_path ×1，嘟嘟兔数据/地图定义/战斗数值零修改）
+- App 正式入口双守：handleEngage 对 enemyId==='dudu_rabbit' 且背包已有 rabbit_path → return（即使 UI 出错也不进 CombatPage）
+- GamePage：先计算「实际可见」敌人列表（魔化狼仅《草原狼影》in_progress 可见的 P1-010 门控 + 嘟嘟兔持图清场不可见），**可见敌人为空时整个「附近威胁」section 不渲染**（兔王巢穴只配嘟嘟兔 + 清场后无空面板；不再用 map 回调 return null 留空区）；魔化兔永久正常；rabbit_lair 地点不锁（仍可进入/返回巢穴查看地图线索）
+- 《兔子的路径》查看流程零回归：清场后巢穴仍显示 新的线索/兔子的路径 ×1/已查看文案【待补充】；无新 flag/event/schema；SAVE_VERSION=1；types/storage/items/enemies/locations/quests/combat/character 零修改；git diff 仅 gameStore.ts + gameStore.test.ts + GamePage.tsx + App.tsx + qa/e2e.mjs + README
+- Store 单测（P0-012 describe 语义更新，仍 6 组）：A 首次 true + rabbit_path ×1/B 第二次 resolveCombatVictory false 且 GameState 同一引用不变、仍只 ×1（正式流程先真胜一次再验拒绝）/C 预先已有地图伪造胜利 false 全不变/D 错误地点 false 全不变/E 首次 Boss 无额外副作用（player/equipment/quests/world 全不变）/F 不自动保存 + 10 项 E2E（B 清场后当前地点仍 rabbit_lair+整个附近威胁 section 不存在（精确检查威胁区，非 !body.includes('嘟嘟兔')）/C 离开再返回巢穴威胁区仍不存在+兔子的路径仍 ×1+新的线索仍显示+地图查看状态保持（无展开地图）/D Save/Continue 后重进巢穴嘟嘟兔仍不出现+威胁区 section 仍不存在+查看状态保持+地图仍 ×1）
+
 ## 目录结构
 
 ```

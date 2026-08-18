@@ -42,6 +42,11 @@ export default function App() {
       const wolfQuest = state.quests.find((q) => q.questId === 'quest_grassland_wolf')
       if (wolfQuest?.status !== 'in_progress') return
     }
+    // TM-P1-014：嘟嘟兔一次性 Boss——已有《兔子的路径》时正式入口拒绝再开 Boss 战（即使 UI 出错也不进 CombatPage）
+    if (enemyId === 'dudu_rabbit') {
+      const hasPath = state.inventory.some((e) => e.itemId === 'rabbit_path')
+      if (hasPath) return
+    }
     setCombatEnemyId(enemyId)
     setScreen('combat')
   }

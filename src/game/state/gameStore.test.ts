@@ -745,21 +745,27 @@ describe('TM-P0-012：击败嘟嘟兔获得唯一《兔子的路径》', () => {
     expect(pathQty()).toBe(1)
   })
 
-  it('B. 重复 Boss 胜利不复制：再次击败仍 ×1 且仅一条 entry', () => {
-    useGameStore.setState({
-      gameState: {
-        ...useGameStore.getState().gameState!,
-        inventory: [...useGameStore.getState().gameState!.inventory, { itemId: 'rabbit_path', quantity: 1 }],
-        world: { ...useGameStore.getState().gameState!.world, currentLocationId: 'rabbit_lair' },
-      },
-    })
+  it('B. 第二次 Boss 胜利拒绝（TM-P1-014 清场）：首次 true → 再次 resolveCombatVictory false 且 GameState 完全不变、rabbit_path 仍只有 ×1', () => {
+    // 首次：正式流程到兔王巢穴击败嘟嘟兔
+    useGameStore.getState().discoverQuest('quest_village_monsters')
+    useGameStore.getState().acceptQuest('quest_village_monsters')
+    useGameStore.getState().travelToLocation('village_grassland')
+    useGameStore.getState().resolveCombatVictory('corrupted_rabbit')
+    useGameStore.getState().travelToLocation('qingshi_village')
+    useGameStore.getState().completeQuest('quest_village_monsters')
+    useGameStore.getState().travelToLocation('village_grassland')
+    expect(atRabbitLair()).toBe(true)
     expect(useGameStore.getState().resolveCombatVictory('dudu_rabbit')).toBe(true)
-    expect(useGameStore.getState().resolveCombatVictory('dudu_rabbit')).toBe(true)
+    expect(pathQty()).toBe(1)
+    // 第二次（重复胜利）：最终防线拒绝
+    const before = useGameStore.getState().gameState
+    expect(useGameStore.getState().resolveCombatVictory('dudu_rabbit')).toBe(false)
+    expect(useGameStore.getState().gameState).toBe(before)
     expect(hasPath()).toHaveLength(1)
     expect(pathQty()).toBe(1)
   })
 
-  it('C. 预先已有 ×1：Boss 胜利后保持 ×1', () => {
+  it('C. 预先已有地图时伪造 Boss 胜利拒绝（TM-P1-014）：rabbit_lair + rabbit_path ×1 → false 且 GameState 完全不变', () => {
     useGameStore.setState({
       gameState: {
         ...useGameStore.getState().gameState!,
@@ -767,7 +773,9 @@ describe('TM-P0-012：击败嘟嘟兔获得唯一《兔子的路径》', () => {
         world: { ...useGameStore.getState().gameState!.world, currentLocationId: 'rabbit_lair' },
       },
     })
-    expect(useGameStore.getState().resolveCombatVictory('dudu_rabbit')).toBe(true)
+    const before = useGameStore.getState().gameState
+    expect(useGameStore.getState().resolveCombatVictory('dudu_rabbit')).toBe(false)
+    expect(useGameStore.getState().gameState).toBe(before)
     expect(pathQty()).toBe(1)
   })
 

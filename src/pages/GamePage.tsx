@@ -494,41 +494,55 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
       )}
 
       {/* TM-P0-017：附近威胁 —— 仅当前地点配置了敌人时显示（青石村等无敌人地点整个区域隐藏） */}
-      {(location?.enemyIds?.length ?? 0) > 0 && (
-        <section className="rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
-          <h3 className="mb-3 text-sm font-bold tracking-wider text-bone-500">附近威胁</h3>
-          <div className="flex flex-col gap-3">
-            {location!.enemyIds!.map((enemyId) => {
-              const threat = getEnemy(enemyId)
-              if (!threat) return null
-              // TM-P1-010：魔化狼只在《草原狼影》进行中时可见（undiscovered/available/completable/completed/failed 均隐藏；魔化兔不受影响）
-              if (enemyId === 'corrupted_wolf') {
-                const wolfQuest = gameState.quests.find((q) => q.questId === 'quest_grassland_wolf')
-                if (wolfQuest?.status !== 'in_progress') return null
-              }
-              const cannotFight = player.hp <= 0
-              return (
-                <div key={enemyId} className="rounded border border-ink-600 bg-ink-900/40 p-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="font-bold text-bone-100">
-                        {threat.name} <span className="text-xs font-normal text-bone-500">· Lv.{threat.level}</span>
-                      </p>
-                      <p className="mt-1 text-xs text-bone-500">
-                        HP {threat.maxHp} · 防御 {threat.defense}
-                      </p>
+      {(() => {
+        const configuredEnemies = location?.enemyIds ?? []
+        if (configuredEnemies.length === 0) return null
+        // TM-P1-010/P1-014：先计算「实际可见」敌人（魔化狼仅任务 in_progress 可见；嘟嘟兔持有《兔子的路径》后清场不可见），
+        // 可见敌人为空时整个「附近威胁」区域不渲染（避免兔王巢穴嘟嘟兔清场后残留空面板）
+        const visibleEnemies = configuredEnemies
+          .map((enemyId) => getEnemy(enemyId))
+          .filter((threat): threat is NonNullable<typeof threat> => {
+            if (!threat) return false
+            if (threat.id === 'corrupted_wolf') {
+              const wolfQuest = gameState.quests.find((q) => q.questId === 'quest_grassland_wolf')
+              if (wolfQuest?.status !== 'in_progress') return false
+            }
+            if (threat.id === 'dudu_rabbit') {
+              const hasPath = gameState.inventory.some((e) => e.itemId === 'rabbit_path')
+              if (hasPath) return false
+            }
+            return true
+          })
+        if (visibleEnemies.length === 0) return null
+        return (
+          <section className="rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
+            <h3 className="mb-3 text-sm font-bold tracking-wider text-bone-500">附近威胁</h3>
+            <div className="flex flex-col gap-3">
+              {visibleEnemies.map((threat) => {
+                const cannotFight = player.hp <= 0
+                return (
+                  <div key={threat.id} className="rounded border border-ink-600 bg-ink-900/40 p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="font-bold text-bone-100">
+                          {threat.name} <span className="text-xs font-normal text-bone-500">· Lv.{threat.level}</span>
+                        </p>
+                        <p className="mt-1 text-xs text-bone-500">
+                          HP {threat.maxHp} · 防御 {threat.defense}
+                        </p>
+                      </div>
+                      <Button variant="primary" disabled={cannotFight} onClick={() => onEngage(threat.id)}>
+                        迎战
+                      </Button>
                     </div>
-                    <Button variant="primary" disabled={cannotFight} onClick={() => onEngage(threat.id)}>
-                      迎战
-                    </Button>
+                    {cannotFight && <p className="mt-2 text-xs text-red-300">当前状态无法战斗</p>}
                   </div>
-                  {cannotFight && <p className="mt-2 text-xs text-red-300">当前状态无法战斗</p>}
-                </div>
-              )
-            })}
-          </div>
-        </section>
-      )}
+                )
+              })}
+            </div>
+          </section>
+        )
+      })()}
 
       {/* TM-P0-016：废弃矿洞调查 —— 仅废弃矿洞显示；DC 来自 CHECK_DC.moderate，不复制常量 */}
       {world.currentLocationId === 'abandoned_mine' && (

@@ -532,6 +532,30 @@ try {
       beforePathMp !== null && afterPathMp !== null && beforePathMp[1] === afterPathMp[1] && beforePathMp[2] === afterPathMp[2] &&
       beforePathGold !== null && afterPathGold !== null && beforePathGold[1] === afterPathGold[1],
   )
+
+  // TM-P1-014：嘟嘟兔一次性 Boss 清场
+  // B. Boss 胜利返回冒险后：当前地点仍 rabbit_lair；整个「附近威胁」section 不存在（精确检查，非 !body.includes('嘟嘟兔')）
+  check('P1-014-B: 清场后当前地点仍 rabbit_lair', afterPathLocationId === 'rabbit_lair')
+  const lairThreatsAfterClear = await page.evaluate(() => {
+    const heading = [...document.querySelectorAll('h3')].find((h) => h.textContent.includes('附近威胁'))
+    if (!heading) return null // 威胁区整体不渲染
+    const section = heading.closest('section')
+    const text = section ? section.textContent : ''
+    return { hasDudu: text.includes('嘟嘟兔'), hasEngage: text.includes('迎战') }
+  })
+  check('P1-014-B: 清场后兔王巢穴整个附近威胁 section 不存在', lairThreatsAfterClear === null)
+  await clickByText('村外草原')
+  // C. 离开再返回：Boss 不重生；地图与查看状态保持
+  await clickByText('兔王巢穴')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-014-C: 重进巢穴后附近威胁 section 仍不存在', (await page.evaluate(() => {
+    const heading = [...document.querySelectorAll('h3')].find((h) => h.textContent.includes('附近威胁'))
+    return heading === undefined || heading === null
+  })) === true)
+  check('P1-014-C: 重进巢穴后兔子的路径仍 ×1', body.includes('兔子的路径 ×1'))
+  check('P1-014-C: 重进巢穴后新的线索仍显示', body.includes('新的线索'))
+  check('P1-014-C: 重进巢穴后地图查看状态保持（无展开地图按钮）', !body.includes('展开地图'))
   await clickByText('村外草原')
   await clickByText('保存游戏')
   await clickByText('返回主菜单')
@@ -544,6 +568,22 @@ try {
   // TM-P1-013-E：Save/Continue 保持查看状态（rabbit_path_examined 经 world.flags 自然持久化）
   check('P1-013-E: Continue 后已查看文案保持', body.includes('地图上的路线最终指向黄金兔子王所在之地。') && body.includes('具体地点：【待补充】'))
   check('P1-013-E: Continue 后无展开地图按钮', !body.includes('展开地图'))
+  // TM-P1-014-D：Save/Continue 后 Boss 不重生——重进巢穴威胁区仍不存在，查看状态继续保持
+  await clickByText('兔王巢穴')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-014-D: Continue 后重进巢穴嘟嘟兔仍不出现', !body.includes('嘟嘟兔'))
+  const lairThreatsAfterContinue = await page.evaluate(() => {
+    const heading = [...document.querySelectorAll('h3')].find((h) => h.textContent.includes('附近威胁'))
+    if (!heading) return null
+    const section = heading.closest('section')
+    const text = section ? section.textContent : ''
+    return { hasDudu: text.includes('嘟嘟兔'), hasEngage: text.includes('迎战') }
+  })
+  check('P1-014-D: Continue 后重进巢穴附近威胁 section 仍不存在', lairThreatsAfterContinue === null)
+  check('P1-014-D: Continue 后巢穴地图查看状态保持（无展开地图）', !body.includes('展开地图'))
+  check('P1-014-D: Continue 后兔子的路径仍 ×1', body.includes('兔子的路径 ×1'))
+  await clickByText('村外草原')
   await clickByText('青石村')
 
   await clickByText('返回主菜单')
