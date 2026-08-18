@@ -289,6 +289,7 @@ TM-P1-004（村长关系值驱动后续对话反应——NPC 对玩家选择产�
 - 关系数值继续显示 信任：N　尊敬：N（reassure→信任：2 尊敬：0；resolve→信任：1 尊敬：1），未隐藏关系反馈；铁匠/药师零关系 UI 与零反应扩张
 - 未新增选择历史字段（choiceHistory/selectedChoice/dialogueBranch/lastDialogue/dialogueReaction/choiceType/relationshipBranch）、未新增事件 ID（..._reassure/..._resolve）、未新增持久状态；GameState/WorldState/NpcState/NpcRelationship/QuestState schema 不变、SAVE_VERSION 仍 1；未实现 DialogueTree/RelationshipEngine
 - 无新增单测（Store 零修改，387 保持）；15 项 E2E（resolve 路径：未回应仍原 greeting→点击后立即切换尊敬反应文案+旧 greeting 消失+信任：1 尊敬：1+按钮消失→重新交谈保持→Save Continue 后仍保持；reassure 路径：点击后立即切换信任反应文案+信任：2 尊敬：0+按钮消失→重新交谈保持；铁匠无关系反应扩张；全部走正式 UI 未注入状态）
+- TM-P1-004-R1（异常关系整体回退）：elderReaction 读取 trust/respect 后先整体校验——**任一维度非 finite → 直接 null**（不因另一维度合法而进入该维度文案、不修复非法值、不猜测分支）；随后才按确定性顺序 respect>=1（尊敬反应）优先、否则 trust>=2（信任反应）；正常路径零回归（trust1/respect1→尊敬文案、trust2/respect0→信任文案、trust2/respect1→尊敬优先、trust1/respect0→原 greeting）；仅 GamePage.tsx 修复，gameStore.ts 仍零修改、无新持久状态/事件 ID、GameState/NpcState schema 不变、SAVE_VERSION 仍 1
 
 ## 目录结构
 

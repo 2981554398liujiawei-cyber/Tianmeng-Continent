@@ -120,8 +120,11 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
     if (!elderState) return null
     const respect = elderState.relationship.respect
     const trust = elderState.relationship.trust
-    if (Number.isFinite(respect) && respect >= 1) return 'respect'
-    if (Number.isFinite(trust) && trust >= 2) return 'trust'
+    // TM-P1-004-R1：任一关系维度非 finite → 整体回退（不因另一维度合法而猜测分支、不修复非法值）
+    if (!Number.isFinite(respect) || !Number.isFinite(trust)) return null
+    // 确定性顺序：respect>=1（尊敬反应）优先，否则 trust>=2（信任反应）
+    if (respect >= 1) return 'respect'
+    if (trust >= 2) return 'trust'
     return null
   })()
 
