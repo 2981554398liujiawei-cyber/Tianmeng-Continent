@@ -47,8 +47,8 @@ describe('TM-P0-002：内容注册表交叉引用一致性', () => {
 })
 
 describe('TM-P0-002：内容数量与指定条目', () => {
-  it('地点 7 个：青石村/村外草原/废弃矿洞/兔王巢穴/天龙城/武馆/黑石塔一层', () => {
-    expect(Object.keys(LOCATIONS)).toHaveLength(7)
+  it('地点 8 个：青石村/村外草原/废弃矿洞/兔王巢穴/天龙城/武馆/黑石塔一层/黑石塔二层', () => {
+    expect(Object.keys(LOCATIONS)).toHaveLength(8)
     expect(getLocation('qingshi_village')?.name).toBe('青石村')
     expect(getLocation('village_grassland')?.name).toBe('村外草原')
     expect(getLocation('abandoned_mine')?.name).toBe('废弃矿洞')
@@ -56,6 +56,7 @@ describe('TM-P0-002：内容数量与指定条目', () => {
     expect(getLocation('tianlong_city')?.name).toBe('天龙城')
     expect(getLocation('tianlong_martial_hall')?.name).toBe('武馆')
     expect(getLocation('black_stone_tower_floor1')?.name).toBe('黑石塔一层')
+    expect(getLocation('black_stone_tower_floor2')?.name).toBe('黑石塔二层')
   })
 
   // TM-P1-023：天龙城落点锁定——本卡只做区域切换与落点；TM-P1-024 起 connections=['tianlong_martial_hall']（双向武馆）、enemyIds=[]（无假内容）
@@ -81,21 +82,35 @@ describe('TM-P0-002：内容数量与指定条目', () => {
     expect(getLocation('tianlong_city')?.connections).toContain('tianlong_martial_hall')
   })
 
-  // TM-P1-025/P1-026：黑石塔一层（第二地区第一段地牢——解锁路线+骷髅士兵+骷髅队长 Boss；未解锁时按钮 disabled 复用 requiredFlag）
-  it('TM-P1-025/P1-026：黑石塔一层注册表定义锁定（id/name/requiredFlag/connections/enemyIds）', () => {
+  // TM-P1-025/P1-026/P1-027：黑石塔一层（第二地区第一段地牢——解锁路线+骷髅士兵+骷髅队长 Boss；P1-027 起 connections 含黑石塔二层；未解锁时按钮 disabled 复用 requiredFlag）
+  it('TM-P1-025/P1-026/P1-027：黑石塔一层注册表定义锁定（id/name/requiredFlag/connections/enemyIds）', () => {
     const tower = getLocation('black_stone_tower_floor1')
     expect(tower).toBeDefined()
     expect(tower?.id).toBe('black_stone_tower_floor1')
     expect(tower?.name).toBe('黑石塔一层')
     expect(tower?.requiredFlag).toBe('black_stone_tower_unlocked')
-    expect(tower?.connections).toEqual(['tianlong_city'])
+    // TM-P1-027：一层连接精确包含天龙城与黑石塔二层（二层未解锁时移动按钮 disabled）
+    expect(tower?.connections).toEqual(['tianlong_city', 'black_stone_tower_floor2'])
     expect(tower?.enemyIds).toEqual(['skeleton_soldier', 'skeleton_captain'])
     // 天龙城正式连接包含黑石塔一层（未解锁时移动按钮 disabled）
     expect(getLocation('tianlong_city')?.connections).toEqual(['tianlong_martial_hall', 'black_stone_tower_floor1'])
-    // 不建独立入口节点/城外道路/黑石塔二层（本卡不创建二层 Location）
+    // 不建独立入口节点/城外道路
     expect(getLocation('black_stone_tower_entrance')).toBeUndefined()
     expect(getLocation('black_stone_tower_outskirts')).toBeUndefined()
-    expect(getLocation('black_stone_tower_floor2')).toBeUndefined()
+  })
+
+  // TM-P1-027：黑石塔二层（入口固定顺序战斗：僵尸→黑法师；二层深处与三层本卡不开放；未解锁时按钮 disabled 复用 requiredFlag）
+  it('TM-P1-027：黑石塔二层注册表定义锁定（id/name/description/requiredFlag/connections/enemyIds）', () => {
+    const floor2 = getLocation('black_stone_tower_floor2')
+    expect(floor2).toBeDefined()
+    expect(floor2?.id).toBe('black_stone_tower_floor2')
+    expect(floor2?.name).toBe('黑石塔二层')
+    expect(floor2?.description).toContain('曲折的黑石通道向深处延伸')
+    expect(floor2?.requiredFlag).toBe('black_stone_tower_floor2_unlocked')
+    expect(floor2?.connections).toEqual(['black_stone_tower_floor1'])
+    expect(floor2?.enemyIds).toEqual(['tower_zombie', 'black_mage'])
+    // 二层连接一层；本卡不建三层
+    expect(getLocation('black_stone_tower_floor3')).toBeUndefined()
   })
 
   it('连接关系符合设定', () => {
@@ -117,14 +132,16 @@ describe('TM-P0-002：内容数量与指定条目', () => {
     expect(getNpc('merchant_wangcai')?.locationId).toBe('tianlong_city')
   })
 
-  it('敌人 6 个且等级符合设定', () => {
-    expect(Object.keys(ENEMIES)).toHaveLength(6)
+  it('敌人 8 个且等级符合设定', () => {
+    expect(Object.keys(ENEMIES)).toHaveLength(8)
     expect(getEnemy('corrupted_rabbit')?.level).toBe(1)
     expect(getEnemy('corrupted_rat')?.level).toBe(1)
     expect(getEnemy('corrupted_wolf')?.level).toBe(2)
     expect(getEnemy('dudu_rabbit')?.level).toBe(3)
     expect(getEnemy('skeleton_soldier')?.level).toBe(3)
     expect(getEnemy('skeleton_captain')?.level).toBe(4)
+    expect(getEnemy('tower_zombie')?.level).toBe(4)
+    expect(getEnemy('black_mage')?.level).toBe(4)
   })
 
   // TM-P1-025：骷髅士兵完整锁定（普通战斗规则，无技能/状态/抗性/掉落）
@@ -153,6 +170,36 @@ describe('TM-P0-002：内容数量与指定条目', () => {
     expect(captain?.defense).toBe(13)
     expect(captain?.attackBonus).toBe(4)
     expect(captain?.damage).toBe(4)
+  })
+
+  // TM-P1-027：僵尸完整锁定（入口固定顺序第一场——普通 D20 战斗；无中毒/吸血/持续伤害/特殊恢复/掉落）
+  it('TM-P1-027：僵尸注册表定义锁定（id/name/level=4/tags/maxHp/defense/attackBonus/damage）', () => {
+    const zombie = getEnemy('tower_zombie')
+    expect(zombie).toBeDefined()
+    expect(zombie?.id).toBe('tower_zombie')
+    expect(zombie?.name).toBe('僵尸')
+    expect(zombie?.level).toBe(4)
+    expect(zombie?.description).toContain('受到魔气侵染的腐败尸体')
+    expect(zombie?.tags).toEqual(['undead'])
+    expect(zombie?.maxHp).toBe(18)
+    expect(zombie?.defense).toBe(12)
+    expect(zombie?.attackBonus).toBe(4)
+    expect(zombie?.damage).toBe(4)
+  })
+
+  // TM-P1-027：黑法师完整锁定（入口固定顺序第二场——普通战斗模型；无盲目/暗属性/黑色火球/暴躁/特殊法术 AI/掉落）
+  it('TM-P1-027：黑法师注册表定义锁定（id/name/level=4/tags/maxHp/defense/attackBonus/damage）', () => {
+    const blackMage = getEnemy('black_mage')
+    expect(blackMage).toBeDefined()
+    expect(blackMage?.id).toBe('black_mage')
+    expect(blackMage?.name).toBe('黑法师')
+    expect(blackMage?.level).toBe(4)
+    expect(blackMage?.description).toContain('生前曾是法师')
+    expect(blackMage?.tags).toEqual(['undead'])
+    expect(blackMage?.maxHp).toBe(14)
+    expect(blackMage?.defense).toBe(11)
+    expect(blackMage?.attackBonus).toBe(5)
+    expect(blackMage?.damage).toBe(4)
   })
 
   it('任务 quest_village_monsters 由村长发布', () => {
@@ -232,12 +279,13 @@ describe('TM-P0-002-R1：关键内容身份锁', () => {
     expect(desc).not.toContain('迁徙')
   })
 
-  it('注册表数量与 ID 未被改动（无新增黄金兔子王条目；TM-P1-005 新增《矿洞清理》、TM-P1-010 新增《草原狼影》、TM-P1-017 新增《追寻黄金兔子王》、TM-P1-021 新增《采药受阻》、TM-P1-022 新增《矿洞余患》、TM-P1-024 新增《商人王财的麻烦》与马科/王财、TM-P1-025 新增骷髅士兵、TM-P1-026 新增骷髅队长）', () => {
-    expect(Object.keys(ENEMIES)).toHaveLength(6)
+  it('注册表数量与 ID 未被改动（无新增黄金兔子王条目；TM-P1-005 新增《矿洞清理》、TM-P1-010 新增《草原狼影》、TM-P1-017 新增《追寻黄金兔子王》、TM-P1-021 新增《采药受阻》、TM-P1-022 新增《矿洞余患》、TM-P1-024 新增《商人王财的麻烦》与马科/王财、TM-P1-025 新增骷髅士兵、TM-P1-026 新增骷髅队长、TM-P1-027 新增僵尸/黑法师与黑石塔二层）', () => {
+    expect(Object.keys(ENEMIES)).toHaveLength(8)
     expect(Object.keys(NPCS)).toHaveLength(5)
     expect(Object.keys(QUESTS)).toHaveLength(7)
     expect(Object.keys(ITEMS)).toHaveLength(5)
     expect(getEnemy('golden_rabbit_king')).toBeUndefined()
+    expect(getEnemy('skeleton_warrior')).toBeUndefined()
     expect(getEnemy('skeleton_witch')).toBeUndefined()
   })
 

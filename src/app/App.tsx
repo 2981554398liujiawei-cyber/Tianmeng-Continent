@@ -82,6 +82,45 @@ export default function App() {
         return
       }
     }
+    // TM-P1-027：二层僵尸正式战斗入口硬守——黑石塔二层 + 第五主线 in_progress/stage 0 + briefed===true + unlocked===true + floor2_unlocked===true + soldier===true + captain===true + floor2_zombie_defeated 非 true（true/非 boolean 拒绝）
+    if (enemyId === 'tower_zombie') {
+      const towerQuest = state.quests.find((q) => q.questId === 'quest_wangcai_trouble')
+      const zombieFlag = towerQuest?.flags.floor2_zombie_defeated
+      const zombieOk = zombieFlag !== true && (typeof zombieFlag === 'undefined' || typeof zombieFlag === 'boolean')
+      if (
+        state.world.currentLocationId !== 'black_stone_tower_floor2' ||
+        towerQuest?.status !== 'in_progress' ||
+        towerQuest?.stage !== 0 ||
+        towerQuest?.flags.wangcai_briefed !== true ||
+        state.world.flags.black_stone_tower_unlocked !== true ||
+        state.world.flags.black_stone_tower_floor2_unlocked !== true ||
+        towerQuest?.flags.floor1_soldier_defeated !== true ||
+        towerQuest?.flags.floor1_captain_defeated !== true ||
+        !zombieOk
+      ) {
+        return
+      }
+    }
+    // TM-P1-027：二层黑法师正式战斗入口硬守——额外要求 floor2_zombie_defeated===true（僵尸未击败不得提前 engage 黑法师）+ floor2_black_mage_defeated 非 true
+    if (enemyId === 'black_mage') {
+      const towerQuest = state.quests.find((q) => q.questId === 'quest_wangcai_trouble')
+      const mageFlag = towerQuest?.flags.floor2_black_mage_defeated
+      const mageOk = mageFlag !== true && (typeof mageFlag === 'undefined' || typeof mageFlag === 'boolean')
+      if (
+        state.world.currentLocationId !== 'black_stone_tower_floor2' ||
+        towerQuest?.status !== 'in_progress' ||
+        towerQuest?.stage !== 0 ||
+        towerQuest?.flags.wangcai_briefed !== true ||
+        state.world.flags.black_stone_tower_unlocked !== true ||
+        state.world.flags.black_stone_tower_floor2_unlocked !== true ||
+        towerQuest?.flags.floor1_soldier_defeated !== true ||
+        towerQuest?.flags.floor1_captain_defeated !== true ||
+        towerQuest?.flags.floor2_zombie_defeated !== true ||
+        !mageOk
+      ) {
+        return
+      }
+    }
     setCombatEnemyId(enemyId)
     setScreen('combat')
   }

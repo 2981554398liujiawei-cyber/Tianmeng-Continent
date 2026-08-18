@@ -3026,9 +3026,13 @@ try {
     if (!label) return []
     const container = label.parentElement
     if (!container) return []
-    return [...container.querySelectorAll('button')].map((b) => b.textContent.trim())
+    return [...container.querySelectorAll('button')].map((b) => ({ text: b.textContent.trim(), disabled: b.disabled }))
   })
-  check('P1-025-C: 一层可前往按钮精确 [天龙城]', JSON.stringify(floor1Travel) === JSON.stringify(['天龙城']))
+  // P1-027 到期调整：一层 connections 增加黑石塔二层——按钮含天龙城 + 黑石塔二层（disabled，未解锁）
+  check(
+    'P1-025-C: 一层可前往按钮含天龙城 + 黑石塔二层（disabled）',
+    floor1Travel.some((b) => b.text === '天龙城' && !b.disabled) && floor1Travel.some((b) => b.text === '黑石塔二层' && b.disabled),
+  )
   // D. 第一场地牢战斗（确定性击败骷髅士兵 Lv.3）
   check('P1-025-D: 附近威胁骷髅士兵', body.includes('附近威胁') && body.includes('骷髅士兵') && body.includes('Lv.3'))
   const towerBeforeLevel = body.match(/Lv\.(\d+)/)
@@ -3294,9 +3298,15 @@ try {
     if (!label) return []
     const container = label.parentElement
     if (!container) return []
-    return [...container.querySelectorAll('button')].map((b) => b.textContent.trim())
+    return [...container.querySelectorAll('button')].map((b) => ({ text: b.textContent.trim(), disabled: b.disabled }))
   })
-  check('P1-026-H: 一层移动按钮精确 [天龙城] 无二层', JSON.stringify(captainFloor1Travel) === JSON.stringify(['天龙城']))
+  // P1-027 到期调整：一层 connections 增加黑石塔二层——按钮含天龙城 + 黑石塔二层（未解锁 disabled；无三层）
+  check(
+    'P1-026-H: 一层移动按钮含天龙城 + 黑石塔二层（disabled，未解锁）无三层',
+    captainFloor1Travel.some((b) => b.text === '天龙城') &&
+      captainFloor1Travel.some((b) => b.text === '黑石塔二层' && b.disabled) &&
+      !captainFloor1Travel.some((b) => b.text.includes('黑石塔三层')),
+  )
   // I. Save/Continue
   await clickByText('保存游戏')
   await clickByText('返回主菜单')
@@ -3320,6 +3330,191 @@ try {
   check('P1-026-I: 无附近威胁', !body.includes('附近威胁') && !body.includes('迎战'))
   check('P1-026-I: 黄金兔子主线仍进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
   check('P1-026-I: 兔子的路径 ×1', body.includes('兔子的路径 ×1'))
+  await clickByText('返回主菜单')
+
+  // TM-P1-027：黑石塔二层——武馆休整、僵尸与黑法师（直接继续 P1-026 Save/Continue 后的黑石塔一层清场档）
+  // A. Continue：黑石塔一层 + 士兵/队长均已击败 + 无附近威胁 + 一层移动按钮含黑石塔二层（disabled）
+  await clickByText('继续游戏')
+  await sleep(300)
+  body = await bodyText()
+  const floor2StartLoc = await page.evaluate(() => {
+    const label = [...document.querySelectorAll('p')].find((el) => el.textContent.trim() === '当前位置')
+    if (!label) return null
+    const section = label.closest('section')
+    if (!section) return null
+    const idEl = [...section.querySelectorAll('p')].find((el) => /^[a-z0-9_]+$/.test(el.textContent.trim()))
+    return idEl ? idEl.textContent.trim() : null
+  })
+  check('P1-027-A: Continue 后当前位置 = black_stone_tower_floor1', floor2StartLoc === 'black_stone_tower_floor1')
+  check('P1-027-A: 士兵已击败', body.includes('黑石塔一层：已击败骷髅士兵。'))
+  check('P1-027-A: 队长已击败未发现项链', body.includes('黑石塔一层：骷髅队长已击败，未发现夔峒项链。'))
+  check('P1-027-A: 当前目标继续深入黑石塔', body.includes('当前目标：继续深入黑石塔。'))
+  check('P1-027-A: 无附近威胁', !body.includes('附近威胁') && !body.includes('迎战'))
+  check('P1-027-A: 一层移动按钮含黑石塔二层（disabled）', body.includes('黑石塔二层'))
+  // B. 武馆休整（存档注入 HP=1）：备份 → 注入 → 武馆休整 → HP 满 → 保存满血档继续（不恢复旧档，避免带回 P1-026 战后残血导致二层战斗被击败）
+  const floor2SaveBackup = await page.evaluate(() => localStorage.getItem('tianmeng_continent_save'))
+  check('P1-027-B: 合法存档已备份', floor2SaveBackup !== null)
+  await page.evaluate(() => {
+    const raw = localStorage.getItem('tianmeng_continent_save')
+    if (!raw) return
+    const save = JSON.parse(raw)
+    save.gameState.player.hp = 1
+    localStorage.setItem('tianmeng_continent_save', JSON.stringify(save))
+  })
+  await page.reload()
+  await sleep(600)
+  await clickByText('继续游戏')
+  await sleep(300)
+  await clickByText('天龙城')
+  await sleep(300)
+  await clickByText('武馆')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-027-B: 武馆休整入口存在', body.includes('武馆休整'))
+  const restBeforeHp = body.match(/生命\s*(\d+)\s*\/\s*(\d+)/)
+  check('P1-027-B: 注入后 HP=1', restBeforeHp !== null && restBeforeHp[1] === '1')
+  await clickByText('休整')
+  await sleep(300)
+  body = await bodyText()
+  const restAfterHp = body.match(/生命\s*(\d+)\s*\/\s*(\d+)/)
+  check(
+    'P1-027-B: 休整后 HP=maxHp',
+    restBeforeHp !== null && restAfterHp !== null && restAfterHp[1] === restAfterHp[2] && restAfterHp[2] === restBeforeHp[2],
+  )
+  await clickByText('保存游戏')
+  await clickByText('返回主菜单')
+  // C. Continue（满血档）→ 武馆 → 天龙城 → 黑石塔一层 → 解锁二层
+  await clickByText('继续游戏')
+  await sleep(300)
+  await clickByText('天龙城')
+  await sleep(300)
+  await clickByText('黑石塔一层')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-027-C: 一层士兵/队长已击败状态保持', body.includes('黑石塔一层：已击败骷髅士兵。') && body.includes('黑石塔一层：骷髅队长已击败，未发现夔峒项链。'))
+  check('P1-027-C: 无附近威胁', !body.includes('附近威胁') && !body.includes('迎战'))
+  check('P1-027-C: 继续深入块存在', body.includes('继续深入') && body.includes('深入黑石塔二层'))
+  await clickByText('深入黑石塔二层')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-027-C: 解锁后继续深入块消失', !body.includes('深入黑石塔二层'))
+  const floor2BtnAfterUnlock = await page.evaluate(() => {
+    const label = [...document.querySelectorAll('p')].find((el) => el.textContent.trim() === '可前往：')
+    if (!label) return []
+    const container = label.parentElement
+    if (!container) return []
+    return [...container.querySelectorAll('button')].map((b) => ({ text: b.textContent.trim(), disabled: b.disabled }))
+  })
+  check(
+    'P1-027-C: 解锁后黑石塔二层按钮 enabled',
+    floor2BtnAfterUnlock.some((b) => b.text === '黑石塔二层' && !b.disabled),
+  )
+  // D. 进入二层：只看到僵尸（无黑法师）
+  await clickByText('黑石塔二层')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-027-D: 当前位置黑石塔二层', body.includes('黑石塔二层'))
+  check('P1-027-D: 只看到僵尸 Lv.4 迎战', body.includes('僵尸 · Lv.4') && body.includes('迎战'))
+  check('P1-027-D: 无黑法师卡片', !body.includes('黑法师 · Lv.4'))
+  check('P1-027-D: 二层移动按钮仅一层', body.includes('可前往'))
+  // E. 挑战僵尸（Math.random 隔离 0.99）→ 胜利 → 僵尸消失 + 黑法师出现
+  await clickByText('迎战')
+  await sleep(300)
+  await page.evaluate(() => {
+    window.__origRandom = Math.random.bind(Math)
+    Math.random = () => 0.99
+  })
+  for (let i = 0; i < 24; i += 1) {
+    const combatBody = await page.evaluate(() => document.body.innerText)
+    if (combatBody.includes('返回冒险')) break
+    if (combatBody.includes('普通攻击')) {
+      await page.evaluate(() => [...document.querySelectorAll('button')].find((b) => b.textContent.includes('普通攻击'))?.click())
+      await sleep(300)
+    } else {
+      break
+    }
+  }
+  await page.evaluate(() => {
+    Math.random = window.__origRandom
+  })
+  await clickByText('返回冒险')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-027-E: 僵尸战斗胜利返回冒险', body.includes('当前位置'))
+  check('P1-027-E: 僵尸消失', !body.includes('僵尸 · Lv.4'))
+  check('P1-027-E: 黑法师出现 Lv.4 迎战', body.includes('黑法师 · Lv.4') && body.includes('迎战'))
+  // F. 挑战黑法师 → 胜利 → 两敌均消失 + 清场剧情
+  await clickByText('迎战')
+  await sleep(300)
+  await page.evaluate(() => {
+    window.__origRandom = Math.random.bind(Math)
+    Math.random = () => 0.99
+  })
+  for (let i = 0; i < 24; i += 1) {
+    const combatBody = await page.evaluate(() => document.body.innerText)
+    if (combatBody.includes('返回冒险')) break
+    if (combatBody.includes('普通攻击')) {
+      await page.evaluate(() => [...document.querySelectorAll('button')].find((b) => b.textContent.includes('普通攻击'))?.click())
+      await sleep(300)
+    } else {
+      break
+    }
+  }
+  await page.evaluate(() => {
+    Math.random = window.__origRandom
+  })
+  await clickByText('返回冒险')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-027-F: 黑法师战斗胜利返回冒险', body.includes('当前位置'))
+  check('P1-027-F: 无附近威胁/迎战（两敌均消失）', !body.includes('附近威胁') && !body.includes('迎战'))
+  check('P1-027-F: 二层前段清场剧情', body.includes('二层前段的僵尸与黑法师已经被清理。'))
+  check('P1-027-F: 骷髅战士剧情文本', body.includes('前方小厅中出现了更强的骷髅战士，挡住继续深入的道路。'))
+  check('P1-027-F: 黑石塔二层深处：【待开放】', body.includes('黑石塔二层深处：【待开放】'))
+  // G. 任务最终状态
+  check('P1-027-G: 商人王财的麻烦进行中', body.includes('商人王财的麻烦') && body.includes('进行中'))
+  check('P1-027-G: 黑石塔二层：入口区域已清理', body.includes('黑石塔二层：入口区域已清理。'))
+  check('P1-027-G: 当前目标：继续向黑石塔二层深处推进', body.includes('当前目标：继续向黑石塔二层深处推进。'))
+  check('P1-027-G: 无可完成/提交任务/已完成', !body.includes('提交任务') && !body.includes('可完成'))
+  check('P1-027-G: 黄金兔子主线仍进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
+  check('P1-027-G: 兔子的路径 ×1', body.includes('兔子的路径 ×1'))
+  // 保存二层清场档（供 H 注入与 I 恢复使用）
+  await clickByText('保存游戏')
+  // H. 负路径：僵尸未击败时黑法师不可通过正式战斗入口挑战（存档注入二层 + zombie 未击败）
+  const floor2ClearedSave = await page.evaluate(() => localStorage.getItem('tianmeng_continent_save'))
+  check('P1-027-H: 清场档已保存', floor2ClearedSave !== null && floor2ClearedSave.includes('floor2_black_mage_defeated'))
+  await page.evaluate(() => {
+    const raw = localStorage.getItem('tianmeng_continent_save')
+    if (!raw) return
+    const save = JSON.parse(raw)
+    save.gameState.world.currentLocationId = 'black_stone_tower_floor2'
+    save.gameState.world.flags.black_stone_tower_floor2_unlocked = true
+    const quest = save.gameState.quests.find((q) => q.questId === 'quest_wangcai_trouble')
+    if (quest && quest.flags) delete quest.flags.floor2_zombie_defeated
+    if (quest && quest.flags) delete quest.flags.floor2_black_mage_defeated
+    localStorage.setItem('tianmeng_continent_save', JSON.stringify(save))
+  })
+  await page.reload()
+  await sleep(600)
+  await clickByText('继续游戏')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-027-H: 僵尸未击败时僵尸可见', body.includes('僵尸 · Lv.4') && body.includes('迎战'))
+  check('P1-027-H: 黑法师不可见（无法经正式入口挑战）', !body.includes('黑法师 · Lv.4'))
+  const engageableButtons = await page.evaluate(() =>
+    [...document.querySelectorAll('button')].filter((b) => b.textContent.includes('黑法师')).map((b) => b.textContent.trim()),
+  )
+  check('P1-027-H: 页面无任何黑法师按钮', engageableButtons.length === 0)
+  // I. 恢复二层清场档（负路径注入不污染存档）
+  await page.evaluate((saveStr) => {
+    localStorage.setItem('tianmeng_continent_save', saveStr)
+  }, floor2ClearedSave)
+  await page.reload()
+  await sleep(600)
+  await clickByText('继续游戏')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-027-I: 恢复清场档后二层清场状态保持', body.includes('二层前段的僵尸与黑法师已经被清理。') && body.includes('黑石塔二层深处：【待开放】'))
   await clickByText('返回主菜单')
 
   // TM-P1-015：战斗中使用治疗药水（独立最小段：默认骑士 + 村外草原魔化兔；魔化兔零修改 HP8/DEF11/atk+2/dmg2）

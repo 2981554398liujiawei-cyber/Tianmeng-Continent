@@ -65,8 +65,18 @@ export const LOCATIONS: Record<string, LocationDefinition> = {
     name: '黑石塔一层',
     description: '黑石砌成的幽暗通道通向几处大厅，脚步声与骨骼摩擦声在塔内回荡。',
     requiredFlag: 'black_stone_tower_unlocked',
-    connections: ['tianlong_city'],
-    // TM-P1-026：一层普通敌人骷髅士兵 + 一层 Boss 骷髅队长（同一场景节点；不建新大厅 Location；二层本卡不创建）
+    // TM-P1-027：一层连接增加黑石塔二层（二层未解锁时移动按钮 disabled；天龙城 ↔ 一层 ↔ 二层）
+    connections: ['tianlong_city', 'black_stone_tower_floor2'],
+    // TM-P1-026：一层普通敌人骷髅士兵 + 一层 Boss 骷髅队长（同一场景节点；不建新大厅 Location）
     enemyIds: ['skeleton_soldier', 'skeleton_captain'],
+  },
+  // TM-P1-027：黑石塔二层（入口固定顺序战斗：僵尸→黑法师；二层深处与三层本卡不开放；未解锁时移动按钮可见但 disabled）
+  black_stone_tower_floor2: {
+    id: 'black_stone_tower_floor2',
+    name: '黑石塔二层',
+    description: '曲折的黑石通道向深处延伸，腐败气息与幽暗魔力混在潮冷的空气中。',
+    requiredFlag: 'black_stone_tower_floor2_unlocked',
+    connections: ['black_stone_tower_floor1'],
+    enemyIds: ['tower_zombie', 'black_mage'],
   },
 }

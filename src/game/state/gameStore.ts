@@ -72,6 +72,8 @@ interface GameStoreState {
   sellIronOre: () => boolean
   /** 青石村休整：HP/MP 恢复至最大值；免费、只改 hp/mp、不自动保存（TM-P0-022） */
   restAtVillage: () => boolean
+  /** 武馆免费休整（TM-P1-027）：仅武馆可用——hp=maxHp、mp=maxMp；HP=0 时允许、任一资源未满即可成功；HP/MP 全满 → false 且 GameState 完全不变；成功只改 hp/mp（金币/XP/等级/物品/装备/Quest/flags/关系/npcState 全不变）；不自动保存；未建 RestSystem */
+  restAtTianlongMartialHall: () => boolean
   /** 法师法术攻击灵力消费（TM-P1-001）：仅 mage 可消费 MAGE_SPELL_MP_COST；只改 player.mp；不自动保存 */
   spendMageSpellMp: () => boolean
   /** 调查废弃矿洞（TM-P0-016）：心智 D20 检定一次性写入 flags；非法/已调查/异常 → null 且不变 */
@@ -99,6 +101,8 @@ interface GameStoreState {
   askWangcaiAboutTrouble: () => boolean
   /** 动身调查黑石塔（TM-P1-025）：解锁黑石塔一层路线专属窄 action——当前位置 tianlong_city + quest_wangcai_trouble in_progress/stage 0 + wangcai_briefed 严格 true + world.flags.black_stone_tower_unlocked undefined/false 时成功，原子写 world.flags.black_stone_tower_unlocked=true（Quest status 保持 in_progress/stage 0、wangcai_briefed 保持 true）；wangcai_briefed 非 boolean 或 unlock flag 非 boolean（"yes"/1/0.5）整次拒绝且完全不变（不修复）；已 true 重复调用 false 且 GameState 同一引用；player/inventory/equipment/quests/npcStates/completedEvents 全不变、不自动保存 */
   unlockBlackStoneTowerInvestigation: () => boolean
+  /** 解锁黑石塔二层（TM-P1-027）：黑石塔一层 + 第五主线 in_progress/stage 0 + wangcai_briefed 严格 true + black_stone_tower_unlocked 严格 true + floor1_soldier_defeated 严格 true + floor1_captain_defeated 严格 true + 目标 flag black_stone_tower_floor2_unlocked undefined/false → 成功原子写 world.flags.black_stone_tower_floor2_unlocked=true；目标 flag 已 true 或非 boolean（"yes"/1/0.5）整次拒绝且完全不变（不修复）；player/inventory/equipment/quests/其他 world.flags/npcStates/completedEvents 全不变；不自动保存 */
+  unlockBlackStoneTowerFloor2: () => boolean
 }
 
 /** 任务发现：不存在 → 创建 available；undiscovered → available；其余状态不重复创建。非法返回 null（TM-P0-006） */
@@ -438,6 +442,46 @@ export const useGameStore = create<GameStoreState>()((set) => ({
           return {}
         }
       }
+      // TM-P1-027：二层僵尸（固定顺序第一场）完整前置守卫——黑石塔二层 + 第五主线 in_progress/stage 0 + briefed===true + unlocked===true + floor2_unlocked===true + soldier===true + captain===true + floor2_zombie_defeated undefined/false；
+      // 否则拒绝（false 且 GameState 完全不变，不置 ok）
+      if (enemyId === 'tower_zombie' && location.id === 'black_stone_tower_floor2') {
+        const quest = s.gameState.quests.find((q) => q.questId === 'quest_wangcai_trouble')
+        const zombieFlag = quest?.flags.floor2_zombie_defeated
+        const zombieOk = zombieFlag !== true && (typeof zombieFlag === 'undefined' || typeof zombieFlag === 'boolean')
+        if (
+          !quest ||
+          quest.status !== 'in_progress' ||
+          quest.stage !== 0 ||
+          quest.flags.wangcai_briefed !== true ||
+          s.gameState.world.flags.black_stone_tower_unlocked !== true ||
+          s.gameState.world.flags.black_stone_tower_floor2_unlocked !== true ||
+          quest.flags.floor1_soldier_defeated !== true ||
+          quest.flags.floor1_captain_defeated !== true ||
+          !zombieOk
+        ) {
+          return {}
+        }
+      }
+      // TM-P1-027：二层黑法师（固定顺序第二场）完整前置守卫——额外要求 floor2_zombie_defeated===true（僵尸未击败不得提前挑战黑法师）+ floor2_black_mage_defeated undefined/false；否则拒绝
+      if (enemyId === 'black_mage' && location.id === 'black_stone_tower_floor2') {
+        const quest = s.gameState.quests.find((q) => q.questId === 'quest_wangcai_trouble')
+        const mageFlag = quest?.flags.floor2_black_mage_defeated
+        const mageOk = mageFlag !== true && (typeof mageFlag === 'undefined' || typeof mageFlag === 'boolean')
+        if (
+          !quest ||
+          quest.status !== 'in_progress' ||
+          quest.stage !== 0 ||
+          quest.flags.wangcai_briefed !== true ||
+          s.gameState.world.flags.black_stone_tower_unlocked !== true ||
+          s.gameState.world.flags.black_stone_tower_floor2_unlocked !== true ||
+          quest.flags.floor1_soldier_defeated !== true ||
+          quest.flags.floor1_captain_defeated !== true ||
+          quest.flags.floor2_zombie_defeated !== true ||
+          !mageOk
+        ) {
+          return {}
+        }
+      }
       ok = true
       // 《村外异动》任务推进：村外草原击败魔化兔 → completable（复用封板状态机）
       if (enemyId === 'corrupted_rabbit' && location.id === 'village_grassland') {
@@ -510,6 +554,30 @@ export const useGameStore = create<GameStoreState>()((set) => ({
           if (quest) {
             const nextQuests = [...s.gameState.quests]
             nextQuests[questIndex] = { ...quest, flags: { ...quest.flags, floor1_captain_defeated: true } }
+            return { gameState: { ...s.gameState, quests: nextQuests } }
+          }
+        }
+      }
+      // 黑石塔二层僵尸（TM-P1-027）：合法首次胜利只写 quest.flags.floor2_zombie_defeated=true（守卫已在 ok=true 前完成）；status/stage 不变；无 XP/金币/等级/物品/装备/关系/npcState/world flag/奖励；不自动保存
+      if (enemyId === 'tower_zombie' && location.id === 'black_stone_tower_floor2') {
+        const questIndex = s.gameState.quests.findIndex((q) => q.questId === 'quest_wangcai_trouble')
+        if (questIndex >= 0) {
+          const quest = s.gameState.quests[questIndex]
+          if (quest) {
+            const nextQuests = [...s.gameState.quests]
+            nextQuests[questIndex] = { ...quest, flags: { ...quest.flags, floor2_zombie_defeated: true } }
+            return { gameState: { ...s.gameState, quests: nextQuests } }
+          }
+        }
+      }
+      // 黑石塔二层黑法师（TM-P1-027）：合法首次胜利只写 quest.flags.floor2_black_mage_defeated=true（守卫已在 ok=true 前完成：僵尸已击败）；status/stage 不变；无 XP/金币/等级/物品/装备/关系/治疗/奖励；不自动保存
+      if (enemyId === 'black_mage' && location.id === 'black_stone_tower_floor2') {
+        const questIndex = s.gameState.quests.findIndex((q) => q.questId === 'quest_wangcai_trouble')
+        if (questIndex >= 0) {
+          const quest = s.gameState.quests[questIndex]
+          if (quest) {
+            const nextQuests = [...s.gameState.quests]
+            nextQuests[questIndex] = { ...quest, flags: { ...quest.flags, floor2_black_mage_defeated: true } }
             return { gameState: { ...s.gameState, quests: nextQuests } }
           }
         }
@@ -710,6 +778,31 @@ export const useGameStore = create<GameStoreState>()((set) => ({
       if (!Number.isSafeInteger(player.hp) || !Number.isSafeInteger(player.mp)) return {}
       if (player.hp < 0 || player.hp > player.maxHp || player.mp < 0 || player.mp > player.maxMp) return {}
       // 可恢复条件：至少一个资源未满（含 HP 0）；全满则无意义更新
+      if (player.hp >= player.maxHp && player.mp >= player.maxMp) return {}
+      rested = true
+      return {
+        gameState: {
+          ...s.gameState,
+          player: { ...player, hp: player.maxHp, mp: player.maxMp },
+        },
+      }
+    })
+    return rested
+  },
+
+  restAtTianlongMartialHall: () => {
+    let rested = false
+    set((s) => {
+      if (!s.gameState) return {}
+      // TM-P1-027：地点限制——仅天龙城武馆可休整（离开青石村后的 HP=0 软锁出口）
+      if (s.gameState.world.currentLocationId !== 'tianlong_martial_hall') return {}
+      const player = s.gameState.player
+      // 数据安全：maxHp 正安全整数 / maxMp 非负安全整数 / hp·mp 安全整数且在 [0, max] 内
+      if (!Number.isSafeInteger(player.maxHp) || player.maxHp <= 0) return {}
+      if (!Number.isSafeInteger(player.maxMp) || player.maxMp < 0) return {}
+      if (!Number.isSafeInteger(player.hp) || !Number.isSafeInteger(player.mp)) return {}
+      if (player.hp < 0 || player.hp > player.maxHp || player.mp < 0 || player.mp > player.maxMp) return {}
+      // 可恢复条件：至少一个资源未满（含 HP 0）；全满则无意义更新（false 且完全不变）
       if (player.hp >= player.maxHp && player.mp >= player.maxMp) return {}
       rested = true
       return {
@@ -1188,6 +1281,35 @@ export const useGameStore = create<GameStoreState>()((set) => ({
         gameState: {
           ...s.gameState,
           world: { ...s.gameState.world, flags: { ...s.gameState.world.flags, black_stone_tower_unlocked: true } },
+        },
+      }
+    })
+    return changed
+  },
+
+  unlockBlackStoneTowerFloor2: () => {
+    let changed = false
+    set((s) => {
+      if (!s.gameState) return {}
+      // TM-P1-027：必须在一层（从一层深入）
+      if (s.gameState.world.currentLocationId !== 'black_stone_tower_floor1') return {}
+      const quest = s.gameState.quests.find((q) => q.questId === 'quest_wangcai_trouble')
+      if (!quest || quest.status !== 'in_progress' || quest.stage !== 0) return {}
+      // 一层全部前置严格 true：briefed / unlocked / soldier_defeated / captain_defeated
+      if (quest.flags.wangcai_briefed !== true) return {}
+      if (s.gameState.world.flags.black_stone_tower_unlocked !== true) return {}
+      if (quest.flags.floor1_soldier_defeated !== true) return {}
+      if (quest.flags.floor1_captain_defeated !== true) return {}
+      // 目标 flag 只允许 undefined/false；非 boolean（"yes"/1/0.5）整次拒绝且完全不变（不修复）；已 true 重复调用拒绝
+      const target = s.gameState.world.flags.black_stone_tower_floor2_unlocked
+      if (typeof target !== 'undefined' && typeof target !== 'boolean') return {}
+      if (target === true) return {}
+      changed = true
+      // 成功只写 world.flags.black_stone_tower_floor2_unlocked=true（Quest 不塞路线状态；player/inventory/equipment/quests/其他 world.flags/npcStates/completedEvents 全不变；不自动保存）
+      return {
+        gameState: {
+          ...s.gameState,
+          world: { ...s.gameState.world, flags: { ...s.gameState.world.flags, black_stone_tower_floor2_unlocked: true } },
         },
       }
     })

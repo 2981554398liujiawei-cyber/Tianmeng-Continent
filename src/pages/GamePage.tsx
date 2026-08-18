@@ -70,6 +70,8 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
   const departQingshiVillageToTianlongCity = useGameStore((s) => s.departQingshiVillageToTianlongCity)
   const askWangcaiAboutTrouble = useGameStore((s) => s.askWangcaiAboutTrouble)
   const unlockBlackStoneTowerInvestigation = useGameStore((s) => s.unlockBlackStoneTowerInvestigation)
+  const unlockBlackStoneTowerFloor2 = useGameStore((s) => s.unlockBlackStoneTowerFloor2)
+  const restAtTianlongMartialHall = useGameStore((s) => s.restAtTianlongMartialHall)
   const [saveResult, setSaveResult] = useState<'saved' | 'failed' | null>(null)
   const [travelError, setTravelError] = useState(false)
   // TM-P0-015：活动对话 NPC（仅 UI 本地状态，不进入 GameState / 存档）
@@ -150,6 +152,13 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
   // TM-P1-025-R1：解锁入口窄守卫——unlock flag 只允许 undefined/false 视为「待解锁」（异常非 boolean 与已 true 一律不显示行动按钮，避免 UI 允许但 Store 拒绝的死按钮）
   const towerUnlockFlag = world.flags.black_stone_tower_unlocked
   const towerUnlockPending = towerUnlockFlag === undefined || towerUnlockFlag === false
+  /** TM-P1-027：黑石塔二层路线（只读）——floor2_unlocked 驱动移动按钮与二层敌人可见性；floor2 flag 驱动固定顺序战斗与清场剧情 */
+  const towerFloor2Unlocked = world.flags.black_stone_tower_floor2_unlocked === true
+  // 二层解锁入口窄守卫：target flag 只允许 undefined/false 视为「待解锁」（已 true/异常非 boolean 不显示行动按钮）
+  const towerFloor2UnlockFlag = world.flags.black_stone_tower_floor2_unlocked
+  const towerFloor2UnlockPending = towerFloor2UnlockFlag === undefined || towerFloor2UnlockFlag === false
+  const floor2ZombieDefeated = wangcaiQuest?.flags.floor2_zombie_defeated === true
+  const floor2BlackMageDefeated = wangcaiQuest?.flags.floor2_black_mage_defeated === true
   // TM-P0-006：附近委托 = 给予者位于当前地点的注册任务（不写死地点 ID）
   const localQuests = Object.values(QUESTS).filter((quest) => {
     const giver = getNpc(quest.giverNpcId)
@@ -547,6 +556,54 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
         </section>
       )}
 
+      {/* TM-P1-027：武馆休整 —— 仅天龙城武馆显示；免费恢复 HP/MP 至最大值（离开青石村后的 HP=0 软锁出口）；只调 Store action */}
+      {world.currentLocationId === 'tianlong_martial_hall' && (
+        <section className="rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
+          <h3 className="mb-3 text-sm font-bold tracking-wider text-bone-500">武馆休整</h3>
+          <p className="mb-3 text-bone-300">武馆里有专供休整的静室，可以恢复生命与灵力。</p>
+          {(() => {
+            const needsRest = player.hp < player.maxHp || player.mp < player.maxMp
+            return (
+              <div className="flex flex-col items-start gap-1">
+                <Button variant="primary" disabled={!needsRest} onClick={() => restAtTianlongMartialHall()}>
+                  休整
+                </Button>
+                {!needsRest && <span className="text-xs text-bone-500">状态良好，无需休整</span>}
+              </div>
+            )
+          })()}
+        </section>
+      )}
+
+      {/* TM-P1-027：黑石塔二层解锁入口 —— 黑石塔一层 + 士兵与队长均已击败 + floor2 flag undefined/false（待解锁）时显示；只调用 Store action（不直接写 world flag） */}
+      {world.currentLocationId === 'black_stone_tower_floor1' &&
+        towerQuestInProgress &&
+        wangcaiBriefed &&
+        towerUnlocked &&
+        floor1SoldierDefeated &&
+        floor1CaptainDefeated &&
+        towerFloor2UnlockPending && (
+          <section className="rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
+            <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">继续深入</h3>
+            <p className="leading-relaxed text-bone-200">一层大厅已经清空，通往黑石塔二层的阶梯就在更深处。</p>
+            <Button variant="primary" onClick={() => unlockBlackStoneTowerFloor2()}>
+              深入黑石塔二层
+            </Button>
+          </section>
+        )}
+
+      {/* TM-P1-027：黑石塔二层清场剧情 —— 僵尸与黑法师均击败后显示固定文案（骷髅战士只作为剧情文本出现；本卡不建骷髅战士 EnemyDefinition；无按钮） */}
+      {world.currentLocationId === 'black_stone_tower_floor2' && floor2ZombieDefeated && floor2BlackMageDefeated && (
+        <section className="rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
+          <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">二层前段</h3>
+          <p className="leading-relaxed text-bone-200">二层前段的僵尸与黑法师已经被清理。</p>
+          <p className="mt-1 leading-relaxed text-bone-200">
+            曲折的通道继续向深处延伸，前方小厅中出现了更强的骷髅战士，挡住继续深入的道路。
+          </p>
+          <p className="mt-2 text-gold-300">黑石塔二层深处：【待开放】</p>
+        </section>
+      )}
+
       {/* TM-P0-015：附近人物 —— 仅当前地点存在注册 NPC 时显示 */}
       {localNpcs.length > 0 && (
         <section className="rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
@@ -789,6 +846,39 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
               const captainOk = captainFlag !== true && (typeof captainFlag === 'undefined' || typeof captainFlag === 'boolean')
               if (!towerQuestInProgress || !wangcaiBriefed || !towerUnlocked || floor1SoldierDefeated !== true || !captainOk) return false
             }
+            // TM-P1-027：二层僵尸可见性窄条件（严格 boolean）——二层 + 任务 in_progress/stage 0 + briefed===true + unlocked===true + floor2_unlocked===true + soldier===true + captain===true + floor2_zombie_defeated 非 true
+            if (threat.id === 'tower_zombie') {
+              const zombieFlag = wangcaiQuest?.flags.floor2_zombie_defeated
+              const zombieOk = zombieFlag !== true && (typeof zombieFlag === 'undefined' || typeof zombieFlag === 'boolean')
+              if (
+                !towerQuestInProgress ||
+                !wangcaiBriefed ||
+                !towerUnlocked ||
+                !towerFloor2Unlocked ||
+                floor1SoldierDefeated !== true ||
+                floor1CaptainDefeated !== true ||
+                !zombieOk
+              ) {
+                return false
+              }
+            }
+            // TM-P1-027：二层黑法师可见性窄条件（严格 boolean）——额外要求 floor2_zombie_defeated===true（僵尸未击败不显示黑法师）+ floor2_black_mage_defeated 非 true
+            if (threat.id === 'black_mage') {
+              const mageFlag = wangcaiQuest?.flags.floor2_black_mage_defeated
+              const mageOk = mageFlag !== true && (typeof mageFlag === 'undefined' || typeof mageFlag === 'boolean')
+              if (
+                !towerQuestInProgress ||
+                !wangcaiBriefed ||
+                !towerUnlocked ||
+                !towerFloor2Unlocked ||
+                floor1SoldierDefeated !== true ||
+                floor1CaptainDefeated !== true ||
+                floor2ZombieDefeated !== true ||
+                !mageOk
+              ) {
+                return false
+              }
+            }
             return true
           })
         if (visibleEnemies.length === 0) return null
@@ -996,7 +1086,7 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
                           <p className="mt-1 text-gold-300">黑石塔一层：已击败骷髅士兵。</p>
                           <p className="mt-1">当前目标：击败骷髅队长。</p>
                         </>
-                      ) : (
+                      ) : !floor2ZombieDefeated || !floor2BlackMageDefeated ? (
                         <>
                           <p className="text-gold-300">已向王财了解情况。</p>
                           <p className="mt-1 text-gold-300">黑石塔路线已确认。</p>
@@ -1004,6 +1094,16 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
                           <p className="mt-1 text-gold-300">黑石塔一层：骷髅队长已击败，未发现夔峒项链。</p>
                           <p className="mt-1">当前目标：继续深入黑石塔。</p>
                           <p className="mt-1">黑石塔二层：【待开放】</p>
+                        </>
+                      ) : (
+                        <>
+                          <p className="text-gold-300">已向王财了解情况。</p>
+                          <p className="mt-1 text-gold-300">黑石塔路线已确认。</p>
+                          <p className="mt-1 text-gold-300">黑石塔一层：已击败骷髅士兵。</p>
+                          <p className="mt-1 text-gold-300">黑石塔一层：骷髅队长已击败，未发现夔峒项链。</p>
+                          <p className="mt-1 text-gold-300">黑石塔二层：入口区域已清理。</p>
+                          <p className="mt-1">当前目标：继续向黑石塔二层深处推进。</p>
+                          <p className="mt-1">黑石塔二层深处：【待开放】</p>
                         </>
                       )}
                     </div>

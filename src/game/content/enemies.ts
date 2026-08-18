@@ -84,4 +84,28 @@ export const ENEMIES: Record<string, EnemyDefinition> = {
     attackBonus: 4,
     damage: 4,
   },
+  // TM-P1-027：黑石塔二层入口第一只——僵尸（固定顺序战斗第一场；继续现有普通 D20 战斗；无中毒/吸血/持续伤害/特殊恢复）
+  tower_zombie: {
+    id: 'tower_zombie',
+    name: '僵尸',
+    level: 4,
+    description: '受到魔气侵染的腐败尸体，只剩下本能的杀戮欲望。',
+    tags: ['undead'],
+    maxHp: 18,
+    defense: 12,
+    attackBonus: 4,
+    damage: 4,
+  },
+  // TM-P1-027：黑石塔二层入口第二只——黑法师（僵尸击败后才出现；固定顺序战斗第二场；继续现有普通战斗模型；无盲目/暗属性/黑色火球/暴躁/特殊法术 AI）
+  black_mage: {
+    id: 'black_mage',
+    name: '黑法师',
+    level: 4,
+    description: '生前曾是法师，受到魔气侵染后躲在黑暗中袭击闯入者。',
+    tags: ['undead'],
+    maxHp: 14,
+    defense: 11,
+    attackBonus: 5,
+    damage: 4,
+  },
 }

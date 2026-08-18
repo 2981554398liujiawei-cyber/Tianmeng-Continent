@@ -4,6 +4,7 @@ import { createInitialGameState } from '../content/initial'
 import { checkTravel } from '../rules/exploration'
 import { getNpc, getQuest } from '../content'
 import type { QuestStatus } from '../types/quest'
+import type { GameState } from '../types/game'
 
 function createMockStorage(): Storage {
   const store = new Map<string, string>()
@@ -5590,6 +5591,456 @@ describe('TM-P1-026：黑石塔一层——骷髅队长 Boss 战与项链线索�
     seedCaptainFight()
     useGameStore.getState().resolveCombatVictory('skeleton_captain')
     expect(wangcaiQuest()?.flags.floor1_captain_defeated).toBe(true)
+    expect(useGameStore.getState().hasSave).toBe(false)
+  })
+})
+
+describe('TM-P1-027：黑石塔二层——武馆休整、僵尸与黑法师', () => {
+  const wangcaiQuest = () => useGameStore.getState().gameState?.quests.find((q) => q.questId === 'quest_wangcai_trouble')
+  const goldenQuest = () => useGameStore.getState().gameState?.quests.find((q) => q.questId === 'quest_golden_rabbit_search')
+  const snapshot = () => JSON.stringify(useGameStore.getState().gameState)
+
+  /** 走到黑石塔二层 + 第五主线全前置（士兵+队长均已击败）+ 二层已解锁的完整合法状态 */
+  const seedFloor2Ready = () => {
+    useGameStore.getState().newGame()
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return {
+        gameState: {
+          ...s.gameState,
+          world: {
+            ...s.gameState.world,
+            currentLocationId: 'black_stone_tower_floor1',
+            flags: { ...s.gameState.world.flags, black_stone_tower_unlocked: true, black_stone_tower_floor2_unlocked: true },
+          },
+          quests: [
+            {
+              questId: 'quest_golden_rabbit_search',
+              status: 'in_progress',
+              stage: 0,
+              flags: {
+                asked_blacksmith: true,
+                asked_apothecary: true,
+                village_inquiry_reported: true,
+                rabbit_lair_rechecked: true,
+              },
+            },
+            ...s.gameState.quests,
+            {
+              questId: 'quest_wangcai_trouble',
+              status: 'in_progress',
+              stage: 0,
+              flags: { wangcai_briefed: true, floor1_soldier_defeated: true, floor1_captain_defeated: true },
+            },
+          ],
+        },
+      }
+    })
+    useGameStore.getState().travelToLocation('black_stone_tower_floor2')
+  }
+
+  /** 走到二层且僵尸已击败（可打黑法师的完整合法状态） */
+  const seedBlackMageReady = () => {
+    seedFloor2Ready()
+    useGameStore.getState().resolveCombatVictory('tower_zombie')
+  }
+
+  /** 直接改第五主线 quest flag/stage/status 运行态 */
+  const seedQuestFlag = (flagKey: string, value: string | number | boolean | undefined) => {
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return {
+        gameState: {
+          ...s.gameState,
+          quests: s.gameState.quests.map((q) => {
+            if (q.questId !== 'quest_wangcai_trouble') return q
+            if (value === undefined) {
+              const nextFlags = { ...q.flags }
+              delete nextFlags[flagKey]
+              return { ...q, flags: nextFlags }
+            }
+            return { ...q, flags: { ...q.flags, [flagKey]: value } }
+          }),
+        },
+      }
+    })
+  }
+  const seedQuestStatus = (status: QuestStatus) => {
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return {
+        gameState: {
+          ...s.gameState,
+          quests: s.gameState.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, status } : q)),
+        },
+      }
+    })
+  }
+  const seedQuestStage = (stage: number) => {
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return {
+        gameState: {
+          ...s.gameState,
+          quests: s.gameState.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, stage } : q)),
+        },
+      }
+    })
+  }
+  const seedWorldFlag = (flagKey: string, value: string | number | boolean | undefined) => {
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      const nextFlags = { ...s.gameState.world.flags }
+      if (value === undefined) delete nextFlags[flagKey]
+      else nextFlags[flagKey] = value as boolean
+      return { gameState: { ...s.gameState, world: { ...s.gameState.world, flags: nextFlags } } }
+    })
+  }
+
+  /** 构造「黑石塔一层 + 全前置成立」的合法解锁状态 */
+  const seedUnlockReady = () => {
+    useGameStore.getState().newGame()
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return {
+        gameState: {
+          ...s.gameState,
+          world: {
+            ...s.gameState.world,
+            currentLocationId: 'black_stone_tower_floor1',
+            flags: { ...s.gameState.world.flags, black_stone_tower_unlocked: true },
+          },
+          quests: [
+            {
+              questId: 'quest_golden_rabbit_search',
+              status: 'in_progress',
+              stage: 0,
+              flags: {
+                asked_blacksmith: true,
+                asked_apothecary: true,
+                village_inquiry_reported: true,
+                rabbit_lair_rechecked: true,
+              },
+            },
+            ...s.gameState.quests,
+            {
+              questId: 'quest_wangcai_trouble',
+              status: 'in_progress',
+              stage: 0,
+              flags: { wangcai_briefed: true, floor1_soldier_defeated: true, floor1_captain_defeated: true },
+            },
+          ],
+        },
+      }
+    })
+  }
+
+  // ---------- restAtTianlongMartialHall ----------
+  it('R1. 武馆 HP 未满 → true 且 HP=maxHp', () => {
+    useGameStore.getState().newGame()
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return { gameState: { ...s.gameState, world: { ...s.gameState.world, currentLocationId: 'tianlong_martial_hall' }, player: { ...s.gameState.player, hp: 5 } } }
+    })
+    const maxHp = useGameStore.getState().gameState!.player.maxHp
+    expect(useGameStore.getState().restAtTianlongMartialHall()).toBe(true)
+    expect(useGameStore.getState().gameState!.player.hp).toBe(maxHp)
+  })
+
+  it('R2. 武馆 MP 未满 → true 且 MP=maxMp', () => {
+    useGameStore.getState().newGame()
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return { gameState: { ...s.gameState, world: { ...s.gameState.world, currentLocationId: 'tianlong_martial_hall' } } }
+    })
+    const player = useGameStore.getState().gameState!.player
+    if (player.maxMp > 0) {
+      useGameStore.setState((s) => {
+        if (!s.gameState) return {}
+        return { gameState: { ...s.gameState, player: { ...s.gameState.player, mp: 0 } } }
+      })
+      expect(useGameStore.getState().restAtTianlongMartialHall()).toBe(true)
+      expect(useGameStore.getState().gameState!.player.mp).toBe(player.maxMp)
+    } else {
+      // 骑士无 MP：HP 未满同样可休整
+      useGameStore.setState((s) => {
+        if (!s.gameState) return {}
+        return { gameState: { ...s.gameState, player: { ...s.gameState.player, hp: 1 } } }
+      })
+      expect(useGameStore.getState().restAtTianlongMartialHall()).toBe(true)
+    }
+  })
+
+  it('R3. 武馆 HP=0 → true 且 HP=maxHp（软锁出口）', () => {
+    useGameStore.getState().newGame()
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return { gameState: { ...s.gameState, world: { ...s.gameState.world, currentLocationId: 'tianlong_martial_hall' }, player: { ...s.gameState.player, hp: 0 } } }
+    })
+    const maxHp = useGameStore.getState().gameState!.player.maxHp
+    expect(useGameStore.getState().restAtTianlongMartialHall()).toBe(true)
+    expect(useGameStore.getState().gameState!.player.hp).toBe(maxHp)
+  })
+
+  it('R4. 武馆 HP/MP 全满 → false 且完整 GameState unchanged', () => {
+    useGameStore.getState().newGame()
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return { gameState: { ...s.gameState, world: { ...s.gameState.world, currentLocationId: 'tianlong_martial_hall' } } }
+    })
+    const before = snapshot()
+    expect(useGameStore.getState().restAtTianlongMartialHall()).toBe(false)
+    expect(snapshot()).toBe(before)
+  })
+
+  it('R5. 非武馆（青石村）→ false 且完整 GameState unchanged', () => {
+    useGameStore.getState().newGame()
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return { gameState: { ...s.gameState, player: { ...s.gameState.player, hp: 1 } } }
+    })
+    const before = snapshot()
+    expect(useGameStore.getState().restAtTianlongMartialHall()).toBe(false)
+    expect(snapshot()).toBe(before)
+  })
+
+  it('R6. 成功仅 hp/mp 改变——Quest/world flags/inventory/金币/level 全不变', () => {
+    useGameStore.getState().newGame()
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return { gameState: { ...s.gameState, world: { ...s.gameState.world, currentLocationId: 'tianlong_martial_hall' }, player: { ...s.gameState.player, hp: 1 } } }
+    })
+    const beforeQuest = JSON.stringify(useGameStore.getState().gameState!.quests)
+    const beforeWorld = JSON.stringify(useGameStore.getState().gameState!.world)
+    const beforeInventory = JSON.stringify(useGameStore.getState().gameState!.inventory)
+    const beforeEquipment = JSON.stringify(useGameStore.getState().gameState!.equipment)
+    const beforeGold = useGameStore.getState().gameState!.player.gold
+    const beforeLevel = useGameStore.getState().gameState!.player.level
+    useGameStore.getState().restAtTianlongMartialHall()
+    const after = useGameStore.getState().gameState!
+    expect(JSON.stringify(after.quests)).toBe(beforeQuest)
+    expect(JSON.stringify(after.world)).toBe(beforeWorld)
+    expect(JSON.stringify(after.inventory)).toBe(beforeInventory)
+    expect(JSON.stringify(after.equipment)).toBe(beforeEquipment)
+    expect(after.player.gold).toBe(beforeGold)
+    expect(after.player.level).toBe(beforeLevel)
+  })
+
+  it('R7. 武馆休整不自动保存', () => {
+    useGameStore.getState().newGame()
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return { gameState: { ...s.gameState, world: { ...s.gameState.world, currentLocationId: 'tianlong_martial_hall' }, player: { ...s.gameState.player, hp: 1 } } }
+    })
+    useGameStore.getState().restAtTianlongMartialHall()
+    expect(useGameStore.getState().gameState!.player.hp).toBe(useGameStore.getState().gameState!.player.maxHp)
+    expect(useGameStore.getState().hasSave).toBe(false)
+  })
+
+  // ---------- unlockBlackStoneTowerFloor2 ----------
+  it('U1. 全前置成立 + target undefined → true 且 black_stone_tower_floor2_unlocked=true', () => {
+    seedUnlockReady()
+    expect(useGameStore.getState().gameState!.world.flags.black_stone_tower_floor2_unlocked).toBeUndefined()
+    expect(useGameStore.getState().unlockBlackStoneTowerFloor2()).toBe(true)
+    expect(useGameStore.getState().gameState!.world.flags.black_stone_tower_floor2_unlocked).toBe(true)
+  })
+
+  it('U2. 全前置成立 + target false → true（允许首次成功）', () => {
+    seedUnlockReady()
+    seedWorldFlag('black_stone_tower_floor2_unlocked', false)
+    expect(useGameStore.getState().unlockBlackStoneTowerFloor2()).toBe(true)
+    expect(useGameStore.getState().gameState!.world.flags.black_stone_tower_floor2_unlocked).toBe(true)
+  })
+
+  it.each([
+    ['错误 location', (s: GameState) => ({ ...s, world: { ...s.world, currentLocationId: 'tianlong_city' } })],
+    ['任务不存在', (s: GameState) => ({ ...s, quests: s.quests.filter((q) => q.questId !== 'quest_wangcai_trouble') })],
+    ['错误 status available', (s: GameState) => ({ ...s, quests: s.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, status: 'available' as const } : q)) })],
+    ['错误 status completed', (s: GameState) => ({ ...s, quests: s.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, status: 'completed' as const } : q)) })],
+    ['错误 stage 1', (s: GameState) => ({ ...s, quests: s.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, stage: 1 } : q)) })],
+    ['wangcai_briefed 非 true', (s: GameState) => ({ ...s, quests: s.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, flags: { ...q.flags, wangcai_briefed: false } } : q)) })],
+    ['black_stone_tower_unlocked 非 true', (s: GameState) => ({ ...s, world: { ...s.world, flags: { ...s.world.flags, black_stone_tower_unlocked: false } } })],
+    ['floor1_soldier_defeated 非 true', (s: GameState) => ({ ...s, quests: s.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, flags: { ...q.flags, floor1_soldier_defeated: false } } : q)) })],
+    ['floor1_captain_defeated 非 true', (s: GameState) => ({ ...s, quests: s.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, flags: { ...q.flags, floor1_captain_defeated: false } } : q)) })],
+    ['target 已经 true', (s: GameState) => ({ ...s, world: { ...s.world, flags: { ...s.world.flags, black_stone_tower_floor2_unlocked: true } } })],
+    ['target "yes"', (s: GameState) => ({ ...s, world: { ...s.world, flags: { ...s.world.flags, black_stone_tower_floor2_unlocked: 'yes' as unknown as boolean } } })],
+    ['target 1', (s: GameState) => ({ ...s, world: { ...s.world, flags: { ...s.world.flags, black_stone_tower_floor2_unlocked: 1 as unknown as boolean } } })],
+    ['target 0.5', (s: GameState) => ({ ...s, world: { ...s.world, flags: { ...s.world.flags, black_stone_tower_floor2_unlocked: 0.5 as unknown as boolean } } })],
+  ])('U3. unlockBlackStoneTowerFloor2 拒绝：%s（false 且完整 GameState unchanged）', (_label, mutate) => {
+    seedUnlockReady()
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return { gameState: mutate(s.gameState) }
+    })
+    const before = useGameStore.getState().gameState
+    expect(useGameStore.getState().unlockBlackStoneTowerFloor2()).toBe(false)
+    expect(useGameStore.getState().gameState).toBe(before)
+  })
+
+  it('U4. 成功只写 target flag——Quest/player/inventory/equipment/其他 world.flags 全不变且不自动保存', () => {
+    seedUnlockReady()
+    const beforeQuest = JSON.stringify(useGameStore.getState().gameState!.quests)
+    const beforePlayer = JSON.stringify(useGameStore.getState().gameState!.player)
+    const beforeInventory = JSON.stringify(useGameStore.getState().gameState!.inventory)
+    const beforeEquipment = JSON.stringify(useGameStore.getState().gameState!.equipment)
+    useGameStore.getState().unlockBlackStoneTowerFloor2()
+    const after = useGameStore.getState().gameState!
+    expect(after.world.flags.black_stone_tower_floor2_unlocked).toBe(true)
+    expect(JSON.stringify(after.quests)).toBe(beforeQuest)
+    expect(JSON.stringify(after.player)).toBe(beforePlayer)
+    expect(JSON.stringify(after.inventory)).toBe(beforeInventory)
+    expect(JSON.stringify(after.equipment)).toBe(beforeEquipment)
+    expect(useGameStore.getState().hasSave).toBe(false)
+  })
+
+  // ---------- resolveCombatVictory('tower_zombie') ----------
+  it('Z1. 合法僵尸胜利 → true 且只写 floor2_zombie_defeated=true', () => {
+    seedFloor2Ready()
+    expect(wangcaiQuest()?.flags.floor2_zombie_defeated).toBeUndefined()
+    expect(useGameStore.getState().resolveCombatVictory('tower_zombie')).toBe(true)
+    expect(wangcaiQuest()?.flags.floor2_zombie_defeated).toBe(true)
+  })
+
+  it('Z2. 僵尸胜利后任务保持 in_progress/stage 0', () => {
+    seedFloor2Ready()
+    useGameStore.getState().resolveCombatVictory('tower_zombie')
+    expect(wangcaiQuest()?.status).toBe('in_progress')
+    expect(wangcaiQuest()?.stage).toBe(0)
+  })
+
+  it('Z3. 僵尸胜利无 XP/金币/item/装备/等级奖励', () => {
+    seedFloor2Ready()
+    const beforePlayer = useGameStore.getState().gameState!.player
+    const beforeInventory = useGameStore.getState().gameState!.inventory
+    const beforeEquipment = useGameStore.getState().gameState!.equipment
+    useGameStore.getState().resolveCombatVictory('tower_zombie')
+    const after = useGameStore.getState().gameState!
+    expect(after.player).toEqual(beforePlayer)
+    expect(after.inventory).toEqual(beforeInventory)
+    expect(after.equipment).toEqual(beforeEquipment)
+  })
+
+  it('Z4. 僵尸重复胜利无额外副作用（第二次 false 且 GameState 同一引用）', () => {
+    seedFloor2Ready()
+    useGameStore.getState().resolveCombatVictory('tower_zombie')
+    const before = useGameStore.getState().gameState
+    expect(useGameStore.getState().resolveCombatVictory('tower_zombie')).toBe(false)
+    expect(useGameStore.getState().gameState).toBe(before)
+    expect(wangcaiQuest()?.flags.floor2_zombie_defeated).toBe(true)
+  })
+
+  it.each([
+    ['错误地点', (s: GameState) => ({ ...s, world: { ...s.world, currentLocationId: 'tianlong_city' } })],
+    ['任务不存在', (s: GameState) => ({ ...s, quests: s.quests.filter((q) => q.questId !== 'quest_wangcai_trouble') })],
+    ['任务 available', (s: GameState) => ({ ...s, quests: s.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, status: 'available' as const } : q)) })],
+    ['任务 stage 1', (s: GameState) => ({ ...s, quests: s.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, stage: 1 } : q)) })],
+    ['wangcai_briefed 非 true', (s: GameState) => ({ ...s, quests: s.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, flags: { ...q.flags, wangcai_briefed: false } } : q)) })],
+    ['二层未解锁', (s: GameState) => ({ ...s, world: { ...s.world, flags: { ...s.world.flags, black_stone_tower_floor2_unlocked: false } } })],
+    ['floor1_soldier_defeated 非 true', (s: GameState) => ({ ...s, quests: s.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, flags: { ...q.flags, floor1_soldier_defeated: false } } : q)) })],
+    ['floor1_captain_defeated 非 true', (s: GameState) => ({ ...s, quests: s.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, flags: { ...q.flags, floor1_captain_defeated: false } } : q)) })],
+    ['zombie flag "yes"', (s: GameState) => ({ ...s, quests: s.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, flags: { ...q.flags, floor2_zombie_defeated: 'yes' as unknown as boolean } } : q)) })],
+    ['zombie flag 1', (s: GameState) => ({ ...s, quests: s.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, flags: { ...q.flags, floor2_zombie_defeated: 1 as unknown as boolean } } : q)) })],
+    ['zombie flag 0.5', (s: GameState) => ({ ...s, quests: s.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, flags: { ...q.flags, floor2_zombie_defeated: 0.5 as unknown as boolean } } : q)) })],
+  ])('Z5. 僵尸胜利拒绝：%s（false 且完整 GameState unchanged）', (_label, mutate) => {
+    seedFloor2Ready()
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return { gameState: mutate(s.gameState) }
+    })
+    const before = useGameStore.getState().gameState
+    expect(useGameStore.getState().resolveCombatVictory('tower_zombie')).toBe(false)
+    expect(useGameStore.getState().gameState).toBe(before)
+  })
+
+  it('Z6. 僵尸胜利不自动保存', () => {
+    seedFloor2Ready()
+    useGameStore.getState().resolveCombatVictory('tower_zombie')
+    expect(wangcaiQuest()?.flags.floor2_zombie_defeated).toBe(true)
+    expect(useGameStore.getState().hasSave).toBe(false)
+  })
+
+  // ---------- resolveCombatVictory('black_mage') ----------
+  it('M1. 僵尸未击败 → 黑法师胜利拒绝（false 且完整 GameState unchanged）', () => {
+    seedFloor2Ready()
+    const before = useGameStore.getState().gameState
+    expect(useGameStore.getState().resolveCombatVictory('black_mage')).toBe(false)
+    expect(useGameStore.getState().gameState).toBe(before)
+    expect(wangcaiQuest()?.flags.floor2_black_mage_defeated).toBeUndefined()
+  })
+
+  it('M2. 合法黑法师胜利 → true 且只写 floor2_black_mage_defeated=true', () => {
+    seedBlackMageReady()
+    expect(wangcaiQuest()?.flags.floor2_black_mage_defeated).toBeUndefined()
+    expect(useGameStore.getState().resolveCombatVictory('black_mage')).toBe(true)
+    expect(wangcaiQuest()?.flags.floor2_black_mage_defeated).toBe(true)
+  })
+
+  it('M3. 黑法师胜利后任务保持 in_progress/stage 0', () => {
+    seedBlackMageReady()
+    useGameStore.getState().resolveCombatVictory('black_mage')
+    expect(wangcaiQuest()?.status).toBe('in_progress')
+    expect(wangcaiQuest()?.stage).toBe(0)
+  })
+
+  it('M4. 黑法师胜利无 XP/金币/item/装备/治疗奖励', () => {
+    seedBlackMageReady()
+    const beforePlayer = useGameStore.getState().gameState!.player
+    const beforeInventory = useGameStore.getState().gameState!.inventory
+    const beforeEquipment = useGameStore.getState().gameState!.equipment
+    useGameStore.getState().resolveCombatVictory('black_mage')
+    const after = useGameStore.getState().gameState!
+    expect(after.player).toEqual(beforePlayer)
+    expect(after.inventory).toEqual(beforeInventory)
+    expect(after.equipment).toEqual(beforeEquipment)
+  })
+
+  it('M5. 黑法师重复胜利无额外副作用（第二次 false 且 GameState 同一引用）', () => {
+    seedBlackMageReady()
+    useGameStore.getState().resolveCombatVictory('black_mage')
+    const before = useGameStore.getState().gameState
+    expect(useGameStore.getState().resolveCombatVictory('black_mage')).toBe(false)
+    expect(useGameStore.getState().gameState).toBe(before)
+    expect(wangcaiQuest()?.flags.floor2_black_mage_defeated).toBe(true)
+  })
+
+  it.each([
+    ['错误 location', (s: GameState) => ({ ...s, world: { ...s.world, currentLocationId: 'tianlong_city' } })],
+    ['二层未解锁', (s: GameState) => ({ ...s, world: { ...s.world, flags: { ...s.world.flags, black_stone_tower_floor2_unlocked: false } } })],
+    ['floor1_captain_defeated 非 true', (s: GameState) => ({ ...s, quests: s.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, flags: { ...q.flags, floor1_captain_defeated: false } } : q)) })],
+    ['zombie flag "yes"', (s: GameState) => ({ ...s, quests: s.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, flags: { ...q.flags, floor2_zombie_defeated: 'yes' as unknown as boolean } } : q)) })],
+    ['zombie flag 1', (s: GameState) => ({ ...s, quests: s.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, flags: { ...q.flags, floor2_zombie_defeated: 1 as unknown as boolean } } : q)) })],
+    ['mage flag "yes"', (s: GameState) => ({ ...s, quests: s.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, flags: { ...q.flags, floor2_black_mage_defeated: 'yes' as unknown as boolean } } : q)) })],
+    ['mage flag 0.5', (s: GameState) => ({ ...s, quests: s.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, flags: { ...q.flags, floor2_black_mage_defeated: 0.5 as unknown as boolean } } : q)) })],
+  ])('M6. 黑法师胜利拒绝：%s（false 且完整 GameState unchanged）', (_label, mutate) => {
+    seedBlackMageReady()
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return { gameState: mutate(s.gameState) }
+    })
+    const before = useGameStore.getState().gameState
+    expect(useGameStore.getState().resolveCombatVictory('black_mage')).toBe(false)
+    expect(useGameStore.getState().gameState).toBe(before)
+  })
+
+  it('M7. 黄金兔子 QuestState 整体深比较不变（僵尸+黑法师胜利后）', () => {
+    seedBlackMageReady()
+    const beforeGolden = JSON.stringify(goldenQuest())
+    useGameStore.getState().resolveCombatVictory('black_mage')
+    const afterGolden = JSON.stringify(goldenQuest())
+    expect(afterGolden).toBe(beforeGolden)
+    const golden = goldenQuest()
+    expect(golden?.status).toBe('in_progress')
+    expect(golden?.stage).toBe(0)
+    expect(golden?.flags.asked_blacksmith).toBe(true)
+    expect(golden?.flags.asked_apothecary).toBe(true)
+    expect(golden?.flags.village_inquiry_reported).toBe(true)
+    expect(golden?.flags.rabbit_lair_rechecked).toBe(true)
+  })
+
+  it('M8. 黑法师胜利不自动保存', () => {
+    seedBlackMageReady()
+    useGameStore.getState().resolveCombatVictory('black_mage')
+    expect(wangcaiQuest()?.flags.floor2_black_mage_defeated).toBe(true)
     expect(useGameStore.getState().hasSave).toBe(false)
   })
 })
