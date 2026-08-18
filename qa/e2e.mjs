@@ -1443,7 +1443,8 @@ try {
   check('P1-006-A: 骑士重击按钮启用', (await buttonDisabled('骑士重击')) === false)
   check('P1-006-A: 不显示法术攻击', !body.includes('法术攻击'))
 
-  // B. 逐次 MP 消费：骑士重击天然1 + 敌天然1，6→4→2→0（魔化兔保持 8/8，玩家不受伤）
+  // B. 逐次 MP 消费：骑士重击天然1 + 敌天然1，6→4→2→0（魔化兔保持 8/8，玩家 HP 逐回合锁定不变）
+  let initialPlayerHp = readHps(await bodyText()).player
   await page.evaluate(() => {
     window.__origRandom = Math.random.bind(Math)
     Math.random = () => 0.0
@@ -1453,16 +1454,19 @@ try {
   body = await bodyText()
   check('P1-006-B: 第一次重击后灵力 4 / 6', body.includes('4 / 6'))
   check('P1-006-B: 第一次重击后魔化兔仍 HP 8 / 8', body.includes('8 / 8'))
+  check('P1-006-B: 第一次天然1后玩家 HP 不变', readHps(body).player === initialPlayerHp)
   await clickByText('骑士重击')
   await sleep(300)
   body = await bodyText()
   check('P1-006-B: 第二次重击后灵力 2 / 6', body.includes('2 / 6'))
   check('P1-006-B: 第二次重击后魔化兔仍 HP 8 / 8', body.includes('8 / 8'))
+  check('P1-006-B: 第二次天然1后玩家 HP 不变', readHps(body).player === initialPlayerHp)
   await clickByText('骑士重击')
   await sleep(300)
   body = await bodyText()
   check('P1-006-B: 第三次重击后灵力 0 / 6', body.includes('0 / 6'))
   check('P1-006-B: 第三次重击后魔化兔仍 HP 8 / 8', body.includes('8 / 8'))
+  check('P1-006-B: 第三次天然1后玩家 HP 不变', readHps(body).player === initialPlayerHp)
   check('P1-006-B: 骑士重击禁用+灵力不足', (await buttonDisabled('骑士重击')) === true && body.includes('灵力不足'))
   check('P1-006-B: 普通攻击仍启用', (await buttonDisabled('普通攻击')) === false)
   await page.evaluate(() => {
@@ -1491,10 +1495,11 @@ try {
   body = await bodyText()
   check('P1-006-D: 休整后灵力 6 / 6', body.includes('6 / 6'))
 
-  // E. 真实骑士重击命中：天然20，STR14 重击伤害 8 暴击 16 击败魔化兔，MP 6→4，敌人不反击
+  // E. 真实骑士重击命中：天然20，STR14 重击伤害 8 暴击 16 击败魔化兔，MP 6→4，敌人不反击（玩家 HP 不变）
   await clickByText('村外草原')
   await clickByText('迎战')
   await sleep(300)
+  const beforeStrikePlayerHp = readHps(await bodyText()).player
   await page.evaluate(() => {
     window.__origRandom = Math.random.bind(Math)
     Math.random = () => 0.99
@@ -1505,6 +1510,8 @@ try {
   check('P1-006-E: 显示你的骑士重击', body.includes('你的骑士重击'))
   check('P1-006-E: 暴击造成 16 点伤害', body.includes('暴击') && body.includes('造成 16 点伤害'))
   check('P1-006-E: 骑士重击暴击战斗胜利', body.includes('战斗胜利'))
+  check('P1-006-E: 致死后玩家 HP 未下降（敌人不反击）', readHps(body).player === beforeStrikePlayerHp)
+  check('P1-006-E: 无魔化兔的攻击（敌人未行动）', !body.includes('魔化兔的攻击：'))
   await page.evaluate(() => {
     Math.random = window.__origRandom
   })
