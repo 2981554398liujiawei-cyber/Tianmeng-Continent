@@ -1875,9 +1875,14 @@ try {
   await clickByText('知道了')
   await sleep(300)
   body = await bodyText()
-  // TM-P1-012-C：点击知道了关闭提示；角色数据保持升级结果
+  // TM-P1-012-C（R1 补强）：点击知道了后提示消失，且完整锁定四类角色状态——关闭提示本身无 GameState 副作用
+  const noticeClosedHp = body.match(/生命\s*(\d+)\s*\/\s*(\d+)/)
+  const noticeClosedMp = body.match(/灵力\s*(\d+)\s*\/\s*(\d+)/)
   check('P1-012-C: 点击知道了后提示消失', !body.includes('等级提升！') && !body.includes('你已达到 Lv.2。'))
-  check('P1-012-C: 角色仍 Lv.2 / 22/24 / 6/7 / 110 金币', body.includes('Lv.2') && body.includes('110'))
+  check('P1-012-C: 关闭提示后仍 Lv.2', body.includes('Lv.2'))
+  check('P1-012-C: 关闭提示后生命仍 22 / 24', noticeClosedHp !== null && noticeClosedHp[1] === '22' && noticeClosedHp[2] === '24')
+  check('P1-012-C: 关闭提示后灵力仍 6 / 7', noticeClosedMp !== null && noticeClosedMp[1] === '6' && noticeClosedMp[2] === '7')
+  check('P1-012-C: 关闭提示后金币仍 110', body.includes('110'))
   await clickNthTalk(0)
   body = await bodyText()
   check('P1-010-G: 村长关系保持 信任：1 尊敬：0（第三任务无关系副作用）', body.includes('信任：1') && body.includes('尊敬：0'))

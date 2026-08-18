@@ -354,6 +354,7 @@ TM-P1-012（Lv.2 里程碑升级提示——成长体验闭环，纯 UI 反馈�
 - 触发条件唯一：仅《草原狼影》completeQuest===true 显示；《村外异动》/《矿洞清理》完成、第三任务 false/重复提交/非法状态失败/读取已 Lv.2 存档均不显示
 - **gameStore.ts 零修改**（P1-011 安全预检与升级原子性原样保持）；rules 全部零修改（character/combat/d20/quest/exploration 未动，LEVEL_2_MAX_HP_GAIN=2/LEVEL_2_MAX_MP_GAIN=1 不变）；schema 零修改（Character/GameState/WorldState/QuestState/NpcState/SaveFile/SAVE_VERSION=1 全不变）；git diff 仅 GamePage.tsx + qa/e2e.mjs + README
 - 11 项 E2E（A 第三任务提交前不显示升级提示/B 提交成功立即显示等级提升！+你已达到 Lv.2。+最大生命 +2，最大灵力 +1。+知道了（与原有已完成/110/Lv.2/22/24/6/7 同帧确认）/C 点击知道了后提示消失且角色仍 Lv.2/22/24/6/7/110/D Continue 不重复显示升级提示与知道了/E 《村外异动》《矿洞清理》完成均不显示升级提示）
+- TM-P1-012-R1（补齐关闭升级提示后的角色状态断言）：C 段点击「知道了」后除「提示消失」外，用正则逐项明确断言 Lv.2、生命 22/24、灵力 6/7、金币 110（不再用 `body.includes('Lv.2') && body.includes('110')` 弱断言）——锁定「关闭提示本身无 GameState 副作用」；仅 qa/e2e.mjs 修改（正式玩法代码零修改），提交前无提示/提交成功显示/Continue 不重复/前两任务不提示等原断言全保留
 
 ## 目录结构
 
