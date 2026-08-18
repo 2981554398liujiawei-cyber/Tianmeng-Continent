@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useGameStore, VILLAGE_ELDER_POST_QUEST_EVENT_ID } from './gameStore'
 import { createInitialGameState } from '../content/initial'
 import { checkTravel } from '../rules/exploration'
-import { getNpc } from '../content'
+import { getNpc, getQuest } from '../content'
 
 function createMockStorage(): Storage {
   const store = new Map<string, string>()
@@ -1968,6 +1968,152 @@ describe('TM-P1-003：村长任务后一次性回应选择', () => {
     toCompletedQuest()
     useGameStore.getState().respondToVillageElderAfterQuest('resolve')
     expect(elderState()?.relationship.respect).toBe(1)
+    expect(useGameStore.getState().hasSave).toBe(false)
+  })
+})
+
+describe('TM-P1-005：第二个正式任务《矿洞清理》', () => {
+  const mineQuest = () =>
+    useGameStore.getState().gameState?.quests.find((q) => q.questId === 'quest_mine_cleanup')
+  const gold = () => useGameStore.getState().gameState?.player.gold
+  const ironOre = () =>
+    useGameStore.getState().gameState?.inventory.find((e) => e.itemId === 'iron_ore')?.quantity ?? 0
+
+  /** 正式完成《村外异动》（金币 70，在青石村） */
+  const completeFirstQuest = () => {
+    useGameStore.getState().newGame()
+    useGameStore.getState().discoverQuest('quest_village_monsters')
+    useGameStore.getState().acceptQuest('quest_village_monsters')
+    useGameStore.getState().travelToLocation('village_grassland')
+    useGameStore.getState().resolveCombatVictory('corrupted_rabbit')
+    useGameStore.getState().travelToLocation('qingshi_village')
+    useGameStore.getState().completeQuest('quest_village_monsters')
+  }
+
+  /** 接受《矿洞清理》并进入废弃矿洞（任务 in_progress） */
+  const acceptMineQuestInMine = () => {
+    useGameStore.getState().discoverQuest('quest_mine_cleanup')
+    useGameStore.getState().acceptQuest('quest_mine_cleanup')
+    useGameStore.getState().travelToLocation('abandoned_mine')
+  }
+
+  it('A. 注册内容：quest_mine_cleanup 标题/发布者/奖励固定', () => {
+    const def = getQuest('quest_mine_cleanup')
+    expect(def?.title).toBe('矿洞清理')
+    expect(def?.summary).toContain('废弃矿洞')
+    expect(def?.giverNpcId).toBe('blacksmith')
+    expect(def?.goldReward).toBe(15)
+  })
+
+  it('B. 前置未完成拒绝发现：新游戏 discoverQuest 返回 false 且 GameState 完全不变', () => {
+    useGameStore.getState().newGame()
+    const snapshot = JSON.stringify(useGameStore.getState().gameState)
+    expect(useGameStore.getState().discoverQuest('quest_mine_cleanup')).toBe(false)
+    expect(JSON.stringify(useGameStore.getState().gameState)).toBe(snapshot)
+    expect(mineQuest()).toBeUndefined()
+  })
+
+  it('C. 第一任务完成后可以发现：discover → true → available', () => {
+    completeFirstQuest()
+    expect(useGameStore.getState().discoverQuest('quest_mine_cleanup')).toBe(true)
+    expect(mineQuest()?.status).toBe('available')
+  })
+
+  it('D. 正常接受：available → in_progress（复用 acceptQuest）', () => {
+    completeFirstQuest()
+    useGameStore.getState().discoverQuest('quest_mine_cleanup')
+    expect(useGameStore.getState().acceptQuest('quest_mine_cleanup')).toBe(true)
+    expect(mineQuest()?.status).toBe('in_progress')
+  })
+
+  it('E. 正式魔化鼠胜利：in_progress + abandoned_mine → completable 且铁矿石 +1（同一次 Store 更新）', () => {
+    completeFirstQuest()
+    acceptMineQuestInMine()
+    expect(useGameStore.getState().resolveCombatVictory('corrupted_rat')).toBe(true)
+    expect(mineQuest()?.status).toBe('completable')
+    expect(ironOre()).toBe(1)
+  })
+
+  it('F. 未接受时不推进：quest=available 击败魔化鼠 → 仍 available，铁矿石 +1', () => {
+    completeFirstQuest()
+    useGameStore.getState().discoverQuest('quest_mine_cleanup') // available
+    useGameStore.getState().travelToLocation('abandoned_mine')
+    expect(useGameStore.getState().resolveCombatVictory('corrupted_rat')).toBe(true)
+    expect(mineQuest()?.status).toBe('available')
+    expect(ironOre()).toBe(1)
+  })
+
+  it('G. 已 completable 不重复推进：再次胜利 → 仍 completable，铁矿石继续 +1', () => {
+    completeFirstQuest()
+    acceptMineQuestInMine()
+    useGameStore.getState().resolveCombatVictory('corrupted_rat')
+    expect(useGameStore.getState().resolveCombatVictory('corrupted_rat')).toBe(true)
+    expect(mineQuest()?.status).toBe('completable')
+    expect(ironOre()).toBe(2)
+  })
+
+  it('H. 战利品异常但任务仍推进：iron_ore 数量非法 → true、任务 completable、inventory 不变', () => {
+    completeFirstQuest()
+    acceptMineQuestInMine()
+    useGameStore.setState({
+      gameState: {
+        ...useGameStore.getState().gameState!,
+        inventory: [{ itemId: 'iron_ore', quantity: Number.MAX_SAFE_INTEGER }],
+      },
+    })
+    const invBefore = useGameStore.getState().gameState!.inventory
+    expect(useGameStore.getState().resolveCombatVictory('corrupted_rat')).toBe(true)
+    expect(mineQuest()?.status).toBe('completable')
+    expect(useGameStore.getState().gameState!.inventory).toEqual(invBefore)
+  })
+
+  it('I. 完成任务奖励：completable 且 gold=70 → completed 且 gold=85', () => {
+    completeFirstQuest()
+    acceptMineQuestInMine()
+    useGameStore.getState().resolveCombatVictory('corrupted_rat')
+    useGameStore.getState().travelToLocation('qingshi_village')
+    expect(gold()).toBe(70)
+    expect(useGameStore.getState().completeQuest('quest_mine_cleanup')).toBe(true)
+    expect(mineQuest()?.status).toBe('completed')
+    expect(gold()).toBe(85)
+  })
+
+  it('J. 无额外副作用：flags/completedEvents/npcStates/hp/mp/inventory/equipment 保持，blacksmith NpcState 不创建', () => {
+    completeFirstQuest()
+    acceptMineQuestInMine()
+    useGameStore.getState().resolveCombatVictory('corrupted_rat')
+    useGameStore.getState().travelToLocation('qingshi_village')
+    const before = useGameStore.getState().gameState!
+    useGameStore.getState().completeQuest('quest_mine_cleanup')
+    const after = useGameStore.getState().gameState!
+    expect(after.world.flags).toEqual(before.world.flags)
+    expect(after.world.completedEvents).toEqual(before.world.completedEvents)
+    expect(after.world.npcStates).toEqual(before.world.npcStates)
+    expect(after.player.hp).toBe(before.player.hp)
+    expect(after.player.mp).toBe(before.player.mp)
+    expect(after.inventory).toEqual(before.inventory)
+    expect(after.equipment).toEqual(before.equipment)
+    expect(after.world.npcStates.blacksmith).toBeUndefined()
+  })
+
+  it('K. 重复完成：第一次 gold 70→85，第二次 false 且 gold 仍 85', () => {
+    completeFirstQuest()
+    acceptMineQuestInMine()
+    useGameStore.getState().resolveCombatVictory('corrupted_rat')
+    useGameStore.getState().travelToLocation('qingshi_village')
+    expect(useGameStore.getState().completeQuest('quest_mine_cleanup')).toBe(true)
+    expect(gold()).toBe(85)
+    expect(useGameStore.getState().completeQuest('quest_mine_cleanup')).toBe(false)
+    expect(gold()).toBe(85)
+  })
+
+  it('L. 不自动保存：完成《矿洞清理》后 hasSave 仍 false', () => {
+    completeFirstQuest()
+    acceptMineQuestInMine()
+    useGameStore.getState().resolveCombatVictory('corrupted_rat')
+    useGameStore.getState().travelToLocation('qingshi_village')
+    useGameStore.getState().completeQuest('quest_mine_cleanup')
+    expect(mineQuest()?.status).toBe('completed')
     expect(useGameStore.getState().hasSave).toBe(false)
   })
 })

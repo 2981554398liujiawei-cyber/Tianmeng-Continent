@@ -20,4 +20,12 @@ export const QUESTS: Record<string, QuestDefinition> = {
     giverNpcId: 'village_elder',
     goldReward: 20,
   },
+  // TM-P1-005：第二个正式任务（复用既有矿洞/魔化鼠/铁匠内容；解锁由 Store 窄前置守住）
+  quest_mine_cleanup: {
+    id: 'quest_mine_cleanup',
+    title: '矿洞清理',
+    summary: '废弃矿洞里的魔化鼠让进出变得危险，铁匠希望你先把这处威胁清理掉。',
+    giverNpcId: 'blacksmith',
+    goldReward: 15,
+  },
 }

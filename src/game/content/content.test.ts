@@ -157,10 +157,10 @@ describe('TM-P0-002-R1：关键内容身份锁', () => {
     expect(desc).not.toContain('迁徙')
   })
 
-  it('注册表数量与 ID 未被改动（无新增黄金兔子王条目）', () => {
+  it('注册表数量与 ID 未被改动（无新增黄金兔子王条目；TM-P1-005 新增《矿洞清理》）', () => {
     expect(Object.keys(ENEMIES)).toHaveLength(4)
     expect(Object.keys(NPCS)).toHaveLength(3)
-    expect(Object.keys(QUESTS)).toHaveLength(1)
+    expect(Object.keys(QUESTS)).toHaveLength(2)
     expect(getEnemy('golden_rabbit_king')).toBeUndefined()
   })
 })

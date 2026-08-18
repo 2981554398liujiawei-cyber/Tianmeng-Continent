@@ -81,7 +81,12 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
   // TM-P0-006：附近委托 = 给予者位于当前地点的注册任务（不写死地点 ID）
   const localQuests = Object.values(QUESTS).filter((quest) => {
     const giver = getNpc(quest.giverNpcId)
-    return giver?.locationId === world.currentLocationId
+    if (giver?.locationId !== world.currentLocationId) return false
+    // TM-P1-005：UI 侧窄前置（与 Store discoverQuest 一致）——《矿洞清理》仅在第一任务完成后可见
+    if (quest.id === 'quest_mine_cleanup') {
+      return gameState.quests.some((q) => q.questId === 'quest_village_monsters' && q.status === 'completed')
+    }
+    return true
   })
   // TM-P0-015：附近人物 = 常驻当前地点的注册 NPC（动态过滤，不硬编码列表）
   const localNpcs = Object.values(NPCS).filter((npc) => npc.locationId === world.currentLocationId)

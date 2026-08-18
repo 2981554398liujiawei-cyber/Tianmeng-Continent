@@ -291,6 +291,16 @@ TM-P1-004（村长关系值驱动后续对话反应——NPC 对玩家选择产�
 - 无新增单测（Store 零修改，387 保持）；15 项 E2E（resolve 路径：未回应仍原 greeting→点击后立即切换尊敬反应文案+旧 greeting 消失+信任：1 尊敬：1+按钮消失→重新交谈保持→Save Continue 后仍保持；reassure 路径：点击后立即切换信任反应文案+信任：2 尊敬：0+按钮消失→重新交谈保持；铁匠无关系反应扩张；全部走正式 UI 未注入状态）
 - TM-P1-004-R1（异常关系整体回退）：elderReaction 读取 trust/respect 后先整体校验——**任一维度非 finite → 直接 null**（不因另一维度合法而进入该维度文案、不修复非法值、不猜测分支）；随后才按确定性顺序 respect>=1（尊敬反应）优先、否则 trust>=2（信任反应）；正常路径零回归（trust1/respect1→尊敬文案、trust2/respect0→信任文案、trust2/respect1→尊敬优先、trust1/respect0→原 greeting）；仅 GamePage.tsx 修复，gameStore.ts 仍零修改、无新持久状态/事件 ID、GameState/NpcState schema 不变、SAVE_VERSION 仍 1
 
+TM-P1-005（第二个正式任务《矿洞清理》——内容纵向扩展）：
+- QUESTS 注册新增 quest_mine_cleanup（固定：title「矿洞清理」/summary「废弃矿洞里的魔化鼠让进出变得危险，铁匠希望你先把这处威胁清理掉。」/giverNpcId 'blacksmith'/goldReward 15）；QuestDefinition schema 未扩展（未加 prerequisiteQuestId/objectives[]/targetEnemyId/targetLocationId/rewards[]/nextQuest）
+- 解锁条件（Store 窄前置 + UI 同口径）：仅 quest_village_monsters.status==='completed' 后可 discoverQuest('quest_mine_cleanup')，否则 false 且 GameState 完全不变；GamePage 附近委托区同步过滤——第一任务未完成时青石村不显示「铁匠似乎有事相托。」/「矿洞清理」；**不依赖 P1-003 回应**（不要求事件 ID/trust/respect）
+- 生命周期严格复用状态机：discover→available→accept→in_progress；废弃矿洞（abandoned_mine）正式击败 corrupted_rat 且任务 in_progress → 经 applyQuestTransition 推进为 completable（未手写状态跳转）；未接受（不存在/available/completable/completed/failed）击败魔化鼠不推进任务但铁矿石掉落照常；completable 后重复胜利不重复推进
+- 同一次 resolveCombatVictory() Store 更新形成最终 GameState：任务推进 + 铁矿石 +1（未拆 resolveCombatVictory→markQuestCompletable 两步）；战利品异常（iron_ore 数量非法/溢出）不阻断任务——胜利成立、任务推进、inventory 保持原样（P0-020 安全语义）
+- 提交复用 completeQuest('quest_mine_cleanup') + 现有 generic goldReward 机制：基准金币 70→85（+15）；未新增 rewardMineQuest/giveMineGold/MINING_QUEST_REWARD
+- 零副作用：完成不增加 blacksmith/村长任何关系（不为铁匠创建 NpcState）、不发额外物品（铁剑/矿石/药水）、不新增 world.flags/completedEvents、不解锁新地点/敌人；矿洞 D20 调查（investigateAbandonedMine/abandoned_mine_investigation）完全独立（不要求先调查/调查成功不直接完成/调查失败不锁死）；魔化鼠数据（HP6/DEF10/攻击+2/伤害2）、废弃矿洞地点连接、铁匠 greeting/summary/role 全部零修改
+- 未新增地点/敌人/NPC/物品；未建任务 DSL/QuestEngine/新 QuestStatus/经验升级/铁匠关系系统/新对话树；GameState schema 不变、SAVE_VERSION 仍 1
+- 12 个 Store 单测（A 注册内容固定/B 前置未完成拒绝发现且全不变/C 第一任务完成后可发现 available/D 正常接受 in_progress/E 正式魔化鼠胜利 completable+铁矿石+1 同次更新/F available 时不推进但铁矿石+1/G completable 重复胜利不重复推进矿石继续+1/H 战利品异常任务仍推进 inventory 不变/I 提交后 completed gold 70→85/J 无额外副作用（flags/completedEvents/npcStates/hp/mp/inventory/equipment 保持、blacksmith NpcState 不创建）/K 重复完成 false 仍 85/L 不自动保存）+ 14 项 E2E（A 新游戏无入口+村外异动保持/B 第一任务完成后铁匠委托出现+金币 70/C 矿洞清理可接受（发布者铁匠）+进行中/D 废弃矿洞魔化鼠迎战/E 同次胜利铁矿石×1+可完成/F 提交后已完成金币 85/G 铁匠无关系 UI+村长关系保持 1/0/H Continue 后任务/金币/铁矿石保持）
+
 ## 目录结构
 
 ```

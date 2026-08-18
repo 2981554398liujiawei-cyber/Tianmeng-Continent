@@ -1340,6 +1340,95 @@ try {
   await clickByText('结束交谈')
   await clickByText('返回主菜单')
 
+  // P1-005：第二个正式任务《矿洞清理》
+  // A. 新游戏时任务未出现（不显示「矿洞清理」/「铁匠似乎有事相托」），《村外异动》原入口保持
+  await clickByText('新游戏')
+  await clickByText('确认进入天梦大陆')
+  body = await bodyText()
+  check('P1-005-A: 新游戏青石村无矿洞清理入口', !body.includes('矿洞清理') && !body.includes('铁匠似乎有事相托'))
+  check('P1-005-A: 村外异动原入口保持', body.includes('村长似乎有事相托。'))
+
+  // B. 正式完成第一任务后解锁
+  await clickByText('查看委托')
+  await clickByText('接受任务')
+  await clickByText('村外草原')
+  await clickByText('迎战')
+  await sleep(300)
+  await page.evaluate(() => {
+    window.__origRandom = Math.random.bind(Math)
+    Math.random = () => 0.99
+  })
+  await clickByText('普通攻击')
+  await sleep(300)
+  await page.evaluate(() => {
+    Math.random = window.__origRandom
+  })
+  await clickByText('返回冒险')
+  await clickByText('青石村')
+  await clickByText('提交任务')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-005-B: 第一任务完成且金币 70', body.includes('已完成') && body.includes('70'))
+  check('P1-005-B: 铁匠新委托出现', body.includes('铁匠似乎有事相托。'))
+
+  // C. 发现并接受《矿洞清理》
+  await clickByText('查看委托')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-005-C: 矿洞清理可接受（发布者铁匠）', body.includes('矿洞清理') && body.includes('发布者：铁匠') && body.includes('可接受'))
+  await clickByText('接受任务')
+  body = await bodyText()
+  check('P1-005-C: 矿洞清理进行中', body.includes('矿洞清理') && body.includes('进行中'))
+
+  // D. 正式进入矿洞战斗（固定随机击败魔化鼠）
+  await clickByText('废弃矿洞')
+  body = await bodyText()
+  check('P1-005-D: 废弃矿洞出现魔化鼠', body.includes('魔化鼠') && body.includes('迎战'))
+  await clickByText('迎战')
+  await sleep(300)
+  await page.evaluate(() => {
+    window.__origRandom = Math.random.bind(Math)
+    Math.random = () => 0.99
+  })
+  await clickByText('普通攻击')
+  await sleep(300)
+  await page.evaluate(() => {
+    Math.random = window.__origRandom
+  })
+
+  // E. 同一次胜利同时产生任务推进与战利品
+  await clickByText('返回冒险')
+  body = await bodyText()
+  check('P1-005-E: 胜利后获得铁矿石 ×1', body.includes('铁矿石') && body.includes('×1'))
+  await clickByText('青石村')
+  body = await bodyText()
+  check('P1-005-E: 矿洞清理可完成', body.includes('矿洞清理') && body.includes('可完成'))
+
+  // F. 提交第二任务
+  await clickByText('提交任务')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-005-F: 矿洞清理已完成且金币 85', body.includes('矿洞清理') && body.includes('已完成') && body.includes('85'))
+
+  // G. 无关系副作用：铁匠交谈无关系数值，村长既有关系不变
+  await clickNthTalk(1)
+  body = await bodyText()
+  check('P1-005-G: 铁匠交谈无关系数值 UI', !body.includes('信任：') && !body.includes('尊敬：'))
+  await clickByText('结束交谈')
+  await clickNthTalk(0)
+  body = await bodyText()
+  check('P1-005-G: 村长关系保持 信任：1 尊敬：0（未受矿洞任务影响）', body.includes('信任：1') && body.includes('尊敬：0'))
+  await clickByText('结束交谈')
+
+  // H. Save + Continue 保持任务完成/金币/铁矿石
+  await clickByText('保存游戏')
+  await clickByText('返回主菜单')
+  await clickByText('继续游戏')
+  body = await bodyText()
+  check('P1-005-H: Continue 后矿洞清理已完成', body.includes('矿洞清理') && body.includes('已完成'))
+  check('P1-005-H: Continue 后金币 85 且铁矿石 ×1', body.includes('85') && body.includes('铁矿石') && body.includes('×1'))
+  await clickByText('返回主菜单')
+
   // R2：运行期间存档改坏 → 触发一次 load → Continue 禁用且不进入游戏页
   await clickByText('新游戏')
   await clickByText('确认进入天梦大陆') // P004：默认预填合法，直接确认创建

@@ -182,6 +182,13 @@ export const useGameStore = create<GameStoreState>()((set) => ({
     let changed = false
     set((s) => {
       if (!s.gameState) return {}
+      // TM-P1-005：窄前置——仅《矿洞清理》要求《村外异动》已完成才可发现（不建通用 prerequisite 系统）
+      if (questId === 'quest_mine_cleanup') {
+        const villageMonstersCompleted = s.gameState.quests.some(
+          (q) => q.questId === 'quest_village_monsters' && q.status === 'completed',
+        )
+        if (!villageMonstersCompleted) return {}
+      }
       const next = applyQuestDiscovery(s.gameState, questId)
       if (!next) return {}
       changed = true
@@ -328,16 +335,27 @@ export const useGameStore = create<GameStoreState>()((set) => ({
           }
         }
       }
-      // 魔化鼠固定战利品（TM-P0-020）：废弃矿洞击败魔化鼠 → 铁矿石 +1（重复胜利堆叠同一 entry）
+      // 魔化鼠固定战利品（TM-P0-020）+《矿洞清理》任务推进（TM-P1-005）：
+      // 废弃矿洞击败魔化鼠 → 铁矿石 +1（重复胜利堆叠同一 entry）；若任务 in_progress 则同一次胜利推进为 completable
       if (enemyId === 'corrupted_rat' && location.id === 'abandoned_mine') {
         const inv = s.gameState.inventory
         const idx = inv.findIndex((e) => e.itemId === 'iron_ore')
         const current = idx >= 0 ? (inv[idx]?.quantity ?? 0) : 0
         // 数量安全：已有数量合法且 +1 仍为安全整数才更新；否则胜利仍合法但 inventory 不变
-        if (
+        const lootOk =
           idx < 0 ||
           (Number.isSafeInteger(current) && current >= 1 && Number.isSafeInteger(current + 1))
-        ) {
+        // 战利品异常不阻断任务推进（P0-020 安全语义）：inventory 保持原样，任务仍可推进
+        const next = applyQuestTransition(s.gameState, 'quest_mine_cleanup', 'completable')
+        if (next) {
+          const inventory = lootOk
+            ? idx >= 0
+              ? inv.map((e, i) => (i === idx ? { ...e, quantity: current + 1 } : e))
+              : [...inv, { itemId: 'iron_ore', quantity: 1 }]
+            : inv
+          return { gameState: { ...next, inventory } }
+        }
+        if (lootOk) {
           const inventory =
             idx >= 0
               ? inv.map((e, i) => (i === idx ? { ...e, quantity: current + 1 } : e))
