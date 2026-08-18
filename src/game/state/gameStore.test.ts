@@ -4702,10 +4702,9 @@ describe('TM-P1-024：天龙城第一段——向王财询问黑石塔遭遇（�
   const currentLocation = () => useGameStore.getState().gameState?.world.currentLocationId
   const snapshot = () => JSON.stringify(useGameStore.getState().gameState)
 
-  /** 走到武馆接取第五主线（在天龙城、任务 in_progress、未 brief） */
+  /** 走到武馆接取第五主线（在天龙城、任务 in_progress、未 brief；同时构造带四历史 flag 的黄金兔子 QuestState 用于 N 项精确锁定） */
   const seedWangcaiInProgress = () => {
     useGameStore.getState().newGame()
-    // 直接构造：newGame 后补足武馆与任务（本卡不依赖青石村全链；仅测试 ask 动作语义）
     useGameStore.setState((s) => {
       if (!s.gameState) return {}
       return {
@@ -4713,6 +4712,18 @@ describe('TM-P1-024：天龙城第一段——向王财询问黑石塔遭遇（�
           ...s.gameState,
           world: { ...s.gameState.world, currentLocationId: 'tianlong_city' },
           quests: [
+            // 黄金兔子第四主线（带青石村收束四历史 flag；P1-023 离村后保持）
+            {
+              questId: 'quest_golden_rabbit_search',
+              status: 'in_progress',
+              stage: 0,
+              flags: {
+                asked_blacksmith: true,
+                asked_apothecary: true,
+                village_inquiry_reported: true,
+                rabbit_lair_rechecked: true,
+              },
+            },
             ...s.gameState.quests,
             {
               questId: 'quest_wangcai_trouble',
@@ -4873,17 +4884,29 @@ describe('TM-P1-024：天龙城第一段——向王财询问黑石塔遭遇（�
     expect(after.world.npcStates.merchant_wangcai).toBeUndefined()
   })
 
-  it('N. 黄金兔子主线完全不变（本卡流程不创建/不推进；ask 只改 wangcai flag）', () => {
+  it('N. 黄金兔子主线完全不变（真实构造带四历史 flag 的 QuestState，整个深比较前后精确相等）', () => {
     seedWangcaiInProgress()
-    const beforeOtherQuests = JSON.stringify(
-      useGameStore.getState().gameState!.quests.filter((q) => q.questId !== 'quest_wangcai_trouble'),
-    )
-    useGameStore.getState().askWangcaiAboutTrouble()
-    expect(goldenQuest()).toBeUndefined()
-    const afterOtherQuests = JSON.stringify(
-      useGameStore.getState().gameState!.quests.filter((q) => q.questId !== 'quest_wangcai_trouble'),
-    )
-    expect(afterOtherQuests).toBe(beforeOtherQuests)
+    const golden = useGameStore.getState().gameState!.quests.find((q) => q.questId === 'quest_golden_rabbit_search')!
+    expect(golden.status).toBe('in_progress')
+    expect(golden.stage).toBe(0)
+    expect(golden.flags.asked_blacksmith).toBe(true)
+    expect(golden.flags.asked_apothecary).toBe(true)
+    expect(golden.flags.village_inquiry_reported).toBe(true)
+    expect(golden.flags.rabbit_lair_rechecked).toBe(true)
+    const beforeGolden = JSON.stringify(golden)
+    expect(useGameStore.getState().askWangcaiAboutTrouble()).toBe(true)
+    expect(wangcaiQuest()?.flags.wangcai_briefed).toBe(true)
+    expect(wangcaiQuest()?.status).toBe('in_progress')
+    expect(wangcaiQuest()?.stage).toBe(0)
+    const afterGolden = useGameStore.getState().gameState!.quests.find((q) => q.questId === 'quest_golden_rabbit_search')!
+    // 整个 QuestState 深比较（含四 flag 与 status/stage）
+    expect(JSON.stringify(afterGolden)).toBe(beforeGolden)
+    expect(afterGolden.status).toBe('in_progress')
+    expect(afterGolden.stage).toBe(0)
+    expect(afterGolden.flags.asked_blacksmith).toBe(true)
+    expect(afterGolden.flags.asked_apothecary).toBe(true)
+    expect(afterGolden.flags.village_inquiry_reported).toBe(true)
+    expect(afterGolden.flags.rabbit_lair_rechecked).toBe(true)
   })
 
   it('O. 不自动保存', () => {
