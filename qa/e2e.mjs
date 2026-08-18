@@ -1149,7 +1149,8 @@ try {
   await clickNthTalk(0)
   body = await bodyText()
   check('P1-002-D: 完成后村长对话显示 信任：1', body.includes('信任：1'))
-  check('P1-002-D: 不显示好感/尊敬/恋爱', !body.includes('好感') && !body.includes('尊敬') && !body.includes('恋爱'))
+  // TM-P1-003：村长对话已扩展为 信任+尊敬 两维显示；好感/恋爱仍不出现
+  check('P1-002-D: 不显示好感/恋爱（尊敬维度显示为 0）', !body.includes('好感') && !body.includes('恋爱') && body.includes('尊敬：0'))
   await clickByText('结束交谈')
 
   // E. 重复交谈不加信任
@@ -1175,6 +1176,73 @@ try {
   await clickNthTalk(2)
   body = await bodyText()
   check('P1-002-G: 药师对话无关系数值 UI', !body.includes('信任：') && !body.includes('好感') && !body.includes('尊敬'))
+  await clickByText('结束交谈')
+  await clickByText('返回主菜单')
+
+  // P1-003：村长任务后一次性回应选择与关系分支
+  // A. 任务完成前：无回应选择
+  await clickByText('新游戏')
+  await clickByText('确认进入天梦大陆')
+  await clickNthTalk(0)
+  body = await bodyText()
+  check('P1-003-A: 完成前村长显示 信任：0 尊敬：0', body.includes('信任：0') && body.includes('尊敬：0'))
+  check('P1-003-A: 完成前无回应选择按钮', !body.includes('村子平安就好。') && !body.includes('我会继续追查这些异动。'))
+  await clickByText('结束交谈')
+
+  // B. 正式完成任务
+  await clickByText('查看委托')
+  await clickByText('接受任务')
+  await clickByText('村外草原')
+  await clickByText('迎战')
+  await sleep(300)
+  await page.evaluate(() => {
+    window.__origRandom = Math.random.bind(Math)
+    Math.random = () => 0.99
+  })
+  await clickByText('普通攻击')
+  await sleep(300)
+  await page.evaluate(() => {
+    Math.random = window.__origRandom
+  })
+  await clickByText('返回冒险')
+  await clickByText('青石村')
+  await clickByText('提交任务')
+  await sleep(300)
+  await clickNthTalk(0)
+  body = await bodyText()
+  check('P1-003-B: 完成后村长显示 信任：1 尊敬：0', body.includes('信任：1') && body.includes('尊敬：0'))
+  check('P1-003-B: 完成后显示回应提示与两个选项', body.includes('村长看着你，神色比之前放松了一些。') && body.includes('村子平安就好。') && body.includes('我会继续追查这些异动。'))
+  check('P1-003-B: 两个回应按钮启用', (await buttonDisabled('村子平安就好。')) === false && (await buttonDisabled('我会继续追查这些异动。')) === false)
+
+  // C. 选择 resolve：尊敬 0→1，信任保持 1，按钮永久消失
+  await clickByText('我会继续追查这些异动。')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-003-C: resolve 后尊敬 0→1 且信任仍 1', body.includes('信任：1') && body.includes('尊敬：1'))
+  check('P1-003-C: 回应后按钮与提示消失', !body.includes('村子平安就好。') && !body.includes('我会继续追查这些异动。') && !body.includes('村长看着你，神色比之前放松了一些。'))
+  await clickByText('结束交谈')
+
+  // D. 重复交谈不可重选
+  await clickNthTalk(0)
+  body = await bodyText()
+  check('P1-003-D: 再次交谈仍 信任：1 尊敬：1', body.includes('信任：1') && body.includes('尊敬：1'))
+  check('P1-003-D: 不可重选（无回应按钮）', !body.includes('村子平安就好。'))
+  await clickByText('结束交谈')
+
+  // E. Save + Continue 后仍 1/1 且不可重选
+  await clickByText('保存游戏')
+  await clickByText('返回主菜单')
+  await clickByText('继续游戏')
+  await clickNthTalk(0)
+  body = await bodyText()
+  check('P1-003-E: Continue 后仍 信任：1 尊敬：1', body.includes('信任：1') && body.includes('尊敬：1'))
+  check('P1-003-E: Continue 后不可重选', !body.includes('村子平安就好。'))
+  await clickByText('结束交谈')
+
+  // F. 其他 NPC 无关系 UI
+  await clickNthTalk(1)
+  body = await bodyText()
+  check('P1-003-F: 铁匠无关系数值 UI', !body.includes('信任：') && !body.includes('尊敬：'))
   await clickByText('结束交谈')
   await clickByText('返回主菜单')
 

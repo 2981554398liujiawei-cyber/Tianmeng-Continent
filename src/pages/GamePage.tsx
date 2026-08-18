@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import Button from '../components/Button'
-import { useGameStore } from '../game/state/gameStore'
+import { useGameStore, VILLAGE_ELDER_POST_QUEST_EVENT_ID } from '../game/state/gameStore'
 import { getProfessionName, ATTRIBUTE_KEYS, ATTRIBUTE_LABELS } from '../game/content/professions'
 import { getEnemy, getItem, getLocation, getNpc, getQuest, NPCS, QUESTS } from '../game/content'
 import { CHECK_DC, type D20CheckResult } from '../game/rules/d20'
@@ -58,6 +58,7 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
   const buyHealingPotion = useGameStore((s) => s.buyHealingPotion)
   const sellIronOre = useGameStore((s) => s.sellIronOre)
   const restAtVillage = useGameStore((s) => s.restAtVillage)
+  const respondToVillageElderAfterQuest = useGameStore((s) => s.respondToVillageElderAfterQuest)
   const investigateAbandonedMine = useGameStore((s) => s.investigateAbandonedMine)
   const [saveResult, setSaveResult] = useState<'saved' | 'failed' | null>(null)
   const [travelError, setTravelError] = useState(false)
@@ -304,12 +305,29 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
               <p className="font-bold text-bone-100">{activeNpc.name}</p>
               <p className="mb-2 text-xs text-bone-500">{activeNpc.role}</p>
               <p className="mb-3 text-bone-300">{activeNpc.greeting}</p>
-              {/* TM-P1-002：村长对话显示信任（读 NpcState；未建立状态时 UI fallback 0，打开对话不创建状态） */}
+              {/* TM-P1-002/003：村长对话显示信任+尊敬（读 NpcState；未建立状态时 UI fallback 0，打开对话不创建状态） */}
               {activeNpc.id === 'village_elder' && (
                 <p className="mb-3 text-xs text-bone-500">
                   信任：{world.npcStates[activeNpc.id]?.relationship.trust ?? 0}
+                  {'　'}尊敬：{world.npcStates[activeNpc.id]?.relationship.respect ?? 0}
                 </p>
               )}
+              {/* TM-P1-003：《村外异动》完成后村长一次性回应选择（复用 completedEvents 记录，仅未回应时显示） */}
+              {activeNpc.id === 'village_elder' &&
+                (gameState.quests.some((q) => q.questId === 'quest_village_monsters' && q.status === 'completed')) &&
+                !world.completedEvents.includes(VILLAGE_ELDER_POST_QUEST_EVENT_ID) && (
+                  <div className="mb-3 rounded border border-ink-600 bg-ink-900/40 p-3">
+                    <p className="mb-2 text-xs text-bone-300">村长看着你，神色比之前放松了一些。</p>
+                    <div className="flex flex-col items-start gap-2">
+                      <Button variant="primary" onClick={() => respondToVillageElderAfterQuest('reassure')}>
+                        村子平安就好。
+                      </Button>
+                      <Button variant="primary" onClick={() => respondToVillageElderAfterQuest('resolve')}>
+                        我会继续追查这些异动。
+                      </Button>
+                    </div>
+                  </div>
+                )}
               <Button variant="ghost" onClick={() => setActiveNpcId(null)}>
                 结束交谈
               </Button>

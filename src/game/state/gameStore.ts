@@ -6,6 +6,9 @@ import { canTransitionQuestStatus } from '../rules/quest'
 import { getEnemy, getItem, getLocation, getNpc, getQuest } from '../content'
 import { performD20Check, CHECK_DC, type D20CheckResult } from '../rules/d20'
 import { MAGE_SPELL_MP_COST } from '../rules/combat'
+
+/** TM-P1-003：《村外异动》完成后村长一次性回应事件 ID（唯一代码来源，GamePage 亦读取） */
+export const VILLAGE_ELDER_POST_QUEST_EVENT_ID = 'village_elder_post_quest_response'
 import {
   deleteGame as deleteSave,
   hasSave as storageHasSave,
@@ -45,6 +48,8 @@ interface GameStoreState {
   completeQuest: (questId: string) => boolean
   /** 任务失败：仅 in_progress/completable → failed（终态） */
   failQuest: (questId: string) => boolean
+  /** 村长任务后一次性回应选择（TM-P1-003）：仅 completed 且在村长处且未回应过才可执行；reassure→信任+1 / resolve→尊敬+1 */
+  respondToVillageElderAfterQuest: (choice: 'reassure' | 'resolve') => boolean
 
   /** 战斗伤害：hp = max(0, hp - amount)，仅正整数伤害，不设通用 setPlayerHp（TM-P0-008） */
   damagePlayer: (amount: number) => boolean
@@ -569,6 +574,45 @@ export const useGameStore = create<GameStoreState>()((set) => ({
       }
     })
     return spent
+  },
+
+  respondToVillageElderAfterQuest: (choice) => {
+    let responded = false
+    set((s) => {
+      if (!s.gameState) return {}
+      // 非法 choice 拒绝（不抛异常）
+      if (choice !== 'reassure' && choice !== 'resolve') return {}
+      // 前置：任务已完成 + 村长注册存在 + 当前在村长所在地 + 村长 NpcState 已存在（P1-002 保证；缺失不追补）
+      const questCompleted = s.gameState.quests.some(
+        (q) => q.questId === 'quest_village_monsters' && q.status === 'completed',
+      )
+      if (!questCompleted) return {}
+      const elder = getNpc('village_elder')
+      if (!elder || elder.locationId !== s.gameState.world.currentLocationId) return {}
+      const elderState = s.gameState.world.npcStates.village_elder
+      if (!elderState) return {}
+      // 一次性事件：completedEvents 已含事件 ID → 不可再回应
+      if (s.gameState.world.completedEvents.includes(VILLAGE_ELDER_POST_QUEST_EVENT_ID)) return {}
+      // 关系数值安全（只结算目标维度）：finite 且 +1 仍 finite，否则整次拒绝（不把坏值归零）
+      const target = choice === 'reassure' ? elderState.relationship.trust : elderState.relationship.respect
+      if (!Number.isFinite(target) || !Number.isFinite(target + 1)) return {}
+      responded = true
+      const relationship =
+        choice === 'reassure'
+          ? { ...elderState.relationship, trust: elderState.relationship.trust + 1 }
+          : { ...elderState.relationship, respect: elderState.relationship.respect + 1 }
+      return {
+        gameState: {
+          ...s.gameState,
+          world: {
+            ...s.gameState.world,
+            npcStates: { ...s.gameState.world.npcStates, village_elder: { ...elderState, relationship } },
+            completedEvents: [...s.gameState.world.completedEvents, VILLAGE_ELDER_POST_QUEST_EVENT_ID],
+          },
+        },
+      }
+    })
+    return responded
   },
 
   addGold: (amount) => {

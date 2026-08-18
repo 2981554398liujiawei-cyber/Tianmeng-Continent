@@ -271,6 +271,16 @@ TM-P1-002（《村外异动》完成后村长信任 +1——NPC 关系第一次�
 - 未实现关系 Action（increaseNpcTrust/changeRelationship 等）/关系引擎（RelationshipEngine/Definition/DSL）/恋爱系统/对话树；GameState/NpcState/NpcRelationship schema 不变、SAVE_VERSION 仍 1；无新存档字段
 - 11 个 Store 单测（初始 {} 零回归/正常完成懒创建全字段断言/已有关系 5→6 其余保持/保持 alive=false 与自定义 locationId/非 completable false/重复完成 false/已 completed 不追补/其他 NPC 不变/其他关系不变（romanceInterest 保持）/关系异常 Infinity false/不自动保存）+ 9 项 E2E（完成前信任：0/正式完成流程/金币 70 与兔王巢穴解锁零回归/完成后信任：1 且无好感尊敬恋爱/重复交谈仍 1/Continue 后仍 1/铁匠药师无关系 UI）
 
+TM-P1-003（村长任务后一次性回应选择与关系分支——第一次玩家剧情选择）：
+- 新增唯一事件 ID 常量 `VILLAGE_ELDER_POST_QUEST_EVENT_ID = 'village_elder_post_quest_response'`（Store 模块导出，GamePage 读取同一来源）；事件完成复用既有 world.completedEvents: string[] 记录（未新增 DialogueState/EventState/ChoiceHistory/relationshipEvents）
+- Store 唯一新增入口 `respondToVillageElderAfterQuest(choice: 'reassure' | 'resolve')`（未实现 chooseDialogueOption/runDialogueChoice/increaseTrust/changeRelationship 等通用接口）：前置全部校验（gameState + quest_village_monsters.status==='completed' + village_elder 注册存在 + 当前地点===elder.locationId + npcStates.village_elder 已存在 + completedEvents 不含事件 ID）；缺 elder NpcState 不追补（P1-002 正常流程保证存在）
+- 选择 A「村子平安就好。」（reassure）→ trust +1（正常主流程 1→2，respect 保持 0）；选择 B「我会继续追查这些异动。」（resolve）→ respect +1（trust 保持 1，respect 0→1）；两选择互斥——任一成功后 completedEvents 追加一次事件 ID（不重复），另一选项永远 false；非法 choice → false 不抛异常
+- 关系数值安全：仅结算目标维度，trust（reassure）/respect（resolve）必须 finite 且 +1 仍 finite，否则整次 false 且 GameState 完全不变（不把坏值归零）
+- 只改一个关系维度 + completedEvents；respect/affection/fear/resentment/romanceInterest（reassure 时）或 trust/affection/fear/resentment/romanceInterest（resolve 时）全保持；NpcState.npcId/alive/locationId 不变；其他 NPC state 不变；不发金币/物品/经验/HP·MP/任务/世界 Flag；不自动保存
+- GamePage 村长对话「信任：N」扩展为「信任：N 尊敬：N」（仅 village_elder，铁匠/药师无关系 UI）；任务完成后且未回应时显示提示「村长看着你，神色比之前放松了一些。」+ 两个固定回应按钮；点击后关系即时更新且提示与按钮永久消失；重新交谈/Continue 后不可重选（读 completedEvents）
+- 未实现 DialogueTree/DialogueNode/RelationshipEngine/ChoiceEngine/恋爱系统；GameState/NpcState/NpcRelationship schema 不变、SAVE_VERSION 仍 1
+- 13 个 Store 单测（任务未完成拒绝/错误地点拒绝/缺 elder state 拒绝不补建/reassure 正常 trust1→2 respect0/resolve 正常 trust1 respect0→1/两选择互斥/非法 choice/trust Infinity false/respect Infinity false/其他关系保持/NpcState 与其他 NPC 保持/无额外副作用/不自动保存）+ 13 项 E2E（完成前 0/0 无选择/完成后 1/0+提示+两选项启用/resolve 后 1/1 按钮提示消失/重复交谈不可重选/Continue 后 1/1 不可重选/铁匠无关系 UI）
+
 ## 目录结构
 
 ```

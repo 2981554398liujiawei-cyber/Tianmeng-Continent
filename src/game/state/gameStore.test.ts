@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { useGameStore } from './gameStore'
+import { useGameStore, VILLAGE_ELDER_POST_QUEST_EVENT_ID } from './gameStore'
 import { createInitialGameState } from '../content/initial'
 import { checkTravel } from '../rules/exploration'
 import { getNpc } from '../content'
@@ -1777,6 +1777,197 @@ describe('TM-P1-002：《村外异动》完成村长信任 +1', () => {
     toCompletableWithQuest()
     useGameStore.getState().completeQuest('quest_village_monsters')
     expect(elderState()?.relationship.trust).toBe(1)
+    expect(useGameStore.getState().hasSave).toBe(false)
+  })
+})
+
+describe('TM-P1-003：村长任务后一次性回应选择', () => {
+  const elderState = () => useGameStore.getState().gameState?.world.npcStates.village_elder
+  const completedEvents = () => useGameStore.getState().gameState?.world.completedEvents ?? []
+
+  /** 正式走完 P1-002：任务 completed、gold 70、兔王巢穴解锁、elder trust=1（在青石村） */
+  const toCompletedQuest = () => {
+    useGameStore.getState().newGame()
+    useGameStore.getState().discoverQuest('quest_village_monsters')
+    useGameStore.getState().acceptQuest('quest_village_monsters')
+    useGameStore.getState().travelToLocation('village_grassland')
+    useGameStore.getState().resolveCombatVictory('corrupted_rabbit')
+    useGameStore.getState().travelToLocation('qingshi_village')
+    useGameStore.getState().completeQuest('quest_village_monsters')
+  }
+
+  it('A. 任务未完成拒绝：quest 未 completed → false，GameState 完全不变', () => {
+    useGameStore.getState().newGame()
+    useGameStore.getState().discoverQuest('quest_village_monsters')
+    useGameStore.getState().acceptQuest('quest_village_monsters')
+    const snapshot = JSON.stringify(useGameStore.getState().gameState)
+    expect(useGameStore.getState().respondToVillageElderAfterQuest('reassure')).toBe(false)
+    expect(JSON.stringify(useGameStore.getState().gameState)).toBe(snapshot)
+  })
+
+  it('B. 错误地点拒绝：任务 completed 但不在村长注册地点 → false，GameState 不变', () => {
+    toCompletedQuest()
+    useGameStore.getState().travelToLocation('village_grassland')
+    const snapshot = JSON.stringify(useGameStore.getState().gameState)
+    expect(useGameStore.getState().respondToVillageElderAfterQuest('resolve')).toBe(false)
+    expect(JSON.stringify(useGameStore.getState().gameState)).toBe(snapshot)
+  })
+
+  it('C. 缺少 elder NpcState 拒绝：任务 completed 但 npcStates.village_elder undefined → false，不补建状态', () => {
+    toCompletedQuest()
+    useGameStore.setState({
+      gameState: {
+        ...useGameStore.getState().gameState!,
+        world: { ...useGameStore.getState().gameState!.world, npcStates: {} },
+      },
+    })
+    const snapshot = JSON.stringify(useGameStore.getState().gameState)
+    expect(useGameStore.getState().respondToVillageElderAfterQuest('reassure')).toBe(false)
+    expect(JSON.stringify(useGameStore.getState().gameState)).toBe(snapshot)
+    expect(elderState()).toBeUndefined()
+  })
+
+  it('D. reassure 正常分支：trust 1→2，respect 0，completedEvents 含事件 ID 一次', () => {
+    toCompletedQuest()
+    expect(elderState()?.relationship.trust).toBe(1)
+    expect(useGameStore.getState().respondToVillageElderAfterQuest('reassure')).toBe(true)
+    const elder = elderState()!
+    expect(elder.relationship.trust).toBe(2)
+    expect(elder.relationship.respect).toBe(0)
+    expect(completedEvents()).toEqual([VILLAGE_ELDER_POST_QUEST_EVENT_ID])
+  })
+
+  it('E. resolve 正常分支：trust 1，respect 0→1，completedEvents 含事件 ID', () => {
+    toCompletedQuest()
+    expect(useGameStore.getState().respondToVillageElderAfterQuest('resolve')).toBe(true)
+    const elder = elderState()!
+    expect(elder.relationship.trust).toBe(1)
+    expect(elder.relationship.respect).toBe(1)
+    expect(completedEvents()).toEqual([VILLAGE_ELDER_POST_QUEST_EVENT_ID])
+  })
+
+  it('F. 两选择互斥：先 reassure → true，再 resolve → false，trust2 respect0 事件仅一条', () => {
+    toCompletedQuest()
+    expect(useGameStore.getState().respondToVillageElderAfterQuest('reassure')).toBe(true)
+    expect(useGameStore.getState().respondToVillageElderAfterQuest('resolve')).toBe(false)
+    const elder = elderState()!
+    expect(elder.relationship.trust).toBe(2)
+    expect(elder.relationship.respect).toBe(0)
+    expect(completedEvents()).toEqual([VILLAGE_ELDER_POST_QUEST_EVENT_ID])
+  })
+
+  it('G. 非法 choice：fake_choice → false，GameState 不变（不抛异常）', () => {
+    toCompletedQuest()
+    const snapshot = JSON.stringify(useGameStore.getState().gameState)
+    // @ts-expect-error 运行时非法 choice 测试
+    expect(useGameStore.getState().respondToVillageElderAfterQuest('fake_choice')).toBe(false)
+    expect(JSON.stringify(useGameStore.getState().gameState)).toBe(snapshot)
+  })
+
+  it('H. trust 安全边界：reassure 时 trust=Infinity → false，GameState 完全不变', () => {
+    toCompletedQuest()
+    useGameStore.setState({
+      gameState: {
+        ...useGameStore.getState().gameState!,
+        world: {
+          ...useGameStore.getState().gameState!.world,
+          npcStates: {
+            village_elder: {
+              npcId: 'village_elder',
+              alive: true,
+              locationId: 'qingshi_village',
+              relationship: { trust: Number.POSITIVE_INFINITY, affection: 0, respect: 0, fear: 0, resentment: 0 },
+            },
+          },
+        },
+      },
+    })
+    const snapshot = JSON.stringify(useGameStore.getState().gameState)
+    expect(useGameStore.getState().respondToVillageElderAfterQuest('reassure')).toBe(false)
+    expect(JSON.stringify(useGameStore.getState().gameState)).toBe(snapshot)
+  })
+
+  it('I. respect 安全边界：resolve 时 respect=Infinity → false，GameState 完全不变', () => {
+    toCompletedQuest()
+    useGameStore.setState({
+      gameState: {
+        ...useGameStore.getState().gameState!,
+        world: {
+          ...useGameStore.getState().gameState!.world,
+          npcStates: {
+            village_elder: {
+              npcId: 'village_elder',
+              alive: true,
+              locationId: 'qingshi_village',
+              relationship: { trust: 1, affection: 0, respect: Number.POSITIVE_INFINITY, fear: 0, resentment: 0 },
+            },
+          },
+        },
+      },
+    })
+    const snapshot = JSON.stringify(useGameStore.getState().gameState)
+    expect(useGameStore.getState().respondToVillageElderAfterQuest('resolve')).toBe(false)
+    expect(JSON.stringify(useGameStore.getState().gameState)).toBe(snapshot)
+  })
+
+  it('J. 其他关系保持：affection/fear/resentment/romanceInterest 全保持', () => {
+    toCompletedQuest()
+    useGameStore.setState({
+      gameState: {
+        ...useGameStore.getState().gameState!,
+        world: {
+          ...useGameStore.getState().gameState!.world,
+          npcStates: {
+            village_elder: {
+              npcId: 'village_elder',
+              alive: true,
+              locationId: 'qingshi_village',
+              relationship: { trust: 1, affection: 2, respect: 0, fear: 3, resentment: 4, romanceInterest: true },
+            },
+          },
+        },
+      },
+    })
+    useGameStore.getState().respondToVillageElderAfterQuest('reassure')
+    const elder = elderState()!
+    expect(elder.relationship.trust).toBe(2)
+    expect(elder.relationship.affection).toBe(2)
+    expect(elder.relationship.respect).toBe(0)
+    expect(elder.relationship.fear).toBe(3)
+    expect(elder.relationship.resentment).toBe(4)
+    expect(elder.relationship.romanceInterest).toBe(true)
+  })
+
+  it('K. NpcState 与其他 NPC 保持：elder.alive/locationId 与 blacksmith/apothecary state 全不变', () => {
+    toCompletedQuest()
+    const before = useGameStore.getState().gameState!
+    useGameStore.getState().respondToVillageElderAfterQuest('resolve')
+    const after = useGameStore.getState().gameState!
+    const bElder = before.world.npcStates.village_elder!
+    const aElder = after.world.npcStates.village_elder!
+    expect(aElder.alive).toBe(bElder.alive)
+    expect(aElder.locationId).toBe(bElder.locationId)
+    expect(after.world.npcStates.blacksmith).toEqual(before.world.npcStates.blacksmith)
+    expect(after.world.npcStates.apothecary).toEqual(before.world.npcStates.apothecary)
+  })
+
+  it('L. 无额外世界/玩家副作用：除目标关系维度与 completedEvents 外 player/inventory/equipment/quests/flags/currentLocationId 全不变', () => {
+    toCompletedQuest()
+    const before = useGameStore.getState().gameState!
+    useGameStore.getState().respondToVillageElderAfterQuest('reassure')
+    const after = useGameStore.getState().gameState!
+    expect(after.player).toEqual(before.player)
+    expect(after.inventory).toEqual(before.inventory)
+    expect(after.equipment).toEqual(before.equipment)
+    expect(after.quests).toEqual(before.quests)
+    expect(after.world.flags).toEqual(before.world.flags)
+    expect(after.world.currentLocationId).toBe(before.world.currentLocationId)
+  })
+
+  it('M. 不自动保存：回应成功后 hasSave 仍 false', () => {
+    toCompletedQuest()
+    useGameStore.getState().respondToVillageElderAfterQuest('resolve')
+    expect(elderState()?.relationship.respect).toBe(1)
     expect(useGameStore.getState().hasSave).toBe(false)
   })
 })
