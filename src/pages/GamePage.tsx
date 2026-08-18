@@ -62,6 +62,7 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
   const respondToVillageElderAfterQuest = useGameStore((s) => s.respondToVillageElderAfterQuest)
   const investigateAbandonedMine = useGameStore((s) => s.investigateAbandonedMine)
   const inspectRabbitPath = useGameStore((s) => s.inspectRabbitPath)
+  const reportRabbitPathToVillageElder = useGameStore((s) => s.reportRabbitPathToVillageElder)
   const [saveResult, setSaveResult] = useState<'saved' | 'failed' | null>(null)
   const [travelError, setTravelError] = useState(false)
   // TM-P0-015：活动对话 NPC（仅 UI 本地状态，不进入 GameState / 存档）
@@ -346,6 +347,17 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
         )
       })()}
 
+      {/* TM-P1-016：青石村阶段完成 —— 只读 world.flags.rabbit_path_reported===true（Store action 已保证该 flag 只能在正确前提下产生，不重算任务链）；持久剧情状态展示，非弹窗/toast；【待补充】为剧情边界，无新地点按钮 */}
+      {world.flags.rabbit_path_reported === true && (
+        <section className="rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
+          <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">青石村阶段完成</h3>
+          <p className="leading-relaxed text-bone-200">
+            你已经处理了村外异动、矿洞威胁与草原狼影，并取得了《兔子的路径》。
+          </p>
+          <p className="mt-2 text-bone-300">下一步目的地：【待补充】</p>
+        </section>
+      )}
+
       {/* TM-P0-022：村中休整 —— 仅青石村显示；免费恢复 HP/MP 至最大值（战败软锁出口） */}
       {world.currentLocationId === 'qingshi_village' && (
         <section className="rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
@@ -405,6 +417,27 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
                     </div>
                   </div>
                 )}
+              {/* TM-P1-016：向村长汇报《兔子的路径》——青石村阶段收束入口（不依赖 P1-003 回应选择/关系值；Store flag 是唯一真源） */}
+              {activeNpc.id === 'village_elder' &&
+                gameState.inventory.some((e) => e.itemId === 'rabbit_path' && Number.isSafeInteger(e.quantity) && e.quantity >= 1) &&
+                world.flags.rabbit_path_examined === true &&
+                gameState.quests.some((q) => q.questId === 'quest_grassland_wolf' && q.status === 'completed') &&
+                world.flags.rabbit_path_reported !== true && (
+                  <div className="mb-3 rounded border border-ink-600 bg-ink-900/40 p-3">
+                    <p className="mb-2 text-xs text-bone-300">你带回了一张指向黄金兔子王所在之地的地图。</p>
+                    <Button variant="primary" onClick={() => reportRabbitPathToVillageElder()}>
+                      向村长展示《兔子的路径》
+                    </Button>
+                  </div>
+                )}
+              {/* TM-P1-016：已汇报固定文案（汇报后按钮消失；地图仍指向【待补充】） */}
+              {activeNpc.id === 'village_elder' && world.flags.rabbit_path_reported === true && (
+                <div className="mb-3 rounded border border-gold-500/40 bg-ink-900/40 p-3">
+                  <p className="text-bone-200">你已经把《兔子的路径》展示给村长。</p>
+                  <p className="mt-1 text-bone-300">地图仍指向黄金兔子王所在之地。</p>
+                  <p className="mt-1 text-bone-300">下一步目的地：【待补充】</p>
+                </div>
+              )}
               <Button variant="ghost" onClick={() => setActiveNpcId(null)}>
                 结束交谈
               </Button>

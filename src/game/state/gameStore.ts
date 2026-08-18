@@ -83,6 +83,8 @@ interface GameStoreState {
   setFlag: (key: string, value: boolean | number | string) => void
   /** 正式查看《兔子的路径》（TM-P1-013）：仅背包合法持有 rabbit_path（quantity 安全整数 >=1）且 rabbit_path_examined 为 undefined/false 时成功，只写 world.flags.rabbit_path_examined=true；重复/非法 quantity/非 boolean 旧 flag → false 且完全不变；不消耗地图、不自动保存 */
   inspectRabbitPath: () => boolean
+  /** 向村长汇报《兔子的路径》（TM-P1-016）：青石村 + 合法持有 rabbit_path + 已查看地图 + 《草原狼影》completed + 未汇报时成功，只写 world.flags.rabbit_path_reported=true；非法状态全部拒绝且完全不变；地图不消耗、无任何奖励、不自动保存 */
+  reportRabbitPathToVillageElder: () => boolean
 }
 
 /** 任务发现：不存在 → 创建 available；undiscovered → available；其余状态不重复创建。非法返回 null（TM-P0-006） */
@@ -837,6 +839,38 @@ export const useGameStore = create<GameStoreState>()((set) => ({
           world: {
             ...s.gameState.world,
             flags: { ...s.gameState.world.flags, rabbit_path_examined: true },
+          },
+        },
+      }
+    })
+    return changed
+  },
+
+  reportRabbitPathToVillageElder: () => {
+    let changed = false
+    set((s) => {
+      if (!s.gameState) return {}
+      // 必须在青石村（正式剧情位置约束）
+      if (s.gameState.world.currentLocationId !== 'qingshi_village') return {}
+      // 必须合法持有 rabbit_path（quantity 安全整数 >=1；非法一律拒绝）
+      const entry = s.gameState.inventory.find((e) => e.itemId === 'rabbit_path')
+      if (!entry || !Number.isSafeInteger(entry.quantity) || entry.quantity < 1) return {}
+      // 必须已展开地图
+      if (s.gameState.world.flags.rabbit_path_examined !== true) return {}
+      // 必须《草原狼影》已完成（青石村主线链收束前置）
+      const wolfQuest = s.gameState.quests.find((q) => q.questId === 'quest_grassland_wolf')
+      if (wolfQuest?.status !== 'completed') return {}
+      const existing = s.gameState.world.flags.rabbit_path_reported
+      // 已汇报（true）重复拒绝；已存在但非 boolean 的异常旧值拒绝（不静默覆盖）
+      if (existing === true || (existing !== undefined && typeof existing !== 'boolean')) return {}
+      changed = true
+      // TM-P1-016：成功只写 world.flags.rabbit_path_reported=true（地图不消耗；金币/等级/HP/MP/关系全 +0；player/equipment/quests/inventory/位置/completedEvents/npcStates/其他 flags 全不变；不自动保存）
+      return {
+        gameState: {
+          ...s.gameState,
+          world: {
+            ...s.gameState.world,
+            flags: { ...s.gameState.world.flags, rabbit_path_reported: true },
           },
         },
       }

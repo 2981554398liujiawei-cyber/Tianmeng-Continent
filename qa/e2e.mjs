@@ -2028,6 +2028,127 @@ try {
   })
   check('P1-010-R1: 段末 Math.random 已恢复真实实现（不污染后续测试）', p1010Restored === true)
 
+  // TM-P1-016：青石村阶段收束——向村长汇报《兔子的路径》
+  // 直接复用 P1-010 段已保存的正式长流程存档（Lv.2、狼 completed、金币 110、青石村）→ 不再复制前三任务
+  await clickByText('继续游戏')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-016-A: Continue 后狼任务已完成且金币 110', body.includes('草原狼影') && body.includes('已完成') && body.includes('110'))
+  // A. 无地图/未查看：村长对话不存在「向村长展示《兔子的路径》」（汇报入口前置严格）
+  await clickByText('交谈')
+  body = await bodyText()
+  check('P1-016-A: 无地图时村长对话无汇报按钮', !body.includes('向村长展示《兔子的路径》'))
+  await clickByText('结束交谈')
+  // 获取《兔子的路径》：村外草原 → 兔王巢穴 → 确定性击败嘟嘟兔（复用 P012 序列：玩家20暴击12 → 24→12；嘟嘟兔天然1；玩家20暴击12 → 击杀）
+  await clickByText('村外草原')
+  await clickByText('兔王巢穴')
+  await sleep(300)
+  await page.evaluate(() => {
+    window.__p1016OriginalRandom = Math.random.bind(Math)
+    const seq = [0.999, 0, 0.999]
+    let i = 0
+    Math.random = () => seq[Math.min(i++, seq.length - 1)]
+  })
+  await clickByText('迎战')
+  await sleep(300)
+  await clickByText('普通攻击')
+  await sleep(250)
+  await clickByText('普通攻击')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-016-A: 确定性击败嘟嘟兔（战斗胜利）', body.includes('战斗胜利'))
+  await clickByText('返回冒险')
+  body = await bodyText()
+  check('P1-016-A: 背包显示兔子的路径 ×1', body.includes('兔子的路径 ×1'))
+  // A. 已持有地图但尚未展开（rabbit_path_examined !== true）：村长对话仍无汇报按钮
+  await clickByText('村外草原')
+  await clickByText('青石村')
+  await clickByText('交谈')
+  body = await bodyText()
+  check('P1-016-A: 已持图未查看时村长对话仍无汇报按钮', !body.includes('向村长展示《兔子的路径》'))
+  await clickByText('结束交谈')
+  // 展开地图（P1-013 既有入口）→ examined=true
+  await clickByText('村外草原')
+  await clickByText('兔王巢穴')
+  await sleep(300)
+  await clickByText('展开地图')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-016-A: 展开地图后已查看且具体地点仍【待补充】', body.includes('具体地点：【待补充】') && !body.includes('展开地图'))
+  await clickByText('村外草原')
+  await clickByText('青石村')
+  // B. 已查看+狼 completed：村长对话显示汇报入口（enabled）
+  await clickByText('交谈')
+  body = await bodyText()
+  check('P1-016-B: 村长对话显示带回地图文案', body.includes('你带回了一张指向黄金兔子王所在之地的地图。'))
+  check('P1-016-B: 向村长展示按钮 enabled', (await buttonDisabled('向村长展示《兔子的路径》')) === false)
+  // C. 记录汇报前状态
+  const reportBeforeLv = body.match(/Lv\.(\d+)/)
+  const reportBeforeHp = body.match(/生命\s*(\d+)\s*\/\s*(\d+)/)
+  const reportBeforeMp = body.match(/灵力\s*(\d+)\s*\/\s*(\d+)/)
+  const reportBeforeGold = body.match(/金币\s*(\d+)/)
+  const reportBeforeLocation = await page.evaluate(() => {
+    const label = [...document.querySelectorAll('p')].find((el) => el.textContent.trim() === '当前位置')
+    if (!label) return null
+    const section = label.closest('section')
+    if (!section) return null
+    const idEl = [...section.querySelectorAll('p')].find((el) => /^[a-z_]+$/.test(el.textContent.trim()))
+    return idEl ? idEl.textContent.trim() : null
+  })
+  // D. 正式汇报
+  await clickByText('向村长展示《兔子的路径》')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-016-D: 已汇报文案（展示给村长）', body.includes('你已经把《兔子的路径》展示给村长。'))
+  check('P1-016-D: 地图仍指向黄金兔子王所在之地', body.includes('地图仍指向黄金兔子王所在之地。'))
+  check('P1-016-D: 下一步目的地：【待补充】', body.includes('下一步目的地：【待补充】'))
+  check('P1-016-D: 向村长展示按钮消失（不残留 disabled）', !body.includes('向村长展示《兔子的路径》'))
+  // E. 无副作用：与 C 对比
+  const reportAfterLv = body.match(/Lv\.(\d+)/)
+  const reportAfterHp = body.match(/生命\s*(\d+)\s*\/\s*(\d+)/)
+  const reportAfterMp = body.match(/灵力\s*(\d+)\s*\/\s*(\d+)/)
+  const reportAfterGold = body.match(/金币\s*(\d+)/)
+  check(
+    'P1-016-E: 汇报后等级/生命/灵力/金币全不变',
+    reportBeforeLv !== null && reportAfterLv !== null && reportBeforeLv[1] === reportAfterLv[1] &&
+      reportBeforeHp !== null && reportAfterHp !== null && reportBeforeHp[1] === reportAfterHp[1] && reportBeforeHp[2] === reportAfterHp[2] &&
+      reportBeforeMp !== null && reportAfterMp !== null && reportBeforeMp[1] === reportAfterMp[1] && reportBeforeMp[2] === reportAfterMp[2] &&
+      reportBeforeGold !== null && reportAfterGold !== null && reportBeforeGold[1] === reportAfterGold[1],
+  )
+  check('P1-016-E: 兔子的路径仍 ×1（展示不交出）', body.includes('兔子的路径 ×1'))
+  check('P1-016-E: 村长关系信任：1 尊敬：0 不变', body.includes('信任：1') && body.includes('尊敬：0'))
+  check('P1-016-E: 当前位置仍 qingshi_village', reportBeforeLocation === 'qingshi_village')
+  await clickByText('结束交谈')
+  // F. 冒险页阶段完成 panel
+  body = await bodyText()
+  check('P1-016-F: 显示青石村阶段完成', body.includes('青石村阶段完成'))
+  check('P1-016-F: 阶段正文（处理三威胁并取得地图）', body.includes('你已经处理了村外异动、矿洞威胁与草原狼影，并取得了《兔子的路径》。'))
+  check('P1-016-F: 下一步目的地：【待补充】', body.includes('下一步目的地：【待补充】'))
+  check('P1-016-F: 无新地点按钮（无前往【待补充】/下一章/进入新区域）', !body.includes('前往【待补充】') && !body.includes('下一章') && !body.includes('进入新区域'))
+  // G. Save/Continue 保持 reported；重开村长不重复汇报
+  await clickByText('保存游戏')
+  await clickByText('返回主菜单')
+  await clickByText('继续游戏')
+  body = await bodyText()
+  check('P1-016-G: Continue 后青石村阶段完成保持', body.includes('青石村阶段完成'))
+  check('P1-016-G: Continue 后下一步目的地：【待补充】', body.includes('下一步目的地：【待补充】'))
+  check('P1-016-G: Continue 后兔子的路径仍 ×1', body.includes('兔子的路径 ×1'))
+  await clickByText('交谈')
+  body = await bodyText()
+  check('P1-016-G: 重开村长仍显示已汇报文案', body.includes('你已经把《兔子的路径》展示给村长。'))
+  check('P1-016-G: 重开村长不再显示汇报按钮', !body.includes('向村长展示《兔子的路径》'))
+  await clickByText('结束交谈')
+  await clickByText('返回主菜单')
+  // P1-007-R1 模式：段末 Math.random 与段首保存的真实函数同一引用
+  const p1016Restored = await page.evaluate(() => {
+    const original = window.__p1016OriginalRandom
+    Math.random = original
+    const isOriginal = Math.random === original
+    delete window.__p1016OriginalRandom
+    return isOriginal
+  })
+  check('P1-016-R1: 段末 Math.random 已恢复真实实现（不污染后续测试）', p1016Restored === true)
+
   // TM-P1-015：战斗中使用治疗药水（独立最小段：默认骑士 + 村外草原魔化兔；魔化兔零修改 HP8/DEF11/atk+2/dmg2）
   // P1-007-R1 模式：段首只保存一次真实 Math.random
   await page.evaluate(() => {

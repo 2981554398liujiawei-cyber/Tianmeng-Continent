@@ -385,6 +385,19 @@ TM-P1-015（战斗中使用治疗药水——战斗资源闭环）：
 - schema 不变、SAVE_VERSION=1；gameStore.ts/items.ts/combat.ts/types/storage/App.tsx/GamePage.tsx/content 零修改；git diff 仅 CombatPage.tsx + qa/e2e.mjs + README
 - 21 项 E2E（独立最小段，P1-007-R1 随机隔离：A 满血药水禁用+生命已满+普攻可用/B 两轮 [玩家1,敌20] 受伤 22→14+魔化兔 8/8 未伤+药水可用/C 第一瓶恢复 8（14→22）+敌普通命中反击→20/22+药水 2→1+日志「恢复 8 点生命」+「魔化兔的攻击：」/D 无你的攻击/骑士重击日志（喝药非攻击）+敌 HP 不变/E 第二瓶上限截断实际恢复 2（20→22）+敌天然1 大失败+药水 1→0+日志「恢复 2 点生命」/F 没有治疗药水+按钮禁用+普攻仍可用+灵力 6/6+敌 8/8/G 后续普攻天然20 暴击正常胜利/R1 段末 Math.random 恢复真实实现）
 
+TM-P1-016（青石村阶段收束——向村长汇报《兔子的路径》——第一段剧情收束）：
+- 新增唯一剧情状态 `world.flags.rabbit_path_reported`（唯一合法值 true；不新增 schema/completedEvent/新地点/新敌人/新NPC/新物品/新任务/章节系统；SAVE_VERSION=1）
+- 新增唯一 Store Action `reportRabbitPathToVillageElder(): boolean`（正式剧情推进唯一入口，禁止 GamePage 直接 setFlag）——成功需全部满足：gameState 存在 + 当前位置 qingshi_village + 背包真实持有 rabbit_path（quantity 安全整数 >=1）+ world.flags.rabbit_path_examined === true + quest_grassland_wolf.status === completed + rabbit_path_reported 为 undefined/false；成功只写 world.flags.rabbit_path_reported=true
+- 非法状态全部拒绝（false 且 GameState 完全不变）：不在青石村/无地图/quantity 0/-1/1.5/NaN/Infinity（直接构造真实运行态，非 addItem 假覆盖）/未展开地图/狼任务非 completed/已汇报 true/非 boolean 旧 flag（"yes"/1 不静默覆盖）
+- 地图不消耗（展示/汇报非交出，兔子的路径仍 ×1）；无任何奖励（金币/等级/HP/MP/关系全 +0）；村长 trust/respect 完全不变（P1-002/003/004 关系逻辑零改动）；不自动保存；flag=false 视为未汇报可成功改 true
+- 正式顺序保持：村外异动 → 矿洞清理 → 草原狼影 → Lv.2 → 嘟嘟兔 → 兔子的路径 → 展开地图 → 汇报村长（第三任务前置阻止跳过青石村主任务链进入章节收束；未建通用 StoryPrerequisite 系统）
+- GamePage：村长对话按条件显示「你带回了一张指向黄金兔子王所在之地的地图。」+ 按钮「向村长展示《兔子的路径》」（调 reportRabbitPathToVillageElder，仅 Store 返回 true 后 UI 由 Store 新状态自然切换，无 showRabbitReportComplete 本地 state）；汇报后按钮消失（不 disabled 残留）+ 固定文案「你已经把《兔子的路径》展示给村长。/地图仍指向黄金兔子王所在之地。/下一步目的地：【待补充】」；不依赖 P1-003 回应选择/关系值
+- 冒险页「青石村阶段完成」panel：只看 world.flags.rabbit_path_reported === true（不重算任务链；Store action 已保证 flag 只能在正确前提下产生）；固定正文 + 下一步目的地：【待补充】；非 modal/toast/setTimeout；无新地点/下一章按钮
+- 零回归：三正式任务/Lv.2/村长 P1-003 选择与关系反应/魔化狼门控/嘟嘟兔一次性清场/展开地图/战斗药水/四职业技能/商店/休整/Save-Continue 全部保持；未建 TurnManager/StoryEngine/DialogueEngine/NarrativeGraph/EventBus
+- 预期修改范围：gameStore.ts + gameStore.test.ts + GamePage.tsx + qa/e2e.mjs + README（App.tsx/CombatPage.tsx/items/enemies/locations/quests/types/storage/rules/content 零修改）
+- Store 单测 19 项 A-O：A 无 gameState false/B 不在青石村 false 全不变/C 无地图 false/D 非法 quantity（0/-1/1.5/NaN/Infinity）均 false 且 GameState 同一引用不变/E 未查看 false/F 狼任务非 completed false/G 全合法 true+flag true/H 成功后地图仍 ×1/I 成功只改 rabbit_path_reported（player/equipment/quests/inventory/位置/completedEvents/npcStates/其他 flags 全不变）/J flag=false 改 true/K flag=true 重复 false 全不变/L flag="yes"/1 false 全不变/M trust/respect 完全不变/N 金币/等级/HP/MP 全不变/O 不自动保存
+- 28 项 E2E（直接扩展 P1-010 正式长流程存档，不再复制前三任务：A 无地图/已持图未查看时村长对话均无汇报按钮 + 确定性击败嘟嘟兔获取地图 + 展开地图后【待补充】保持/B 查看后村长对话显示带回地图文案+按钮 enabled/C 记录汇报前状态（Lv/HP/MP/金币/地图数/trust/respect/当前位置 qingshi_village）/D 汇报后固定文案+按钮消失/E 汇报后 Lv/HP/MP/金币全不变+地图仍 ×1+信任 1 尊敬 0+位置不变/F 冒险页青石村阶段完成+正文+【待补充】+无新地点按钮/G Save/Continue 后阶段完成保持+地图仍 ×1+重开村长仍显示已汇报文案且无按钮/R1 段末 Math.random 恢复真实实现）
+
 ## 目录结构
 
 ```

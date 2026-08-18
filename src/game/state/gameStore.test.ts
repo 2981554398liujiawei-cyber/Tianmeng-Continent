@@ -2754,3 +2754,267 @@ describe('TM-P1-013：正式查看《兔子的路径》（inspectRabbitPath）',
     expect(useGameStore.getState().hasSave).toBe(false)
   })
 })
+
+describe('TM-P1-016：向村长汇报《兔子的路径》（青石村阶段收束）', () => {
+  const flags = () => useGameStore.getState().gameState?.world.flags
+  const rabbitPath = () => useGameStore.getState().gameState?.inventory.find((e) => e.itemId === 'rabbit_path')
+  const elder = () => useGameStore.getState().gameState?.world.npcStates.village_elder?.relationship
+
+  /** 走到完整合法前置：草原狼影 completed + 背包 rabbit_path ×1 + 已展开地图 + 在青石村（default 骑士 Lv.2） */
+  const seedFullPrereqs = () => {
+    useGameStore.getState().newGame()
+    useGameStore.getState().discoverQuest('quest_village_monsters')
+    useGameStore.getState().acceptQuest('quest_village_monsters')
+    useGameStore.getState().travelToLocation('village_grassland')
+    useGameStore.getState().resolveCombatVictory('corrupted_rabbit')
+    useGameStore.getState().travelToLocation('qingshi_village')
+    useGameStore.getState().completeQuest('quest_village_monsters')
+    useGameStore.getState().discoverQuest('quest_mine_cleanup')
+    useGameStore.getState().acceptQuest('quest_mine_cleanup')
+    useGameStore.getState().travelToLocation('abandoned_mine')
+    useGameStore.getState().resolveCombatVictory('corrupted_rat')
+    useGameStore.getState().travelToLocation('qingshi_village')
+    useGameStore.getState().completeQuest('quest_mine_cleanup')
+    useGameStore.getState().discoverQuest('quest_grassland_wolf')
+    useGameStore.getState().acceptQuest('quest_grassland_wolf')
+    useGameStore.getState().travelToLocation('village_grassland')
+    useGameStore.getState().resolveCombatVictory('corrupted_wolf')
+    useGameStore.getState().travelToLocation('qingshi_village')
+    useGameStore.getState().completeQuest('quest_grassland_wolf')
+    useGameStore.getState().addItem('rabbit_path', 1)
+    useGameStore.getState().inspectRabbitPath()
+  }
+
+  /** 直接构造运行态（绕过 addItem 入参拦截），使非法 quantity 真实进入 inventory */
+  const seedRabbitPathQuantity = (quantity: number) => {
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return {
+        gameState: {
+          ...s.gameState,
+          inventory: [...s.gameState.inventory, { itemId: 'rabbit_path', quantity }],
+        },
+      }
+    })
+  }
+
+  const snapshot = () => JSON.stringify(useGameStore.getState().gameState)
+
+  it('A. 无 gameState → false', () => {
+    useGameStore.setState({ gameState: null })
+    expect(useGameStore.getState().reportRabbitPathToVillageElder()).toBe(false)
+  })
+
+  it('B. 不在青石村 → false 且完全不变', () => {
+    seedFullPrereqs()
+    useGameStore.getState().travelToLocation('village_grassland')
+    const before = snapshot()
+    expect(useGameStore.getState().reportRabbitPathToVillageElder()).toBe(false)
+    expect(snapshot()).toBe(before)
+  })
+
+  it('C. 没有 rabbit_path → false', () => {
+    seedFullPrereqs()
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return { gameState: { ...s.gameState, inventory: s.gameState.inventory.filter((e) => e.itemId !== 'rabbit_path') } }
+    })
+    const before = snapshot()
+    expect(useGameStore.getState().reportRabbitPathToVillageElder()).toBe(false)
+    expect(snapshot()).toBe(before)
+  })
+
+  it.each([
+    ['quantity=0', 0],
+    ['quantity=-1', -1],
+    ['quantity=1.5', 1.5],
+    ['quantity=NaN', Number.NaN],
+    ['quantity=Infinity', Number.POSITIVE_INFINITY],
+  ])('D. 非法 quantity %s（真实 inventory 异常值）→ false 且 GameState 同一引用不变、异常值原样存在', (_label, invalidQuantity) => {
+    seedFullPrereqs()
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return {
+        gameState: {
+          ...s.gameState,
+          inventory: s.gameState.inventory
+            .filter((e) => e.itemId !== 'rabbit_path')
+            .concat({ itemId: 'rabbit_path', quantity: invalidQuantity }),
+        },
+      }
+    })
+    const before = useGameStore.getState().gameState
+    expect(useGameStore.getState().reportRabbitPathToVillageElder()).toBe(false)
+    expect(useGameStore.getState().gameState).toBe(before)
+    expect(flags()?.rabbit_path_reported).toBeUndefined()
+    expect(rabbitPath()?.quantity).toBe(invalidQuantity)
+  })
+
+  it('E. 地图尚未查看（rabbit_path_examined !== true）→ false', () => {
+    seedFullPrereqs()
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return {
+        gameState: {
+          ...s.gameState,
+          world: { ...s.gameState.world, flags: { ...s.gameState.world.flags, rabbit_path_examined: false } },
+        },
+      }
+    })
+    const before = snapshot()
+    expect(useGameStore.getState().reportRabbitPathToVillageElder()).toBe(false)
+    expect(snapshot()).toBe(before)
+  })
+
+  it('F. 《草原狼影》不是 completed → false', () => {
+    seedFullPrereqs()
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return {
+        gameState: {
+          ...s.gameState,
+          quests: s.gameState.quests.map((q) =>
+            q.questId === 'quest_grassland_wolf' ? { ...q, status: 'completable' as const } : q,
+          ),
+        },
+      }
+    })
+    const before = snapshot()
+    expect(useGameStore.getState().reportRabbitPathToVillageElder()).toBe(false)
+    expect(snapshot()).toBe(before)
+  })
+
+  it('G. 全部合法 → true 且 rabbit_path_reported=true', () => {
+    seedFullPrereqs()
+    expect(useGameStore.getState().reportRabbitPathToVillageElder()).toBe(true)
+    expect(flags()?.rabbit_path_reported).toBe(true)
+  })
+
+  it('H. 成功后兔子的路径仍 ×1（展示不交出地图）', () => {
+    seedFullPrereqs()
+    useGameStore.getState().reportRabbitPathToVillageElder()
+    expect(rabbitPath()?.quantity).toBe(1)
+  })
+
+  it('I. 成功只修改 rabbit_path_reported：player/equipment/quests/inventory/位置/completedEvents/npcStates/其他 flags 全不变', () => {
+    seedFullPrereqs()
+    const before = useGameStore.getState().gameState!
+    useGameStore.getState().reportRabbitPathToVillageElder()
+    const after = useGameStore.getState().gameState!
+    expect(after.player).toEqual(before.player)
+    expect(after.equipment).toEqual(before.equipment)
+    expect(after.quests).toEqual(before.quests)
+    expect(after.inventory).toEqual(before.inventory)
+    expect(after.world.currentLocationId).toBe(before.world.currentLocationId)
+    expect(after.world.completedEvents).toEqual(before.world.completedEvents)
+    expect(after.world.npcStates).toEqual(before.world.npcStates)
+    expect(after.world.flags.rabbit_path_reported).toBe(true)
+    // 其他 flags 完全一致（除 rabbit_path_reported 外）
+    const otherBefore = { ...before.world.flags }
+    const otherAfter = { ...after.world.flags }
+    delete otherBefore.rabbit_path_reported
+    delete otherAfter.rabbit_path_reported
+    expect(otherAfter).toEqual(otherBefore)
+  })
+
+  it('J. flag=false 视为未汇报 → 成功改 true', () => {
+    seedFullPrereqs()
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return {
+        gameState: {
+          ...s.gameState,
+          world: { ...s.gameState.world, flags: { ...s.gameState.world.flags, rabbit_path_reported: false } },
+        },
+      }
+    })
+    expect(useGameStore.getState().reportRabbitPathToVillageElder()).toBe(true)
+    expect(flags()?.rabbit_path_reported).toBe(true)
+  })
+
+  it('K. flag=true 重复调用 → false 且 GameState 完全不变', () => {
+    seedFullPrereqs()
+    useGameStore.getState().reportRabbitPathToVillageElder()
+    const before = snapshot()
+    expect(useGameStore.getState().reportRabbitPathToVillageElder()).toBe(false)
+    expect(snapshot()).toBe(before)
+  })
+
+  it('L. flag 为非 boolean（"yes"/1）→ false 且完全不变（不静默覆盖）', () => {
+    seedFullPrereqs()
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return {
+        gameState: {
+          ...s.gameState,
+          world: { ...s.gameState.world, flags: { ...s.gameState.world.flags, rabbit_path_reported: 'yes' } },
+        },
+      }
+    })
+    const beforeStr = snapshot()
+    expect(useGameStore.getState().reportRabbitPathToVillageElder()).toBe(false)
+    expect(snapshot()).toBe(beforeStr)
+
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return {
+        gameState: {
+          ...s.gameState,
+          world: { ...s.gameState.world, flags: { ...s.gameState.world.flags, rabbit_path_reported: 1 } },
+        },
+      }
+    })
+    const beforeNum = snapshot()
+    expect(useGameStore.getState().reportRabbitPathToVillageElder()).toBe(false)
+    expect(snapshot()).toBe(beforeNum)
+  })
+
+  it('M. 村长 trust/respect 完全不变（汇报无关系奖励）', () => {
+    seedFullPrereqs()
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return {
+        gameState: {
+          ...s.gameState,
+          world: {
+            ...s.gameState.world,
+            npcStates: {
+              ...s.gameState.world.npcStates,
+              village_elder: {
+                npcId: 'village_elder',
+                alive: true,
+                locationId: 'qingshi_village',
+                relationship: { trust: 1, affection: 0, respect: 0, fear: 0, resentment: 0 },
+              },
+            },
+          },
+        },
+      }
+    })
+    const beforeElder = JSON.stringify(elder())
+    useGameStore.getState().reportRabbitPathToVillageElder()
+    expect(JSON.stringify(elder())).toBe(beforeElder)
+    expect(elder()?.trust).toBe(1)
+    expect(elder()?.respect).toBe(0)
+  })
+
+  it('N. 金币/等级/HP/MP 完全不变（无奖励）', () => {
+    seedFullPrereqs()
+    const before = useGameStore.getState().gameState!.player
+    useGameStore.getState().reportRabbitPathToVillageElder()
+    const after = useGameStore.getState().gameState!.player
+    expect(after.gold).toBe(before.gold)
+    expect(after.level).toBe(before.level)
+    expect(after.hp).toBe(before.hp)
+    expect(after.maxHp).toBe(before.maxHp)
+    expect(after.mp).toBe(before.mp)
+    expect(after.maxMp).toBe(before.maxMp)
+  })
+
+  it('O. 不自动保存：成功汇报后 hasSave 仍 false', () => {
+    seedFullPrereqs()
+    useGameStore.getState().reportRabbitPathToVillageElder()
+    expect(flags()?.rabbit_path_reported).toBe(true)
+    expect(useGameStore.getState().hasSave).toBe(false)
+  })
+})
