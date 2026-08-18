@@ -157,11 +157,25 @@ describe('TM-P0-002-R1：关键内容身份锁', () => {
     expect(desc).not.toContain('迁徙')
   })
 
-  it('注册表数量与 ID 未被改动（无新增黄金兔子王条目；TM-P1-005 新增《矿洞清理》、TM-P1-010 新增《草原狼影》）', () => {
+  it('注册表数量与 ID 未被改动（无新增黄金兔子王条目；TM-P1-005 新增《矿洞清理》、TM-P1-010 新增《草原狼影》、TM-P1-017 新增《追寻黄金兔子王》）', () => {
     expect(Object.keys(ENEMIES)).toHaveLength(4)
     expect(Object.keys(NPCS)).toHaveLength(3)
-    expect(Object.keys(QUESTS)).toHaveLength(3)
+    expect(Object.keys(QUESTS)).toHaveLength(4)
     expect(getEnemy('golden_rabbit_king')).toBeUndefined()
+  })
+
+  // TM-P1-017：第四正式主线任务注册表锁定（本卡只建立目标不新增地图/敌人）
+  it('TM-P1-017：《追寻黄金兔子王》注册表定义锁定（title/giver/无 goldReward/summary 含关键文案）', () => {
+    const quest = getQuest('quest_golden_rabbit_search')
+    expect(quest).toBeDefined()
+    expect(quest?.id).toBe('quest_golden_rabbit_search')
+    expect(quest?.title).toBe('追寻黄金兔子王')
+    expect(quest?.giverNpcId).toBe('village_elder')
+    expect(quest?.goldReward).toBeUndefined()
+    expect(quest?.summary).toContain('《兔子的路径》')
+    expect(quest?.summary).toContain('黄金兔子王')
+    expect(quest?.summary).toContain('具体目的地：【待补充】')
+    // 不测试额外不存在的 lore
   })
 })
 

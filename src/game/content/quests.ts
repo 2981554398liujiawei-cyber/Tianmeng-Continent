@@ -36,4 +36,11 @@ export const QUESTS: Record<string, QuestDefinition> = {
     giverNpcId: 'village_elder',
     goldReward: 25,
   },
+  // TM-P1-017：第四正式主线任务（第二段主线入口；本卡只建立目标不新增地图——summary 保留【待补充】；无 goldReward，本卡不允许完成该任务）
+  quest_golden_rabbit_search: {
+    id: 'quest_golden_rabbit_search',
+    title: '追寻黄金兔子王',
+    summary: '《兔子的路径》指向黄金兔子王所在之地。具体目的地：【待补充】',
+    giverNpcId: 'village_elder',
+  },
 }

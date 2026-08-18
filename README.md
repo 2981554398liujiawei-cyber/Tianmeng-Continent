@@ -398,6 +398,18 @@ TM-P1-016（青石村阶段收束——向村长汇报《兔子的路径》—�
 - Store 单测 19 项 A-O：A 无 gameState false/B 不在青石村 false 全不变/C 无地图 false/D 非法 quantity（0/-1/1.5/NaN/Infinity）均 false 且 GameState 同一引用不变/E 未查看 false/F 狼任务非 completed false/G 全合法 true+flag true/H 成功后地图仍 ×1/I 成功只改 rabbit_path_reported（player/equipment/quests/inventory/位置/completedEvents/npcStates/其他 flags 全不变）/J flag=false 改 true/K flag=true 重复 false 全不变/L flag="yes"/1 false 全不变/M trust/respect 完全不变/N 金币/等级/HP/MP 全不变/O 不自动保存
 - 28 项 E2E（直接扩展 P1-010 正式长流程存档，不再复制前三任务：A 无地图/已持图未查看时村长对话均无汇报按钮 + 确定性击败嘟嘟兔获取地图 + 展开地图后【待补充】保持/B 查看后村长对话显示带回地图文案+按钮 enabled/C 记录汇报前状态（Lv/HP/MP/金币/地图数/trust/respect/当前位置 qingshi_village）/D 汇报后固定文案+按钮消失/E 汇报后 Lv/HP/MP/金币全不变+地图仍 ×1+信任 1 尊敬 0+位置不变/F 冒险页青石村阶段完成+正文+【待补充】+无新地点按钮/G Save/Continue 后阶段完成保持+地图仍 ×1+重开村长仍显示已汇报文案且无按钮/R1 段末 Math.random 恢复真实实现）
 
+TM-P1-017（第四正式主线目标《追寻黄金兔子王》——第二段主线入口）：
+- quests.ts 新增 `quest_golden_rabbit_search`：title 追寻黄金兔子王 / summary《兔子的路径》指向黄金兔子王所在之地。具体目的地：【待补充】/ giverNpcId village_elder / **无 goldReward**（本卡不允许完成任务，不预埋奖励）；QuestDefinition 接口零扩展（无 objectives/chapter/mainQuest/prerequisites/destination/nextQuest）
+- discoverQuest 窄特判：questId==='quest_golden_rabbit_search' 必须 world.flags.rabbit_path_reported === true，否则 false 且 GameState 完全不变；非严格 true（undefined/false/"true"/"yes"/1/0）均不解锁、不修复异常 flag
+- 正式顺序保持：三任务完成 → Lv.2 → 击败嘟嘟兔 → 查看地图 → 向村长汇报 → rabbit_path_reported=true → 第四任务；不允许从新游戏直接 discover
+- GamePage localQuests UI 窄前置（与 Store discoverQuest 一致）：quest_golden_rabbit_search → world.flags.rabbit_path_reported===true，汇报前附近委托完全看不到第四任务
+- 复用现有任务生命周期 discoverQuest/acceptQuest（禁止 startMainQuest/activateStoryQuest/beginChapter）；本卡结束状态 quest_golden_rabbit_search status=in_progress；**无完成路径**（不添加 markQuestCompletable/completeQuest 正式剧情触发）
+- 无即时奖励（发现/接受时 gold/level/HP/MP/trust/respect/inventory/flags/completedEvents 全 +0，仅 quests 数组既有生命周期变化）；不消耗《兔子的路径》（仍 ×1，reported/examined 保持）；不依赖 P1-003 关系选择
+- 无新移动按钮（即使已接受：不出现前往黄金兔子王/离开青石村/进入下一章/前往【待补充】）；青石村阶段完成 panel 保留（上一阶段完成与下一阶段开始可同时存在）
+- schema 不变、SAVE_VERSION=1；App.tsx/CombatPage.tsx/items/enemies/locations/NPCs/types/storage/rules 零修改；git diff 仅 quests.ts + content.test.ts + gameStore.ts + gameStore.test.ts + GamePage.tsx + qa/e2e.mjs + README
+- Store 单测 12 项 A-J：A 汇报前 discover false 且 quests 完全不变/B reported=false false/C 非严格 flag（"true"/1/0/"yes"）均 false 全状态不变（异常 flag 原样保留）/D reported=true discover true 且 QuestState{available,stage 0,flags {}}/E 重复 discover false 无第二条/F accept true → in_progress/G 重复 accept false/H 发现+接受无副作用（player/inventory/equipment/world/其他 quests 除新 QuestState 外全不变）/I 地图仍 ×1 且 reported/examined 保持/J 不自动保存 + content 测试：QUESTS toHaveLength(4) + 第四任务注册表定义锁定（title/giver/无 goldReward/summary 含《兔子的路径》+黄金兔子王+具体目的地：【待补充】）
+- 21 项 E2E（直接继续 P1-016 Save/Continue 后正式状态，不重打前三任务/狼/嘟嘟兔：A Continue 后青石村阶段完成保留+地图 ×1+附近委托出现第四任务入口（村长似乎有事相托）+未发现状态不显示任务卡/B 查看委托后可接受+任务描述含《兔子的路径》与【待补充】/C 接受后进行中+附近委托入口消失/D 金币数值保持+阶段完成保留+【待补充】+地图 ×1+Lv.2/E 无可前往黄金兔子王/前往【待补充】/下一章按钮+可前往区仅村外草原/废弃矿洞/F Save/Continue 后进行中保持+地图 ×1+阶段完成+【待补充】）
+
 ## 目录结构
 
 ```

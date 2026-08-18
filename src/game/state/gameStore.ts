@@ -90,6 +90,10 @@ interface GameStoreState {
 /** 任务发现：不存在 → 创建 available；undiscovered → available；其余状态不重复创建。非法返回 null（TM-P0-006） */
 function applyQuestDiscovery(gameState: GameState, questId: string): GameState | null {
   if (!getQuest(questId)) return null
+  // TM-P1-017：第四主线《追寻黄金兔子王》窄特判——仅 rabbit_path_reported===true（非严格 true 如 undefined/false/"true"/"yes"/1/0 均不解锁）才能发现；不修复异常 flag
+  if (questId === 'quest_golden_rabbit_search' && gameState.world.flags.rabbit_path_reported !== true) {
+    return null
+  }
   const index = gameState.quests.findIndex((q) => q.questId === questId)
   if (index < 0) {
     return {

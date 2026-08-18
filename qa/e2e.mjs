@@ -2149,6 +2149,55 @@ try {
   })
   check('P1-016-R1: 段末 Math.random 已恢复真实实现（不污染后续测试）', p1016Restored === true)
 
+  // TM-P1-017：第四正式主线目标《追寻黄金兔子王》（直接继续 P1-016 汇报完成档，不重打前三任务/狼/嘟嘟兔）
+  // A. Continue 后：阶段完成 panel 保留 + 地图仍 ×1 + 附近委托出现第四任务入口（未发现状态只显示「村长似乎有事相托。」，不显示任务卡）
+  await clickByText('继续游戏')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-017-A: Continue 后青石村阶段完成保留', body.includes('青石村阶段完成'))
+  check('P1-017-A: 兔子的路径仍 ×1', body.includes('兔子的路径 ×1'))
+  check('P1-017-A: 附近委托出现第四任务入口（村长似乎有事相托）', body.includes('村长似乎有事相托。'))
+  check('P1-017-A: 未发现状态不直接显示追寻黄金兔子王任务卡', !body.includes('追寻黄金兔子王'))
+  // B. 发现任务：查看委托 → 可接受
+  await clickByText('查看委托')
+  body = await bodyText()
+  check('P1-017-B: 追寻黄金兔子王状态可接受', body.includes('追寻黄金兔子王') && body.includes('可接受'))
+  check('P1-017-B: 任务描述含《兔子的路径》与具体目的地【待补充】', body.includes('《兔子的路径》指向黄金兔子王所在之地') && body.includes('具体目的地：【待补充】'))
+  // C. 接受任务 → 进行中（附近委托入口消失，任务日志显示进行中）
+  await clickByText('接受任务')
+  await sleep(200)
+  body = await bodyText()
+  check('P1-017-C: 接受后任务日志显示追寻黄金兔子王进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
+  check('P1-017-C: 接受后附近委托入口消失', !body.includes('查看委托'))
+  // D. 主线状态保持：Lv.2 / 金币不变 / 地图 ×1 / 阶段完成 / 【待补充】
+  const p1017GoldBefore = body.match(/金币\s*(\d+)/)
+  check('P1-017-D: 接受后金币数值保持（无即时奖励）', p1017GoldBefore !== null)
+  check('P1-017-D: 青石村阶段完成 panel 仍保留', body.includes('青石村阶段完成'))
+  check('P1-017-D: 下一步目的地仍【待补充】', body.includes('下一步目的地：【待补充】'))
+  check('P1-017-D: 兔子的路径仍 ×1（发现/接受不消耗）', body.includes('兔子的路径 ×1'))
+  check('P1-017-D: 等级仍 Lv.2', body.includes('Lv.2'))
+  // E. 没有新移动入口：可前往区域仍只有现有合法连接（村外草原/废弃矿洞），无黄金兔子王/【待补充】/下一章形式的新地点按钮
+  check('P1-017-E: 无前往黄金兔子王按钮', !body.includes('前往黄金兔子王'))
+  check('P1-017-E: 无前往【待补充】按钮', !body.includes('前往【待补充】'))
+  check('P1-017-E: 无进入下一章按钮', !body.includes('下一章') && !body.includes('进入新区域'))
+  const p1017TravelArea = await page.evaluate(() => {
+    const labels = [...document.querySelectorAll('p')].filter((el) => el.textContent.includes('可前往'))
+    const area = labels[0]?.parentElement?.textContent ?? ''
+    return area
+  })
+  check('P1-017-E: 可前往区仅现有合法连接（村外草原/废弃矿洞）', p1017TravelArea.includes('村外草原') && p1017TravelArea.includes('废弃矿洞') && !p1017TravelArea.includes('黄金兔子王'))
+  // F. Save / Continue：第四任务进行中保持
+  await clickByText('保存游戏')
+  await clickByText('返回主菜单')
+  await clickByText('继续游戏')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-017-F: Continue 后追寻黄金兔子王进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
+  check('P1-017-F: Continue 后兔子的路径仍 ×1', body.includes('兔子的路径 ×1'))
+  check('P1-017-F: Continue 后青石村阶段完成保留', body.includes('青石村阶段完成'))
+  check('P1-017-F: Continue 后具体目的地【待补充】', body.includes('具体目的地：【待补充】'))
+  await clickByText('返回主菜单')
+
   // TM-P1-015：战斗中使用治疗药水（独立最小段：默认骑士 + 村外草原魔化兔；魔化兔零修改 HP8/DEF11/atk+2/dmg2）
   // P1-007-R1 模式：段首只保存一次真实 Math.random
   await page.evaluate(() => {

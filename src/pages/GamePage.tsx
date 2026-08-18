@@ -103,6 +103,10 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
     if (quest.id === 'quest_grassland_wolf') {
       return gameState.quests.some((q) => q.questId === 'quest_mine_cleanup' && q.status === 'completed')
     }
+    // TM-P1-017：UI 侧窄前置（与 Store discoverQuest 一致）——《追寻黄金兔子王》仅在向村长汇报《兔子的路径》后可见
+    if (quest.id === 'quest_golden_rabbit_search') {
+      return world.flags.rabbit_path_reported === true
+    }
     return true
   })
   // TM-P0-015：附近人物 = 常驻当前地点的注册 NPC（动态过滤，不硬编码列表）

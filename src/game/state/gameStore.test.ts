@@ -3018,3 +3018,150 @@ describe('TM-P1-016：向村长汇报《兔子的路径》（青石村阶段收�
     expect(useGameStore.getState().hasSave).toBe(false)
   })
 })
+
+describe('TM-P1-017：《追寻黄金兔子王》第四主线任务（仅 rabbit_path_reported===true 可发现）', () => {
+  const flags = () => useGameStore.getState().gameState?.world.flags
+  const rabbitPath = () => useGameStore.getState().gameState?.inventory.find((e) => e.itemId === 'rabbit_path')
+  const goldenQuest = () => useGameStore.getState().gameState?.quests.find((q) => q.questId === 'quest_golden_rabbit_search')
+
+  /** 新游戏（无任何汇报前置） */
+  const freshGame = () => {
+    useGameStore.getState().newGame()
+  }
+
+  /** 汇报完成（rabbit_path_reported=true）——复用 P1-016 完整前置链 */
+  const seedReported = () => {
+    useGameStore.getState().newGame()
+    useGameStore.getState().discoverQuest('quest_village_monsters')
+    useGameStore.getState().acceptQuest('quest_village_monsters')
+    useGameStore.getState().travelToLocation('village_grassland')
+    useGameStore.getState().resolveCombatVictory('corrupted_rabbit')
+    useGameStore.getState().travelToLocation('qingshi_village')
+    useGameStore.getState().completeQuest('quest_village_monsters')
+    useGameStore.getState().discoverQuest('quest_mine_cleanup')
+    useGameStore.getState().acceptQuest('quest_mine_cleanup')
+    useGameStore.getState().travelToLocation('abandoned_mine')
+    useGameStore.getState().resolveCombatVictory('corrupted_rat')
+    useGameStore.getState().travelToLocation('qingshi_village')
+    useGameStore.getState().completeQuest('quest_mine_cleanup')
+    useGameStore.getState().discoverQuest('quest_grassland_wolf')
+    useGameStore.getState().acceptQuest('quest_grassland_wolf')
+    useGameStore.getState().travelToLocation('village_grassland')
+    useGameStore.getState().resolveCombatVictory('corrupted_wolf')
+    useGameStore.getState().travelToLocation('qingshi_village')
+    useGameStore.getState().completeQuest('quest_grassland_wolf')
+    useGameStore.getState().addItem('rabbit_path', 1)
+    useGameStore.getState().inspectRabbitPath()
+    useGameStore.getState().reportRabbitPathToVillageElder()
+  }
+
+  /** 直接构造非严格 flag 运行态 */
+  const seedFlagValue = (value: string | number | boolean) => {
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return {
+        gameState: {
+          ...s.gameState,
+          world: { ...s.gameState.world, flags: { ...s.gameState.world.flags, rabbit_path_reported: value } },
+        },
+      }
+    })
+  }
+
+  const snapshot = () => JSON.stringify(useGameStore.getState().gameState)
+  const questsJson = () => JSON.stringify(useGameStore.getState().gameState?.quests)
+
+  it('A. 汇报前 discover → false 且 quests 完全不变（新游戏无任何前置）', () => {
+    freshGame()
+    const beforeQuests = questsJson()
+    expect(useGameStore.getState().discoverQuest('quest_golden_rabbit_search')).toBe(false)
+    expect(questsJson()).toBe(beforeQuests)
+    expect(goldenQuest()).toBeUndefined()
+  })
+
+  it('B. rabbit_path_reported=false → false', () => {
+    freshGame()
+    seedFlagValue(false)
+    const beforeQuests = questsJson()
+    expect(useGameStore.getState().discoverQuest('quest_golden_rabbit_search')).toBe(false)
+    expect(questsJson()).toBe(beforeQuests)
+  })
+
+  it.each([
+    ['"true"', 'true'],
+    ['1', 1],
+    ['0', 0],
+    ['"yes"', 'yes'],
+  ])('C. 非严格 flag %s → false 且全状态不变（不修复异常 flag）', (_label, invalidValue) => {
+    freshGame()
+    seedFlagValue(invalidValue)
+    const before = snapshot()
+    expect(useGameStore.getState().discoverQuest('quest_golden_rabbit_search')).toBe(false)
+    expect(snapshot()).toBe(before)
+    expect(flags()?.rabbit_path_reported).toBe(invalidValue)
+  })
+
+  it('D. reported=true discover → true 且 QuestState 为 available', () => {
+    seedReported()
+    expect(useGameStore.getState().discoverQuest('quest_golden_rabbit_search')).toBe(true)
+    expect(goldenQuest()).toEqual({ questId: 'quest_golden_rabbit_search', status: 'available', stage: 0, flags: {} })
+  })
+
+  it('E. 重复 discover → false，不产生第二条', () => {
+    seedReported()
+    useGameStore.getState().discoverQuest('quest_golden_rabbit_search')
+    const beforeQuests = questsJson()
+    expect(useGameStore.getState().discoverQuest('quest_golden_rabbit_search')).toBe(false)
+    expect(questsJson()).toBe(beforeQuests)
+    expect(useGameStore.getState().gameState?.quests.filter((q) => q.questId === 'quest_golden_rabbit_search')).toHaveLength(1)
+  })
+
+  it('F. accept → true → in_progress', () => {
+    seedReported()
+    useGameStore.getState().discoverQuest('quest_golden_rabbit_search')
+    expect(useGameStore.getState().acceptQuest('quest_golden_rabbit_search')).toBe(true)
+    expect(goldenQuest()?.status).toBe('in_progress')
+  })
+
+  it('G. 重复 accept → false', () => {
+    seedReported()
+    useGameStore.getState().discoverQuest('quest_golden_rabbit_search')
+    useGameStore.getState().acceptQuest('quest_golden_rabbit_search')
+    expect(useGameStore.getState().acceptQuest('quest_golden_rabbit_search')).toBe(false)
+    expect(goldenQuest()?.status).toBe('in_progress')
+  })
+
+  it('H. 发现+接受无副作用：player/inventory/equipment/world/其他 quests 除新任务 QuestState 外全不变', () => {
+    seedReported()
+    const beforePlayer = useGameStore.getState().gameState!.player
+    const beforeInventory = useGameStore.getState().gameState!.inventory
+    const beforeEquipment = useGameStore.getState().gameState!.equipment
+    const beforeWorld = useGameStore.getState().gameState!.world
+    const beforeOtherQuests = useGameStore.getState().gameState!.quests.filter((q) => q.questId !== 'quest_golden_rabbit_search')
+    useGameStore.getState().discoverQuest('quest_golden_rabbit_search')
+    useGameStore.getState().acceptQuest('quest_golden_rabbit_search')
+    const after = useGameStore.getState().gameState!
+    expect(after.player).toEqual(beforePlayer)
+    expect(after.inventory).toEqual(beforeInventory)
+    expect(after.equipment).toEqual(beforeEquipment)
+    expect(after.world).toEqual(beforeWorld)
+    expect(after.quests.filter((q) => q.questId !== 'quest_golden_rabbit_search')).toEqual(beforeOtherQuests)
+  })
+
+  it('I. 发现+接受后兔子的路径仍 ×1 且 reported/examined 保持', () => {
+    seedReported()
+    useGameStore.getState().discoverQuest('quest_golden_rabbit_search')
+    useGameStore.getState().acceptQuest('quest_golden_rabbit_search')
+    expect(rabbitPath()?.quantity).toBe(1)
+    expect(flags()?.rabbit_path_reported).toBe(true)
+    expect(flags()?.rabbit_path_examined).toBe(true)
+  })
+
+  it('J. 不自动保存：发现+接受后 hasSave 仍 false', () => {
+    seedReported()
+    useGameStore.getState().discoverQuest('quest_golden_rabbit_search')
+    useGameStore.getState().acceptQuest('quest_golden_rabbit_search')
+    expect(goldenQuest()?.status).toBe('in_progress')
+    expect(useGameStore.getState().hasSave).toBe(false)
+  })
+})
