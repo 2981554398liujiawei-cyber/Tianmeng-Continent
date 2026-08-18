@@ -347,6 +347,14 @@ TM-P1-011（第一次里程碑升级 Lv.2——完成《草原狼影》时同一
 - 无其他奖励：不产生物品/装备/属性点/技能点/关系值/flag/completedEvent/地点解锁；GameState/Character schema 零修改；GamePage/CombatPage/storage/types/content 零修改
 - 1 个 rules 单测（常量 2/1）+ 8 个 Store 单测（B 正常完成 Lv1→Lv2+22/24+6/7+110 原子更新/C 受伤不治疗 10/24+2/7/D HP0 不复活 0/24/E 非 Lv1 拒绝且任务/金币/等级/HP/MP 全不变/F hp>maxHp 与 maxHp=MAX_SAFE_INTEGER 溢出均拒绝全不变/G 无副作用 attributes/profession/inventory/equipment/flags/completedEvents/npcStates 全不变/H 重复提交 false 仍 Lv2/110 上限不再增长/I 不自动保存）+ 8 项 E2E（J 提交瞬间升级 Lv.2+生命 22/24+灵力 6/7（狼天然20 一次击杀未受伤）/L Continue 保持 Lv.2+22/24+6/7/M 休整后 24/24+7/7；K 关系不变沿用 P1-010-G 断言）
 
+TM-P1-012（Lv.2 里程碑升级提示——成长体验闭环，纯 UI 反馈）：
+- GamePage 新增本地状态 `showLevelUpNotice` useState(false) + 最小提交 handler `handleCompleteQuest(questId)`：completeQuest 返回 true 且 questId==='quest_grassland_wolf' 时 setShowLevelUpNotice(true)（提示来自「本次第三任务提交成功」这一 UI 事件，**不按 player.level===2 自动判断**——Continue 一个 Lv.2 存档不会错误重复弹提示；未建 RewardNotificationSystem/ToastManager/EventBus/LevelUpEvent）
+- 提示 panel（角色信息区之后的高亮金边 panel，不覆盖整页）：标题「等级提升！」+ 正文「你已达到 Lv.2。最大生命 +2，最大灵力 +1。」+ [知道了] 按钮；+2/+1 **读取 LEVEL_2_MAX_HP_GAIN/LEVEL_2_MAX_MP_GAIN 封板常量**（GamePage 未维护第二份业务常量）；点击「知道了」→ setShowLevelUpNotice(false) 提示立即消失且不改任何 GameState；**不自动计时消失**（无 setTimeout，E2E 确定性）
+- 提示不持久化：不写入 GameState/world.flags/completedEvents/QuestState.flags/localStorage/NpcState；不新增 Store action；完成任务后未点击提示就返回主菜单 → Continue 后新 GamePage 也不显示（local state 生命周期 + Save/Continue 主流程锁定）
+- 触发条件唯一：仅《草原狼影》completeQuest===true 显示；《村外异动》/《矿洞清理》完成、第三任务 false/重复提交/非法状态失败/读取已 Lv.2 存档均不显示
+- **gameStore.ts 零修改**（P1-011 安全预检与升级原子性原样保持）；rules 全部零修改（character/combat/d20/quest/exploration 未动，LEVEL_2_MAX_HP_GAIN=2/LEVEL_2_MAX_MP_GAIN=1 不变）；schema 零修改（Character/GameState/WorldState/QuestState/NpcState/SaveFile/SAVE_VERSION=1 全不变）；git diff 仅 GamePage.tsx + qa/e2e.mjs + README
+- 11 项 E2E（A 第三任务提交前不显示升级提示/B 提交成功立即显示等级提升！+你已达到 Lv.2。+最大生命 +2，最大灵力 +1。+知道了（与原有已完成/110/Lv.2/22/24/6/7 同帧确认）/C 点击知道了后提示消失且角色仍 Lv.2/22/24/6/7/110/D Continue 不重复显示升级提示与知道了/E 《村外异动》《矿洞清理》完成均不显示升级提示）
+
 ## 目录结构
 
 ```

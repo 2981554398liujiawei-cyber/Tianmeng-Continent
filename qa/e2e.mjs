@@ -1370,6 +1370,7 @@ try {
   await sleep(300)
   body = await bodyText()
   check('P1-005-B: 第一任务完成且金币 70', body.includes('已完成') && body.includes('70'))
+  check('P1-012-E: 《村外异动》完成不显示升级提示', !body.includes('等级提升！'))
   check('P1-005-B: 铁匠新委托出现', body.includes('铁匠似乎有事相托。'))
 
   // C. 发现并接受《矿洞清理》
@@ -1410,6 +1411,7 @@ try {
   await sleep(300)
   body = await bodyText()
   check('P1-005-F: 矿洞清理已完成且金币 85', body.includes('矿洞清理') && body.includes('已完成') && body.includes('85'))
+  check('P1-012-E: 《矿洞清理》完成不显示升级提示', !body.includes('等级提升！'))
 
   // G. 无关系副作用：铁匠交谈无关系数值，村长既有关系不变
   await clickNthTalk(1)
@@ -1853,6 +1855,8 @@ try {
 
   // G. 回村提交：金币 85→110；村长关系不受第三任务影响（信任：1 尊敬：0）
   await clickByText('青石村')
+  body = await bodyText()
+  check('P1-012-A: 第三任务提交前不显示升级提示', !body.includes('等级提升！') && !body.includes('你已达到 Lv.2。'))
   await clickByText('提交任务')
   await sleep(300)
   body = await bodyText()
@@ -1863,6 +1867,17 @@ try {
   check('P1-011-J: 提交瞬间升级 Lv.2', body.includes('Lv.2'))
   check('P1-011-J: 生命 22 / 24（当前不恢复）', levelUpHp !== null && levelUpHp[1] === '22' && levelUpHp[2] === '24')
   check('P1-011-J: 灵力 6 / 7（当前不恢复）', levelUpMp !== null && levelUpMp[1] === '6' && levelUpMp[2] === '7')
+  // TM-P1-012-B：提交成功立即显示升级提示（文案读取封板常量渲染）
+  check('P1-012-B: 提交后显示等级提升！', body.includes('等级提升！'))
+  check('P1-012-B: 显示你已达到 Lv.2。', body.includes('你已达到 Lv.2。'))
+  check('P1-012-B: 显示最大生命 +2，最大灵力 +1。', body.includes('最大生命 +2，最大灵力 +1。'))
+  check('P1-012-B: 显示知道了按钮', body.includes('知道了'))
+  await clickByText('知道了')
+  await sleep(300)
+  body = await bodyText()
+  // TM-P1-012-C：点击知道了关闭提示；角色数据保持升级结果
+  check('P1-012-C: 点击知道了后提示消失', !body.includes('等级提升！') && !body.includes('你已达到 Lv.2。'))
+  check('P1-012-C: 角色仍 Lv.2 / 22/24 / 6/7 / 110 金币', body.includes('Lv.2') && body.includes('110'))
   await clickNthTalk(0)
   body = await bodyText()
   check('P1-010-G: 村长关系保持 信任：1 尊敬：0（第三任务无关系副作用）', body.includes('信任：1') && body.includes('尊敬：0'))
@@ -1880,6 +1895,7 @@ try {
   check('P1-011-L: Continue 后保持 Lv.2', body.includes('Lv.2'))
   check('P1-011-L: Continue 后生命 22 / 24', continueHp !== null && continueHp[1] === '22' && continueHp[2] === '24')
   check('P1-011-L: Continue 后灵力 6 / 7', continueMp !== null && continueMp[1] === '6' && continueMp[2] === '7')
+  check('P1-012-D: Continue 不重复显示升级提示', !body.includes('等级提升！') && !body.includes('知道了'))
   await clickByText('村外草原')
   body = await bodyText()
   const threatsAfterContinue = await page.evaluate(() => {

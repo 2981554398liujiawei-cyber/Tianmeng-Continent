@@ -4,6 +4,7 @@ import { useGameStore, VILLAGE_ELDER_POST_QUEST_EVENT_ID } from '../game/state/g
 import { getProfessionName, ATTRIBUTE_KEYS, ATTRIBUTE_LABELS } from '../game/content/professions'
 import { getEnemy, getItem, getLocation, getNpc, getQuest, NPCS, QUESTS } from '../game/content'
 import { CHECK_DC, type D20CheckResult } from '../game/rules/d20'
+import { LEVEL_2_MAX_HP_GAIN, LEVEL_2_MAX_MP_GAIN } from '../game/rules/character'
 import type { QuestStatus } from '../game/types'
 
 /** D20 检定结果中文（TM-P0-016） */
@@ -66,6 +67,16 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
   const [activeNpcId, setActiveNpcId] = useState<string | null>(null)
   // TM-P0-016：本次调查的即时检定结果（仅 UI 本地状态；离开矿洞清空）
   const [lastMineInvestigation, setLastMineInvestigation] = useState<D20CheckResult | null>(null)
+  // TM-P1-012：Lv.2 里程碑升级提示（仅 UI 本地状态；只由「本次《草原狼影》提交成功」这一 UI 事件触发，不进入 GameState/存档，不按 level 自动判断）
+  const [showLevelUpNotice, setShowLevelUpNotice] = useState(false)
+
+  /** TM-P1-012：任务提交 handler——completeQuest 成功且为《草原狼影》时显示升级提示（最小局部逻辑，不建通知系统） */
+  const handleCompleteQuest = (questId: string) => {
+    const completed = completeQuest(questId)
+    if (completed && questId === 'quest_grassland_wolf') {
+      setShowLevelUpNotice(true)
+    }
+  }
 
   if (!gameState) {
     return (
@@ -172,6 +183,20 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
           </div>
         </div>
       </section>
+
+      {/* TM-P1-012：Lv.2 里程碑升级提示——只由《草原狼影》本次提交成功触发（UI 本地状态，不持久化；点击「知道了」关闭，不自动消失） */}
+      {showLevelUpNotice && (
+        <section className="rounded border border-gold-500/60 bg-gold-900/30 p-5 text-sm">
+          <h3 className="text-lg font-bold text-gold-300">等级提升！</h3>
+          <p className="mt-2 text-bone-200">你已达到 Lv.2。</p>
+          <p className="mt-1 text-bone-300">
+            最大生命 +{LEVEL_2_MAX_HP_GAIN}，最大灵力 +{LEVEL_2_MAX_MP_GAIN}。
+          </p>
+          <Button className="mt-3" variant="primary" onClick={() => setShowLevelUpNotice(false)}>
+            知道了
+          </Button>
+        </section>
+      )}
 
       <section className="rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
         <p className="mb-2 text-bone-500">当前位置</p>
@@ -595,7 +620,8 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
                   )}
                   {canSubmit && (
                     <div className="mt-2">
-                      <Button variant="primary" onClick={() => completeQuest(qs.questId)}>
+                      {/* TM-P1-012：提交成功（仅《草原狼影》）触发升级提示 */}
+                      <Button variant="primary" onClick={() => handleCompleteQuest(qs.questId)}>
                         提交任务
                       </Button>
                     </div>
