@@ -2209,6 +2209,100 @@ try {
   check('P1-017-F: Continue 后具体目的地【待补充】', body.includes('具体目的地：【待补充】'))
   await clickByText('返回主菜单')
 
+  // TM-P1-018：《追寻黄金兔子王》第一步——向村中两人打听地图线索（直接继续 P1-017 第四任务 in_progress 档）
+  // A. Continue：进行中 + 地图线索调查 0/2
+  await clickByText('继续游戏')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-018-A: 追寻黄金兔子王进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
+  check('P1-018-A: 地图线索调查 0 / 2', body.includes('地图线索调查：0 / 2'))
+  // F 前置：调查开始前记录 Lv/HP/MP/金币/地图数/trust/respect
+  const invBeforeLevel = body.match(/Lv\.(\d+)/)
+  const invBeforeHp = body.match(/生命\s*(\d+)\s*\/\s*(\d+)/)
+  const invBeforeMp = body.match(/灵力\s*(\d+)\s*\/\s*(\d+)/)
+  const invBeforeGold = body.match(/金币\s*(\d+)/)
+  const invBeforeMapCount = body.match(/兔子的路径 ×(\d+)/)
+  // B. 铁匠：打听地图
+  await clickNthTalk(1)
+  body = await bodyText()
+  check('P1-018-B: 铁匠对话显示打听入口', body.includes('你把《兔子的路径》拿给铁匠辨认。'))
+  check('P1-018-B: 向铁匠打听地图按钮 enabled', (await buttonDisabled('向铁匠打听地图')) === false)
+  await clickByText('向铁匠打听地图')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-018-B: 铁匠固定回复', body.includes('铁匠看了看地图，摇了摇头：“这上面的路线，我认不出来。”'))
+  check('P1-018-B: 向铁匠打听地图按钮消失', !body.includes('向铁匠打听地图'))
+  // C. 任务仍不能完成
+  check('P1-018-C: 仍为进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
+  check('P1-018-C: 无提交任务按钮', !body.includes('提交任务'))
+  await clickByText('结束交谈')
+  body = await bodyText()
+  check('P1-018-B: 询问铁匠后调查进度 1 / 2', body.includes('地图线索调查：1 / 2'))
+  // D. 药师：打听地图
+  await clickNthTalk(2)
+  body = await bodyText()
+  check('P1-018-D: 药师对话显示打听入口', body.includes('你请药师看看《兔子的路径》上的标记。'))
+  check('P1-018-D: 向药师打听地图按钮 enabled', (await buttonDisabled('向药师打听地图')) === false)
+  await clickByText('向药师打听地图')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-018-D: 药师固定回复', body.includes('药师仔细辨认了一会儿：“我也没见过这处标记。”'))
+  check('P1-018-D: 向药师打听地图按钮消失', !body.includes('向药师打听地图'))
+  await clickByText('结束交谈')
+  // E. 两人全部调查：2/2 + 调查结果文案 + 仍进行中
+  body = await bodyText()
+  check('P1-018-E: 地图线索调查 2 / 2', body.includes('地图线索调查：2 / 2'))
+  check('P1-018-E: 调查结果固定文案', body.includes('你已经向铁匠和药师打听过，但仍无法确认地图指向的具体地点。'))
+  check('P1-018-E: 下一步目的地：【待补充】', body.includes('下一步目的地：【待补充】'))
+  check('P1-018-E: 状态仍进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
+  // F. 无副作用：Lv/HP/MP/金币/地图数精确对比（信任/尊敬从村长对话验证）
+  const invAfterLevel = body.match(/Lv\.(\d+)/)
+  const invAfterHp = body.match(/生命\s*(\d+)\s*\/\s*(\d+)/)
+  const invAfterMp = body.match(/灵力\s*(\d+)\s*\/\s*(\d+)/)
+  const invAfterGold = body.match(/金币\s*(\d+)/)
+  const invAfterMapCount = body.match(/兔子的路径 ×(\d+)/)
+  check(
+    'P1-018-F: 调查前后等级/生命/灵力/金币/地图数全不变',
+    invBeforeLevel !== null && invAfterLevel !== null && invBeforeLevel[1] === invAfterLevel[1] &&
+      invBeforeHp !== null && invAfterHp !== null && invBeforeHp[1] === invAfterHp[1] && invBeforeHp[2] === invAfterHp[2] &&
+      invBeforeMp !== null && invAfterMp !== null && invBeforeMp[1] === invAfterMp[1] && invBeforeMp[2] === invAfterMp[2] &&
+      invBeforeGold !== null && invAfterGold !== null && invBeforeGold[1] === invAfterGold[1] &&
+      invBeforeMapCount !== null && invAfterMapCount !== null && invBeforeMapCount[1] === invAfterMapCount[1],
+  )
+  await clickNthTalk(0)
+  body = await bodyText()
+  check('P1-018-F: 村长信任 1 尊敬 0 不变（调查不建立/修改关系）', body.includes('信任：1') && body.includes('尊敬：0'))
+  await clickByText('结束交谈')
+  // G. 移动入口继续锁定：可前往按钮精确等于 [废弃矿洞, 村外草原]
+  const p1018TravelButtons = await page.evaluate(() => {
+    const label = [...document.querySelectorAll('p')].find((el) => el.textContent.trim() === '可前往：')
+    if (!label) return []
+    const container = label.parentElement
+    if (!container) return []
+    return [...container.querySelectorAll('button')].map((b) => b.textContent.trim()).sort()
+  })
+  check('P1-018-G: 可前往按钮精确等于 [废弃矿洞, 村外草原]', JSON.stringify(p1018TravelButtons) === JSON.stringify(['废弃矿洞', '村外草原']))
+  // H. Save/Continue：2/2 保持；铁匠/药师已询问回复 + 无按钮
+  await clickByText('保存游戏')
+  await clickByText('返回主菜单')
+  await clickByText('继续游戏')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-018-H: Continue 后追寻黄金兔子王进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
+  check('P1-018-H: Continue 后地图线索调查 2 / 2', body.includes('地图线索调查：2 / 2'))
+  check('P1-018-H: Continue 后下一步目的地【待补充】', body.includes('下一步目的地：【待补充】'))
+  await clickNthTalk(1)
+  body = await bodyText()
+  check('P1-018-H: 重开铁匠显示已询问回复', body.includes('铁匠看了看地图，摇了摇头：“这上面的路线，我认不出来。”'))
+  check('P1-018-H: 重开铁匠无打听按钮', !body.includes('向铁匠打听地图'))
+  await clickByText('结束交谈')
+  await clickNthTalk(2)
+  body = await bodyText()
+  check('P1-018-H: 重开药师显示已询问回复', body.includes('药师仔细辨认了一会儿：“我也没见过这处标记。”'))
+  check('P1-018-H: 重开药师无打听按钮', !body.includes('向药师打听地图'))
+  await clickByText('结束交谈')
+  await clickByText('返回主菜单')
+
   // TM-P1-015：战斗中使用治疗药水（独立最小段：默认骑士 + 村外草原魔化兔；魔化兔零修改 HP8/DEF11/atk+2/dmg2）
   // P1-007-R1 模式：段首只保存一次真实 Math.random
   await page.evaluate(() => {

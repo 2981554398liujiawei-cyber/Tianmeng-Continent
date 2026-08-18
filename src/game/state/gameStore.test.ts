@@ -3165,3 +3165,224 @@ describe('TM-P1-017：《追寻黄金兔子王》第四主线任务（仅 rabbit
     expect(useGameStore.getState().hasSave).toBe(false)
   })
 })
+
+describe('TM-P1-018：向村中两人打听《追寻黄金兔子王》地图线索（QuestState.flags 持久化）', () => {
+  const flags = () => useGameStore.getState().gameState?.world.flags
+  const rabbitPath = () => useGameStore.getState().gameState?.inventory.find((e) => e.itemId === 'rabbit_path')
+  const goldenQuest = () => useGameStore.getState().gameState?.quests.find((q) => q.questId === 'quest_golden_rabbit_search')
+  const snapshot = () => JSON.stringify(useGameStore.getState().gameState)
+
+  /** 走到第四任务 in_progress（复用 P1-017 完整前置链） */
+  const seedGoldenInProgress = () => {
+    useGameStore.getState().newGame()
+    useGameStore.getState().discoverQuest('quest_village_monsters')
+    useGameStore.getState().acceptQuest('quest_village_monsters')
+    useGameStore.getState().travelToLocation('village_grassland')
+    useGameStore.getState().resolveCombatVictory('corrupted_rabbit')
+    useGameStore.getState().travelToLocation('qingshi_village')
+    useGameStore.getState().completeQuest('quest_village_monsters')
+    useGameStore.getState().discoverQuest('quest_mine_cleanup')
+    useGameStore.getState().acceptQuest('quest_mine_cleanup')
+    useGameStore.getState().travelToLocation('abandoned_mine')
+    useGameStore.getState().resolveCombatVictory('corrupted_rat')
+    useGameStore.getState().travelToLocation('qingshi_village')
+    useGameStore.getState().completeQuest('quest_mine_cleanup')
+    useGameStore.getState().discoverQuest('quest_grassland_wolf')
+    useGameStore.getState().acceptQuest('quest_grassland_wolf')
+    useGameStore.getState().travelToLocation('village_grassland')
+    useGameStore.getState().resolveCombatVictory('corrupted_wolf')
+    useGameStore.getState().travelToLocation('qingshi_village')
+    useGameStore.getState().completeQuest('quest_grassland_wolf')
+    useGameStore.getState().addItem('rabbit_path', 1)
+    useGameStore.getState().inspectRabbitPath()
+    useGameStore.getState().reportRabbitPathToVillageElder()
+    useGameStore.getState().discoverQuest('quest_golden_rabbit_search')
+    useGameStore.getState().acceptQuest('quest_golden_rabbit_search')
+  }
+
+  /** 直接构造任务 flag 运行态 */
+  const seedQuestFlag = (flagKey: string, value: unknown) => {
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return {
+        gameState: {
+          ...s.gameState,
+          quests: s.gameState.quests.map((q) =>
+            q.questId === 'quest_golden_rabbit_search' ? { ...q, flags: { ...q.flags, [flagKey]: value } } : q,
+          ),
+        },
+      }
+    })
+  }
+
+  /** 直接构造任务状态运行态 */
+  const seedQuestStatus = (status: string) => {
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return {
+        gameState: {
+          ...s.gameState,
+          quests: s.gameState.quests.map((q) =>
+            q.questId === 'quest_golden_rabbit_search' ? { ...q, status } : q,
+          ),
+        },
+      }
+    })
+  }
+
+  it('A. 无 gameState → false', () => {
+    useGameStore.setState({ gameState: null })
+    expect(useGameStore.getState().consultGoldenRabbitSearchNpc('blacksmith')).toBe(false)
+    expect(useGameStore.getState().consultGoldenRabbitSearchNpc('apothecary')).toBe(false)
+  })
+
+  it('B. 第四任务不存在 → false', () => {
+    seedGoldenInProgress()
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return { gameState: { ...s.gameState, quests: s.gameState.quests.filter((q) => q.questId !== 'quest_golden_rabbit_search') } }
+    })
+    const before = snapshot()
+    expect(useGameStore.getState().consultGoldenRabbitSearchNpc('blacksmith')).toBe(false)
+    expect(snapshot()).toBe(before)
+  })
+
+  it('C. 第四任务 available → false', () => {
+    seedGoldenInProgress()
+    seedQuestStatus('available')
+    const before = snapshot()
+    expect(useGameStore.getState().consultGoldenRabbitSearchNpc('blacksmith')).toBe(false)
+    expect(snapshot()).toBe(before)
+  })
+
+  it('D. 第四任务 completed/completable → false', () => {
+    seedGoldenInProgress()
+    seedQuestStatus('completed')
+    const beforeCompleted = snapshot()
+    expect(useGameStore.getState().consultGoldenRabbitSearchNpc('blacksmith')).toBe(false)
+    expect(snapshot()).toBe(beforeCompleted)
+    seedQuestStatus('completable')
+    const beforeCompletable = snapshot()
+    expect(useGameStore.getState().consultGoldenRabbitSearchNpc('blacksmith')).toBe(false)
+    expect(snapshot()).toBe(beforeCompletable)
+  })
+
+  it('E. 不在青石村 → false', () => {
+    seedGoldenInProgress()
+    useGameStore.getState().travelToLocation('village_grassland')
+    const before = snapshot()
+    expect(useGameStore.getState().consultGoldenRabbitSearchNpc('blacksmith')).toBe(false)
+    expect(snapshot()).toBe(before)
+  })
+
+  it('F. 非法 npcId（运行时强转）→ false', () => {
+    seedGoldenInProgress()
+    const before = snapshot()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect(useGameStore.getState().consultGoldenRabbitSearchNpc('innkeeper' as any)).toBe(false)
+    expect(snapshot()).toBe(before)
+  })
+
+  it('G. 首次问铁匠 → true 且 asked_blacksmith=true', () => {
+    seedGoldenInProgress()
+    expect(useGameStore.getState().consultGoldenRabbitSearchNpc('blacksmith')).toBe(true)
+    expect(goldenQuest()?.flags.asked_blacksmith).toBe(true)
+  })
+
+  it('H. 首次问药师 → true 且 asked_apothecary=true', () => {
+    seedGoldenInProgress()
+    expect(useGameStore.getState().consultGoldenRabbitSearchNpc('apothecary')).toBe(true)
+    expect(goldenQuest()?.flags.asked_apothecary).toBe(true)
+  })
+
+  it('I. 铁匠重复询问 → false 且 GameState 同一引用不变', () => {
+    seedGoldenInProgress()
+    useGameStore.getState().consultGoldenRabbitSearchNpc('blacksmith')
+    const before = useGameStore.getState().gameState
+    expect(useGameStore.getState().consultGoldenRabbitSearchNpc('blacksmith')).toBe(false)
+    expect(useGameStore.getState().gameState).toBe(before)
+  })
+
+  it('J. 药师重复询问 → false 且同一引用不变', () => {
+    seedGoldenInProgress()
+    useGameStore.getState().consultGoldenRabbitSearchNpc('apothecary')
+    const before = useGameStore.getState().gameState
+    expect(useGameStore.getState().consultGoldenRabbitSearchNpc('apothecary')).toBe(false)
+    expect(useGameStore.getState().gameState).toBe(before)
+  })
+
+  it('K. flag=false → 可成功改 true', () => {
+    seedGoldenInProgress()
+    seedQuestFlag('asked_blacksmith', false)
+    expect(useGameStore.getState().consultGoldenRabbitSearchNpc('blacksmith')).toBe(true)
+    expect(goldenQuest()?.flags.asked_blacksmith).toBe(true)
+  })
+
+  it.each([
+    ['asked_blacksmith 非 boolean ("yes")', 'asked_blacksmith', 'yes'],
+    ['asked_blacksmith 非 boolean (1)', 'asked_blacksmith', 1],
+    ['asked_apothecary 非 boolean ("yes")', 'asked_apothecary', 'yes'],
+    ['asked_apothecary 非 boolean (1)', 'asked_apothecary', 1],
+  ])('L/M. %s → 拒绝且完全不变（不静默覆盖）', (_label, flagKey, invalidValue) => {
+    seedGoldenInProgress()
+    seedQuestFlag(flagKey, invalidValue)
+    const before = snapshot()
+    const npcId = flagKey === 'asked_blacksmith' ? 'blacksmith' : 'apothecary'
+    expect(useGameStore.getState().consultGoldenRabbitSearchNpc(npcId)).toBe(false)
+    expect(snapshot()).toBe(before)
+    expect(goldenQuest()?.flags[flagKey]).toBe(invalidValue)
+  })
+
+  it('N. 问完一人 status 仍 in_progress、stage 仍 0', () => {
+    seedGoldenInProgress()
+    useGameStore.getState().consultGoldenRabbitSearchNpc('blacksmith')
+    expect(goldenQuest()?.status).toBe('in_progress')
+    expect(goldenQuest()?.stage).toBe(0)
+  })
+
+  it('O. 两人都问完 → 两 flag=true、status 仍 in_progress、stage 仍 0', () => {
+    seedGoldenInProgress()
+    useGameStore.getState().consultGoldenRabbitSearchNpc('blacksmith')
+    useGameStore.getState().consultGoldenRabbitSearchNpc('apothecary')
+    expect(goldenQuest()?.flags.asked_blacksmith).toBe(true)
+    expect(goldenQuest()?.flags.asked_apothecary).toBe(true)
+    expect(goldenQuest()?.status).toBe('in_progress')
+    expect(goldenQuest()?.stage).toBe(0)
+  })
+
+  it('P. rabbit_path 仍 ×1', () => {
+    seedGoldenInProgress()
+    useGameStore.getState().consultGoldenRabbitSearchNpc('blacksmith')
+    useGameStore.getState().consultGoldenRabbitSearchNpc('apothecary')
+    expect(rabbitPath()?.quantity).toBe(1)
+  })
+
+  it('Q. player/inventory/equipment/world/其他 quests 全不变（不建 npcState/无奖励）', () => {
+    seedGoldenInProgress()
+    const beforePlayer = useGameStore.getState().gameState!.player
+    const beforeInventory = useGameStore.getState().gameState!.inventory
+    const beforeEquipment = useGameStore.getState().gameState!.equipment
+    const beforeWorld = useGameStore.getState().gameState!.world
+    const beforeOtherQuests = useGameStore.getState().gameState!.quests.filter((q) => q.questId !== 'quest_golden_rabbit_search')
+    useGameStore.getState().consultGoldenRabbitSearchNpc('blacksmith')
+    useGameStore.getState().consultGoldenRabbitSearchNpc('apothecary')
+    const after = useGameStore.getState().gameState!
+    expect(after.player).toEqual(beforePlayer)
+    expect(after.inventory).toEqual(beforeInventory)
+    expect(after.equipment).toEqual(beforeEquipment)
+    expect(after.world).toEqual(beforeWorld)
+    expect(after.quests.filter((q) => q.questId !== 'quest_golden_rabbit_search')).toEqual(beforeOtherQuests)
+    expect(after.world.npcStates.blacksmith).toBeUndefined()
+    expect(after.world.npcStates.apothecary).toBeUndefined()
+    expect(flags()?.rabbit_path_reported).toBe(true)
+  })
+
+  it('R. 不自动保存：两人询问后 hasSave 仍 false', () => {
+    seedGoldenInProgress()
+    useGameStore.getState().consultGoldenRabbitSearchNpc('blacksmith')
+    useGameStore.getState().consultGoldenRabbitSearchNpc('apothecary')
+    expect(goldenQuest()?.flags.asked_blacksmith).toBe(true)
+    expect(goldenQuest()?.flags.asked_apothecary).toBe(true)
+    expect(useGameStore.getState().hasSave).toBe(false)
+  })
+})

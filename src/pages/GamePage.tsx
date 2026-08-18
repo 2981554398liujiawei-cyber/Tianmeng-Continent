@@ -63,6 +63,7 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
   const investigateAbandonedMine = useGameStore((s) => s.investigateAbandonedMine)
   const inspectRabbitPath = useGameStore((s) => s.inspectRabbitPath)
   const reportRabbitPathToVillageElder = useGameStore((s) => s.reportRabbitPathToVillageElder)
+  const consultGoldenRabbitSearchNpc = useGameStore((s) => s.consultGoldenRabbitSearchNpc)
   const [saveResult, setSaveResult] = useState<'saved' | 'failed' | null>(null)
   const [travelError, setTravelError] = useState(false)
   // TM-P0-015：活动对话 NPC（仅 UI 本地状态，不进入 GameState / 存档）
@@ -91,6 +92,12 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
 
   const { player, world } = gameState
   const location = getLocation(world.currentLocationId)
+  // TM-P1-018：第四任务 QuestState（只读；调查进度/询问 flag 均从其 flags 读取）
+  const goldenSearchQuest = gameState.quests.find((q) => q.questId === 'quest_golden_rabbit_search')
+  const goldenSearchInProgress = goldenSearchQuest?.status === 'in_progress'
+  const goldenAskedBlacksmith = goldenSearchQuest?.flags.asked_blacksmith === true
+  const goldenAskedApothecary = goldenSearchQuest?.flags.asked_apothecary === true
+  const goldenInvestigationCount = (goldenAskedBlacksmith ? 1 : 0) + (goldenAskedApothecary ? 1 : 0)
   // TM-P0-006：附近委托 = 给予者位于当前地点的注册任务（不写死地点 ID）
   const localQuests = Object.values(QUESTS).filter((quest) => {
     const giver = getNpc(quest.giverNpcId)
@@ -442,6 +449,36 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
                   <p className="mt-1 text-bone-300">下一步目的地：【待补充】</p>
                 </div>
               )}
+              {/* TM-P1-018：向铁匠打听地图——第四任务 in_progress 且未询问时显示入口；成功后隐藏按钮并显示固定回复（剧情块在 greeting 之后，不修改 npcs.ts） */}
+              {activeNpc.id === 'blacksmith' && goldenSearchInProgress && (
+                goldenAskedBlacksmith ? (
+                  <div className="mb-3 rounded border border-gold-500/40 bg-ink-900/40 p-3">
+                    <p className="text-bone-200">铁匠看了看地图，摇了摇头：“这上面的路线，我认不出来。”</p>
+                  </div>
+                ) : (
+                  <div className="mb-3 rounded border border-ink-600 bg-ink-900/40 p-3">
+                    <p className="mb-2 text-xs text-bone-300">你把《兔子的路径》拿给铁匠辨认。</p>
+                    <Button variant="primary" onClick={() => consultGoldenRabbitSearchNpc('blacksmith')}>
+                      向铁匠打听地图
+                    </Button>
+                  </div>
+                )
+              )}
+              {/* TM-P1-018：向药师打听地图——同上 */}
+              {activeNpc.id === 'apothecary' && goldenSearchInProgress && (
+                goldenAskedApothecary ? (
+                  <div className="mb-3 rounded border border-gold-500/40 bg-ink-900/40 p-3">
+                    <p className="text-bone-200">药师仔细辨认了一会儿：“我也没见过这处标记。”</p>
+                  </div>
+                ) : (
+                  <div className="mb-3 rounded border border-ink-600 bg-ink-900/40 p-3">
+                    <p className="mb-2 text-xs text-bone-300">你请药师看看《兔子的路径》上的标记。</p>
+                    <Button variant="primary" onClick={() => consultGoldenRabbitSearchNpc('apothecary')}>
+                      向药师打听地图
+                    </Button>
+                  </div>
+                )
+              )}
               <Button variant="ghost" onClick={() => setActiveNpcId(null)}>
                 结束交谈
               </Button>
@@ -687,6 +724,18 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
                   {/* TM-P0-018：任务固定金币奖励（读 QuestDefinition.goldReward，不复制常量） */}
                   {def?.goldReward !== undefined && (
                     <p className="mt-1 text-xs text-gold-300">奖励：{def.goldReward} 金币</p>
+                  )}
+                  {/* TM-P1-018：第四任务调查进度——严格从 QuestState.flags 读取；2/2 时额外显示调查结果固定文案（本卡结尾，不虚构下一地点） */}
+                  {qs.questId === 'quest_golden_rabbit_search' && qs.status === 'in_progress' && (
+                    <p className="mt-1 text-xs text-bone-400">
+                      地图线索调查：{goldenInvestigationCount} / 2
+                    </p>
+                  )}
+                  {qs.questId === 'quest_golden_rabbit_search' && goldenInvestigationCount === 2 && (
+                    <div className="mt-2 rounded border border-gold-500/40 bg-ink-900/40 p-2 text-xs leading-relaxed text-bone-200">
+                      <p>你已经向铁匠和药师打听过，但仍无法确认地图指向的具体地点。</p>
+                      <p className="mt-1 text-bone-300">下一步目的地：【待补充】</p>
+                    </div>
                   )}
                   {canSubmit && (
                     <div className="mt-2">
