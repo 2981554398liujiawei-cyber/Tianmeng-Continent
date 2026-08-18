@@ -2497,3 +2497,130 @@ describe('TM-P1-010：第三个正式任务《草原狼影》', () => {
     expect(useGameStore.getState().hasSave).toBe(false)
   })
 })
+
+describe('TM-P1-011：第一次里程碑升级 Lv.2（完成《草原狼影》时）', () => {
+  const wolfQuest = () =>
+    useGameStore.getState().gameState?.quests.find((q) => q.questId === 'quest_grassland_wolf')
+  const gold = () => useGameStore.getState().gameState?.player.gold
+  const p = () => useGameStore.getState().gameState!.player
+
+  /** 走正式流程到《草原狼影》completable（默认骑士 Lv.1：HP 22/22、MP 6/6、金币 85，当前在青石村） */
+  const completeWolfQuest = () => {
+    useGameStore.getState().newGame()
+    useGameStore.getState().discoverQuest('quest_village_monsters')
+    useGameStore.getState().acceptQuest('quest_village_monsters')
+    useGameStore.getState().travelToLocation('village_grassland')
+    useGameStore.getState().resolveCombatVictory('corrupted_rabbit')
+    useGameStore.getState().travelToLocation('qingshi_village')
+    useGameStore.getState().completeQuest('quest_village_monsters')
+    useGameStore.getState().discoverQuest('quest_mine_cleanup')
+    useGameStore.getState().acceptQuest('quest_mine_cleanup')
+    useGameStore.getState().travelToLocation('abandoned_mine')
+    useGameStore.getState().resolveCombatVictory('corrupted_rat')
+    useGameStore.getState().travelToLocation('qingshi_village')
+    useGameStore.getState().completeQuest('quest_mine_cleanup')
+    useGameStore.getState().discoverQuest('quest_grassland_wolf')
+    useGameStore.getState().acceptQuest('quest_grassland_wolf')
+    useGameStore.getState().travelToLocation('village_grassland')
+    useGameStore.getState().resolveCombatVictory('corrupted_wolf')
+    useGameStore.getState().travelToLocation('qingshi_village')
+  }
+
+  /** 覆盖玩家资源状态（hp/mp/level/maxHp/maxMp） */
+  const setPlayerState = (overrides: Partial<ReturnType<typeof p>>) => {
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return { gameState: { ...s.gameState, player: { ...s.gameState.player, ...overrides } } }
+    })
+  }
+
+  it('B. 正常完成：Lv1→Lv2、HP 22/22→22/24、MP 6/6→6/7、金币 85→110、任务 completed（同一原子更新）', () => {
+    completeWolfQuest()
+    expect(p().level).toBe(1)
+    expect(gold()).toBe(85)
+    expect(useGameStore.getState().completeQuest('quest_grassland_wolf')).toBe(true)
+    expect(wolfQuest()?.status).toBe('completed')
+    expect(p().level).toBe(2)
+    expect(p().hp).toBe(22)
+    expect(p().maxHp).toBe(24)
+    expect(p().mp).toBe(6)
+    expect(p().maxMp).toBe(7)
+    expect(gold()).toBe(110)
+  })
+
+  it('C. 受伤状态不治疗：HP 10/22、MP 2/6 → 10/24、2/7', () => {
+    completeWolfQuest()
+    setPlayerState({ hp: 10, mp: 2 })
+    useGameStore.getState().completeQuest('quest_grassland_wolf')
+    expect(p().hp).toBe(10)
+    expect(p().maxHp).toBe(24)
+    expect(p().mp).toBe(2)
+    expect(p().maxMp).toBe(7)
+    expect(p().level).toBe(2)
+  })
+
+  it('D. HP0 不复活：HP 0/22 → 0/24', () => {
+    completeWolfQuest()
+    setPlayerState({ hp: 0 })
+    useGameStore.getState().completeQuest('quest_grassland_wolf')
+    expect(p().hp).toBe(0)
+    expect(p().maxHp).toBe(24)
+    expect(p().level).toBe(2)
+  })
+
+  it('E. 非 Lv.1 拒绝：level=2 时 completeQuest false 且任务/金币/等级/HP/MP 全不变', () => {
+    completeWolfQuest()
+    setPlayerState({ level: 2 })
+    const snapshot = JSON.stringify(useGameStore.getState().gameState)
+    expect(useGameStore.getState().completeQuest('quest_grassland_wolf')).toBe(false)
+    expect(JSON.stringify(useGameStore.getState().gameState)).toBe(snapshot)
+    expect(wolfQuest()?.status).toBe('completable')
+  })
+
+  it('F. 非法资源状态拒绝：hp>maxHp / maxHp 溢出（MAX_SAFE_INTEGER）→ false 且 GameState 完全不变', () => {
+    completeWolfQuest()
+    setPlayerState({ hp: 23 }) // > maxHp 22
+    const snapshot1 = JSON.stringify(useGameStore.getState().gameState)
+    expect(useGameStore.getState().completeQuest('quest_grassland_wolf')).toBe(false)
+    expect(JSON.stringify(useGameStore.getState().gameState)).toBe(snapshot1)
+
+    completeWolfQuest()
+    setPlayerState({ maxHp: Number.MAX_SAFE_INTEGER })
+    const snapshot2 = JSON.stringify(useGameStore.getState().gameState)
+    expect(useGameStore.getState().completeQuest('quest_grassland_wolf')).toBe(false)
+    expect(JSON.stringify(useGameStore.getState().gameState)).toBe(snapshot2)
+    expect(wolfQuest()?.status).toBe('completable')
+  })
+
+  it('G. 无副作用：attributes/profession/inventory/equipment/flags/completedEvents/npcStates 全不变', () => {
+    completeWolfQuest()
+    const before = useGameStore.getState().gameState!
+    useGameStore.getState().completeQuest('quest_grassland_wolf')
+    const after = useGameStore.getState().gameState!
+    expect(after.player.attributes).toEqual(before.player.attributes)
+    expect(after.player.profession).toBe(before.player.profession)
+    expect(after.inventory).toEqual(before.inventory)
+    expect(after.equipment).toEqual(before.equipment)
+    expect(after.world.flags).toEqual(before.world.flags)
+    expect(after.world.completedEvents).toEqual(before.world.completedEvents)
+    expect(after.world.npcStates).toEqual(before.world.npcStates)
+  })
+
+  it('H. 重复提交：首次 Lv1→Lv2、85→110；第二次 false 仍 Lv2/110，maxHp/maxMp 不再增长', () => {
+    completeWolfQuest()
+    useGameStore.getState().completeQuest('quest_grassland_wolf')
+    const afterFirst = { ...p() }
+    expect(useGameStore.getState().completeQuest('quest_grassland_wolf')).toBe(false)
+    expect(p().level).toBe(2)
+    expect(gold()).toBe(110)
+    expect(p().maxHp).toBe(afterFirst.maxHp)
+    expect(p().maxMp).toBe(afterFirst.maxMp)
+  })
+
+  it('I. 不自动保存：完成第三任务（升级）后 hasSave 仍 false', () => {
+    completeWolfQuest()
+    useGameStore.getState().completeQuest('quest_grassland_wolf')
+    expect(p().level).toBe(2)
+    expect(useGameStore.getState().hasSave).toBe(false)
+  })
+})

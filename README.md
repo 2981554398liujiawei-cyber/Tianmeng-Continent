@@ -338,6 +338,15 @@ TM-P1-010（第三个正式任务《草原狼影》——复用既有 corrupted_
 - completeQuest('quest_grassland_wolf')：generic goldReward +25（新游戏 50→村外异动 70→矿洞清理 85→草原狼影 110）；**无关系副作用**（completeQuest 的村长 trust+1 奖励继续只属于 quest_village_monsters，第三任务完成前后村长关系完全一致）；无 world.flags/completedEvents/新地点解锁副作用
 - 12 个 Store 单测（A 注册身份固定/B 前置未完成拒绝发现且全不变/C 矿洞完成后可发现 available/D 正常接受 in_progress/E 草原 in_progress 狼胜利 completable/F 狼胜利无战利品/事件/关系/地点副作用/G available 状态胜利不推进/H completable 重复胜利不重复推进/I completable+85 → completed+110/J 重复提交 false 仍 110/K 村长关系前后完全一致（信任1/尊敬0）/L 不自动保存）+ 18 项 E2E（A 新游戏无草原狼影+草原只有魔化兔无魔化狼/B 完成村外异动后仍无草原狼影/C 完成矿洞清理后金币 85+草原狼影可接受（发布者村长）/D 接受后进行中+草原魔化兔仍存在且魔化狼出现/E engageEnemy('魔化狼') 精准定位（多敌人卡片）：战斗页魔化狼 Lv.2 HP 12/12 防御 12+天然20 暴击 12 伤一次击杀胜利/F 胜利后可完成+附近威胁区魔化狼消失且魔化兔仍存在（任务生命周期控制，非永久刷怪）/G 提交后已完成+金币 110+村长关系信任1/尊敬0 不变/H Save+Continue 保持已完成+110+草原不显示魔化狼/R1 段末 Math.random 已恢复真实实现）
 
+TM-P1-011（第一次里程碑升级 Lv.2——完成《草原狼影》时同一次原子更新成长）：
+- character.ts 新增唯一业务常量 `LEVEL_2_MAX_HP_GAIN = 2`、`LEVEL_2_MAX_MP_GAIN = 1`（未建等级表/LevelDefinition/ProgressionTable/ExperienceSystem/LevelUpEngine/gainExperience/levelUp）
+- completeQuest('quest_grassland_wolf') 成功时**同一次 Zustand update** 产生：quest → completed + gold +25 + level 1→2 + maxHp +2 + maxMp +1（默认骑士 22/22→22/24、6/6→6/7、85→110）；**当前 HP/MP 不恢复**（受伤不治疗：10/22→10/24；HP0 不复活：0/22→0/24；升级≠休整）
+- 安全预检在 changed=true 之前（仅本任务）：player.level===1 且 hp/maxHp/mp/maxMp 均非负安全整数、hp<=maxHp、mp<=maxMp、maxHp+2/maxMp+1 仍安全整数；任一失败 → completeQuest false 且 GameState 完全不变（金币不加、任务保持 completable）；非 Lv.1（如 level=2）拒绝（当前版本无其他升级来源，不猜测 Lv2+/Lv0 处理）
+- 只属于《草原狼影》：前两任务（村外异动/矿洞清理）不触发升级，原奖励全部保持；不改变 STR/CON/AGI/MND/LCK；不解锁第二职业技能（四职业仍只有当前封板能力）；D20 规则零修改（getProficiencyBonus 自然处理，Lv1/Lv2 均熟练+2，预期）
+- 休整联动：升级后青石村 restAtVillage()（零修改）自然得到 HP 24/24、MP 7/7；Save/Continue 不新增存档字段（Character 已持久化 level/hp/maxHp/mp/maxMp），休整前保存再 Continue 保持 Lv.2、22/24、6/7；SAVE_VERSION 仍 1
+- 无其他奖励：不产生物品/装备/属性点/技能点/关系值/flag/completedEvent/地点解锁；GameState/Character schema 零修改；GamePage/CombatPage/storage/types/content 零修改
+- 1 个 rules 单测（常量 2/1）+ 8 个 Store 单测（B 正常完成 Lv1→Lv2+22/24+6/7+110 原子更新/C 受伤不治疗 10/24+2/7/D HP0 不复活 0/24/E 非 Lv1 拒绝且任务/金币/等级/HP/MP 全不变/F hp>maxHp 与 maxHp=MAX_SAFE_INTEGER 溢出均拒绝全不变/G 无副作用 attributes/profession/inventory/equipment/flags/completedEvents/npcStates 全不变/H 重复提交 false 仍 Lv2/110 上限不再增长/I 不自动保存）+ 8 项 E2E（J 提交瞬间升级 Lv.2+生命 22/24+灵力 6/7（狼天然20 一次击杀未受伤）/L Continue 保持 Lv.2+22/24+6/7/M 休整后 24/24+7/7；K 关系不变沿用 P1-010-G 断言）
+
 ## 目录结构
 
 ```

@@ -6,6 +6,7 @@ import { canTransitionQuestStatus } from '../rules/quest'
 import { getEnemy, getItem, getLocation, getNpc, getQuest } from '../content'
 import { performD20Check, CHECK_DC, type D20CheckResult } from '../rules/d20'
 import { KNIGHT_POWER_STRIKE_MP_COST, MAGE_SPELL_MP_COST, WARRIOR_SUPPRESS_STRIKE_MP_COST } from '../rules/combat'
+import { LEVEL_2_MAX_HP_GAIN, LEVEL_2_MAX_MP_GAIN } from '../rules/character'
 
 /** TM-P1-003：《村外异动》完成后村长一次性回应事件 ID（唯一代码来源，GamePage 亦读取） */
 export const VILLAGE_ELDER_POST_QUEST_EVENT_ID = 'village_elder_post_quest_response'
@@ -263,9 +264,42 @@ export const useGameStore = create<GameStoreState>()((set) => ({
           return {}
         }
       }
+      // TM-P1-011 安全预检（《草原狼影》专属里程碑升级）：level===1 且资源字段合法、新上限不溢出；否则整次拒绝（含金币与任务保持 completable）
+      if (questId === 'quest_grassland_wolf') {
+        const p = next.player
+        const maxHpNext = p.maxHp + LEVEL_2_MAX_HP_GAIN
+        const maxMpNext = p.maxMp + LEVEL_2_MAX_MP_GAIN
+        if (
+          p.level !== 1 ||
+          !Number.isSafeInteger(p.hp) ||
+          p.hp < 0 ||
+          !Number.isSafeInteger(p.maxHp) ||
+          p.maxHp < 0 ||
+          p.hp > p.maxHp ||
+          !Number.isSafeInteger(p.mp) ||
+          p.mp < 0 ||
+          !Number.isSafeInteger(p.maxMp) ||
+          p.maxMp < 0 ||
+          p.mp > p.maxMp ||
+          !Number.isSafeInteger(maxHpNext) ||
+          !Number.isSafeInteger(maxMpNext)
+        ) {
+          return {}
+        }
+      }
       changed = true
       // 任务完成 + 金币奖励 +（《村外异动》）兔王巢穴解锁 + 村长信任：同一原子更新
       const player = reward !== undefined ? { ...next.player, gold: next.player.gold + reward } : next.player
+      // TM-P1-011：里程碑升级（仅《草原狼影》）：Lv1→Lv2、maxHp+2、maxMp+1；当前 hp/mp 保持不变（受伤不治疗、HP0 不复活）
+      const playerAfterLevel =
+        questId === 'quest_grassland_wolf'
+          ? {
+              ...player,
+              level: 2,
+              maxHp: player.maxHp + LEVEL_2_MAX_HP_GAIN,
+              maxMp: player.maxMp + LEVEL_2_MAX_MP_GAIN,
+            }
+          : player
       if (questId === 'quest_village_monsters') {
         // TM-P1-002：《村外异动》专属关系奖励——村长信任 +1（仅本任务；懒创建 NpcState；locationId 读注册表）
         const existing = next.world.npcStates.village_elder
@@ -289,7 +323,9 @@ export const useGameStore = create<GameStoreState>()((set) => ({
           },
         }
       }
-      return reward !== undefined ? { gameState: { ...next, player } } : { gameState: next }
+      return reward !== undefined
+        ? { gameState: { ...next, player: playerAfterLevel } }
+        : { gameState: next }
     })
     return changed
   },

@@ -1857,6 +1857,12 @@ try {
   await sleep(300)
   body = await bodyText()
   check('P1-010-G: 草原狼影已完成且金币 110', body.includes('草原狼影') && body.includes('已完成') && body.includes('110'))
+  // TM-P1-011-J：提交瞬间里程碑升级——Lv1→Lv2、maxHp+2、maxMp+1；当前 HP/MP 不恢复（狼天然20 一次击杀未受伤）
+  const levelUpHp = body.match(/生命\s*(\d+)\s*\/\s*(\d+)/)
+  const levelUpMp = body.match(/灵力\s*(\d+)\s*\/\s*(\d+)/)
+  check('P1-011-J: 提交瞬间升级 Lv.2', body.includes('Lv.2'))
+  check('P1-011-J: 生命 22 / 24（当前不恢复）', levelUpHp !== null && levelUpHp[1] === '22' && levelUpHp[2] === '24')
+  check('P1-011-J: 灵力 6 / 7（当前不恢复）', levelUpMp !== null && levelUpMp[1] === '6' && levelUpMp[2] === '7')
   await clickNthTalk(0)
   body = await bodyText()
   check('P1-010-G: 村长关系保持 信任：1 尊敬：0（第三任务无关系副作用）', body.includes('信任：1') && body.includes('尊敬：0'))
@@ -1868,6 +1874,12 @@ try {
   await clickByText('继续游戏')
   body = await bodyText()
   check('P1-010-H: Continue 后草原狼影已完成且金币 110', body.includes('草原狼影') && body.includes('已完成') && body.includes('110'))
+  // TM-P1-011-L：Continue（休整前）保留 Lv.2 与新上限
+  const continueHp = body.match(/生命\s*(\d+)\s*\/\s*(\d+)/)
+  const continueMp = body.match(/灵力\s*(\d+)\s*\/\s*(\d+)/)
+  check('P1-011-L: Continue 后保持 Lv.2', body.includes('Lv.2'))
+  check('P1-011-L: Continue 后生命 22 / 24', continueHp !== null && continueHp[1] === '22' && continueHp[2] === '24')
+  check('P1-011-L: Continue 后灵力 6 / 7', continueMp !== null && continueMp[1] === '6' && continueMp[2] === '7')
   await clickByText('村外草原')
   body = await bodyText()
   const threatsAfterContinue = await page.evaluate(() => {
@@ -1881,6 +1893,14 @@ try {
     threatsAfterContinue !== null && !threatsAfterContinue.includes('魔化狼') && threatsAfterContinue.includes('魔化兔'),
   )
   await clickByText('青石村')
+  // TM-P1-011-M：休整读取新上限（复用既有 restAtVillage，未修改休整规则）
+  await clickByText('休整')
+  await sleep(300)
+  body = await bodyText()
+  const restHpUpgraded = body.match(/生命\s*(\d+)\s*\/\s*(\d+)/)
+  const restMpUpgraded = body.match(/灵力\s*(\d+)\s*\/\s*(\d+)/)
+  check('P1-011-M: 休整后生命 24 / 24（新上限）', restHpUpgraded !== null && restHpUpgraded[1] === '24' && restHpUpgraded[2] === '24')
+  check('P1-011-M: 休整后灵力 7 / 7（新上限）', restMpUpgraded !== null && restMpUpgraded[1] === '7' && restMpUpgraded[2] === '7')
   await clickByText('返回主菜单')
   // P1-007-R1 模式：确定性断言——段末 Math.random 与段首保存的真实函数同一引用
   const p1010Restored = await page.evaluate(() => {

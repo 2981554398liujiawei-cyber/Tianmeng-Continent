@@ -18,3 +18,10 @@ export function getStartingMaxMp(mnd: number): number {
   }
   return Math.max(0, mnd - 2)
 }
+
+// ---- Phase 1：第一次里程碑升级 Lv.2（TM-P1-011）----
+
+/** 里程碑 Lv.2 最大生命成长（唯一业务常量；不建等级表） */
+export const LEVEL_2_MAX_HP_GAIN = 2
+/** 里程碑 Lv.2 最大灵力成长（唯一业务常量；不建等级表） */
+export const LEVEL_2_MAX_MP_GAIN = 1
