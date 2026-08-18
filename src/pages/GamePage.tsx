@@ -111,6 +111,20 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
   const activeNpc = activeNpcId ? getNpc(activeNpcId) : undefined
   const showDialog = activeNpc !== undefined && activeNpc.locationId === world.currentLocationId
 
+  // TM-P1-004：村长对 P1-003 一次性回应的关系反应（只读 UI，不写任何状态）
+  // 前置：村长 + 事件已完成 + NpcState 存在；respect>=1（尊敬反应）优先于 trust>=2（信任反应）；异常/不满足 → 无反应（回退原 greeting）
+  const elderReaction: 'respect' | 'trust' | null = (() => {
+    if (activeNpc?.id !== 'village_elder') return null
+    if (!world.completedEvents.includes(VILLAGE_ELDER_POST_QUEST_EVENT_ID)) return null
+    const elderState = world.npcStates.village_elder
+    if (!elderState) return null
+    const respect = elderState.relationship.respect
+    const trust = elderState.relationship.trust
+    if (Number.isFinite(respect) && respect >= 1) return 'respect'
+    if (Number.isFinite(trust) && trust >= 2) return 'trust'
+    return null
+  })()
+
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-3xl flex-col gap-6 px-4 py-6">
       <header className="flex items-center justify-between border-b border-ink-600 pb-4">
@@ -304,7 +318,14 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
               <p className="mb-1 text-xs tracking-wider text-bone-500">与{activeNpc.name}交谈</p>
               <p className="font-bold text-bone-100">{activeNpc.name}</p>
               <p className="mb-2 text-xs text-bone-500">{activeNpc.role}</p>
-              <p className="mb-3 text-bone-300">{activeNpc.greeting}</p>
+              {/* TM-P1-004：已回应且关系合法时，后续关系反应替代原 greeting 正文位置（不重复显示旧文案）；否则回退原 greeting */}
+              <p className="mb-3 text-bone-300">
+                {elderReaction === 'respect'
+                  ? '村长郑重地点了点头：“若你还要继续追查，务必小心。”'
+                  : elderReaction === 'trust'
+                    ? '村长舒展了眉头：“好，村里能安稳一些就好。”'
+                    : activeNpc.greeting}
+              </p>
               {/* TM-P1-002/003：村长对话显示信任+尊敬（读 NpcState；未建立状态时 UI fallback 0，打开对话不创建状态） */}
               {activeNpc.id === 'village_elder' && (
                 <p className="mb-3 text-xs text-bone-500">

@@ -1246,6 +1246,100 @@ try {
   await clickByText('结束交谈')
   await clickByText('返回主菜单')
 
+  // P1-004：村长关系值驱动后续对话反应（只读 UI，gameStore 零修改）
+  // A. resolve 分支：点击后当前对话立即切换为尊敬反应文案，旧 greeting 不再同时显示
+  await clickByText('新游戏')
+  await clickByText('确认进入天梦大陆')
+  await clickByText('查看委托')
+  await clickByText('接受任务')
+  await clickByText('村外草原')
+  await clickByText('迎战')
+  await sleep(300)
+  await page.evaluate(() => {
+    window.__origRandom = Math.random.bind(Math)
+    Math.random = () => 0.99
+  })
+  await clickByText('普通攻击')
+  await sleep(300)
+  await page.evaluate(() => {
+    Math.random = window.__origRandom
+  })
+  await clickByText('返回冒险')
+  await clickByText('青石村')
+  await clickByText('提交任务')
+  await sleep(300)
+  await clickNthTalk(0)
+  body = await bodyText()
+  check('P1-004-A: 未回应时仍显示原 greeting', body.includes('村外的野兽越来越不安分'))
+  await clickByText('我会继续追查这些异动。')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-004-A: resolve 后立即切换为尊敬反应文案', body.includes('村长郑重地点了点头') && body.includes('若你还要继续追查，务必小心'))
+  check('P1-004-A: 旧 greeting 不再同时显示', !body.includes('村外的野兽越来越不安分'))
+  check('P1-004-A: 关系仍显示 信任：1 尊敬：1', body.includes('信任：1') && body.includes('尊敬：1'))
+  check('P1-004-A: 回应按钮仍消失', !body.includes('村子平安就好。'))
+  await clickByText('结束交谈')
+
+  // B. 重新交谈保持 resolve 文案
+  await clickNthTalk(0)
+  body = await bodyText()
+  check('P1-004-B: 重新交谈保持尊敬反应文案', body.includes('村长郑重地点了点头'))
+  check('P1-004-B: 仍显示 信任：1 尊敬：1', body.includes('信任：1') && body.includes('尊敬：1'))
+  await clickByText('结束交谈')
+
+  // C. Save + Continue 后仍 resolve 文案
+  await clickByText('保存游戏')
+  await clickByText('返回主菜单')
+  await clickByText('继续游戏')
+  await clickNthTalk(0)
+  body = await bodyText()
+  check('P1-004-C: Continue 后保持尊敬反应文案', body.includes('村长郑重地点了点头'))
+  check('P1-004-C: Continue 后仍 信任：1 尊敬：1', body.includes('信任：1') && body.includes('尊敬：1'))
+  await clickByText('结束交谈')
+  await clickByText('返回主菜单')
+
+  // D. reassure 分支：点击后立即切换为信任反应文案
+  await clickByText('新游戏')
+  await clickByText('确认进入天梦大陆')
+  await clickByText('查看委托')
+  await clickByText('接受任务')
+  await clickByText('村外草原')
+  await clickByText('迎战')
+  await sleep(300)
+  await page.evaluate(() => {
+    window.__origRandom = Math.random.bind(Math)
+    Math.random = () => 0.99
+  })
+  await clickByText('普通攻击')
+  await sleep(300)
+  await page.evaluate(() => {
+    Math.random = window.__origRandom
+  })
+  await clickByText('返回冒险')
+  await clickByText('青石村')
+  await clickByText('提交任务')
+  await sleep(300)
+  await clickNthTalk(0)
+  await clickByText('村子平安就好。')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-004-D: reassure 后立即切换为信任反应文案', body.includes('村长舒展了眉头') && body.includes('好，村里能安稳一些就好'))
+  check('P1-004-D: 旧 greeting 不再显示', !body.includes('村外的野兽越来越不安分'))
+  check('P1-004-D: 关系显示 信任：2 尊敬：0', body.includes('信任：2') && body.includes('尊敬：0'))
+  check('P1-004-D: 回应按钮消失', !body.includes('我会继续追查这些异动。'))
+  await clickByText('结束交谈')
+
+  // E. reassure 重新交谈保持 + 铁匠无关系反应扩张
+  await clickNthTalk(0)
+  body = await bodyText()
+  check('P1-004-E: 重新交谈保持信任反应文案', body.includes('村长舒展了眉头'))
+  await clickByText('结束交谈')
+  await clickNthTalk(1)
+  body = await bodyText()
+  check('P1-004-E: 铁匠无关系反应扩张', !body.includes('村长郑重地点了点头') && !body.includes('村长舒展了眉头'))
+  await clickByText('结束交谈')
+  await clickByText('返回主菜单')
+
   // R2：运行期间存档改坏 → 触发一次 load → Continue 禁用且不进入游戏页
   await clickByText('新游戏')
   await clickByText('确认进入天梦大陆') // P004：默认预填合法，直接确认创建

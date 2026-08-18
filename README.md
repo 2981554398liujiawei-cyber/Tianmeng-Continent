@@ -281,6 +281,15 @@ TM-P1-003（村长任务后一次性回应选择与关系分支——第一次�
 - 未实现 DialogueTree/DialogueNode/RelationshipEngine/ChoiceEngine/恋爱系统；GameState/NpcState/NpcRelationship schema 不变、SAVE_VERSION 仍 1
 - 13 个 Store 单测（任务未完成拒绝/错误地点拒绝/缺 elder state 拒绝不补建/reassure 正常 trust1→2 respect0/resolve 正常 trust1 respect0→1/两选择互斥/非法 choice/trust Infinity false/respect Infinity false/其他关系保持/NpcState 与其他 NPC 保持/无额外副作用/不自动保存）+ 13 项 E2E（完成前 0/0 无选择/完成后 1/0+提示+两选项启用/resolve 后 1/1 按钮提示消失/重复交谈不可重选/Continue 后 1/1 不可重选/铁匠无关系 UI）
 
+TM-P1-004（村长关系值驱动后续对话反应——NPC 对玩家选择产生可见反应）：
+- 只读 UI 反应：gameStore.ts 零修改（respondToVillageElderAfterQuest 等 Store Action 原样），未新增 getDialogueReaction/resolveNpcDialogue 等任何 Store Action
+- 前置计算（GamePage 组件内局部 elderReaction）：activeNpc.id==='village_elder' + completedEvents 含 VILLAGE_ELDER_POST_QUEST_EVENT_ID + npcStates.village_elder 存在；关系条件：respect 为 finite 且 >=1 → 尊敬反应「村长郑重地点了点头："若你还要继续追查，务必小心。"」优先；否则 trust 为 finite 且 >=2 → 信任反应「村长舒展了眉头："好，村里能安稳一些就好。"」；两者同时满足固定 respect 优先（不猜测历史 choice）
+- 异常/旧状态 fallback：事件 ID 已存在但 NpcState 缺失 / trust·respect 非 finite / 两条件均不满足 → 不显示任何新增关系反应，回退原 activeNpc.greeting；不修复关系值、不补建 NpcState、不删除 completedEvent、不猜测玩家选择
+- 与原 greeting 的关系：任务完成前或 P1-003 尚未回应 → 继续显示原 greeting + 一次性回应区（零回归）；P1-003 已回应且得到合法关系反应 → 后续关系反应替代原 greeting 正文位置（旧「村外的野兽越来越不安分……」不再同时显示）；点击 resolve/reassure 后当前仍打开的对话框即时切换文案（React 状态更新，无需关闭重开），回应按钮同时消失
+- 关系数值继续显示 信任：N　尊敬：N（reassure→信任：2 尊敬：0；resolve→信任：1 尊敬：1），未隐藏关系反馈；铁匠/药师零关系 UI 与零反应扩张
+- 未新增选择历史字段（choiceHistory/selectedChoice/dialogueBranch/lastDialogue/dialogueReaction/choiceType/relationshipBranch）、未新增事件 ID（..._reassure/..._resolve）、未新增持久状态；GameState/WorldState/NpcState/NpcRelationship/QuestState schema 不变、SAVE_VERSION 仍 1；未实现 DialogueTree/RelationshipEngine
+- 无新增单测（Store 零修改，387 保持）；15 项 E2E（resolve 路径：未回应仍原 greeting→点击后立即切换尊敬反应文案+旧 greeting 消失+信任：1 尊敬：1+按钮消失→重新交谈保持→Save Continue 后仍保持；reassure 路径：点击后立即切换信任反应文案+信任：2 尊敬：0+按钮消失→重新交谈保持；铁匠无关系反应扩张；全部走正式 UI 未注入状态）
+
 ## 目录结构
 
 ```
