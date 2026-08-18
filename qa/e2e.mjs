@@ -2682,6 +2682,56 @@ try {
   check('P1-023-B: 新的旅程入口', body.includes('新的旅程'))
   check('P1-023-B: 入口正文', body.includes('青石村的事情暂时告一段落。你已经可以前往天龙城继续旅程。'))
   check('P1-023-B: 准备前往天龙城按钮 enabled', (await buttonDisabled('准备前往天龙城')) === false)
+  // R1：UI 与 Store 前置对齐——异常地图状态（缺失/quantity 0/examined false/reported false）时不得出现离村入口
+  const departureSaveBackup = await page.evaluate(() => localStorage.getItem('tianmeng_continent_save'))
+  check('R1: 合法存档已备份（供注入后恢复）', departureSaveBackup !== null)
+  const injectDepartureSave = async (label, mutateFn) => {
+    await page.evaluate(
+      ({ saveStr, mutateKey }) => {
+        const save = JSON.parse(saveStr)
+        const mutate = JSON.parse(mutateKey) // 传递函数体字符串再 eval
+        // eslint-disable-next-line no-eval
+        eval(mutate.fn)(save.gameState)
+        localStorage.setItem('tianmeng_continent_save', JSON.stringify(save))
+      },
+      { saveStr: departureSaveBackup, mutateKey: JSON.stringify({ fn: mutateFn.toString() }) },
+    )
+    await page.reload({ waitUntil: 'networkidle0' })
+    await sleep(400)
+    const continueDisabledAfter = await continueDisabled()
+    if (continueDisabledAfter) {
+      // 非法存档（如 quantity=0）被 loadGame 拒绝 → 无法进入游戏页 → UI 层面自然不存在离村入口（比「入口隐藏」更强）
+      check(`R1: ${label} → 存档无效无法进入游戏页，UI 无离村入口`, true)
+      return
+    }
+    await clickByText('继续游戏')
+    await sleep(300)
+    const injectedBody = await bodyText()
+    check(`R1: ${label} → 无离村入口`, !injectedBody.includes('新的旅程') && !injectedBody.includes('准备前往天龙城'))
+    await clickByText('返回主菜单')
+  }
+  await injectDepartureSave('rabbit_path 缺失', (gs) => {
+    gs.inventory = gs.inventory.filter((e) => e.itemId !== 'rabbit_path')
+  })
+  await injectDepartureSave('quantity=0', (gs) => {
+    const entry = gs.inventory.find((e) => e.itemId === 'rabbit_path')
+    if (entry) entry.quantity = 0
+  })
+  await injectDepartureSave('rabbit_path_examined=false', (gs) => {
+    gs.world.flags.rabbit_path_examined = false
+  })
+  await injectDepartureSave('rabbit_path_reported=false', (gs) => {
+    gs.world.flags.rabbit_path_reported = false
+  })
+  // 恢复合法存档：入口必须仍在且 enabled（零回归）
+  await page.evaluate((saveStr) => localStorage.setItem('tianmeng_continent_save', saveStr), departureSaveBackup)
+  await page.reload({ waitUntil: 'networkidle0' })
+  await sleep(400)
+  await clickByText('继续游戏')
+  await sleep(300)
+  body = await bodyText()
+  check('R1: 恢复合法档后入口仍在', body.includes('新的旅程') && body.includes('准备前往天龙城'))
+  check('R1: 恢复合法档后按钮 enabled', (await buttonDisabled('准备前往天龙城')) === false)
   // D 前置：离村前记录 Lv/HP/MP/gold/地图数
   const departBeforeLevel = body.match(/Lv\.(\d+)/)
   const departBeforeHp = body.match(/生命\s*(\d+)\s*\/\s*(\d+)/)

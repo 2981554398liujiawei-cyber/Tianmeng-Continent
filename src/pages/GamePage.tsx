@@ -112,9 +112,18 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
   const herbQuest = gameState.quests.find((q) => q.questId === 'quest_apothecary_herb_route')
   const herbInProgress = herbQuest?.status === 'in_progress'
   const herbGrasslandChecked = herbQuest?.flags.grassland_checked === true
-  /** TM-P1-023：离村前置（只读 Store 同款校验的展示侧）——青石村 + 黄金主线收束 + 地图持有/汇报 + 已接触未完成支线阻止 */
+  // TM-P1-023-R1：合法持有《兔子的路径》（与 Store departQingshiVillageToTianlongCity 同款校验的展示侧）——缺失/quantity 非法（0/-1/1.5/NaN/Infinity）/examined 非 true/reported 非 true 时一律不显示离村入口（避免 UI 允许但 Store 拒绝的死入口）
+  const rabbitPathEntry = gameState.inventory.find((e) => e.itemId === 'rabbit_path')
+  const hasValidRabbitPath =
+    rabbitPathEntry !== undefined &&
+    Number.isSafeInteger(rabbitPathEntry.quantity) &&
+    rabbitPathEntry.quantity >= 1
+  const rabbitPathReadyForDeparture =
+    hasValidRabbitPath && world.flags.rabbit_path_examined === true && world.flags.rabbit_path_reported === true
+  /** TM-P1-023：离村前置（只读 Store 同款校验的展示侧）——青石村 + 黄金主线收束 + 地图持有/汇报（R1 补齐 rabbit_path 三项）+ 已接触未完成支线阻止 */
   const goldenDepartureReady =
     world.currentLocationId === 'qingshi_village' &&
+    rabbitPathReadyForDeparture &&
     goldenSearchQuest?.status === 'in_progress' &&
     goldenSearchQuest?.stage === 0 &&
     goldenAskedBlacksmith &&
