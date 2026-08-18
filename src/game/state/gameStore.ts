@@ -97,6 +97,8 @@ interface GameStoreState {
   departQingshiVillageToTianlongCity: () => boolean
   /** 向王财询问黑石塔附近的遭遇（TM-P1-024）：第五主线第一次剧情交接专属窄 action——当前位置 tianlong_city + quest_wangcai_trouble in_progress + wangcai_briefed undefined/false 时成功，原子写 quest.flags.wangcai_briefed=true（status 保持 in_progress、stage 保持 0）；非 boolean 异常 flag（"yes"/1/0.5）整次拒绝且完全不变（不修复）；已 true 重复调用 false 且 GameState 同一引用；无金币/HP/MP/物品/装备/关系/flags/completedEvents 副作用、不自动保存 */
   askWangcaiAboutTrouble: () => boolean
+  /** 动身调查黑石塔（TM-P1-025）：解锁黑石塔一层路线专属窄 action——当前位置 tianlong_city + quest_wangcai_trouble in_progress/stage 0 + wangcai_briefed 严格 true + world.flags.black_stone_tower_unlocked undefined/false 时成功，原子写 world.flags.black_stone_tower_unlocked=true（Quest status 保持 in_progress/stage 0、wangcai_briefed 保持 true）；wangcai_briefed 非 boolean 或 unlock flag 非 boolean（"yes"/1/0.5）整次拒绝且完全不变（不修复）；已 true 重复调用 false 且 GameState 同一引用；player/inventory/equipment/quests/npcStates/completedEvents 全不变、不自动保存 */
+  unlockBlackStoneTowerInvestigation: () => boolean
 }
 
 /** 任务发现：不存在 → 创建 available；undiscovered → available；其余状态不重复创建。非法返回 null（TM-P0-006） */
@@ -399,6 +401,25 @@ export const useGameStore = create<GameStoreState>()((set) => ({
         const hasPath = s.gameState.inventory.some((e) => e.itemId === 'rabbit_path')
         if (hasPath) return {}
       }
+      // TM-P1-025：骷髅士兵一次性清场（完整前置守卫）——黑石塔一层骷髅士兵胜利必须：第五主线存在且 in_progress/stage 0 + wangcai_briefed===true + black_stone_tower_unlocked===true + floor1_soldier_defeated undefined/false；
+      // 否则拒绝（false 且 GameState 完全不变，不置 ok）：quest 不存在/非 in_progress/stage!=0/briefed 非 true/unlocked 非 true/defeated 已 true 或非 boolean 一律拒绝
+      if (enemyId === 'skeleton_soldier' && location.id === 'black_stone_tower_floor1') {
+        const quest = s.gameState.quests.find((q) => q.questId === 'quest_wangcai_trouble')
+        const okDefeated =
+          quest &&
+          quest.flags.floor1_soldier_defeated !== true &&
+          (typeof quest.flags.floor1_soldier_defeated === 'undefined' || typeof quest.flags.floor1_soldier_defeated === 'boolean')
+        if (
+          !quest ||
+          quest.status !== 'in_progress' ||
+          quest.stage !== 0 ||
+          quest.flags.wangcai_briefed !== true ||
+          s.gameState.world.flags.black_stone_tower_unlocked !== true ||
+          !okDefeated
+        ) {
+          return {}
+        }
+      }
       ok = true
       // 《村外异动》任务推进：村外草原击败魔化兔 → completable（复用封板状态机）
       if (enemyId === 'corrupted_rabbit' && location.id === 'village_grassland') {
@@ -444,6 +465,24 @@ export const useGameStore = create<GameStoreState>()((set) => ({
       if (enemyId === 'corrupted_wolf' && location.id === 'village_grassland') {
         const next = applyQuestTransition(s.gameState, 'quest_grassland_wolf', 'completable')
         if (next) return { gameState: next }
+      }
+      // 黑石塔一层骷髅士兵（TM-P1-025）：黑石塔一层击败骷髅士兵且第五主线 in_progress/stage 0 + wangcai_briefed===true + 黑石塔已解锁 + floor1_soldier_defeated undefined/false → 成功只写 quest.flags.floor1_soldier_defeated=true（status/stage 不变；无金币/物品/装备/经验/关系奖励；不自动保存）
+      if (enemyId === 'skeleton_soldier' && location.id === 'black_stone_tower_floor1') {
+        const questIndex = s.gameState.quests.findIndex((q) => q.questId === 'quest_wangcai_trouble')
+        if (questIndex >= 0) {
+          const quest = s.gameState.quests[questIndex]
+          if (quest && quest.status === 'in_progress' && quest.stage === 0) {
+            const briefed = quest.flags.wangcai_briefed
+            const defeated = quest.flags.floor1_soldier_defeated
+            const unlocked = s.gameState.world.flags.black_stone_tower_unlocked
+            // 前置：wangcai_briefed 严格 true；black_stone_tower_unlocked 严格 true；floor1_soldier_defeated 只允许 undefined/false（非 boolean 拒绝且完全不变；true 重复拒绝）
+            if (briefed === true && unlocked === true && (defeated === undefined || defeated === false)) {
+              const nextQuests = [...s.gameState.quests]
+              nextQuests[questIndex] = { ...quest, flags: { ...quest.flags, floor1_soldier_defeated: true } }
+              return { gameState: { ...s.gameState, quests: nextQuests } }
+            }
+          }
+        }
       }
       // 合法胜利但无持久效果（其他敌人 / 重复嘟嘟兔胜利 / 任务不在推进条件）：其余状态全部不变
       return {}
@@ -1093,6 +1132,34 @@ export const useGameStore = create<GameStoreState>()((set) => ({
       const nextQuests = [...s.gameState.quests]
       nextQuests[questIndex] = { ...quest, flags: { ...quest.flags, wangcai_briefed: true } }
       return { gameState: { ...s.gameState, quests: nextQuests } }
+    })
+    return changed
+  },
+
+  unlockBlackStoneTowerInvestigation: () => {
+    let changed = false
+    set((s) => {
+      if (!s.gameState) return {}
+      // 必须在天龙城（出发地）
+      if (s.gameState.world.currentLocationId !== 'tianlong_city') return {}
+      const quest = s.gameState.quests.find((q) => q.questId === 'quest_wangcai_trouble')
+      if (!quest || quest.status !== 'in_progress' || quest.stage !== 0) return {}
+      // TM-P1-025：wangcai_briefed 必须严格 ===true（非 boolean 整次拒绝且完全不变，不修复）
+      const briefed = quest.flags.wangcai_briefed
+      if (typeof briefed !== 'boolean') return {}
+      if (briefed !== true) return {}
+      // unlock flag 只允许 undefined/false/true；非 boolean（"yes"/1/0.5）整次拒绝且完全不变（不修复）；已 true 重复调用拒绝
+      const unlocked = s.gameState.world.flags.black_stone_tower_unlocked
+      if (typeof unlocked !== 'undefined' && typeof unlocked !== 'boolean') return {}
+      if (unlocked === true) return {}
+      changed = true
+      // TM-P1-025：成功只写 world.flags.black_stone_tower_unlocked=true（Quest 不塞路线状态；player/inventory/equipment/quests/npcStates/completedEvents 全不变；不自动保存）
+      return {
+        gameState: {
+          ...s.gameState,
+          world: { ...s.gameState.world, flags: { ...s.gameState.world.flags, black_stone_tower_unlocked: true } },
+        },
+      }
     })
     return changed
   },

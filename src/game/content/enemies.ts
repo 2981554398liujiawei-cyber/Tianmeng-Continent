@@ -60,4 +60,16 @@ export const ENEMIES: Record<string, EnemyDefinition> = {
     attackBonus: 4,
     damage: 4,
   },
+  // TM-P1-025：黑石塔一层骷髅士兵（Lv.2 玩家进入第二地区后第一类普通敌人；无技能/状态/抗性/掉落——继续现有普通战斗规则；本卡不建骷髅队长 EnemyDefinition）
+  skeleton_soldier: {
+    id: 'skeleton_soldier',
+    name: '骷髅士兵',
+    level: 3,
+    description: '在黑石塔一层大厅中机械游荡的骷髅士兵，骨骼碰撞时发出干涩的声响。',
+    tags: ['undead'],
+    maxHp: 14,
+    defense: 12,
+    attackBonus: 3,
+    damage: 3,
+  },
 }

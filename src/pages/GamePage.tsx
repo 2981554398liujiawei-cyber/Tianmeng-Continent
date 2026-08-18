@@ -69,6 +69,7 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
   const inspectApothecaryHerbRoute = useGameStore((s) => s.inspectApothecaryHerbRoute)
   const departQingshiVillageToTianlongCity = useGameStore((s) => s.departQingshiVillageToTianlongCity)
   const askWangcaiAboutTrouble = useGameStore((s) => s.askWangcaiAboutTrouble)
+  const unlockBlackStoneTowerInvestigation = useGameStore((s) => s.unlockBlackStoneTowerInvestigation)
   const [saveResult, setSaveResult] = useState<'saved' | 'failed' | null>(null)
   const [travelError, setTravelError] = useState(false)
   // TM-P0-015：活动对话 NPC（仅 UI 本地状态，不进入 GameState / 存档）
@@ -140,6 +141,10 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
   /** TM-P1-024：第五主线《商人王财的麻烦》QuestState（只读；王财对话剧情从 flags.wangcai_briefed 驱动） */
   const wangcaiQuest = gameState.quests.find((q) => q.questId === 'quest_wangcai_trouble')
   const wangcaiBriefed = wangcaiQuest?.flags.wangcai_briefed === true
+  /** TM-P1-025：黑石塔路线（只读）——unlocked flag 驱动移动按钮与骷髅士兵可见性；floor1_soldier_defeated 驱动清场剧情 */
+  const towerUnlocked = world.flags.black_stone_tower_unlocked === true
+  const towerQuestInProgress = wangcaiQuest?.status === 'in_progress' && wangcaiQuest?.stage === 0
+  const floor1SoldierDefeated = wangcaiQuest?.flags.floor1_soldier_defeated === true
   // TM-P0-006：附近委托 = 给予者位于当前地点的注册任务（不写死地点 ID）
   const localQuests = Object.values(QUESTS).filter((quest) => {
     const giver = getNpc(quest.giverNpcId)
@@ -485,6 +490,29 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
         </section>
       )}
 
+      {/* TM-P1-025：黑石塔调查入口 —— 天龙城 + 已向王财了解情况且尚未解锁时显示；只调用 Store action（不直接写 world flag） */}
+      {world.currentLocationId === 'tianlong_city' && wangcaiQuest?.status === 'in_progress' && wangcaiBriefed && !towerUnlocked && (
+        <section className="rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
+          <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">黑石塔调查</h3>
+          <p className="leading-relaxed text-bone-200">王财提供的情况已经足够，你可以动身前往黑石塔调查。</p>
+          <Button variant="primary" onClick={() => unlockBlackStoneTowerInvestigation()}>
+            动身调查黑石塔
+          </Button>
+        </section>
+      )}
+
+      {/* TM-P1-025：黑石塔一层清场剧情 —— 骷髅士兵击败后显示固定文案与骷髅队长踪迹（无按钮；骷髅队长本卡不开放战斗） */}
+      {world.currentLocationId === 'black_stone_tower_floor1' && floor1SoldierDefeated && (
+        <section className="rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
+          <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">大厅深处</h3>
+          <p className="leading-relaxed text-bone-200">大厅中的骷髅士兵已经被击败。</p>
+          <p className="mt-1 leading-relaxed text-bone-200">
+            更深处传来沉重的骨骼碰撞声，一名身材高大的骷髅队长守在前方。
+          </p>
+          <p className="mt-2 text-gold-300">骷髅队长：【待开放】</p>
+        </section>
+      )}
+
       {/* TM-P0-022：村中休整 —— 仅青石村显示；免费恢复 HP/MP 至最大值（战败软锁出口） */}
       {world.currentLocationId === 'qingshi_village' && (
         <section className="rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
@@ -734,6 +762,12 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
               const hasPath = gameState.inventory.some((e) => e.itemId === 'rabbit_path')
               if (hasPath) return false
             }
+            // TM-P1-025：骷髅士兵可见性窄条件——当前位置黑石塔一层 + 第五主线 in_progress/stage 0 + wangcai_briefed===true + black_stone_tower_unlocked===true + floor1_soldier_defeated 非 true（已击败/异常非 boolean 一律不显示）
+            if (threat.id === 'skeleton_soldier') {
+              const defeated = wangcaiQuest?.flags.floor1_soldier_defeated
+              const defeatedOk = defeated !== true && (typeof defeated === 'undefined' || typeof defeated === 'boolean')
+              if (!towerQuestInProgress || !wangcaiBriefed || !towerUnlocked || !defeatedOk) return false
+            }
             return true
           })
         if (visibleEnemies.length === 0) return null
@@ -917,17 +951,31 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
                       <p className="mt-1">当前目标：返回青石村向铁匠复命。</p>
                     </div>
                   )}
-                  {/* TM-P1-024：第五主线《商人王财的麻烦》进度提示——接受后显示目标；向王财询问后显示已了解+新目标+黑石塔待开放（本卡不开放黑石塔、不完成任务） */}
+                  {/* TM-P1-024/P1-025：第五主线《商人王财的麻烦》进度提示——接受后/询问后/解锁后/击败骷髅士兵后四态（黑石塔：【待开放】与骷髅队长：【待开放】为实现状态，非 lore） */}
                   {qs.questId === 'quest_wangcai_trouble' && qs.status === 'in_progress' && (
                     <div className="mt-1 text-xs text-bone-400">
-                      {wangcaiBriefed ? (
+                      {!wangcaiBriefed ? (
+                        <p>当前目标：返回天龙城，找到商人王财了解情况。</p>
+                      ) : !towerUnlocked ? (
                         <>
                           <p className="text-gold-300">已向王财了解情况。</p>
                           <p className="mt-1">当前目标：调查黑石塔附近的情况。</p>
                           <p className="mt-1">黑石塔：【待开放】</p>
                         </>
+                      ) : !floor1SoldierDefeated ? (
+                        <>
+                          <p className="text-gold-300">已向王财了解情况。</p>
+                          <p className="mt-1 text-gold-300">黑石塔路线已确认。</p>
+                          <p className="mt-1">当前目标：前往黑石塔一层调查。</p>
+                        </>
                       ) : (
-                        <p>当前目标：返回天龙城，找到商人王财了解情况。</p>
+                        <>
+                          <p className="text-gold-300">已向王财了解情况。</p>
+                          <p className="mt-1 text-gold-300">黑石塔路线已确认。</p>
+                          <p className="mt-1 text-gold-300">黑石塔一层：已击败骷髅士兵。</p>
+                          <p className="mt-1">当前目标：继续深入，处理骷髅队长。</p>
+                          <p className="mt-1">骷髅队长：【待开放】</p>
+                        </>
                       )}
                     </div>
                   )}

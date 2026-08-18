@@ -47,14 +47,15 @@ describe('TM-P0-002：内容注册表交叉引用一致性', () => {
 })
 
 describe('TM-P0-002：内容数量与指定条目', () => {
-  it('地点 6 个：青石村/村外草原/废弃矿洞/兔王巢穴/天龙城/武馆', () => {
-    expect(Object.keys(LOCATIONS)).toHaveLength(6)
+  it('地点 7 个：青石村/村外草原/废弃矿洞/兔王巢穴/天龙城/武馆/黑石塔一层', () => {
+    expect(Object.keys(LOCATIONS)).toHaveLength(7)
     expect(getLocation('qingshi_village')?.name).toBe('青石村')
     expect(getLocation('village_grassland')?.name).toBe('村外草原')
     expect(getLocation('abandoned_mine')?.name).toBe('废弃矿洞')
     expect(getLocation('rabbit_lair')?.name).toBe('兔王巢穴')
     expect(getLocation('tianlong_city')?.name).toBe('天龙城')
     expect(getLocation('tianlong_martial_hall')?.name).toBe('武馆')
+    expect(getLocation('black_stone_tower_floor1')?.name).toBe('黑石塔一层')
   })
 
   // TM-P1-023：天龙城落点锁定——本卡只做区域切换与落点；TM-P1-024 起 connections=['tianlong_martial_hall']（双向武馆）、enemyIds=[]（无假内容）
@@ -77,7 +78,23 @@ describe('TM-P0-002：内容数量与指定条目', () => {
     expect(hall?.connections).toEqual(['tianlong_city'])
     expect(hall?.enemyIds).toEqual([])
     expect(hall?.requiredFlag).toBeUndefined()
-    expect(getLocation('tianlong_city')?.connections).toEqual(['tianlong_martial_hall'])
+    expect(getLocation('tianlong_city')?.connections).toContain('tianlong_martial_hall')
+  })
+
+  // TM-P1-025：黑石塔一层（第二地区第一段地牢——解锁路线+骷髅士兵战斗；未解锁时按钮 disabled 复用 requiredFlag）
+  it('TM-P1-025：黑石塔一层注册表定义锁定（id/name/requiredFlag/connections/enemyIds）', () => {
+    const tower = getLocation('black_stone_tower_floor1')
+    expect(tower).toBeDefined()
+    expect(tower?.id).toBe('black_stone_tower_floor1')
+    expect(tower?.name).toBe('黑石塔一层')
+    expect(tower?.requiredFlag).toBe('black_stone_tower_unlocked')
+    expect(tower?.connections).toEqual(['tianlong_city'])
+    expect(tower?.enemyIds).toEqual(['skeleton_soldier'])
+    // 天龙城正式连接包含黑石塔一层（未解锁时移动按钮 disabled）
+    expect(getLocation('tianlong_city')?.connections).toEqual(['tianlong_martial_hall', 'black_stone_tower_floor1'])
+    // 不建独立入口节点/城外道路
+    expect(getLocation('black_stone_tower_entrance')).toBeUndefined()
+    expect(getLocation('black_stone_tower_outskirts')).toBeUndefined()
   })
 
   it('连接关系符合设定', () => {
@@ -99,12 +116,28 @@ describe('TM-P0-002：内容数量与指定条目', () => {
     expect(getNpc('merchant_wangcai')?.locationId).toBe('tianlong_city')
   })
 
-  it('敌人 4 个且等级符合设定', () => {
-    expect(Object.keys(ENEMIES)).toHaveLength(4)
+  it('敌人 5 个且等级符合设定', () => {
+    expect(Object.keys(ENEMIES)).toHaveLength(5)
     expect(getEnemy('corrupted_rabbit')?.level).toBe(1)
     expect(getEnemy('corrupted_rat')?.level).toBe(1)
     expect(getEnemy('corrupted_wolf')?.level).toBe(2)
     expect(getEnemy('dudu_rabbit')?.level).toBe(3)
+    expect(getEnemy('skeleton_soldier')?.level).toBe(3)
+  })
+
+  // TM-P1-025：骷髅士兵完整锁定（普通战斗规则，无技能/状态/抗性/掉落；本卡不建骷髅队长）
+  it('TM-P1-025：骷髅士兵注册表定义锁定（id/name/level=3/tags/maxHp/defense/attackBonus/damage）', () => {
+    const soldier = getEnemy('skeleton_soldier')
+    expect(soldier).toBeDefined()
+    expect(soldier?.id).toBe('skeleton_soldier')
+    expect(soldier?.name).toBe('骷髅士兵')
+    expect(soldier?.level).toBe(3)
+    expect(soldier?.tags).toEqual(['undead'])
+    expect(soldier?.maxHp).toBe(14)
+    expect(soldier?.defense).toBe(12)
+    expect(soldier?.attackBonus).toBe(3)
+    expect(soldier?.damage).toBe(3)
+    expect(getEnemy('skeleton_captain')).toBeUndefined()
   })
 
   it('任务 quest_village_monsters 由村长发布', () => {
@@ -184,11 +217,13 @@ describe('TM-P0-002-R1：关键内容身份锁', () => {
     expect(desc).not.toContain('迁徙')
   })
 
-  it('注册表数量与 ID 未被改动（无新增黄金兔子王条目；TM-P1-005 新增《矿洞清理》、TM-P1-010 新增《草原狼影》、TM-P1-017 新增《追寻黄金兔子王》、TM-P1-021 新增《采药受阻》、TM-P1-022 新增《矿洞余患》、TM-P1-024 新增《商人王财的麻烦》与马科/王财）', () => {
-    expect(Object.keys(ENEMIES)).toHaveLength(4)
+  it('注册表数量与 ID 未被改动（无新增黄金兔子王条目；TM-P1-005 新增《矿洞清理》、TM-P1-010 新增《草原狼影》、TM-P1-017 新增《追寻黄金兔子王》、TM-P1-021 新增《采药受阻》、TM-P1-022 新增《矿洞余患》、TM-P1-024 新增《商人王财的麻烦》与马科/王财、TM-P1-025 新增骷髅士兵）', () => {
+    expect(Object.keys(ENEMIES)).toHaveLength(5)
     expect(Object.keys(NPCS)).toHaveLength(5)
     expect(Object.keys(QUESTS)).toHaveLength(7)
+    expect(Object.keys(ITEMS)).toHaveLength(5)
     expect(getEnemy('golden_rabbit_king')).toBeUndefined()
+    expect(getEnemy('skeleton_captain')).toBeUndefined()
   })
 
   // TM-P1-024：第五正式主线 + 天龙城 NPC 注册表锁定（无 goldReward、本卡不完成任务；马科/王财无 relationship）

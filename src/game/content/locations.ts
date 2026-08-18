@@ -47,8 +47,8 @@ export const LOCATIONS: Record<string, LocationDefinition> = {
     id: 'tianlong_city',
     name: '天龙城',
     description: '天龙王朝的皇城。高大的城墙、宽阔的街道与成片建筑构成这座繁华城市。',
-    // TM-P1-024：天龙城与武馆双向连接（本卡唯一城市子区域；黑石塔仍不开放）
-    connections: ['tianlong_martial_hall'],
+    // TM-P1-024：天龙城与武馆双向连接（本卡唯一城市子区域）；TM-P1-025：增加黑石塔一层（未解锁时按钮 disabled）
+    connections: ['tianlong_martial_hall', 'black_stone_tower_floor1'],
     enemyIds: [],
   },
   // TM-P1-024：天龙城第一段子区域——武馆（骑士队长马科驻地；无敌人、无其他连接）
@@ -58,5 +58,14 @@ export const LOCATIONS: Record<string, LocationDefinition> = {
     description: '天龙城中的武馆，来往的武者与守卫在这里操练，兵器碰撞声不时从场中传来。',
     connections: ['tianlong_city'],
     enemyIds: [],
+  },
+  // TM-P1-025：黑石塔一层（第二地区第一段地牢——解锁路线+骷髅士兵战斗；未解锁时移动按钮可见但 disabled，复用 requiredFlag；不建独立入口节点/城外道路）
+  black_stone_tower_floor1: {
+    id: 'black_stone_tower_floor1',
+    name: '黑石塔一层',
+    description: '黑石砌成的幽暗通道通向几处大厅，脚步声与骨骼摩擦声在塔内回荡。',
+    requiredFlag: 'black_stone_tower_unlocked',
+    connections: ['tianlong_city'],
+    enemyIds: ['skeleton_soldier'],
   },
 }

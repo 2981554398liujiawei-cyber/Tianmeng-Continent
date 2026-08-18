@@ -47,6 +47,23 @@ export default function App() {
       const hasPath = state.inventory.some((e) => e.itemId === 'rabbit_path')
       if (hasPath) return
     }
+    // TM-P1-025：骷髅士兵正式战斗入口硬守（不只靠 UI）——当前位置黑石塔一层 + 第五主线 in_progress/stage 0 + wangcai_briefed===true + black_stone_tower_unlocked===true + floor1_soldier_defeated !== true（非 boolean 异常 flag 同样拒绝）
+    if (enemyId === 'skeleton_soldier') {
+      const towerQuest = state.quests.find((q) => q.questId === 'quest_wangcai_trouble')
+      const defeated = towerQuest?.flags.floor1_soldier_defeated
+      const defeatedOk =
+        typeof defeated === 'undefined' || (typeof defeated === 'boolean' && defeated !== true)
+      if (
+        state.world.currentLocationId !== 'black_stone_tower_floor1' ||
+        towerQuest?.status !== 'in_progress' ||
+        towerQuest?.stage !== 0 ||
+        towerQuest?.flags.wangcai_briefed !== true ||
+        state.world.flags.black_stone_tower_unlocked !== true ||
+        !defeatedOk
+      ) {
+        return
+      }
+    }
     setCombatEnemyId(enemyId)
     setScreen('combat')
   }

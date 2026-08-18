@@ -496,7 +496,7 @@ try {
     if (!label) return null
     const section = label.closest('section')
     if (!section) return null
-    const idEl = [...section.querySelectorAll('p')].find((el) => /^[a-z_]+$/.test(el.textContent.trim()))
+    const idEl = [...section.querySelectorAll('p')].find((el) => /^[a-z0-9_]+$/.test(el.textContent.trim()))
     return idEl ? idEl.textContent.trim() : null
   })
   // C. 正式查看
@@ -517,7 +517,7 @@ try {
     if (!label) return null
     const section = label.closest('section')
     if (!section) return null
-    const idEl = [...section.querySelectorAll('p')].find((el) => /^[a-z_]+$/.test(el.textContent.trim()))
+    const idEl = [...section.querySelectorAll('p')].find((el) => /^[a-z0-9_]+$/.test(el.textContent.trim()))
     return idEl ? idEl.textContent.trim() : null
   })
   check('P1-013-D: 查看前当前位置为 rabbit_lair', beforePathLocationId === 'rabbit_lair')
@@ -2092,7 +2092,7 @@ try {
     if (!label) return null
     const section = label.closest('section')
     if (!section) return null
-    const idEl = [...section.querySelectorAll('p')].find((el) => /^[a-z_]+$/.test(el.textContent.trim()))
+    const idEl = [...section.querySelectorAll('p')].find((el) => /^[a-z0-9_]+$/.test(el.textContent.trim()))
     return idEl ? idEl.textContent.trim() : null
   })
   // D. 正式汇报
@@ -2321,7 +2321,7 @@ try {
     if (!label) return null
     const section = label.closest('section')
     if (!section) return null
-    const idEl = [...section.querySelectorAll('p')].find((el) => /^[a-z_]+$/.test(el.textContent.trim()))
+    const idEl = [...section.querySelectorAll('p')].find((el) => /^[a-z0-9_]+$/.test(el.textContent.trim()))
     return idEl ? idEl.textContent.trim() : null
   })
   // B. 村长出现新复命入口（与 P1-016 地图汇报入口严格分开）
@@ -2428,7 +2428,7 @@ try {
     if (!label) return null
     const section = label.closest('section')
     if (!section) return null
-    const idEl = [...section.querySelectorAll('p')].find((el) => /^[a-z_]+$/.test(el.textContent.trim()))
+    const idEl = [...section.querySelectorAll('p')].find((el) => /^[a-z0-9_]+$/.test(el.textContent.trim()))
     return idEl ? idEl.textContent.trim() : null
   })
   check('P1-020-B: 已到达兔王巢穴（currentLocationId === rabbit_lair）', lairLocationId === 'rabbit_lair')
@@ -2674,7 +2674,7 @@ try {
     if (!label) return null
     const section = label.closest('section')
     if (!section) return null
-    const idEl = [...section.querySelectorAll('p')].find((el) => /^[a-z_]+$/.test(el.textContent.trim()))
+    const idEl = [...section.querySelectorAll('p')].find((el) => /^[a-z0-9_]+$/.test(el.textContent.trim()))
     return idEl ? idEl.textContent.trim() : null
   })
   check('P1-023-A: 当前位置 qingshi_village', departLocationBefore === 'qingshi_village')
@@ -2753,7 +2753,7 @@ try {
     if (!label) return null
     const section = label.closest('section')
     if (!section) return null
-    const idEl = [...section.querySelectorAll('p')].find((el) => /^[a-z_]+$/.test(el.textContent.trim()))
+    const idEl = [...section.querySelectorAll('p')].find((el) => /^[a-z0-9_]+$/.test(el.textContent.trim()))
     return idEl ? idEl.textContent.trim() : null
   })
   check('P1-023-C: 暂不离开后仍在青石村', departLocationAfterCancel === 'qingshi_village')
@@ -2768,7 +2768,7 @@ try {
     if (!label) return null
     const section = label.closest('section')
     if (!section) return null
-    const idEl = [...section.querySelectorAll('p')].find((el) => /^[a-z_]+$/.test(el.textContent.trim()))
+    const idEl = [...section.querySelectorAll('p')].find((el) => /^[a-z0-9_]+$/.test(el.textContent.trim()))
     return idEl ? idEl.textContent.trim() : null
   })
   check('P1-023-E: 当前位置 = tianlong_city', departLocationAfter === 'tianlong_city')
@@ -2782,7 +2782,7 @@ try {
     if (!container) return []
     return [...container.querySelectorAll('button')].map((b) => b.textContent.trim())
   })
-  check('P1-023-F: 可前往按钮精确 [武馆]（P1-024 起天龙城连接武馆）', JSON.stringify(departTravelButtons) === JSON.stringify(['武馆']))
+  check('P1-023-F: 可前往按钮精确 [武馆, 黑石塔一层]（P1-025 起天龙城连接黑石塔一层）', JSON.stringify(departTravelButtons) === JSON.stringify(['武馆', '黑石塔一层']))
   check('P1-023-F: 无返回青石村按钮', !body.includes('返回青石村'))
   // G. 无副作用精确比较
   const departAfterLevel = body.match(/Lv\.(\d+)/)
@@ -2814,7 +2814,7 @@ try {
     if (!label) return null
     const section = label.closest('section')
     if (!section) return null
-    const idEl = [...section.querySelectorAll('p')].find((el) => /^[a-z_]+$/.test(el.textContent.trim()))
+    const idEl = [...section.querySelectorAll('p')].find((el) => /^[a-z0-9_]+$/.test(el.textContent.trim()))
     return idEl ? idEl.textContent.trim() : null
   })
   check('P1-023-I: Continue 后当前位置 = tianlong_city', departLocationSaved === 'tianlong_city')
@@ -2834,7 +2834,7 @@ try {
     if (!label) return null
     const section = label.closest('section')
     if (!section) return null
-    const idEl = [...section.querySelectorAll('p')].find((el) => /^[a-z_]+$/.test(el.textContent.trim()))
+    const idEl = [...section.querySelectorAll('p')].find((el) => /^[a-z0-9_]+$/.test(el.textContent.trim()))
     return idEl ? idEl.textContent.trim() : null
   })
   check('P1-024-A: 当前位置 = tianlong_city', wangcaiLocBefore === 'tianlong_city')
@@ -2847,7 +2847,7 @@ try {
     if (!container) return []
     return [...container.querySelectorAll('button')].map((b) => b.textContent.trim())
   })
-  check('P1-024-A: 天龙城可前往按钮精确 [武馆]', JSON.stringify(tianlongTravelButtons) === JSON.stringify(['武馆']))
+  check('P1-024-A: 天龙城可前往按钮精确 [武馆, 黑石塔一层]', JSON.stringify(tianlongTravelButtons) === JSON.stringify(['武馆', '黑石塔一层']))
   // B. 前往武馆
   await clickByText('武馆')
   await sleep(300)
@@ -2857,7 +2857,7 @@ try {
     if (!label) return null
     const section = label.closest('section')
     if (!section) return null
-    const idEl = [...section.querySelectorAll('p')].find((el) => /^[a-z_]+$/.test(el.textContent.trim()))
+    const idEl = [...section.querySelectorAll('p')].find((el) => /^[a-z0-9_]+$/.test(el.textContent.trim()))
     return idEl ? idEl.textContent.trim() : null
   })
   check('P1-024-B: 当前位置 = tianlong_martial_hall', martialHallLoc === 'tianlong_martial_hall')
@@ -2920,9 +2920,8 @@ try {
     if (!container) return []
     return [...container.querySelectorAll('button')].map((b) => b.textContent.trim())
   })
-  check('P1-024-G: 天龙城移动按钮仍精确 [武馆]', JSON.stringify(tianlongTravelAfter) === JSON.stringify(['武馆']))
-  check('P1-024-G: 无黑石塔/城外按钮', !body.includes('黑石塔') || body.includes('黑石塔：【待开放】'))
-  check('P1-024-G: 无前往黑石塔', !body.includes('前往黑石塔') && !body.includes('城外'))
+  check('P1-024-G: 天龙城移动按钮精确 [武馆, 黑石塔一层]（P1-025 起）', JSON.stringify(tianlongTravelAfter) === JSON.stringify(['武馆', '黑石塔一层']))
+  check('P1-024-G: 无城外按钮', !body.includes('城外'))
   // H. 无副作用
   const wangcaiAfterLevel = body.match(/Lv\.(\d+)/)
   const wangcaiAfterHp = body.match(/生命\s*(\d+)\s*\/\s*(\d+)/)
@@ -2951,7 +2950,7 @@ try {
     if (!label) return null
     const section = label.closest('section')
     if (!section) return null
-    const idEl = [...section.querySelectorAll('p')].find((el) => /^[a-z_]+$/.test(el.textContent.trim()))
+    const idEl = [...section.querySelectorAll('p')].find((el) => /^[a-z0-9_]+$/.test(el.textContent.trim()))
     return idEl ? idEl.textContent.trim() : null
   })
   check('P1-024-I: Continue 后当前位置 = tianlong_city', wangcaiLocAfter === 'tianlong_city')
@@ -2965,6 +2964,154 @@ try {
   body = await bodyText()
   check('P1-024-I: 王财已说明剧情（无询问按钮）', body.includes('王财告诉你，几天前他在黑石塔附近遭到魔物袭击，混乱中遗失了妻子的夔峒项链。') && !body.includes('询问黑石塔附近的遭遇'))
   await clickByText('结束交谈')
+  await clickByText('返回主菜单')
+
+  // TM-P1-025：黑石塔一层——解锁路线、骷髅士兵与骷髅队长踪迹（直接继续 P1-024 Save/Continue 后的天龙城档）
+  // A. Continue：天龙城，第五主线 in_progress/briefed；武馆 enabled、黑石塔一层 disabled
+  await clickByText('继续游戏')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-025-A: 当前位置 = tianlong_city', body.includes('当前位置'))
+  check('P1-025-A: 商人王财的麻烦进行中', body.includes('商人王财的麻烦') && body.includes('进行中'))
+  check('P1-025-A: 已向王财了解情况', body.includes('已向王财了解情况。'))
+  const towerTravelBefore = await page.evaluate(() => {
+    const label = [...document.querySelectorAll('p')].find((el) => el.textContent.trim() === '可前往：')
+    if (!label) return []
+    const container = label.parentElement
+    if (!container) return []
+    return [...container.querySelectorAll('button')].map((b) => ({ text: b.textContent.trim(), disabled: b.disabled }))
+  })
+  check(
+    'P1-025-A: 可前往 [武馆 enabled, 黑石塔一层 disabled]',
+    JSON.stringify(towerTravelBefore) === JSON.stringify([{ text: '武馆', disabled: false }, { text: '黑石塔一层', disabled: true }]),
+  )
+  check('P1-025-A: 无返回青石村', !body.includes('返回青石村'))
+  // B. 解锁路线
+  check('P1-025-B: 黑石塔调查入口', body.includes('黑石塔调查'))
+  check('P1-025-B: 入口正文', body.includes('王财提供的情况已经足够，你可以动身前往黑石塔调查。'))
+  await clickByText('动身调查黑石塔')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-025-B: 动身调查按钮消失', !body.includes('动身调查黑石塔'))
+  const towerTravelUnlocked = await page.evaluate(() => {
+    const label = [...document.querySelectorAll('p')].find((el) => el.textContent.trim() === '可前往：')
+    if (!label) return []
+    const container = label.parentElement
+    if (!container) return []
+    return [...container.querySelectorAll('button')].map((b) => ({ text: b.textContent.trim(), disabled: b.disabled }))
+  })
+  check(
+    'P1-025-B: 解锁后黑石塔一层 enabled',
+    JSON.stringify(towerTravelUnlocked) === JSON.stringify([{ text: '武馆', disabled: false }, { text: '黑石塔一层', disabled: false }]),
+  )
+  check('P1-025-B: 黑石塔路线已确认', body.includes('黑石塔路线已确认。'))
+  check('P1-025-B: 当前目标：前往黑石塔一层调查', body.includes('当前目标：前往黑石塔一层调查。'))
+  check('P1-025-B: 不再显示黑石塔：【待开放】', !body.includes('黑石塔：【待开放】'))
+  // C. 进入黑石塔一层
+  await clickByText('黑石塔一层')
+  await sleep(300)
+  body = await bodyText()
+  const towerFloor1Loc = await page.evaluate(() => {
+    const label = [...document.querySelectorAll('p')].find((el) => el.textContent.trim() === '当前位置')
+    if (!label) return null
+    const section = label.closest('section')
+    if (!section) return null
+    const idEl = [...section.querySelectorAll('p')].find((el) => /^[a-z0-9_]+$/.test(el.textContent.trim()))
+    return idEl ? idEl.textContent.trim() : null
+  })
+  check('P1-025-C: 当前位置 = black_stone_tower_floor1', towerFloor1Loc === 'black_stone_tower_floor1')
+  check('P1-025-C: 地点黑石塔一层', body.includes('黑石塔一层'))
+  const floor1Travel = await page.evaluate(() => {
+    const label = [...document.querySelectorAll('p')].find((el) => el.textContent.trim() === '可前往：')
+    if (!label) return []
+    const container = label.parentElement
+    if (!container) return []
+    return [...container.querySelectorAll('button')].map((b) => b.textContent.trim())
+  })
+  check('P1-025-C: 一层可前往按钮精确 [天龙城]', JSON.stringify(floor1Travel) === JSON.stringify(['天龙城']))
+  // D. 第一场地牢战斗（确定性击败骷髅士兵 Lv.3）
+  check('P1-025-D: 附近威胁骷髅士兵', body.includes('附近威胁') && body.includes('骷髅士兵') && body.includes('Lv.3'))
+  const towerBeforeLevel = body.match(/Lv\.(\d+)/)
+  const towerBeforeHp = body.match(/生命\s*(\d+)\s*\/\s*(\d+)/)
+  const towerBeforeMp = body.match(/灵力\s*(\d+)\s*\/\s*(\d+)/)
+  const towerBeforeGold = body.match(/金币\s*(\d+)/)
+  const towerBeforeMapCount = body.match(/兔子的路径 ×(\d+)/)
+  await clickByText('迎战')
+  await sleep(300)
+  await page.evaluate(() => {
+    window.__origRandom = Math.random.bind(Math)
+    Math.random = () => 0.99
+  })
+  // 骷髅士兵 HP14 防御12——需要数次普通攻击（0.99 天然20 暴击；每击后检查胜利「返回冒险」跳出）
+  for (let i = 0; i < 12; i += 1) {
+    const combatBody = await page.evaluate(() => document.body.innerText)
+    if (combatBody.includes('返回冒险')) break
+    if (combatBody.includes('普通攻击')) {
+      await page.evaluate(() => [...document.querySelectorAll('button')].find((b) => b.textContent.includes('普通攻击'))?.click())
+      await sleep(300)
+    } else {
+      break
+    }
+  }
+  await page.evaluate(() => {
+    Math.random = window.__origRandom
+  })
+  await clickByText('返回冒险')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-025-D: 战斗胜利返回冒险', body.includes('当前位置'))
+  // E. 胜利后清场
+  check('P1-025-E: 大厅中的骷髅士兵已经被击败', body.includes('大厅中的骷髅士兵已经被击败。'))
+  check('P1-025-E: 骷髅队长踪迹剧情', body.includes('更深处传来沉重的骨骼碰撞声，一名身材高大的骷髅队长守在前方。'))
+  check('P1-025-E: 骷髅队长：【待开放】', body.includes('骷髅队长：【待开放】'))
+  check('P1-025-E: 无骷髅士兵/迎战/附近威胁', !body.includes('附近威胁') && !body.includes('迎战'))
+  // F. 任务状态
+  check('P1-025-F: 商人王财的麻烦进行中', body.includes('商人王财的麻烦') && body.includes('进行中'))
+  check('P1-025-F: 黑石塔一层：已击败骷髅士兵', body.includes('黑石塔一层：已击败骷髅士兵。'))
+  check('P1-025-F: 当前目标：继续深入，处理骷髅队长', body.includes('当前目标：继续深入，处理骷髅队长。'))
+  check('P1-025-F: 无可完成/提交任务/已完成', !body.includes('提交任务') && !body.includes('可完成'))
+  // G. 无奖励（HP 允许正常战斗变化）
+  const towerAfterLevel = body.match(/Lv\.(\d+)/)
+  const towerAfterMp = body.match(/灵力\s*(\d+)\s*\/\s*(\d+)/)
+  const towerAfterGold = body.match(/金币\s*(\d+)/)
+  const towerAfterMapCount = body.match(/兔子的路径 ×(\d+)/)
+  check(
+    'P1-025-G: 战斗前后 Lv/maxMP/gold/地图数不变',
+    towerBeforeLevel !== null && towerAfterLevel !== null && towerBeforeLevel[1] === towerAfterLevel[1] &&
+      towerBeforeMp !== null && towerAfterMp !== null && towerBeforeMp[2] === towerAfterMp[2] &&
+      towerBeforeGold !== null && towerAfterGold !== null && towerBeforeGold[1] === towerAfterGold[1] &&
+      towerBeforeMapCount !== null && towerAfterMapCount !== null && towerBeforeMapCount[1] === towerAfterMapCount[1],
+  )
+  // H. 往返保持清场
+  await clickByText('天龙城')
+  await sleep(300)
+  await clickByText('黑石塔一层')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-025-H: 再次进入仍无骷髅士兵', !body.includes('迎战') && !body.includes('附近威胁'))
+  check('P1-025-H: 骷髅队长待开放剧情仍在', body.includes('骷髅队长：【待开放】'))
+  // I. Save/Continue（黑石塔一层）
+  await clickByText('保存游戏')
+  await clickByText('返回主菜单')
+  await clickByText('继续游戏')
+  await sleep(300)
+  body = await bodyText()
+  const towerFloor1Saved = await page.evaluate(() => {
+    const label = [...document.querySelectorAll('p')].find((el) => el.textContent.trim() === '当前位置')
+    if (!label) return null
+    const section = label.closest('section')
+    if (!section) return null
+    const idEl = [...section.querySelectorAll('p')].find((el) => /^[a-z0-9_]+$/.test(el.textContent.trim()))
+    return idEl ? idEl.textContent.trim() : null
+  })
+  check('P1-025-I: Continue 后当前位置 = black_stone_tower_floor1', towerFloor1Saved === 'black_stone_tower_floor1')
+  check('P1-025-I: 商人王财的麻烦进行中', body.includes('商人王财的麻烦') && body.includes('进行中'))
+  check('P1-025-I: 黑石塔路线已确认', body.includes('黑石塔路线已确认。'))
+  check('P1-025-I: 黑石塔一层：已击败骷髅士兵', body.includes('黑石塔一层：已击败骷髅士兵。'))
+  check('P1-025-I: 无骷髅士兵', !body.includes('附近威胁') && !body.includes('迎战'))
+  check('P1-025-I: 骷髅队长：【待开放】', body.includes('骷髅队长：【待开放】'))
+  check('P1-025-I: 黄金兔子主线仍进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
+  check('P1-025-I: 兔子的路径 ×1', body.includes('兔子的路径 ×1'))
   await clickByText('返回主菜单')
 
   // TM-P1-015：战斗中使用治疗药水（独立最小段：默认骑士 + 村外草原魔化兔；魔化兔零修改 HP8/DEF11/atk+2/dmg2）
