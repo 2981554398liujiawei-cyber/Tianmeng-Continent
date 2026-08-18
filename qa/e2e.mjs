@@ -1551,6 +1551,10 @@ try {
   await clickByText('返回主菜单')
 
   // P1-007：游侠职业技能「迅捷突袭」（每场一次、不耗 MP、AGI 攻击）
+  // 本段只保存一次真实 Math.random（P1-007-R1：mock 不泄漏给后续测试）
+  await page.evaluate(() => {
+    window.__p1007OriginalRandom = Math.random.bind(Math)
+  })
   // A. 游侠拥有迅捷突袭（无法术攻击/骑士重击）
   await clickByText('新游戏')
   await clickLabel('游侠')
@@ -1567,7 +1571,6 @@ try {
   // B. 天然1仍消耗本场次数：敌 HP/玩家 HP/MP 均不变
   const rangerInitialHp = readHps(await bodyText()).player
   await page.evaluate(() => {
-    window.__origRandom = Math.random.bind(Math)
     Math.random = () => 0.0
   })
   await clickByText('迅捷突袭')
@@ -1583,9 +1586,8 @@ try {
   // C. 不能再次使用（disabled 状态锁定）
   check('P1-007-C: 迅捷突袭保持禁用', (await buttonDisabled('迅捷突袭')) === true)
 
-  // D. 普通攻击继续结束战斗（与迅捷突袭使用状态互不影响）
+  // D. 普通攻击继续结束战斗（与迅捷突袭使用状态互不影响；直接切换 mock，不覆盖已保存的真实函数）
   await page.evaluate(() => {
-    window.__origRandom = Math.random.bind(Math)
     Math.random = () => 0.99
   })
   await clickByText('普通攻击')
@@ -1593,8 +1595,9 @@ try {
   body = await bodyText()
   check('P1-007-D: 普通攻击战斗胜利', body.includes('战斗胜利'))
   check('P1-007-D: MP 仍未变化（仍 6 / 6）', body.includes('6 / 6'))
+  // 第一场结束：恢复真实随机
   await page.evaluate(() => {
-    Math.random = window.__origRandom
+    Math.random = window.__p1007OriginalRandom
   })
 
   // E. 下一场战斗迅捷突袭重新可用（局部 boolean 随新 CombatPage 重置；返回冒险后仍在村外草原）
@@ -1608,7 +1611,6 @@ try {
   // F. 真实迅捷突袭暴击：AGI10 base 6 暴击 12 击败魔化兔，无敌人反击，MP 保持
   const beforeSwiftHp = readHps(await bodyText()).player
   await page.evaluate(() => {
-    window.__origRandom = Math.random.bind(Math)
     Math.random = () => 0.99
   })
   await clickByText('迅捷突袭')
@@ -1620,9 +1622,15 @@ try {
   check('P1-007-F: 致死后玩家 HP 未下降（敌人不反击）', readHps(body).player === beforeSwiftHp)
   check('P1-007-F: 无魔化兔的攻击（敌人未行动）', !body.includes('魔化兔的攻击：'))
   check('P1-007-F: MP 仍 6 / 6（不消费 MP）', body.includes('6 / 6'))
-  await page.evaluate(() => {
-    Math.random = window.__origRandom
+  // P1-007-R1：确定性断言——恢复后 Math.random 与段首保存的真实函数同一引用
+  const randomRestored = await page.evaluate(() => {
+    const original = window.__p1007OriginalRandom
+    Math.random = original
+    const isOriginal = Math.random === original
+    delete window.__p1007OriginalRandom
+    return isOriginal
   })
+  check('P1-007-R1: 段末 Math.random 已恢复真实实现（不污染后续测试）', randomRestored === true)
   await clickByText('返回冒险')
   await clickByText('返回主菜单')
 
