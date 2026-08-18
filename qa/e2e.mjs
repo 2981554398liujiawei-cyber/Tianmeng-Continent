@@ -456,6 +456,7 @@ try {
 
   // P012：击败嘟嘟兔获得唯一《兔子的路径》
   check('P012: Boss 战前背包无兔子的路径', !body.includes('兔子的路径'))
+  check('P1-013-A: Boss 战前无展开地图且无具体地点占位', !body.includes('展开地图') && !body.includes('具体地点：【待补充】'))
   await clickByText('迎战')
   await sleep(300)
   body = await bodyText()
@@ -480,6 +481,37 @@ try {
   check('P012: 返回后背包显示兔子的路径 ×1', body.includes('兔子的路径 ×1'))
   check('P012: 藏宝图描述含藏宝图与黄金兔子王', body.includes('藏宝图') && body.includes('黄金兔子王'))
   check('P019: Boss 后返回冒险显示新的线索区域', body.includes('新的线索'))
+
+  // TM-P1-013：正式查看《兔子的路径》
+  // B. 获得地图后：展开地图 enabled；未查看前不得提前显示具体地点占位
+  check('P1-013-B: 显示展开地图按钮（enabled）', (await buttonDisabled('展开地图')) === false)
+  check('P1-013-B: 未查看前不显示具体地点：【待补充】', !body.includes('具体地点：【待补充】'))
+  // D. 查看前状态快照（等级/生命/灵力/金币/位置）
+  const beforePathLevel = body.match(/Lv\.(\d+)/)
+  const beforePathHp = body.match(/生命\s*(\d+)\s*\/\s*(\d+)/)
+  const beforePathMp = body.match(/灵力\s*(\d+)\s*\/\s*(\d+)/)
+  const beforePathGold = body.match(/金币\s*(\d+)/)
+  // C. 正式查看
+  await clickByText('展开地图')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-013-C: 显示固定文案（地图指向黄金兔子王所在之地）', body.includes('地图上的路线最终指向黄金兔子王所在之地。'))
+  check('P1-013-C: 显示具体地点：【待补充】', body.includes('具体地点：【待补充】'))
+  check('P1-013-C: 展开地图按钮消失（不残留 disabled）', !body.includes('展开地图'))
+  check('P1-013-C: 兔子的路径仍 ×1（不消耗地图）', body.includes('兔子的路径 ×1'))
+  // D. 查看后无其他状态副作用
+  const afterPathLevel = body.match(/Lv\.(\d+)/)
+  const afterPathHp = body.match(/生命\s*(\d+)\s*\/\s*(\d+)/)
+  const afterPathMp = body.match(/灵力\s*(\d+)\s*\/\s*(\d+)/)
+  const afterPathGold = body.match(/金币\s*(\d+)/)
+  check('P1-013-D: 查看后仍在兔王巢穴（位置不变）', body.includes('兔王巢穴'))
+  check(
+    'P1-013-D: 查看后等级/生命/灵力/金币全不变',
+    beforePathLevel !== null && afterPathLevel !== null && beforePathLevel[1] === afterPathLevel[1] &&
+      beforePathHp !== null && afterPathHp !== null && beforePathHp[1] === afterPathHp[1] && beforePathHp[2] === afterPathHp[2] &&
+      beforePathMp !== null && afterPathMp !== null && beforePathMp[1] === afterPathMp[1] && beforePathMp[2] === afterPathMp[2] &&
+      beforePathGold !== null && afterPathGold !== null && beforePathGold[1] === afterPathGold[1],
+  )
   await clickByText('村外草原')
   await clickByText('保存游戏')
   await clickByText('返回主菜单')
@@ -489,6 +521,9 @@ try {
   check('P011: Continue 后兔王巢穴仍可进入', (await buttonDisabled('兔王巢穴')) === false)
   check('P012: Continue 后兔子的路径仍 ×1', body.includes('兔子的路径 ×1'))
   check('P019: Continue 后新的线索仍显示', body.includes('新的线索'))
+  // TM-P1-013-E：Save/Continue 保持查看状态（rabbit_path_examined 经 world.flags 自然持久化）
+  check('P1-013-E: Continue 后已查看文案保持', body.includes('地图上的路线最终指向黄金兔子王所在之地。') && body.includes('具体地点：【待补充】'))
+  check('P1-013-E: Continue 后无展开地图按钮', !body.includes('展开地图'))
   await clickByText('青石村')
 
   await clickByText('返回主菜单')

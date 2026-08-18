@@ -356,6 +356,15 @@ TM-P1-012（Lv.2 里程碑升级提示——成长体验闭环，纯 UI 反馈�
 - 11 项 E2E（A 第三任务提交前不显示升级提示/B 提交成功立即显示等级提升！+你已达到 Lv.2。+最大生命 +2，最大灵力 +1。+知道了（与原有已完成/110/Lv.2/22/24/6/7 同帧确认）/C 点击知道了后提示消失且角色仍 Lv.2/22/24/6/7/110/D Continue 不重复显示升级提示与知道了/E 《村外异动》《矿洞清理》完成均不显示升级提示）
 - TM-P1-012-R1（补齐关闭升级提示后的角色状态断言）：C 段点击「知道了」后除「提示消失」外，用正则逐项明确断言 Lv.2、生命 22/24、灵力 6/7、金币 110（不再用 `body.includes('Lv.2') && body.includes('110')` 弱断言）——锁定「关闭提示本身无 GameState 副作用」；仅 qa/e2e.mjs 修改（正式玩法代码零修改），提交前无提示/提交成功显示/Continue 不重复/前两任务不提示等原断言全保留
 
+TM-P1-013（《兔子的路径》正式查看与后续线索占位——Boss 战利品交互闭环）：
+- Store 新增唯一正式 action `inspectRabbitPath(): boolean`（GamePage 不直接调用通用 setFlag 写查看状态）：成功条件 = gameState 存在 + 背包有 rabbit_path entry + quantity 安全整数且 >=1 + world.flags.rabbit_path_examined 为 undefined 或 false → true 且**只设置 world.flags.rabbit_path_examined=true**（player/inventory/equipment/quests/currentLocationId/completedEvents/npcStates 全不变；不消耗地图仍 ×1；不自动保存）
+- 拒绝路径（false 且 GameState 完全不变）：无 gameState / 无 rabbit_path / quantity 0、-1、1.5、NaN、Infinity / 已查看（flag===true）重复调用 / flag 已存在但非 boolean（如 "yes"、1，不静默覆盖异常存档状态）
+- 物品定义零修改（rabbit_path 名称/description/value/ItemDefinition 未动）；未建通用 inspectItem()/QuestItemDefinition/ItemInteractionDefinition/UseItemEngine/ClueEngine/MapEngine/EventBus
+- GamePage「新的线索」区扩展（仅真实持有 rabbit_path 时显示，原条件保持）：未查看 → 新增 [展开地图] 按钮（**不提前显示**具体地点占位），点击调用 inspectRabbitPath()，Store 为唯一真实状态来源（无额外 UI local flag）；已查看（flags.rabbit_path_examined===true 且背包仍有地图）→ 固定文案「地图上的路线最终指向黄金兔子王所在之地。具体地点：【待补充】」+ **「展开地图」按钮消失**（非 disabled 残留）
+- **【待补充】为占位**：不新增地点/连接/移动入口（无「前往【待补充】」/「进入黄金兔王区域」）；不做 D20/MND/LCK 检定、不设 DC、无随机失败（物品定义已是路线藏宝图）
+- GameState/WorldState schema 零修改（flags 已是 Record<string, boolean|number|string>）；SAVE_VERSION=1；items/locations/enemies/quests/types/storage/combat/character/App.tsx 零修改；git diff 仅 gameStore.ts + gameStore.test.ts + GamePage.tsx + qa/e2e.mjs + README
+- 12 个 Store 单测（A 无 gameState false/B 无 rabbit_path false 全不变/C quantity=0 false/D quantity=-1 false/E quantity=1.5 false/F 合法 ×1+flag 不存在 → true+examined=true/G 成功后仍 ×1/H 成功只改 flags.rabbit_path_examined 其余全不变/I flag=false → true 成功/J flag=true 重复 false 全不变/K flag 为字符串/数字 false 全不变/L 不自动保存）+ 11 项 E2E（A Boss 战前无展开地图且无具体地点占位/B 获得地图后展开地图 enabled 且未查看前不显示【待补充】/C 点击展开地图后显示固定文案+【待补充】+按钮消失+兔子的路径仍 ×1/D 查看前后等级/生命/灵力/金币/位置全不变/E Save/Continue 后已查看文案保持+无展开地图按钮）
+
 ## 目录结构
 
 ```

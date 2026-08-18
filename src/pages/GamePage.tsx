@@ -61,6 +61,7 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
   const restAtVillage = useGameStore((s) => s.restAtVillage)
   const respondToVillageElderAfterQuest = useGameStore((s) => s.respondToVillageElderAfterQuest)
   const investigateAbandonedMine = useGameStore((s) => s.investigateAbandonedMine)
+  const inspectRabbitPath = useGameStore((s) => s.inspectRabbitPath)
   const [saveResult, setSaveResult] = useState<'saved' | 'failed' | null>(null)
   const [travelError, setTravelError] = useState(false)
   // TM-P0-015：活动对话 NPC（仅 UI 本地状态，不进入 GameState / 存档）
@@ -318,11 +319,29 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
         const hasPath =
           pathDef !== undefined && gameState.inventory.some((e) => e.itemId === 'rabbit_path' && e.quantity >= 1)
         if (!hasPath) return null
+        // TM-P1-013：已查看状态以 Store 为唯一真实状态来源（不增加 UI local flag）
+        const examined = world.flags.rabbit_path_examined === true
         return (
           <section className="rounded border border-gold-500/40 bg-gold-500/5 p-5 text-sm text-bone-300">
             <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">新的线索</h3>
             <p className="font-bold text-bone-100">{pathDef.name}</p>
             <p className="mt-1 leading-relaxed text-bone-300">{pathDef.description}</p>
+            {examined ? (
+              <>
+                {/* TM-P1-013：已查看固定文案（【待补充】为占位，未虚构地点） */}
+                <p className="mt-3 border-t border-gold-500/20 pt-3 text-bone-200">
+                  地图上的路线最终指向黄金兔子王所在之地。
+                </p>
+                <p className="mt-1 text-bone-300">具体地点：【待补充】</p>
+              </>
+            ) : (
+              <div className="mt-3">
+                {/* TM-P1-013：未查看时显示展开地图（inspectRabbitPath 返回 true 后 Store 状态驱动切换） */}
+                <Button variant="primary" onClick={() => inspectRabbitPath()}>
+                  展开地图
+                </Button>
+              </div>
+            )}
           </section>
         )
       })()}

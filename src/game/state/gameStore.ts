@@ -81,6 +81,8 @@ interface GameStoreState {
   addItem: (itemId: string, quantity?: number) => void
   removeItem: (itemId: string, quantity?: number) => void
   setFlag: (key: string, value: boolean | number | string) => void
+  /** 正式查看《兔子的路径》（TM-P1-013）：仅背包合法持有 rabbit_path（quantity 安全整数 >=1）且 rabbit_path_examined 为 undefined/false 时成功，只写 world.flags.rabbit_path_examined=true；重复/非法 quantity/非 boolean 旧 flag → false 且完全不变；不消耗地图、不自动保存 */
+  inspectRabbitPath: () => boolean
 }
 
 /** 任务发现：不存在 → 创建 available；undiscovered → available；其余状态不重复创建。非法返回 null（TM-P0-006） */
@@ -810,5 +812,30 @@ export const useGameStore = create<GameStoreState>()((set) => ({
           }
         : {},
     )
+  },
+
+  inspectRabbitPath: () => {
+    let changed = false
+    set((s) => {
+      if (!s.gameState) return {}
+      const entry = s.gameState.inventory.find((e) => e.itemId === 'rabbit_path')
+      // TM-P1-013：非法 quantity（0/-1/1.5/NaN/Infinity/非安全整数）一律拒绝
+      if (!entry || !Number.isSafeInteger(entry.quantity) || entry.quantity < 1) return {}
+      const existing = s.gameState.world.flags.rabbit_path_examined
+      // TM-P1-013：已查看（true）重复调用拒绝；已存在但非 boolean 的异常旧值拒绝（不静默覆盖）
+      if (existing === true || (existing !== undefined && typeof existing !== 'boolean')) return {}
+      changed = true
+      // TM-P1-013：成功只设置 world.flags.rabbit_path_examined=true（地图不消耗；player/inventory/equipment/quests/位置/completedEvents/npcStates 全不变；不自动保存）
+      return {
+        gameState: {
+          ...s.gameState,
+          world: {
+            ...s.gameState.world,
+            flags: { ...s.gameState.world.flags, rabbit_path_examined: true },
+          },
+        },
+      }
+    })
+    return changed
   },
 }))

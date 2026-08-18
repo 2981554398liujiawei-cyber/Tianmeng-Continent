@@ -2624,3 +2624,117 @@ describe('TM-P1-011：第一次里程碑升级 Lv.2（完成《草原狼影》�
     expect(useGameStore.getState().hasSave).toBe(false)
   })
 })
+
+describe('TM-P1-013：正式查看《兔子的路径》（inspectRabbitPath）', () => {
+  const flags = () => useGameStore.getState().gameState?.world.flags
+  const rabbitPath = () => useGameStore.getState().gameState?.inventory.find((e) => e.itemId === 'rabbit_path')
+
+  const snapshot = () => JSON.stringify(useGameStore.getState().gameState)
+
+  it('A. 无 gameState → false', () => {
+    useGameStore.setState({ gameState: null })
+    expect(useGameStore.getState().inspectRabbitPath()).toBe(false)
+  })
+
+  it('B. 没有 rabbit_path → false 且 GameState 完全不变', () => {
+    const before = snapshot()
+    expect(useGameStore.getState().inspectRabbitPath()).toBe(false)
+    expect(snapshot()).toBe(before)
+  })
+
+  it('C. quantity=0 → false 且完全不变', () => {
+    useGameStore.getState().addItem('rabbit_path', 0)
+    const before = snapshot()
+    expect(useGameStore.getState().inspectRabbitPath()).toBe(false)
+    expect(snapshot()).toBe(before)
+  })
+
+  it('D. quantity=-1 → false 且完全不变', () => {
+    useGameStore.getState().addItem('rabbit_path', -1)
+    const before = snapshot()
+    expect(useGameStore.getState().inspectRabbitPath()).toBe(false)
+    expect(snapshot()).toBe(before)
+  })
+
+  it('E. quantity=1.5 → false 且完全不变', () => {
+    useGameStore.getState().addItem('rabbit_path', 1.5)
+    const before = snapshot()
+    expect(useGameStore.getState().inspectRabbitPath()).toBe(false)
+    expect(snapshot()).toBe(before)
+  })
+
+  it('F. 合法 rabbit_path ×1 + flag 不存在 → true 且 rabbit_path_examined=true', () => {
+    useGameStore.getState().addItem('rabbit_path', 1)
+    expect(useGameStore.getState().inspectRabbitPath()).toBe(true)
+    expect(flags()?.rabbit_path_examined).toBe(true)
+  })
+
+  it('G. 成功后 rabbit_path 仍 ×1（不消耗地图）', () => {
+    useGameStore.getState().addItem('rabbit_path', 1)
+    useGameStore.getState().inspectRabbitPath()
+    expect(rabbitPath()?.quantity).toBe(1)
+  })
+
+  it('H. 成功只修改 world.flags.rabbit_path_examined：player/inventory/equipment/quests/位置/completedEvents/npcStates 全不变', () => {
+    useGameStore.getState().addItem('rabbit_path', 1)
+    const before = useGameStore.getState().gameState!
+    useGameStore.getState().inspectRabbitPath()
+    const after = useGameStore.getState().gameState!
+    expect(after.player).toEqual(before.player)
+    expect(after.inventory).toEqual(before.inventory)
+    expect(after.equipment).toEqual(before.equipment)
+    expect(after.quests).toEqual(before.quests)
+    expect(after.world.currentLocationId).toBe(before.world.currentLocationId)
+    expect(after.world.completedEvents).toEqual(before.world.completedEvents)
+    expect(after.world.npcStates).toEqual(before.world.npcStates)
+    // 唯一差异：rabbit_path_examined absent/false → true
+    expect(after.world.flags.rabbit_path_examined).toBe(true)
+  })
+
+  it('I. flag=false 时 → true 成功', () => {
+    useGameStore.getState().addItem('rabbit_path', 1)
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return { gameState: { ...s.gameState, world: { ...s.gameState.world, flags: { rabbit_path_examined: false } } } }
+    })
+    expect(useGameStore.getState().inspectRabbitPath()).toBe(true)
+    expect(flags()?.rabbit_path_examined).toBe(true)
+  })
+
+  it('J. flag=true 重复调用 → false 且 GameState 完全不变', () => {
+    useGameStore.getState().addItem('rabbit_path', 1)
+    useGameStore.getState().inspectRabbitPath()
+    const before = snapshot()
+    expect(useGameStore.getState().inspectRabbitPath()).toBe(false)
+    expect(snapshot()).toBe(before)
+    expect(rabbitPath()?.quantity).toBe(1)
+  })
+
+  it('K. flag 为非 boolean（字符串/数字）→ false 且完全不变（不静默覆盖异常存档状态）', () => {
+    useGameStore.getState().addItem('rabbit_path', 1)
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return { gameState: { ...s.gameState, world: { ...s.gameState.world, flags: { rabbit_path_examined: 'yes' } } } }
+    })
+    const beforeStr = snapshot()
+    expect(useGameStore.getState().inspectRabbitPath()).toBe(false)
+    expect(snapshot()).toBe(beforeStr)
+    expect(flags()?.rabbit_path_examined).toBe('yes')
+
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return { gameState: { ...s.gameState, world: { ...s.gameState.world, flags: { rabbit_path_examined: 1 } } } }
+    })
+    const beforeNum = snapshot()
+    expect(useGameStore.getState().inspectRabbitPath()).toBe(false)
+    expect(snapshot()).toBe(beforeNum)
+    expect(flags()?.rabbit_path_examined).toBe(1)
+  })
+
+  it('L. 不自动保存：成功查看后 hasSave 仍 false', () => {
+    useGameStore.getState().addItem('rabbit_path', 1)
+    useGameStore.getState().inspectRabbitPath()
+    expect(flags()?.rabbit_path_examined).toBe(true)
+    expect(useGameStore.getState().hasSave).toBe(false)
+  })
+})
