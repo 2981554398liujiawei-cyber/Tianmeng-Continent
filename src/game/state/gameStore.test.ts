@@ -3646,3 +3646,292 @@ describe('TM-P1-019：向村长复命村内调查（两人均无法辨认地图�
     expect(useGameStore.getState().hasSave).toBe(false)
   })
 })
+
+describe('TM-P1-020：返回兔王巢穴复查《兔子的路径》', () => {
+  const flags = () => useGameStore.getState().gameState?.world.flags
+  const rabbitPath = () => useGameStore.getState().gameState?.inventory.find((e) => e.itemId === 'rabbit_path')
+  const goldenQuest = () => useGameStore.getState().gameState?.quests.find((q) => q.questId === 'quest_golden_rabbit_search')
+  const snapshot = () => JSON.stringify(useGameStore.getState().gameState)
+
+  /** 走到复命完成（复用 P1-019 完整前置链） */
+  const seedReportedInvestigation = () => {
+    useGameStore.getState().newGame()
+    useGameStore.getState().discoverQuest('quest_village_monsters')
+    useGameStore.getState().acceptQuest('quest_village_monsters')
+    useGameStore.getState().travelToLocation('village_grassland')
+    useGameStore.getState().resolveCombatVictory('corrupted_rabbit')
+    useGameStore.getState().travelToLocation('qingshi_village')
+    useGameStore.getState().completeQuest('quest_village_monsters')
+    useGameStore.getState().discoverQuest('quest_mine_cleanup')
+    useGameStore.getState().acceptQuest('quest_mine_cleanup')
+    useGameStore.getState().travelToLocation('abandoned_mine')
+    useGameStore.getState().resolveCombatVictory('corrupted_rat')
+    useGameStore.getState().travelToLocation('qingshi_village')
+    useGameStore.getState().completeQuest('quest_mine_cleanup')
+    useGameStore.getState().discoverQuest('quest_grassland_wolf')
+    useGameStore.getState().acceptQuest('quest_grassland_wolf')
+    useGameStore.getState().travelToLocation('village_grassland')
+    useGameStore.getState().resolveCombatVictory('corrupted_wolf')
+    useGameStore.getState().travelToLocation('qingshi_village')
+    useGameStore.getState().completeQuest('quest_grassland_wolf')
+    useGameStore.getState().addItem('rabbit_path', 1)
+    useGameStore.getState().inspectRabbitPath()
+    useGameStore.getState().reportRabbitPathToVillageElder()
+    useGameStore.getState().discoverQuest('quest_golden_rabbit_search')
+    useGameStore.getState().acceptQuest('quest_golden_rabbit_search')
+    useGameStore.getState().consultGoldenRabbitSearchNpc('blacksmith')
+    useGameStore.getState().consultGoldenRabbitSearchNpc('apothecary')
+    useGameStore.getState().reportGoldenRabbitVillageInvestigation()
+  }
+
+  /** 从青石村走到兔王巢穴（村外草原 → 兔王巢穴，正式路线） */
+  const gotoLair = () => {
+    useGameStore.getState().travelToLocation('village_grassland')
+    useGameStore.getState().travelToLocation('rabbit_lair')
+  }
+
+  /** 直接构造任务 flag 运行态（undefined 表示从 flags 中移除该 key） */
+  const seedQuestFlag = (flagKey: string, value: string | number | boolean | undefined) => {
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return {
+        gameState: {
+          ...s.gameState,
+          quests: s.gameState.quests.map((q) => {
+            if (q.questId !== 'quest_golden_rabbit_search') return q
+            if (value === undefined) {
+              const nextFlags = { ...q.flags }
+              delete nextFlags[flagKey]
+              return { ...q, flags: nextFlags }
+            }
+            return { ...q, flags: { ...q.flags, [flagKey]: value } }
+          }),
+        },
+      }
+    })
+  }
+
+  /** 直接构造任务状态运行态 */
+  const seedQuestStatus = (status: QuestStatus) => {
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return {
+        gameState: {
+          ...s.gameState,
+          quests: s.gameState.quests.map((q) =>
+            q.questId === 'quest_golden_rabbit_search' ? { ...q, status } : q,
+          ),
+        },
+      }
+    })
+  }
+
+  /** 直接构造背包运行态（真实异常 quantity，非 addItem 假覆盖） */
+  const seedRabbitPathQuantity = (quantity: unknown) => {
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      const without = s.gameState.inventory.filter((e) => e.itemId !== 'rabbit_path')
+      if (quantity === undefined) {
+        return { gameState: { ...s.gameState, inventory: without } }
+      }
+      return {
+        gameState: {
+          ...s.gameState,
+          inventory: [...without, { itemId: 'rabbit_path', quantity: quantity as number }],
+        },
+      }
+    })
+  }
+
+  it('A. 无 gameState → false', () => {
+    useGameStore.setState({ gameState: null })
+    expect(useGameStore.getState().recheckGoldenRabbitMapAtLair()).toBe(false)
+  })
+
+  it('B. 不在 rabbit_lair → false', () => {
+    seedReportedInvestigation()
+    const before = snapshot()
+    expect(useGameStore.getState().recheckGoldenRabbitMapAtLair()).toBe(false)
+    expect(snapshot()).toBe(before)
+  })
+
+  it('C. 第四任务不存在 → false', () => {
+    seedReportedInvestigation()
+    gotoLair()
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return { gameState: { ...s.gameState, quests: s.gameState.quests.filter((q) => q.questId !== 'quest_golden_rabbit_search') } }
+    })
+    const before = snapshot()
+    expect(useGameStore.getState().recheckGoldenRabbitMapAtLair()).toBe(false)
+    expect(snapshot()).toBe(before)
+  })
+
+  it('D. available/completable/completed → false', () => {
+    seedReportedInvestigation()
+    gotoLair()
+    for (const status of ['available', 'completable', 'completed'] as const) {
+      seedQuestStatus(status)
+      const before = snapshot()
+      expect(useGameStore.getState().recheckGoldenRabbitMapAtLair()).toBe(false)
+      expect(snapshot()).toBe(before)
+    }
+  })
+
+  it('E. asked_blacksmith !== true → false', () => {
+    seedReportedInvestigation()
+    gotoLair()
+    seedQuestFlag('asked_blacksmith', false)
+    const before = snapshot()
+    expect(useGameStore.getState().recheckGoldenRabbitMapAtLair()).toBe(false)
+    expect(snapshot()).toBe(before)
+  })
+
+  it('F. asked_apothecary !== true → false', () => {
+    seedReportedInvestigation()
+    gotoLair()
+    seedQuestFlag('asked_apothecary', undefined)
+    const before = snapshot()
+    expect(useGameStore.getState().recheckGoldenRabbitMapAtLair()).toBe(false)
+    expect(snapshot()).toBe(before)
+  })
+
+  it('G. village_inquiry_reported !== true → false', () => {
+    seedReportedInvestigation()
+    gotoLair()
+    seedQuestFlag('village_inquiry_reported', false)
+    const before = snapshot()
+    expect(useGameStore.getState().recheckGoldenRabbitMapAtLair()).toBe(false)
+    expect(snapshot()).toBe(before)
+  })
+
+  it('H. 无 rabbit_path → false', () => {
+    seedReportedInvestigation()
+    gotoLair()
+    seedRabbitPathQuantity(undefined)
+    const before = snapshot()
+    expect(useGameStore.getState().recheckGoldenRabbitMapAtLair()).toBe(false)
+    expect(snapshot()).toBe(before)
+  })
+
+  it.each([
+    ['quantity=0', 0],
+    ['quantity=-1', -1],
+    ['quantity=1.5', 1.5],
+    ['quantity=NaN', NaN],
+    ['quantity=Infinity', Infinity],
+  ])('I. %s → false 且同一引用不变', (_label, badQuantity) => {
+    seedReportedInvestigation()
+    gotoLair()
+    seedRabbitPathQuantity(badQuantity)
+    const before = useGameStore.getState().gameState
+    expect(useGameStore.getState().recheckGoldenRabbitMapAtLair()).toBe(false)
+    expect(useGameStore.getState().gameState).toBe(before)
+    expect(goldenQuest()?.flags.rabbit_lair_rechecked).toBeUndefined()
+  })
+
+  it('J. rabbit_path_examined !== true → false', () => {
+    seedReportedInvestigation()
+    gotoLair()
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      const nextFlags = { ...s.gameState.world.flags }
+      nextFlags.rabbit_path_examined = false
+      return { gameState: { ...s.gameState, world: { ...s.gameState.world, flags: nextFlags } } }
+    })
+    const before = snapshot()
+    expect(useGameStore.getState().recheckGoldenRabbitMapAtLair()).toBe(false)
+    expect(snapshot()).toBe(before)
+  })
+
+  it('K. 全前置合法 → true 且 rabbit_lair_rechecked=true', () => {
+    seedReportedInvestigation()
+    gotoLair()
+    expect(useGameStore.getState().recheckGoldenRabbitMapAtLair()).toBe(true)
+    expect(goldenQuest()?.flags.rabbit_lair_rechecked).toBe(true)
+  })
+
+  it('L. rabbit_lair_rechecked=false → 可成功 true', () => {
+    seedReportedInvestigation()
+    gotoLair()
+    seedQuestFlag('rabbit_lair_rechecked', false)
+    expect(useGameStore.getState().recheckGoldenRabbitMapAtLair()).toBe(true)
+    expect(goldenQuest()?.flags.rabbit_lair_rechecked).toBe(true)
+  })
+
+  it('M. rabbit_lair_rechecked=true 重复 → false 且同一引用不变', () => {
+    seedReportedInvestigation()
+    gotoLair()
+    useGameStore.getState().recheckGoldenRabbitMapAtLair()
+    const before = useGameStore.getState().gameState
+    expect(useGameStore.getState().recheckGoldenRabbitMapAtLair()).toBe(false)
+    expect(useGameStore.getState().gameState).toBe(before)
+  })
+
+  it.each([
+    ['asked_blacksmith 非 boolean ("yes")', 'asked_blacksmith', 'yes'],
+    ['asked_apothecary 非 boolean (1)', 'asked_apothecary', 1],
+    ['village_inquiry_reported 非 boolean (1)', 'village_inquiry_reported', 1],
+    ['rabbit_lair_rechecked 非 boolean ("yes")', 'rabbit_lair_rechecked', 'yes'],
+    ['rabbit_lair_rechecked 非 boolean (0.5)', 'rabbit_lair_rechecked', 0.5],
+  ])('N. %s → false 且完全不变（不静默覆盖）', (_label, flagKey, invalidValue) => {
+    seedReportedInvestigation()
+    gotoLair()
+    seedQuestFlag(flagKey, invalidValue)
+    const before = snapshot()
+    expect(useGameStore.getState().recheckGoldenRabbitMapAtLair()).toBe(false)
+    expect(snapshot()).toBe(before)
+    expect(goldenQuest()?.flags[flagKey]).toBe(invalidValue)
+  })
+
+  it('O. 成功后前三 flag 保持 true', () => {
+    seedReportedInvestigation()
+    gotoLair()
+    useGameStore.getState().recheckGoldenRabbitMapAtLair()
+    expect(goldenQuest()?.flags.asked_blacksmith).toBe(true)
+    expect(goldenQuest()?.flags.asked_apothecary).toBe(true)
+    expect(goldenQuest()?.flags.village_inquiry_reported).toBe(true)
+    expect(goldenQuest()?.flags.rabbit_lair_rechecked).toBe(true)
+  })
+
+  it('P. status 仍 in_progress、stage 仍 0', () => {
+    seedReportedInvestigation()
+    gotoLair()
+    useGameStore.getState().recheckGoldenRabbitMapAtLair()
+    expect(goldenQuest()?.status).toBe('in_progress')
+    expect(goldenQuest()?.stage).toBe(0)
+  })
+
+  it('Q. rabbit_path 仍 ×1（复查不消耗地图）', () => {
+    seedReportedInvestigation()
+    gotoLair()
+    useGameStore.getState().recheckGoldenRabbitMapAtLair()
+    expect(rabbitPath()?.quantity).toBe(1)
+  })
+
+  it('R. player/equipment/world/其他 quests/npcStates 全不变（无奖励）', () => {
+    seedReportedInvestigation()
+    gotoLair()
+    const beforePlayer = useGameStore.getState().gameState!.player
+    const beforeInventory = useGameStore.getState().gameState!.inventory
+    const beforeEquipment = useGameStore.getState().gameState!.equipment
+    const beforeWorld = useGameStore.getState().gameState!.world
+    const beforeOtherQuests = useGameStore.getState().gameState!.quests.filter((q) => q.questId !== 'quest_golden_rabbit_search')
+    useGameStore.getState().recheckGoldenRabbitMapAtLair()
+    const after = useGameStore.getState().gameState!
+    expect(after.player).toEqual(beforePlayer)
+    expect(after.inventory).toEqual(beforeInventory)
+    expect(after.equipment).toEqual(beforeEquipment)
+    expect(after.world).toEqual(beforeWorld)
+    expect(after.quests.filter((q) => q.questId !== 'quest_golden_rabbit_search')).toEqual(beforeOtherQuests)
+    expect(flags()?.rabbit_path_examined).toBe(true)
+  })
+
+  it('S. 不自动保存：复查后 hasSave 仍 false', () => {
+    seedReportedInvestigation()
+    gotoLair()
+    useGameStore.getState().recheckGoldenRabbitMapAtLair()
+    expect(goldenQuest()?.flags.rabbit_lair_rechecked).toBe(true)
+    expect(useGameStore.getState().hasSave).toBe(false)
+  })
+})

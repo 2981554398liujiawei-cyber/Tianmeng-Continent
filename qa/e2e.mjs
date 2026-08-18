@@ -2395,6 +2395,102 @@ try {
   await clickByText('结束交谈')
   await clickByText('返回主菜单')
 
+  // TM-P1-020：返回兔王巢穴复查《兔子的路径》（直接继续 P1-019 已保存复命完成档）
+  // A. Continue：进行中 + 村内调查已汇报 + 当前目标
+  await clickByText('继续游戏')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-020-A: 追寻黄金兔子王进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
+  check('P1-020-A: 村内调查已汇报', body.includes('村内调查已汇报。'))
+  check('P1-020-A: 当前目标：返回兔王巢穴重新比对地图', body.includes('当前目标：返回兔王巢穴重新比对地图。'))
+  // G 前置：复查前记录 Lv/HP/MP/金币/地图数
+  const lairBeforeLevel = body.match(/Lv\.(\d+)/)
+  const lairBeforeHp = body.match(/生命\s*(\d+)\s*\/\s*(\d+)/)
+  const lairBeforeMp = body.match(/灵力\s*(\d+)\s*\/\s*(\d+)/)
+  const lairBeforeGold = body.match(/金币\s*(\d+)/)
+  const lairBeforeMapCount = body.match(/兔子的路径 ×(\d+)/)
+  // B. 精确移动：青石村可前往按钮仍 [废弃矿洞, 村外草原] → 村外草原 → 兔王巢穴
+  const p1020StartButtons = await page.evaluate(() => {
+    const label = [...document.querySelectorAll('p')].find((el) => el.textContent.trim() === '可前往：')
+    if (!label) return []
+    const container = label.parentElement
+    if (!container) return []
+    return [...container.querySelectorAll('button')].map((b) => b.textContent.trim()).sort()
+  })
+  check('P1-020-B: 青石村可前往按钮精确等于 [废弃矿洞, 村外草原]', JSON.stringify(p1020StartButtons) === JSON.stringify(['废弃矿洞', '村外草原']))
+  await clickByText('村外草原')
+  await sleep(200)
+  await clickByText('兔王巢穴')
+  await sleep(300)
+  body = await bodyText()
+  const lairLocationId = await page.evaluate(() => {
+    const label = [...document.querySelectorAll('p')].find((el) => el.textContent.trim() === '当前位置')
+    if (!label) return null
+    const section = label.closest('section')
+    if (!section) return null
+    const idEl = [...section.querySelectorAll('p')].find((el) => /^[a-z_]+$/.test(el.textContent.trim()))
+    return idEl ? idEl.textContent.trim() : null
+  })
+  check('P1-020-B: 已到达兔王巢穴（currentLocationId === rabbit_lair）', lairLocationId === 'rabbit_lair')
+  // C. Boss 清场回归：无附近威胁 section/无嘟嘟兔/无迎战按钮 + 地图 ×1
+  check('P1-020-C: 无附近威胁 section', !body.includes('附近威胁'))
+  check('P1-020-C: 无嘟嘟兔', !body.includes('嘟嘟兔'))
+  check('P1-020-C: 无迎战按钮', !body.includes('迎战'))
+  check('P1-020-C: 兔子的路径 ×1', body.includes('兔子的路径 ×1'))
+  // D. 地图复查入口
+  check('P1-020-D: 巢穴复查剧情块文案', body.includes('你带着《兔子的路径》返回兔王巢穴，准备重新比对地图上的标记。'))
+  check('P1-020-D: 重新比对地图按钮 enabled', (await buttonDisabled('重新比对地图')) === false)
+  // E. 点击复查
+  await clickByText('重新比对地图')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-020-E: 复查固定结果', body.includes('你重新比对了地图与巢穴周边，但仍没有找到足以确认下一处地点的线索。'))
+  check('P1-020-E: 下一步目的地：【待补充】', body.includes('下一步目的地：【待补充】'))
+  check('P1-020-E: 重新比对地图按钮消失', !body.includes('重新比对地图'))
+  // F. 任务状态：进行中 + 2/2 + 村内调查已汇报 + 巢穴复查完成 + 【待补充】+ 无完成/提交
+  check('P1-020-F: 追寻黄金兔子王进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
+  check('P1-020-F: 地图线索调查 2 / 2', body.includes('地图线索调查：2 / 2'))
+  check('P1-020-F: 村内调查已汇报', body.includes('村内调查已汇报。'))
+  check('P1-020-F: 巢穴复查完成', body.includes('巢穴复查完成。'))
+  check('P1-020-F: 下一步目的地：【待补充】', body.includes('下一步目的地：【待补充】'))
+  check('P1-020-F: 复查前当前目标已消失', !body.includes('当前目标：返回兔王巢穴重新比对地图。'))
+  check('P1-020-F: 无可完成/提交任务', !body.includes('可完成') && !body.includes('提交任务'))
+  // G. 无副作用精确比较
+  const lairAfterLevel = body.match(/Lv\.(\d+)/)
+  const lairAfterHp = body.match(/生命\s*(\d+)\s*\/\s*(\d+)/)
+  const lairAfterMp = body.match(/灵力\s*(\d+)\s*\/\s*(\d+)/)
+  const lairAfterGold = body.match(/金币\s*(\d+)/)
+  const lairAfterMapCount = body.match(/兔子的路径 ×(\d+)/)
+  check(
+    'P1-020-G: 复查前后等级/生命/灵力/金币/地图数全不变',
+    lairBeforeLevel !== null && lairAfterLevel !== null && lairBeforeLevel[1] === lairAfterLevel[1] &&
+      lairBeforeHp !== null && lairAfterHp !== null && lairBeforeHp[1] === lairAfterHp[1] && lairBeforeHp[2] === lairAfterHp[2] &&
+      lairBeforeMp !== null && lairAfterMp !== null && lairBeforeMp[1] === lairAfterMp[1] && lairBeforeMp[2] === lairAfterMp[2] &&
+      lairBeforeGold !== null && lairAfterGold !== null && lairBeforeGold[1] === lairAfterGold[1] &&
+      lairBeforeMapCount !== null && lairAfterMapCount !== null && lairBeforeMapCount[1] === lairAfterMapCount[1],
+  )
+  // H. Save/Continue：复查完成保持；无按钮/无嘟嘟兔/无威胁/地图 ×1/进行中
+  await clickByText('保存游戏')
+  await clickByText('返回主菜单')
+  await clickByText('继续游戏')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-020-H: Continue 后巢穴复查完成', body.includes('巢穴复查完成。'))
+  check('P1-020-H: Continue 后下一步目的地【待补充】', body.includes('下一步目的地：【待补充】'))
+  check('P1-020-H: Continue 后第四任务仍进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
+  check('P1-020-H: Continue 后兔子的路径 ×1', body.includes('兔子的路径 ×1'))
+  await clickByText('村外草原')
+  await sleep(200)
+  await clickByText('兔王巢穴')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-020-H: 重进巢穴无重新比对地图按钮', !body.includes('重新比对地图'))
+  check('P1-020-H: 重进巢穴无嘟嘟兔', !body.includes('嘟嘟兔'))
+  check('P1-020-H: 重进巢穴无附近威胁 section', !body.includes('附近威胁'))
+  check('P1-020-H: 重进巢穴地图仍 ×1', body.includes('兔子的路径 ×1'))
+  check('P1-020-H: 重进巢穴复查完成保留', body.includes('巢穴复查完成。'))
+  await clickByText('返回主菜单')
+
   // TM-P1-015：战斗中使用治疗药水（独立最小段：默认骑士 + 村外草原魔化兔；魔化兔零修改 HP8/DEF11/atk+2/dmg2）
   // P1-007-R1 模式：段首只保存一次真实 Math.random
   await page.evaluate(() => {

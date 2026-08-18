@@ -89,6 +89,8 @@ interface GameStoreState {
   consultGoldenRabbitSearchNpc: (npcId: 'blacksmith' | 'apothecary') => boolean
   /** 向村长复命村内调查（TM-P1-019）：第四任务专属窄 action——青石村 + 任务 in_progress + 两人均已询问（asked 均 === true）+ 未复命时成功，只写 quest.flags.village_inquiry_reported=true；三个相关 flag 任一非 boolean 整体拒绝（R1 原则）；重复复命/未问完/非法前置全部拒绝且完全不变；不改 status/stage/询问 flag、无奖励、不建 npcState、不自动保存 */
   reportGoldenRabbitVillageInvestigation: () => boolean
+  /** 返回兔王巢穴复查《兔子的路径》（TM-P1-020）：第四任务专属窄 action——当前位置 rabbit_lair + 任务 in_progress + 前三调查 flag 均 === true + 未复查时成功，只写 quest.flags.rabbit_lair_rechecked=true；四个相关 flag 任一非 boolean 整体拒绝；rabbit_path 非法 quantity（0/-1/1.5/NaN/Infinity/缺失）拒绝；examined 非 true 拒绝；重复复查拒绝；不改 status/stage、不消耗地图、无奖励、不自动保存 */
+  recheckGoldenRabbitMapAtLair: () => boolean
 }
 
 /** 任务发现：不存在 → 创建 available；undiscovered → available；其余状态不重复创建。非法返回 null（TM-P0-006） */
@@ -946,6 +948,46 @@ export const useGameStore = create<GameStoreState>()((set) => ({
       // TM-P1-019：成功只写 quest.flags.village_inquiry_reported=true（两个 asked flag 保持 true；status 仍 in_progress、stage 仍 0；不建 npcState/无奖励/不自动保存）
       const nextQuests = [...s.gameState.quests]
       nextQuests[questIndex] = { ...quest, flags: { ...quest.flags, village_inquiry_reported: true } }
+      return { gameState: { ...s.gameState, quests: nextQuests } }
+    })
+    return changed
+  },
+
+  recheckGoldenRabbitMapAtLair: () => {
+    let changed = false
+    set((s) => {
+      if (!s.gameState) return {}
+      // 必须在兔王巢穴（正式剧情位置约束）
+      if (s.gameState.world.currentLocationId !== 'rabbit_lair') return {}
+      // 第四任务必须存在且 in_progress（stage 保持 0，真实下一地点仍未知，本卡不推进）
+      const questIndex = s.gameState.quests.findIndex((q) => q.questId === 'quest_golden_rabbit_search')
+      if (questIndex < 0) return {}
+      const quest = s.gameState.quests[questIndex]
+      if (!quest || quest.status !== 'in_progress') return {}
+      // TM-P1-020：四个相关 flag 完整校验（R1 原则）——各自只允许 undefined/boolean；任一非 boolean 已存在值整体拒绝且完全不变（不静默覆盖）
+      const blacksmithFlag = quest.flags.asked_blacksmith
+      const apothecaryFlag = quest.flags.asked_apothecary
+      const reportedFlag = quest.flags.village_inquiry_reported
+      const recheckedFlag = quest.flags.rabbit_lair_rechecked
+      const malformed =
+        (blacksmithFlag !== undefined && typeof blacksmithFlag !== 'boolean') ||
+        (apothecaryFlag !== undefined && typeof apothecaryFlag !== 'boolean') ||
+        (reportedFlag !== undefined && typeof reportedFlag !== 'boolean') ||
+        (recheckedFlag !== undefined && typeof recheckedFlag !== 'boolean')
+      if (malformed) return {}
+      // 前三调查 flag 必须严格 === true（村内调查已走完）
+      if (blacksmithFlag !== true || apothecaryFlag !== true || reportedFlag !== true) return {}
+      // 已复查（true）重复拒绝
+      if (recheckedFlag === true) return {}
+      // 必须合法持有 rabbit_path（quantity 安全整数 >=1；0/-1/1.5/NaN/Infinity/缺失一律拒绝）
+      const entry = s.gameState.inventory.find((e) => e.itemId === 'rabbit_path')
+      if (!entry || !Number.isSafeInteger(entry.quantity) || entry.quantity < 1) return {}
+      // 必须已展开地图
+      if (s.gameState.world.flags.rabbit_path_examined !== true) return {}
+      changed = true
+      // TM-P1-020：成功只写 quest.flags.rabbit_lair_rechecked=true（前三 flag 保持 true；status 仍 in_progress、stage 仍 0；地图不消耗/无奖励/不自动保存）
+      const nextQuests = [...s.gameState.quests]
+      nextQuests[questIndex] = { ...quest, flags: { ...quest.flags, rabbit_lair_rechecked: true } }
       return { gameState: { ...s.gameState, quests: nextQuests } }
     })
     return changed

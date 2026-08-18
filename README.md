@@ -437,6 +437,21 @@ TM-P1-019（村内调查复命——向村长汇报两人均无法辨认地图�
 - Store 单测 23 项 A-T+O：A 无 gameState false/B 第四任务不存在 false 全不变/C status available false/D completable/completed false/E 不在青石村 false/F 0/2（两人均未询问）false/G 只有 asked_blacksmith=true（1/2）false/H 只有 asked_apothecary=true（1/2）false/I 两人都 true → report true + village_inquiry_reported=true/J reported=false 可改 true/K reported=true 重复 false 同一引用不变/L+M+N 非 boolean 异常 flag（"yes"/1，三个 flag 各 2 组）拒绝且原样保留/O 交叉异常（asked_blacksmith=true + asked_apothecary="yes" + reported=false）整体拒绝/P 成功后两 asked 保持 true + reported=true/Q status 仍 in_progress + stage 仍 0/R rabbit_path 仍 ×1/S player/inventory/equipment/world/其他 quests/npcStates 全不变（village_elder 关系保持）+reported 保持/T 不自动保存
 - 26 项 E2E（直接继续 P1-018 已保存 2/2 档：A Continue 后进行中+地图线索调查 2/2/B 村长复命入口文案+按钮 enabled+P1-016 旧入口不重复出现/C 复命前记录 Lv/HP/MP/金币/地图数/位置/trust/respect/D 点击复命→固定文案（告诉村长+无人确认+【待补充】）+按钮消失/E 任务日志 2/2+村内调查已汇报+【待补充】+原 2/2 结果保留+第四任务状态标签进行中+无提交任务按钮/F 复命前后 Lv/HP/MP/金币/地图数精确相等+位置仍 qingshi_village+村长 trust 1 respect 0 保持/G 可前往按钮精确等于 [废弃矿洞, 村外草原]/H Save/Continue 后进行中+2/2+村内调查已汇报+【待补充】+重开村长已复命文案无按钮）
 
+TM-P1-020（返回兔王巢穴复查《兔子的路径》）：
+- 新增窄 Store Action `recheckGoldenRabbitMapAtLair(): boolean`（第四任务专属；未扩成 investigateLocation/inspectQuestLocation/ClueSystem/ExplorationAction/StoryEngine）
+- 成功前置全满足：gameState 存在 + 当前位置 rabbit_lair + quest_golden_rabbit_search 存在且 in_progress + asked_blacksmith===true + asked_apothecary===true + village_inquiry_reported===true + rabbit_lair_rechecked 为 undefined/false + 背包合法持有 rabbit_path（quantity 安全整数 >=1）+ world.flags.rabbit_path_examined===true；否则 false 且 GameState 完全不变
+- 四个相关 flag 完整校验（R1 原则）：asked_blacksmith/asked_apothecary/village_inquiry_reported/rabbit_lair_rechecked 各自只允许 undefined/boolean；任一非 boolean 已存在值（"yes"/1/0.5）整次拒绝且完全不变（不静默覆盖）；前三项必须严格 true；rabbit_lair_rechecked=false 可 false→true；已 true 重复复查拒绝且同一引用不变
+- 地图 quantity 安全边界：0/-1/1.5/NaN/Infinity/缺失一律拒绝（单测直接构造真实异常 inventory，非 addItem 假覆盖）
+- 成功后只写 quest.flags.rabbit_lair_rechecked=true：前三 flag 保持 true；status 仍 in_progress、stage 仍 0；不 markQuestCompletable/completeQuest/stage+1（真实下一地点仍未知）
+- 玩家自行移动（不新增快捷传送）：青石村 → 村外草原 → 兔王巢穴（现有 travelToLocation）
+- 巢穴复查剧情块（rabbit_lair + 第四任务 in_progress + 已复命 + 未复查）：「你带着《兔子的路径》返回兔王巢穴，准备重新比对地图上的标记。」+ 按钮「重新比对地图」；点击只调用 Store action（GamePage 不直接改 QuestState.flags）；成功隐藏按钮（不留 disabled）+ 固定结果「你重新比对了地图与巢穴周边，但仍没有找到足以确认下一处地点的线索。/下一步目的地：【待补充】」（不声称路线从巢穴开始/发现道路/足迹/方向/知道黄金兔子王去向）
+- 任务日志：已复命未复查时显示「当前目标：返回兔王巢穴重新比对地图。」（行动目标，非新 lore）；复查后目标消失 + 额外「巢穴复查完成。」；保留 2/2 + 调查结果 + 村内调查已汇报 +【待补充】
+- Boss 清场保持（P1-014 封板）：持有 rabbit_path 后兔王巢穴无嘟嘟兔/无迎战按钮/整个「附近威胁」section 不渲染（本卡不重新生成 Boss）
+- 无任何奖励（金币/等级/HP/MP/物品/world.flags/completedEvents 全 +0）；trust/respect/npcStates/world.flags 全不变；兔子的路径复查不消耗仍 ×1；无新移动入口/新地点/新路线/新坐标
+- schema 不变、SAVE_VERSION=1；quests.ts/npcs.ts/locations.ts/items.ts/enemies.ts/App.tsx/CombatPage.tsx/types/storage/rules/content 零修改；git diff 仅 gameStore.ts + gameStore.test.ts + GamePage.tsx + qa/e2e.mjs + README
+- Store 单测 27 项 A-S：A 无 gameState false/B 不在 rabbit_lair false/C 第四任务不存在 false 全不变/D available/completable/completed false/E asked_blacksmith !== true false/F asked_apothecary !== true false/G village_inquiry_reported !== true false/H 无 rabbit_path false/I quantity 0/-1/1.5/NaN/Infinity false 同一引用不变/J rabbit_path_examined !== true false/K 全前置合法 true+rechecked=true/L rechecked=false 可改 true/M rechecked=true 重复 false 同一引用不变/N 四 flag 任一非 boolean（"yes"/1/0.5）拒绝且原样保留/O 成功后前三 flag 保持 true/P status 仍 in_progress+stage 仍 0/Q rabbit_path 仍 ×1（复查不消耗地图）/R player/inventory/equipment/world/其他 quests/npcStates 全不变+examined 保持/S 不自动保存
+- 31 项 E2E（直接继续 P1-019 已保存复命完成档：A Continue 后进行中+村内调查已汇报+当前目标：返回兔王巢穴重新比对地图/B 青石村可前往按钮精确等于 [废弃矿洞, 村外草原]→村外草原→兔王巢穴+currentLocationId===rabbit_lair/C Boss 清场回归（无附近威胁 section+无嘟嘟兔+无迎战按钮+地图 ×1）/D 巢穴复查剧情块文案+重新比对地图按钮 enabled/E 点击复查→固定结果+【待补充】+按钮消失/F 任务状态进行中+2/2+村内调查已汇报+巢穴复查完成+【待补充】+当前目标消失+无可完成/提交/G 复查前后 Lv/HP/MP/金币/地图数精确相等/H Save/Continue 后巢穴复查完成+【待补充】+进行中+地图 ×1+重进巢穴无按钮/无嘟嘟兔/无威胁 section/地图仍 ×1/复查完成保留）
+
 ## 目录结构
 
 ```

@@ -65,6 +65,7 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
   const reportRabbitPathToVillageElder = useGameStore((s) => s.reportRabbitPathToVillageElder)
   const consultGoldenRabbitSearchNpc = useGameStore((s) => s.consultGoldenRabbitSearchNpc)
   const reportGoldenRabbitVillageInvestigation = useGameStore((s) => s.reportGoldenRabbitVillageInvestigation)
+  const recheckGoldenRabbitMapAtLair = useGameStore((s) => s.recheckGoldenRabbitMapAtLair)
   const [saveResult, setSaveResult] = useState<'saved' | 'failed' | null>(null)
   const [travelError, setTravelError] = useState(false)
   // TM-P0-015：活动对话 NPC（仅 UI 本地状态，不进入 GameState / 存档）
@@ -101,6 +102,8 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
   const goldenInvestigationCount = (goldenAskedBlacksmith ? 1 : 0) + (goldenAskedApothecary ? 1 : 0)
   /** TM-P1-019：村内调查是否已向村长复命（只读 QuestState.flags；复命后任务日志显示阶段提示） */
   const goldenVillageInquiryReported = goldenSearchQuest?.flags.village_inquiry_reported === true
+  /** TM-P1-020：兔王巢穴是否已复查《兔子的路径》（只读 QuestState.flags） */
+  const goldenLairRechecked = goldenSearchQuest?.flags.rabbit_lair_rechecked === true
   // TM-P0-006：附近委托 = 给予者位于当前地点的注册任务（不写死地点 ID）
   const localQuests = Object.values(QUESTS).filter((quest) => {
     const giver = getNpc(quest.giverNpcId)
@@ -370,6 +373,23 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
           </p>
           <p className="mt-2 text-bone-300">下一步目的地：【待补充】</p>
         </section>
+      )}
+
+      {/* TM-P1-020：兔王巢穴地图复查 —— 第四任务 in_progress + 村内调查已复命 + 未复查时显示入口；成功后按钮消失并显示固定结果（不虚构路线/足迹/方向/坐标） */}
+      {world.currentLocationId === 'rabbit_lair' && goldenSearchInProgress && goldenVillageInquiryReported && (
+        goldenLairRechecked ? (
+          <section className="rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
+            <p className="text-bone-200">你重新比对了地图与巢穴周边，但仍没有找到足以确认下一处地点的线索。</p>
+            <p className="mt-2 text-bone-300">下一步目的地：【待补充】</p>
+          </section>
+        ) : (
+          <section className="rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
+            <p className="mb-3 text-bone-300">你带着《兔子的路径》返回兔王巢穴，准备重新比对地图上的标记。</p>
+            <Button variant="primary" onClick={() => recheckGoldenRabbitMapAtLair()}>
+              重新比对地图
+            </Button>
+          </section>
+        )
       )}
 
       {/* TM-P0-022：村中休整 —— 仅青石村显示；免费恢复 HP/MP 至最大值（战败软锁出口） */}
@@ -760,6 +780,13 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
                   {/* TM-P1-019：复命后阶段提示——保留 2/2 调查结果，额外显示已汇报（不覆盖历史进度） */}
                   {qs.questId === 'quest_golden_rabbit_search' && goldenVillageInquiryReported && (
                     <p className="mt-1 text-xs text-gold-300">村内调查已汇报。</p>
+                  )}
+                  {/* TM-P1-020：已复命未复查时显示行动目标；复查后目标消失并显示复查完成（不新增 lore） */}
+                  {qs.questId === 'quest_golden_rabbit_search' && goldenVillageInquiryReported && !goldenLairRechecked && (
+                    <p className="mt-1 text-xs text-bone-400">当前目标：返回兔王巢穴重新比对地图。</p>
+                  )}
+                  {qs.questId === 'quest_golden_rabbit_search' && goldenLairRechecked && (
+                    <p className="mt-1 text-xs text-gold-300">巢穴复查完成。</p>
                   )}
                   {canSubmit && (
                     <div className="mt-2">
