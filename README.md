@@ -480,6 +480,19 @@ TM-P1-022（第二条支线《矿洞余患》——铁匠发布，复用废弃�
 - Store 单测 14 项 A-M：A 矿洞清理未 completed discover false/B completed discover true+available/C accept in_progress/D 非 corrupted_rat 胜利不推进（corrupted_rabbit 无副作用 GameState 完全不变）/E corrupted_rat 但不在废弃矿洞不推进/F 支线 available 时 rat 胜利不推进/G in_progress+合法 rat 胜利→completable+stage 0/H 同次胜利仍 iron_ore +1/I 已 completable 再打 rat 保持 completable 不回退/J generic completeQuest→completed+gold 精确 +10/K 除 iron_ore+1/支线 QuestState/提交 gold+10 外无其他状态变化（打 rat 后 player/equipment/world 全等；提交后仅 gold 与支线 QuestState 变）/L 黄金兔子第四主线完全不变（本卡流程不创建/不推进）+采药受阻不创建/M 不自动保存
 - 24 项 E2E（直接继续 P1-021 已保存档：A Continue 后采药受阻已完成+黄金主线进行中+巢穴复查完成+【待补充】/B 附近委托出现铁匠入口+矿洞余患可接受（发布者铁匠）+接受后进行中+当前目标：前往废弃矿洞处理残余的魔化鼠+记录金币/铁矿石/C 前往废弃矿洞魔化鼠仍存在可迎战/D 确定性击败（Math.random 隔离 0.99）→矿洞余患可完成+矿洞余患已确认+当前目标：返回青石村向铁匠复命+铁矿石 = 战前 + 1/E 返回青石村提交→已完成+金币精确 +10/F 主线零回归（黄金主线进行中+巢穴复查完成+【待补充】+采药受阻已完成）/G Save/Continue 后矿洞余患已完成+采药受阻已完成+黄金主线进行中+巢穴复查完成+支线不重新出现为可接受）
 
+TM-P1-023（第一个区域到第二个区域的正式跨越：离开青石村前往天龙城；《兔子的路径》为长期线索，主城非黄金兔子王所在地）：
+- locations.ts 新增 tianlong_city：name 天龙城 / description「天龙王朝的皇城。高大的城墙、宽阔的街道与成片建筑构成这座繁华城市。」/ connections=[]（单向不可返回，无返回 connection）/ enemyIds=[]（本卡无假内容）；P1-024 再开始城内内容
+- 新增唯一窄 Store Action `departQingshiVillageToTianlongCity(): boolean`（禁止泛化 teleport/RegionManager/ChapterEngine）：成功必须 gameState 存在 + qingshi_village + 黄金主线存在且 in_progress/stage 0 + 四剧情 flag（asked_blacksmith/asked_apothecary/village_inquiry_reported/rabbit_lair_rechecked）均严格 ===true（任一非 boolean 如 "yes"/1/0.5 整次拒绝且完全不变，不修复）+ rabbit_path 合法持有（存在且 quantity 安全整数>=1；0/-1/1.5/NaN/Infinity 拒绝）+ rabbit_path_examined===true + rabbit_path_reported===true + 两条支线（采药受阻/矿洞余患）不存在/completed/failed 不阻止、available/in_progress/completable 阻止（不自动改 failed）
+- 成功只改 world.currentLocationId='tianlong_city'（无 qingshi_departed flag）；player/inventory/equipment/quests/flags/npcStates/completedEvents 全不变；不自动保存
+- 黄金兔子任务长期保留：in_progress/stage 0/四 flag 均 true/《兔子的路径》×1/具体目的地【待补充】（未把天龙城写成黄金兔子目标，summary 未改）
+- UI（GamePage）：青石村 + 收束满足时显示「新的旅程」section——正文「青石村的事情暂时告一段落。你已经可以前往天龙城继续旅程。」+ 按钮「准备前往天龙城」（enabled）；已接触未完成支线时显示「你还有已经接触但尚未结束的村内委托，处理完再离开。」（不显示按钮、不自动完成/失败）；点击后 UI 本地 state showTianlongDepartureConfirm 显示二次确认「离开青石村后将无法返回。/尚未发现的村内委托将被留在这里。」+「前往天龙城/暂不离开」（不写 GameState）；「前往天龙城」只调用 Store action，返回 true 后自然进入新地点（GamePage 不直接写 currentLocationId/flags/quests）
+- 天龙城落地：沿用已有地点 UI（当前位置/天龙城/tianlong_city/注册表 description）；connections=[] → 可前往区无按钮；无「返回青石村」；无附近人物/威胁/委托 section（空集合沿用不渲染）
+- 顺带修复 P1-021 遗留小问题：采药受阻任务卡「当前目标：返回青石村向药师复命。」增加 status===completable 限制（completed 后不再显示）
+- schema 不变、SAVE_VERSION=1；quests.ts/npcs.ts/items.ts/enemies.ts/App.tsx/CombatPage.tsx/types/storage/rules 零修改；git diff 仅 locations.ts + content.test.ts + gameStore.ts + gameStore.test.ts + GamePage.tsx + qa/e2e.mjs + README
+- content 测试：LOCATIONS toHaveLength(5) + tianlong_city 注册表锁定（id/name/description/connections=[]/enemyIds=[]/无 requiredFlag）+ NPC/ENEMY/ITEM/QUEST 数量不变（QUEST 仍 6）
+- Store 单测 34 项 A-W（含 it.each 子项）：A 无 gameState false/B 不在青石村 false/C 黄金任务不存在 false/D available/completable/completed false/E stage 非 0 false/F 四 flag 任一非 true false/G 四 flag 任一非 boolean（"yes"/1/0.5）false 且同一引用不变不修复/H 无 rabbit_path false/I quantity 0/-1/1.5/NaN/Infinity false 且同一引用不变/J examined 非 true false/K reported 非 true false/L 两支线均不存在可离开/M 支线 completed 可离开/N 支线 failed 可离开/O/P/Q 两支线 available/in_progress/completable 各状态 false 且完全不变（不自动改 failed）/R 全合法 true+tianlong_city/S 成功只改 currentLocationId（player/inventory/equipment/quests/npcStates/completedEvents/flags 全等）/T golden quest 完全不变（长期保留）/U rabbit_path 仍 ×1/V 成功后再次调用 false 且 GameState 同一引用/W 不自动保存
+- 27 项 E2E（直接继续 P1-022 已保存完成档：A Continue 后两支线已完成+黄金主线进行中+巢穴复查完成+兔子的路径 ×1+当前位置 qingshi_village/B 新的旅程入口+入口正文+准备前往天龙城按钮 enabled（+记录 Lv/HP/MP/gold/地图数）/C 二次确认文案（无法返回+委托留在此地）+前往天龙城/暂不离开按钮+暂不离开后仍在青石村+重新打开/E 真正确认→当前位置 tianlong_city+地点天龙城+描述来自注册表/F 可前往按钮精确空 []+无返回青石村按钮/G 离村前后 Lv/HP/MP/gold/地图数精确全不变/H 追寻黄金兔子王进行中+巢穴复查完成+具体目的地【待补充】+两支线仍已完成/I Save/Continue 后当前位置 tianlong_city+地点天龙城+无返回青石村+黄金主线进行中+兔子的路径 ×1）
+
 ## 目录结构
 
 ```

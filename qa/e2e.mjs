@@ -2659,6 +2659,121 @@ try {
   check('P1-022-G: Continue 后巢穴复查完成', body.includes('巢穴复查完成。'))
   await clickByText('返回主菜单')
 
+  // TM-P1-023：离开青石村前往天龙城（直接继续 P1-022 已保存完成档，青石村）
+  // A. Continue：两条支线已完成 + 黄金主线保持 + 当前位置 qingshi_village
+  await clickByText('继续游戏')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-023-A: 矿洞余患已完成', body.includes('矿洞余患') && body.includes('已完成'))
+  check('P1-023-A: 采药受阻已完成', body.includes('采药受阻') && body.includes('已完成'))
+  check('P1-023-A: 追寻黄金兔子王进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
+  check('P1-023-A: 巢穴复查完成', body.includes('巢穴复查完成。'))
+  check('P1-023-A: 兔子的路径 ×1', body.includes('兔子的路径 ×1'))
+  const departLocationBefore = await page.evaluate(() => {
+    const label = [...document.querySelectorAll('p')].find((el) => el.textContent.trim() === '当前位置')
+    if (!label) return null
+    const section = label.closest('section')
+    if (!section) return null
+    const idEl = [...section.querySelectorAll('p')].find((el) => /^[a-z_]+$/.test(el.textContent.trim()))
+    return idEl ? idEl.textContent.trim() : null
+  })
+  check('P1-023-A: 当前位置 qingshi_village', departLocationBefore === 'qingshi_village')
+  // B. 新旅程入口
+  check('P1-023-B: 新的旅程入口', body.includes('新的旅程'))
+  check('P1-023-B: 入口正文', body.includes('青石村的事情暂时告一段落。你已经可以前往天龙城继续旅程。'))
+  check('P1-023-B: 准备前往天龙城按钮 enabled', (await buttonDisabled('准备前往天龙城')) === false)
+  // D 前置：离村前记录 Lv/HP/MP/gold/地图数
+  const departBeforeLevel = body.match(/Lv\.(\d+)/)
+  const departBeforeHp = body.match(/生命\s*(\d+)\s*\/\s*(\d+)/)
+  const departBeforeMp = body.match(/灵力\s*(\d+)\s*\/\s*(\d+)/)
+  const departBeforeGold = body.match(/金币\s*(\d+)/)
+  const departBeforeMapCount = body.match(/兔子的路径 ×(\d+)/)
+  // C. 二次确认：暂不离开 → 仍在青石村 → 重新打开
+  await clickByText('准备前往天龙城')
+  await sleep(200)
+  body = await bodyText()
+  check('P1-023-C: 二次确认文案（无法返回）', body.includes('离开青石村后将无法返回。'))
+  check('P1-023-C: 二次确认文案（委托留在此地）', body.includes('尚未发现的村内委托将被留在这里。'))
+  check('P1-023-C: 前往天龙城按钮存在', body.includes('前往天龙城'))
+  check('P1-023-C: 暂不离开按钮存在', body.includes('暂不离开'))
+  await clickByText('暂不离开')
+  await sleep(200)
+  const departLocationAfterCancel = await page.evaluate(() => {
+    const label = [...document.querySelectorAll('p')].find((el) => el.textContent.trim() === '当前位置')
+    if (!label) return null
+    const section = label.closest('section')
+    if (!section) return null
+    const idEl = [...section.querySelectorAll('p')].find((el) => /^[a-z_]+$/.test(el.textContent.trim()))
+    return idEl ? idEl.textContent.trim() : null
+  })
+  check('P1-023-C: 暂不离开后仍在青石村', departLocationAfterCancel === 'qingshi_village')
+  await clickByText('准备前往天龙城')
+  await sleep(200)
+  // E. 真正确认：前往天龙城
+  await clickByText('前往天龙城')
+  await sleep(300)
+  body = await bodyText()
+  const departLocationAfter = await page.evaluate(() => {
+    const label = [...document.querySelectorAll('p')].find((el) => el.textContent.trim() === '当前位置')
+    if (!label) return null
+    const section = label.closest('section')
+    if (!section) return null
+    const idEl = [...section.querySelectorAll('p')].find((el) => /^[a-z_]+$/.test(el.textContent.trim()))
+    return idEl ? idEl.textContent.trim() : null
+  })
+  check('P1-023-E: 当前位置 = tianlong_city', departLocationAfter === 'tianlong_city')
+  check('P1-023-E: 地点名称天龙城', body.includes('天龙城'))
+  check('P1-023-E: 描述来自注册表', body.includes('天龙王朝的皇城'))
+  // F. 单向性：无移动按钮、无返回青石村
+  const departTravelButtons = await page.evaluate(() => {
+    const label = [...document.querySelectorAll('p')].find((el) => el.textContent.trim() === '可前往：')
+    if (!label) return []
+    const container = label.parentElement
+    if (!container) return []
+    return [...container.querySelectorAll('button')].map((b) => b.textContent.trim())
+  })
+  check('P1-023-F: 可前往按钮为空 []（天龙城无连接）', JSON.stringify(departTravelButtons) === JSON.stringify([]))
+  check('P1-023-F: 无返回青石村按钮', !body.includes('返回青石村'))
+  // G. 无副作用精确比较
+  const departAfterLevel = body.match(/Lv\.(\d+)/)
+  const departAfterHp = body.match(/生命\s*(\d+)\s*\/\s*(\d+)/)
+  const departAfterMp = body.match(/灵力\s*(\d+)\s*\/\s*(\d+)/)
+  const departAfterGold = body.match(/金币\s*(\d+)/)
+  const departAfterMapCount = body.match(/兔子的路径 ×(\d+)/)
+  check(
+    'P1-023-G: 离村前后等级/生命/灵力/金币/地图数全不变',
+    departBeforeLevel !== null && departAfterLevel !== null && departBeforeLevel[1] === departAfterLevel[1] &&
+      departBeforeHp !== null && departAfterHp !== null && departBeforeHp[1] === departAfterHp[1] && departBeforeHp[2] === departAfterHp[2] &&
+      departBeforeMp !== null && departAfterMp !== null && departBeforeMp[1] === departAfterMp[1] && departBeforeMp[2] === departAfterMp[2] &&
+      departBeforeGold !== null && departAfterGold !== null && departBeforeGold[1] === departAfterGold[1] &&
+      departBeforeMapCount !== null && departAfterMapCount !== null && departBeforeMapCount[1] === departAfterMapCount[1],
+  )
+  // H. 黄金兔子长期线保持（不把天龙城写成目标）
+  check('P1-023-H: 追寻黄金兔子王进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
+  check('P1-023-H: 巢穴复查完成', body.includes('巢穴复查完成。'))
+  check('P1-023-H: 具体目的地【待补充】', body.includes('具体目的地：【待补充】'))
+  check('P1-023-H: 两条支线仍已完成', body.includes('采药受阻') && body.includes('已完成') && body.includes('矿洞余患') && body.includes('已完成'))
+  // I. Save/Continue：仍在天龙城
+  await clickByText('保存游戏')
+  await clickByText('返回主菜单')
+  await clickByText('继续游戏')
+  await sleep(300)
+  body = await bodyText()
+  const departLocationSaved = await page.evaluate(() => {
+    const label = [...document.querySelectorAll('p')].find((el) => el.textContent.trim() === '当前位置')
+    if (!label) return null
+    const section = label.closest('section')
+    if (!section) return null
+    const idEl = [...section.querySelectorAll('p')].find((el) => /^[a-z_]+$/.test(el.textContent.trim()))
+    return idEl ? idEl.textContent.trim() : null
+  })
+  check('P1-023-I: Continue 后当前位置 = tianlong_city', departLocationSaved === 'tianlong_city')
+  check('P1-023-I: Continue 后地点天龙城', body.includes('天龙城'))
+  check('P1-023-I: Continue 后无青石村返回按钮', !body.includes('返回青石村'))
+  check('P1-023-I: Continue 后追寻黄金兔子王进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
+  check('P1-023-I: Continue 后兔子的路径 ×1', body.includes('兔子的路径 ×1'))
+  await clickByText('返回主菜单')
+
   // TM-P1-015：战斗中使用治疗药水（独立最小段：默认骑士 + 村外草原魔化兔；魔化兔零修改 HP8/DEF11/atk+2/dmg2）
   // P1-007-R1 模式：段首只保存一次真实 Math.random
   await page.evaluate(() => {

@@ -47,12 +47,25 @@ describe('TM-P0-002：内容注册表交叉引用一致性', () => {
 })
 
 describe('TM-P0-002：内容数量与指定条目', () => {
-  it('地点 4 个：青石村/村外草原/废弃矿洞/兔王巢穴', () => {
-    expect(Object.keys(LOCATIONS)).toHaveLength(4)
+  it('地点 5 个：青石村/村外草原/废弃矿洞/兔王巢穴/天龙城', () => {
+    expect(Object.keys(LOCATIONS)).toHaveLength(5)
     expect(getLocation('qingshi_village')?.name).toBe('青石村')
     expect(getLocation('village_grassland')?.name).toBe('村外草原')
     expect(getLocation('abandoned_mine')?.name).toBe('废弃矿洞')
     expect(getLocation('rabbit_lair')?.name).toBe('兔王巢穴')
+    expect(getLocation('tianlong_city')?.name).toBe('天龙城')
+  })
+
+  // TM-P1-023：天龙城落点锁定——本卡只做区域切换与落点：connections=[]（单向不可返回）enemyIds=[]（无假内容）
+  it('TM-P1-023：天龙城注册表定义锁定（id/name/description/connections=[]/enemyIds=[]）', () => {
+    const city = getLocation('tianlong_city')
+    expect(city).toBeDefined()
+    expect(city?.id).toBe('tianlong_city')
+    expect(city?.name).toBe('天龙城')
+    expect(city?.description).toContain('天龙王朝的皇城')
+    expect(city?.connections).toEqual([])
+    expect(city?.enemyIds).toEqual([])
+    expect(city?.requiredFlag).toBeUndefined()
   })
 
   it('连接关系符合设定', () => {

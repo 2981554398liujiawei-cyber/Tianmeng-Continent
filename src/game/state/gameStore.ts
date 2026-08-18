@@ -93,6 +93,8 @@ interface GameStoreState {
   recheckGoldenRabbitMapAtLair: () => boolean
   /** 查看村外草原采药区域（TM-P1-021）：支线专属窄 action——当前位置 village_grassland + quest_apothecary_herb_route in_progress + grassland_checked undefined/false 时成功，原子写 flags.grassland_checked=true 且 status→completable（stage 保持 0）；重复（true）/非 boolean 异常 flag/非法前置全部拒绝且完全不变；无金币/HP/MP/物品副作用、不自动保存 */
   inspectApothecaryHerbRoute: () => boolean
+  /** 离开青石村前往天龙城（TM-P1-023）：一次性区域跨越 action——青石村 + 黄金主线 in_progress/stage 0 + 四剧情 flag 均 true + rabbit_path 合法持有（安全整数>=1）+ examined/reported true + 已接触未完成的两条支线（available/in_progress/completable）阻止时成功，只改 world.currentLocationId='tianlong_city'（无 qingshi_departed flag）；任何非法前置/异常 flag/quantity 全部拒绝且完全不变；player/inventory/equipment/quests/flags/npcStates/completedEvents 全不变、不自动保存 */
+  departQingshiVillageToTianlongCity: () => boolean
 }
 
 /** 任务发现：不存在 → 创建 available；undiscovered → available；其余状态不重复创建。非法返回 null（TM-P0-006） */
@@ -1021,6 +1023,50 @@ export const useGameStore = create<GameStoreState>()((set) => ({
       const nextQuests = [...s.gameState.quests]
       nextQuests[questIndex] = { ...quest, status: 'completable', flags: { ...quest.flags, grassland_checked: true } }
       return { gameState: { ...s.gameState, quests: nextQuests } }
+    })
+    return changed
+  },
+
+  departQingshiVillageToTianlongCity: () => {
+    let changed = false
+    set((s) => {
+      if (!s.gameState) return {}
+      // 必须在青石村（出发地）
+      if (s.gameState.world.currentLocationId !== 'qingshi_village') return {}
+      // 黄金兔子主线必须存在且 in_progress + stage 0（青石村调查部分确实已收束）
+      const goldenQuest = s.gameState.quests.find((q) => q.questId === 'quest_golden_rabbit_search')
+      if (!goldenQuest || goldenQuest.status !== 'in_progress' || goldenQuest.stage !== 0) return {}
+      // TM-P1-023：四个剧情 flag 完整校验（R1 原则）——各自只允许 boolean 且必须严格 true；任一非 boolean 已存在值整次拒绝且完全不变（不静默覆盖）
+      const blacksmithFlag = goldenQuest.flags.asked_blacksmith
+      const apothecaryFlag = goldenQuest.flags.asked_apothecary
+      const reportedFlag = goldenQuest.flags.village_inquiry_reported
+      const recheckedFlag = goldenQuest.flags.rabbit_lair_rechecked
+      const malformed =
+        typeof blacksmithFlag !== 'boolean' ||
+        typeof apothecaryFlag !== 'boolean' ||
+        typeof reportedFlag !== 'boolean' ||
+        typeof recheckedFlag !== 'boolean'
+      if (malformed || !blacksmithFlag || !apothecaryFlag || !reportedFlag || !recheckedFlag) return {}
+      // 必须合法持有《兔子的路径》（quantity 安全整数 >=1；0/-1/1.5/NaN/Infinity/缺失一律拒绝——长期线索必须带往后续区域）
+      const entry = s.gameState.inventory.find((e) => e.itemId === 'rabbit_path')
+      if (!entry || !Number.isSafeInteger(entry.quantity) || entry.quantity < 1) return {}
+      // 必须已展开地图且已向村长汇报
+      if (s.gameState.world.flags.rabbit_path_examined !== true) return {}
+      if (s.gameState.world.flags.rabbit_path_reported !== true) return {}
+      // 已接触但未完成的两条支线阻止离村（不存在/completed/failed 不阻止；available/in_progress/completable 阻止；不自动改 failed）
+      for (const sideId of ['quest_apothecary_herb_route', 'quest_blacksmith_mine_remnant']) {
+        const side = s.gameState.quests.find((q) => q.questId === sideId)
+        if (!side) continue
+        if (side.status === 'available' || side.status === 'in_progress' || side.status === 'completable') return {}
+      }
+      changed = true
+      // TM-P1-023：成功只改 world.currentLocationId='tianlong_city'（无 qingshi_departed flag；player/inventory/equipment/quests/flags/npcStates/completedEvents 全不变；不自动保存）
+      return {
+        gameState: {
+          ...s.gameState,
+          world: { ...s.gameState.world, currentLocationId: 'tianlong_city' },
+        },
+      }
     })
     return changed
   },

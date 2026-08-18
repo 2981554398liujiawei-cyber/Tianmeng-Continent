@@ -4332,3 +4332,366 @@ describe('TM-P1-022：第二条支线《矿洞余患》（铁匠发布）', () =
     expect(useGameStore.getState().hasSave).toBe(false)
   })
 })
+
+describe('TM-P1-023：离开青石村前往天龙城（区域跨越）', () => {
+  const goldenQuest = () => useGameStore.getState().gameState?.quests.find((q) => q.questId === 'quest_golden_rabbit_search')
+  const herbQuest = () => useGameStore.getState().gameState?.quests.find((q) => q.questId === 'quest_apothecary_herb_route')
+  const mineRemnantQuest = () => useGameStore.getState().gameState?.quests.find((q) => q.questId === 'quest_blacksmith_mine_remnant')
+  const rabbitPath = () => useGameStore.getState().gameState?.inventory.find((e) => e.itemId === 'rabbit_path')
+  const currentLocation = () => useGameStore.getState().gameState?.world.currentLocationId
+  const snapshot = () => JSON.stringify(useGameStore.getState().gameState)
+
+  /** 走到青石村收束 + 两条支线 completed（可离村的完整合法状态） */
+  const seedDepartureReady = () => {
+    useGameStore.getState().newGame()
+    useGameStore.getState().discoverQuest('quest_village_monsters')
+    useGameStore.getState().acceptQuest('quest_village_monsters')
+    useGameStore.getState().travelToLocation('village_grassland')
+    useGameStore.getState().resolveCombatVictory('corrupted_rabbit')
+    useGameStore.getState().travelToLocation('qingshi_village')
+    useGameStore.getState().completeQuest('quest_village_monsters')
+    useGameStore.getState().discoverQuest('quest_mine_cleanup')
+    useGameStore.getState().acceptQuest('quest_mine_cleanup')
+    useGameStore.getState().travelToLocation('abandoned_mine')
+    useGameStore.getState().resolveCombatVictory('corrupted_rat')
+    useGameStore.getState().travelToLocation('qingshi_village')
+    useGameStore.getState().completeQuest('quest_mine_cleanup')
+    useGameStore.getState().discoverQuest('quest_grassland_wolf')
+    useGameStore.getState().acceptQuest('quest_grassland_wolf')
+    useGameStore.getState().travelToLocation('village_grassland')
+    useGameStore.getState().resolveCombatVictory('corrupted_wolf')
+    useGameStore.getState().travelToLocation('qingshi_village')
+    useGameStore.getState().completeQuest('quest_grassland_wolf')
+    useGameStore.getState().addItem('rabbit_path', 1)
+    useGameStore.getState().inspectRabbitPath()
+    useGameStore.getState().reportRabbitPathToVillageElder()
+    useGameStore.getState().discoverQuest('quest_golden_rabbit_search')
+    useGameStore.getState().acceptQuest('quest_golden_rabbit_search')
+    useGameStore.getState().consultGoldenRabbitSearchNpc('blacksmith')
+    useGameStore.getState().consultGoldenRabbitSearchNpc('apothecary')
+    useGameStore.getState().reportGoldenRabbitVillageInvestigation()
+    useGameStore.getState().travelToLocation('village_grassland')
+    useGameStore.getState().travelToLocation('rabbit_lair')
+    useGameStore.getState().recheckGoldenRabbitMapAtLair()
+    useGameStore.getState().travelToLocation('village_grassland')
+    useGameStore.getState().travelToLocation('qingshi_village')
+    // 两条支线完成（避免阻止离村）
+    useGameStore.getState().discoverQuest('quest_apothecary_herb_route')
+    useGameStore.getState().acceptQuest('quest_apothecary_herb_route')
+    useGameStore.getState().travelToLocation('village_grassland')
+    useGameStore.getState().inspectApothecaryHerbRoute()
+    useGameStore.getState().travelToLocation('qingshi_village')
+    useGameStore.getState().completeQuest('quest_apothecary_herb_route')
+    useGameStore.getState().discoverQuest('quest_blacksmith_mine_remnant')
+    useGameStore.getState().acceptQuest('quest_blacksmith_mine_remnant')
+    useGameStore.getState().travelToLocation('abandoned_mine')
+    useGameStore.getState().resolveCombatVictory('corrupted_rat')
+    useGameStore.getState().travelToLocation('qingshi_village')
+    useGameStore.getState().completeQuest('quest_blacksmith_mine_remnant')
+  }
+
+  /** 直接构造黄金主线 flag 运行态 */
+  const seedGoldenFlag = (flagKey: string, value: string | number | boolean | undefined) => {
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return {
+        gameState: {
+          ...s.gameState,
+          quests: s.gameState.quests.map((q) => {
+            if (q.questId !== 'quest_golden_rabbit_search') return q
+            if (value === undefined) {
+              const nextFlags = { ...q.flags }
+              delete nextFlags[flagKey]
+              return { ...q, flags: nextFlags }
+            }
+            return { ...q, flags: { ...q.flags, [flagKey]: value } }
+          }),
+        },
+      }
+    })
+  }
+
+  /** 直接构造黄金主线状态/位置运行态 */
+  const seedGoldenStatus = (status: QuestStatus) => {
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return {
+        gameState: {
+          ...s.gameState,
+          quests: s.gameState.quests.map((q) =>
+            q.questId === 'quest_golden_rabbit_search' ? { ...q, status } : q,
+          ),
+        },
+      }
+    })
+  }
+  const seedGoldenStage = (stage: number) => {
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return {
+        gameState: {
+          ...s.gameState,
+          quests: s.gameState.quests.map((q) =>
+            q.questId === 'quest_golden_rabbit_search' ? { ...q, stage } : q,
+          ),
+        },
+      }
+    })
+  }
+
+  /** 直接构造支线状态运行态 */
+  const seedSideQuestStatus = (sideId: string, status: QuestStatus) => {
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return {
+        gameState: {
+          ...s.gameState,
+          quests: s.gameState.quests.map((q) => (q.questId === sideId ? { ...q, status } : q)),
+        },
+      }
+    })
+  }
+
+  /** 直接构造背包运行态（真实异常 quantity） */
+  const seedRabbitPathQuantity = (quantity: unknown) => {
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      const without = s.gameState.inventory.filter((e) => e.itemId !== 'rabbit_path')
+      if (quantity === undefined) {
+        return { gameState: { ...s.gameState, inventory: without } }
+      }
+      return {
+        gameState: {
+          ...s.gameState,
+          inventory: [...without, { itemId: 'rabbit_path', quantity: quantity as number }],
+        },
+      }
+    })
+  }
+
+  it('A. 无 gameState → false', () => {
+    useGameStore.setState({ gameState: null })
+    expect(useGameStore.getState().departQingshiVillageToTianlongCity()).toBe(false)
+  })
+
+  it('B. 不在 qingshi_village → false', () => {
+    seedDepartureReady()
+    useGameStore.getState().travelToLocation('village_grassland')
+    const before = snapshot()
+    expect(useGameStore.getState().departQingshiVillageToTianlongCity()).toBe(false)
+    expect(snapshot()).toBe(before)
+  })
+
+  it('C. 黄金兔子任务不存在 → false', () => {
+    seedDepartureReady()
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return { gameState: { ...s.gameState, quests: s.gameState.quests.filter((q) => q.questId !== 'quest_golden_rabbit_search') } }
+    })
+    const before = snapshot()
+    expect(useGameStore.getState().departQingshiVillageToTianlongCity()).toBe(false)
+    expect(snapshot()).toBe(before)
+  })
+
+  it('D. available/completable/completed → false', () => {
+    seedDepartureReady()
+    for (const status of ['available', 'completable', 'completed'] as const) {
+      seedGoldenStatus(status)
+      const before = snapshot()
+      expect(useGameStore.getState().departQingshiVillageToTianlongCity()).toBe(false)
+      expect(snapshot()).toBe(before)
+      seedGoldenStatus('in_progress')
+    }
+  })
+
+  it('E. stage 非 0 → false', () => {
+    seedDepartureReady()
+    seedGoldenStage(1)
+    const before = snapshot()
+    expect(useGameStore.getState().departQingshiVillageToTianlongCity()).toBe(false)
+    expect(snapshot()).toBe(before)
+  })
+
+  it('F. 四个剧情 flag 任一个非 true → false', () => {
+    for (const flagKey of ['asked_blacksmith', 'asked_apothecary', 'village_inquiry_reported', 'rabbit_lair_rechecked']) {
+      seedDepartureReady()
+      seedGoldenFlag(flagKey, false)
+      const before = snapshot()
+      expect(useGameStore.getState().departQingshiVillageToTianlongCity()).toBe(false)
+      expect(snapshot()).toBe(before)
+    }
+  })
+
+  it.each([
+    ['asked_blacksmith 非 boolean ("yes")', 'asked_blacksmith', 'yes'],
+    ['asked_apothecary 非 boolean (1)', 'asked_apothecary', 1],
+    ['village_inquiry_reported 非 boolean (0.5)', 'village_inquiry_reported', 0.5],
+    ['rabbit_lair_rechecked 非 boolean ("yes")', 'rabbit_lair_rechecked', 'yes'],
+  ])('G. %s → false 且同一引用不变（不修复）', (_label, flagKey, invalidValue) => {
+    seedDepartureReady()
+    seedGoldenFlag(flagKey, invalidValue)
+    const before = useGameStore.getState().gameState
+    expect(useGameStore.getState().departQingshiVillageToTianlongCity()).toBe(false)
+    expect(useGameStore.getState().gameState).toBe(before)
+    expect(goldenQuest()?.flags[flagKey]).toBe(invalidValue)
+  })
+
+  it('H. 无 rabbit_path → false', () => {
+    seedDepartureReady()
+    seedRabbitPathQuantity(undefined)
+    const before = snapshot()
+    expect(useGameStore.getState().departQingshiVillageToTianlongCity()).toBe(false)
+    expect(snapshot()).toBe(before)
+  })
+
+  it.each([
+    ['quantity=0', 0],
+    ['quantity=-1', -1],
+    ['quantity=1.5', 1.5],
+    ['quantity=NaN', NaN],
+    ['quantity=Infinity', Infinity],
+  ])('I. %s → false 且同一引用不变', (_label, badQuantity) => {
+    seedDepartureReady()
+    seedRabbitPathQuantity(badQuantity)
+    const before = useGameStore.getState().gameState
+    expect(useGameStore.getState().departQingshiVillageToTianlongCity()).toBe(false)
+    expect(useGameStore.getState().gameState).toBe(before)
+  })
+
+  it('J. rabbit_path_examined !== true → false', () => {
+    seedDepartureReady()
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      const nextFlags = { ...s.gameState.world.flags }
+      nextFlags.rabbit_path_examined = false
+      return { gameState: { ...s.gameState, world: { ...s.gameState.world, flags: nextFlags } } }
+    })
+    const before = snapshot()
+    expect(useGameStore.getState().departQingshiVillageToTianlongCity()).toBe(false)
+    expect(snapshot()).toBe(before)
+  })
+
+  it('K. rabbit_path_reported !== true → false', () => {
+    seedDepartureReady()
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      const nextFlags = { ...s.gameState.world.flags }
+      nextFlags.rabbit_path_reported = false
+      return { gameState: { ...s.gameState, world: { ...s.gameState.world, flags: nextFlags } } }
+    })
+    const before = snapshot()
+    expect(useGameStore.getState().departQingshiVillageToTianlongCity()).toBe(false)
+    expect(snapshot()).toBe(before)
+  })
+
+  it('L. 两条支线均不存在 → 可以离开', () => {
+    seedDepartureReady()
+    // 支线已在 seed 中完成；删除它们模拟从未接触
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return {
+        gameState: {
+          ...s.gameState,
+          quests: s.gameState.quests.filter((q) => q.questId !== 'quest_apothecary_herb_route' && q.questId !== 'quest_blacksmith_mine_remnant'),
+        },
+      }
+    })
+    expect(useGameStore.getState().departQingshiVillageToTianlongCity()).toBe(true)
+    expect(currentLocation()).toBe('tianlong_city')
+  })
+
+  it('M. 支线 completed → 可以离开', () => {
+    seedDepartureReady()
+    expect(herbQuest()?.status).toBe('completed')
+    expect(mineRemnantQuest()?.status).toBe('completed')
+    expect(useGameStore.getState().departQingshiVillageToTianlongCity()).toBe(true)
+    expect(currentLocation()).toBe('tianlong_city')
+  })
+
+  it('N. 支线 failed → 可以离开', () => {
+    seedDepartureReady()
+    seedSideQuestStatus('quest_apothecary_herb_route', 'failed')
+    seedSideQuestStatus('quest_blacksmith_mine_remnant', 'failed')
+    expect(useGameStore.getState().departQingshiVillageToTianlongCity()).toBe(true)
+    expect(currentLocation()).toBe('tianlong_city')
+  })
+
+  it.each([
+    ['quest_apothecary_herb_route available', 'quest_apothecary_herb_route', 'available'],
+    ['quest_apothecary_herb_route in_progress', 'quest_apothecary_herb_route', 'in_progress'],
+    ['quest_apothecary_herb_route completable', 'quest_apothecary_herb_route', 'completable'],
+    ['quest_blacksmith_mine_remnant available', 'quest_blacksmith_mine_remnant', 'available'],
+    ['quest_blacksmith_mine_remnant in_progress', 'quest_blacksmith_mine_remnant', 'in_progress'],
+    ['quest_blacksmith_mine_remnant completable', 'quest_blacksmith_mine_remnant', 'completable'],
+  ] as const)('O/P/Q. %s → false 且完全不变（不自动改 failed）', (_label, sideId, status) => {
+    seedDepartureReady()
+    seedSideQuestStatus(sideId, status)
+    const before = snapshot()
+    expect(useGameStore.getState().departQingshiVillageToTianlongCity()).toBe(false)
+    expect(snapshot()).toBe(before)
+    expect(useGameStore.getState().gameState?.quests.find((q) => q.questId === sideId)?.status).toBe(status)
+  })
+
+  it('R. 全合法 → true 且 currentLocationId=tianlong_city', () => {
+    seedDepartureReady()
+    expect(useGameStore.getState().departQingshiVillageToTianlongCity()).toBe(true)
+    expect(currentLocation()).toBe('tianlong_city')
+  })
+
+  it('S. 成功只改 currentLocationId', () => {
+    seedDepartureReady()
+    const beforePlayer = useGameStore.getState().gameState!.player
+    const beforeInventory = useGameStore.getState().gameState!.inventory
+    const beforeEquipment = useGameStore.getState().gameState!.equipment
+    const beforeQuests = useGameStore.getState().gameState!.quests
+    const beforeWorld = useGameStore.getState().gameState!.world
+    const beforeNpcStates = useGameStore.getState().gameState!.world.npcStates
+    const beforeEvents = useGameStore.getState().gameState!.world.completedEvents
+    useGameStore.getState().departQingshiVillageToTianlongCity()
+    const after = useGameStore.getState().gameState!
+    expect(after.player).toEqual(beforePlayer)
+    expect(after.inventory).toEqual(beforeInventory)
+    expect(after.equipment).toEqual(beforeEquipment)
+    expect(after.quests).toEqual(beforeQuests)
+    expect(after.world.npcStates).toEqual(beforeNpcStates)
+    expect(after.world.completedEvents).toEqual(beforeEvents)
+    expect(after.world.currentLocationId).toBe('tianlong_city')
+    expect(after.world.flags).toEqual(beforeWorld.flags)
+    expect(after.world.flags.rabbit_path_reported).toBe(true)
+  })
+
+  it('T. golden quest 完全不变（长期保留）', () => {
+    seedDepartureReady()
+    const beforeGolden = goldenQuest()
+    useGameStore.getState().departQingshiVillageToTianlongCity()
+    const after = goldenQuest()
+    expect(after?.status).toBe('in_progress')
+    expect(after?.stage).toBe(0)
+    expect(after?.flags.asked_blacksmith).toBe(true)
+    expect(after?.flags.asked_apothecary).toBe(true)
+    expect(after?.flags.village_inquiry_reported).toBe(true)
+    expect(after?.flags.rabbit_lair_rechecked).toBe(true)
+    expect(JSON.stringify(after)).toBe(JSON.stringify(beforeGolden))
+  })
+
+  it('U. rabbit_path 仍 ×1', () => {
+    seedDepartureReady()
+    useGameStore.getState().departQingshiVillageToTianlongCity()
+    expect(rabbitPath()?.quantity).toBe(1)
+  })
+
+  it('V. 成功后再次调用 → false 且 GameState 同一引用不变', () => {
+    seedDepartureReady()
+    useGameStore.getState().departQingshiVillageToTianlongCity()
+    const before = useGameStore.getState().gameState
+    expect(useGameStore.getState().departQingshiVillageToTianlongCity()).toBe(false)
+    expect(useGameStore.getState().gameState).toBe(before)
+  })
+
+  it('W. 不自动保存', () => {
+    seedDepartureReady()
+    useGameStore.getState().departQingshiVillageToTianlongCity()
+    expect(currentLocation()).toBe('tianlong_city')
+    expect(useGameStore.getState().hasSave).toBe(false)
+  })
+})

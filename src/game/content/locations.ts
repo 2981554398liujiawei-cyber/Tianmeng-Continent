@@ -42,4 +42,12 @@ export const LOCATIONS: Record<string, LocationDefinition> = {
     connections: ['village_grassland'],
     enemyIds: ['dudu_rabbit'],
   },
+  // TM-P1-023：第二区域落点——天龙城（青石村→天龙城正式跨越；本卡只做区域切换与落点：connections=[] 单向不可返回，enemyIds=[] 无假内容；P1-024 再开始城内内容）
+  tianlong_city: {
+    id: 'tianlong_city',
+    name: '天龙城',
+    description: '天龙王朝的皇城。高大的城墙、宽阔的街道与成片建筑构成这座繁华城市。',
+    connections: [],
+    enemyIds: [],
+  },
 }

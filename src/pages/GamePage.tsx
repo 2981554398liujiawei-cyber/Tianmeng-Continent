@@ -67,6 +67,7 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
   const reportGoldenRabbitVillageInvestigation = useGameStore((s) => s.reportGoldenRabbitVillageInvestigation)
   const recheckGoldenRabbitMapAtLair = useGameStore((s) => s.recheckGoldenRabbitMapAtLair)
   const inspectApothecaryHerbRoute = useGameStore((s) => s.inspectApothecaryHerbRoute)
+  const departQingshiVillageToTianlongCity = useGameStore((s) => s.departQingshiVillageToTianlongCity)
   const [saveResult, setSaveResult] = useState<'saved' | 'failed' | null>(null)
   const [travelError, setTravelError] = useState(false)
   // TM-P0-015：活动对话 NPC（仅 UI 本地状态，不进入 GameState / 存档）
@@ -75,6 +76,8 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
   const [lastMineInvestigation, setLastMineInvestigation] = useState<D20CheckResult | null>(null)
   // TM-P1-012：Lv.2 里程碑升级提示（仅 UI 本地状态；只由「本次《草原狼影》提交成功」这一 UI 事件触发，不进入 GameState/存档，不按 level 自动判断）
   const [showLevelUpNotice, setShowLevelUpNotice] = useState(false)
+  /** TM-P1-023：天龙城离村二次确认（UI 本地状态，不写 GameState；确认后才调用 Store action） */
+  const [showTianlongDepartureConfirm, setShowTianlongDepartureConfirm] = useState(false)
 
   /** TM-P1-012：任务提交 handler——completeQuest 成功且为《草原狼影》时显示升级提示（最小局部逻辑，不建通知系统） */
   const handleCompleteQuest = (questId: string) => {
@@ -109,6 +112,21 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
   const herbQuest = gameState.quests.find((q) => q.questId === 'quest_apothecary_herb_route')
   const herbInProgress = herbQuest?.status === 'in_progress'
   const herbGrasslandChecked = herbQuest?.flags.grassland_checked === true
+  /** TM-P1-023：离村前置（只读 Store 同款校验的展示侧）——青石村 + 黄金主线收束 + 地图持有/汇报 + 已接触未完成支线阻止 */
+  const goldenDepartureReady =
+    world.currentLocationId === 'qingshi_village' &&
+    goldenSearchQuest?.status === 'in_progress' &&
+    goldenSearchQuest?.stage === 0 &&
+    goldenAskedBlacksmith &&
+    goldenAskedApothecary &&
+    goldenVillageInquiryReported &&
+    goldenLairRechecked
+  const herbQuestBlocking =
+    herbQuest?.status === 'available' || herbQuest?.status === 'in_progress' || herbQuest?.status === 'completable'
+  const mineRemnantQuest = gameState.quests.find((q) => q.questId === 'quest_blacksmith_mine_remnant')
+  const mineRemnantBlocking =
+    mineRemnantQuest?.status === 'available' || mineRemnantQuest?.status === 'in_progress' || mineRemnantQuest?.status === 'completable'
+  const sideQuestsBlocking = herbQuestBlocking || mineRemnantBlocking
   // TM-P0-006：附近委托 = 给予者位于当前地点的注册任务（不写死地点 ID）
   const localQuests = Object.values(QUESTS).filter((quest) => {
     const giver = getNpc(quest.giverNpcId)
@@ -420,6 +438,38 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
             </Button>
           </section>
         )
+      )}
+
+      {/* TM-P1-023：离开青石村前往天龙城 —— 黄金主线收束后显示「新的旅程」入口；已接触未完成支线时只提示不提供按钮；二次确认后才调用 Store action（不可逆，单向离村） */}
+      {goldenDepartureReady && (
+        <section className="rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
+          <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">新的旅程</h3>
+          {sideQuestsBlocking ? (
+            <p className="leading-relaxed text-bone-200">你还有已经接触但尚未结束的村内委托，处理完再离开。</p>
+          ) : (
+            <>
+              <p className="leading-relaxed text-bone-200">青石村的事情暂时告一段落。你已经可以前往天龙城继续旅程。</p>
+              {!showTianlongDepartureConfirm ? (
+                <Button variant="primary" onClick={() => setShowTianlongDepartureConfirm(true)}>
+                  准备前往天龙城
+                </Button>
+              ) : (
+                <div className="mt-3 rounded border border-red-400/40 bg-ink-900/40 p-3">
+                  <p className="text-bone-200">离开青石村后将无法返回。</p>
+                  <p className="mt-1 text-bone-300">尚未发现的村内委托将被留在这里。</p>
+                  <div className="mt-3 flex flex-wrap gap-3">
+                    <Button variant="primary" onClick={() => departQingshiVillageToTianlongCity()}>
+                      前往天龙城
+                    </Button>
+                    <Button variant="ghost" onClick={() => setShowTianlongDepartureConfirm(false)}>
+                      暂不离开
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </section>
       )}
 
       {/* TM-P0-022：村中休整 —— 仅青石村显示；免费恢复 HP/MP 至最大值（战败软锁出口） */}
@@ -822,7 +872,7 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
                   {qs.questId === 'quest_apothecary_herb_route' && qs.status === 'in_progress' && (
                     <p className="mt-1 text-xs text-bone-400">当前目标：前往村外草原查看采药区域。</p>
                   )}
-                  {qs.questId === 'quest_apothecary_herb_route' && herbGrasslandChecked && (
+                  {qs.questId === 'quest_apothecary_herb_route' && herbGrasslandChecked && qs.status === 'completable' && (
                     <div className="mt-1 text-xs text-bone-400">
                       <p className="text-gold-300">采药区域已查看。</p>
                       <p className="mt-1">当前目标：返回青石村向药师复命。</p>
