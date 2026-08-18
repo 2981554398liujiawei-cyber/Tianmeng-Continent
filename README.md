@@ -364,6 +364,7 @@ TM-P1-013（《兔子的路径》正式查看与后续线索占位——Boss 战
 - **【待补充】为占位**：不新增地点/连接/移动入口（无「前往【待补充】」/「进入黄金兔王区域」）；不做 D20/MND/LCK 检定、不设 DC、无随机失败（物品定义已是路线藏宝图）
 - GameState/WorldState schema 零修改（flags 已是 Record<string, boolean|number|string>）；SAVE_VERSION=1；items/locations/enemies/quests/types/storage/combat/character/App.tsx 零修改；git diff 仅 gameStore.ts + gameStore.test.ts + GamePage.tsx + qa/e2e.mjs + README
 - 12 个 Store 单测（A 无 gameState false/B 无 rabbit_path false 全不变/C quantity=0 false/D quantity=-1 false/E quantity=1.5 false/F 合法 ×1+flag 不存在 → true+examined=true/G 成功后仍 ×1/H 成功只改 flags.rabbit_path_examined 其余全不变/I flag=false → true 成功/J flag=true 重复 false 全不变/K flag 为字符串/数字 false 全不变/L 不自动保存）+ 11 项 E2E（A Boss 战前无展开地图且无具体地点占位/B 获得地图后展开地图 enabled 且未查看前不显示【待补充】/C 点击展开地图后显示固定文案+【待补充】+按钮消失+兔子的路径仍 ×1/D 查看前后等级/生命/灵力/金币/位置全不变/E Save/Continue 后已查看文案保持+无展开地图按钮）
+- TM-P1-013-R1（补齐异常 quantity 与当前位置 QA 证据）：非法 quantity 单测不再用 addItem（其入参拦截使 0/-1/1.5 根本进不了 inventory，属假覆盖）——改为 useGameStore.setState 直接构造真实 inventory 异常运行态，it.each 覆盖 quantity=0/-1/1.5/NaN/Infinity 五项，每项断言 inspectRabbitPath()===false 且 gameState **同一引用**不变（不依赖 JSON.stringify，避免 NaN/Infinity 转换失真）、examined 未写成 true、异常值原样存在；E2E「位置不变」不再用 body.includes('兔王巢穴') 模糊文本——新增从「当前位置」区域确定性读取 location.id（rabbit_lair），断言查看前 ==='rabbit_lair'、查看后与查看前完全相等；仅 gameStore.test.ts + qa/e2e.mjs 修改（正式玩法代码零修改）
 
 ## 目录结构
 

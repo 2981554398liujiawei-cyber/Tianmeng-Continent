@@ -2631,6 +2631,19 @@ describe('TM-P1-013：正式查看《兔子的路径》（inspectRabbitPath）',
 
   const snapshot = () => JSON.stringify(useGameStore.getState().gameState)
 
+  /** R1：直接构造运行态（绕过 addItem 的入参拦截），使非法 quantity 真实进入 inventory */
+  const seedRabbitPathQuantity = (quantity: number) => {
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return {
+        gameState: {
+          ...s.gameState,
+          inventory: [...s.gameState.inventory, { itemId: 'rabbit_path', quantity }],
+        },
+      }
+    })
+  }
+
   it('A. 无 gameState → false', () => {
     useGameStore.setState({ gameState: null })
     expect(useGameStore.getState().inspectRabbitPath()).toBe(false)
@@ -2642,25 +2655,20 @@ describe('TM-P1-013：正式查看《兔子的路径》（inspectRabbitPath）',
     expect(snapshot()).toBe(before)
   })
 
-  it('C. quantity=0 → false 且完全不变', () => {
-    useGameStore.getState().addItem('rabbit_path', 0)
-    const before = snapshot()
+  // R1：以下五项均为「异常 quantity 真实存在于 inventory」的防回归证据（引用相等，不依赖 JSON.stringify——NaN/Infinity 会被 JSON 转换失真）
+  it.each([
+    ['quantity=0', 0],
+    ['quantity=-1', -1],
+    ['quantity=1.5', 1.5],
+    ['quantity=NaN', Number.NaN],
+    ['quantity=Infinity', Number.POSITIVE_INFINITY],
+  ])('C. %s（真实 inventory 异常值）→ false 且 GameState 同一引用/完全不变、examined 未写成 true、异常值原样存在', (_label, invalidQuantity) => {
+    seedRabbitPathQuantity(invalidQuantity)
+    const before = useGameStore.getState().gameState
     expect(useGameStore.getState().inspectRabbitPath()).toBe(false)
-    expect(snapshot()).toBe(before)
-  })
-
-  it('D. quantity=-1 → false 且完全不变', () => {
-    useGameStore.getState().addItem('rabbit_path', -1)
-    const before = snapshot()
-    expect(useGameStore.getState().inspectRabbitPath()).toBe(false)
-    expect(snapshot()).toBe(before)
-  })
-
-  it('E. quantity=1.5 → false 且完全不变', () => {
-    useGameStore.getState().addItem('rabbit_path', 1.5)
-    const before = snapshot()
-    expect(useGameStore.getState().inspectRabbitPath()).toBe(false)
-    expect(snapshot()).toBe(before)
+    expect(useGameStore.getState().gameState).toBe(before)
+    expect(flags()?.rabbit_path_examined).toBeUndefined()
+    expect(rabbitPath()?.quantity).toBe(invalidQuantity)
   })
 
   it('F. 合法 rabbit_path ×1 + flag 不存在 → true 且 rabbit_path_examined=true', () => {

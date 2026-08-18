@@ -486,11 +486,19 @@ try {
   // B. 获得地图后：展开地图 enabled；未查看前不得提前显示具体地点占位
   check('P1-013-B: 显示展开地图按钮（enabled）', (await buttonDisabled('展开地图')) === false)
   check('P1-013-B: 未查看前不显示具体地点：【待补充】', !body.includes('具体地点：【待补充】'))
-  // D. 查看前状态快照（等级/生命/灵力/金币/位置）
+  // D. 查看前状态快照（等级/生命/灵力/金币/当前位置 ID——位置 ID 从「当前位置」区域确定性读取，不用模糊文本）
   const beforePathLevel = body.match(/Lv\.(\d+)/)
   const beforePathHp = body.match(/生命\s*(\d+)\s*\/\s*(\d+)/)
   const beforePathMp = body.match(/灵力\s*(\d+)\s*\/\s*(\d+)/)
   const beforePathGold = body.match(/金币\s*(\d+)/)
+  const beforePathLocationId = await page.evaluate(() => {
+    const label = [...document.querySelectorAll('p')].find((el) => el.textContent.trim() === '当前位置')
+    if (!label) return null
+    const section = label.closest('section')
+    if (!section) return null
+    const idEl = [...section.querySelectorAll('p')].find((el) => /^[a-z_]+$/.test(el.textContent.trim()))
+    return idEl ? idEl.textContent.trim() : null
+  })
   // C. 正式查看
   await clickByText('展开地图')
   await sleep(300)
@@ -504,7 +512,19 @@ try {
   const afterPathHp = body.match(/生命\s*(\d+)\s*\/\s*(\d+)/)
   const afterPathMp = body.match(/灵力\s*(\d+)\s*\/\s*(\d+)/)
   const afterPathGold = body.match(/金币\s*(\d+)/)
-  check('P1-013-D: 查看后仍在兔王巢穴（位置不变）', body.includes('兔王巢穴'))
+  const afterPathLocationId = await page.evaluate(() => {
+    const label = [...document.querySelectorAll('p')].find((el) => el.textContent.trim() === '当前位置')
+    if (!label) return null
+    const section = label.closest('section')
+    if (!section) return null
+    const idEl = [...section.querySelectorAll('p')].find((el) => /^[a-z_]+$/.test(el.textContent.trim()))
+    return idEl ? idEl.textContent.trim() : null
+  })
+  check('P1-013-D: 查看前当前位置为 rabbit_lair', beforePathLocationId === 'rabbit_lair')
+  check(
+    'P1-013-D: 查看后 currentLocationId 与查看前完全相等',
+    beforePathLocationId !== null && afterPathLocationId === beforePathLocationId,
+  )
   check(
     'P1-013-D: 查看后等级/生命/灵力/金币全不变',
     beforePathLevel !== null && afterPathLevel !== null && beforePathLevel[1] === afterPathLevel[1] &&
