@@ -491,6 +491,14 @@ try {
   await sleep(200)
   body = await bodyText()
   check('《商人王财的麻烦》进行中', body.includes('商人王财的麻烦') && body.includes('进行中'))
+  // TM-P1-031-R1：接受任务后马科 greeting = 调查中台词，不再「刚到天龙城？」
+  await clickByText('交谈')
+  await sleep(300)
+  body = await bodyText()
+  check('马科接受任务后 greeting（调查中）', body.includes('王财的事情有进展了吗？黑石塔那边不要大意。'))
+  check('接受任务后不出现「刚到天龙城？」', !body.includes('刚到天龙城'))
+  await clickByText('结束交谈')
+  await sleep(200)
   await clickByText('天龙城')
   await sleep(300)
   body = await bodyText()
@@ -639,11 +647,16 @@ try {
   await sleep(300)
   body = await bodyText()
   check('提交任务按钮可用', (await buttonDisabled('提交任务')) === false)
+  // TM-P1-031-R1：交还项链、提交前马科 greeting = 复命台词，不再「刚到天龙城？」
+  check('马科复命 greeting（可提交）', body.includes('王财那边已经处理好了？把黑石塔里的情况告诉我。'))
+  check('复命时不再出现「刚到天龙城？」', !body.includes('刚到天龙城'))
   await clickByText('提交任务')
   await sleep(300)
   body = await bodyText()
 
   // ---- 最终断言（提交后，马科对话面板 + 任务日志）----
+  // TM-P1-031-R1：提交后马科 greeting = 完成台词
+  check('马科完成后 greeting', body.includes('黑石塔的情况我已经记下了。你先休整一下。'))
   check('显示「第一阶段完成」', body.includes('第一阶段完成'))
   check('显示「当前可玩主线内容已完成。」', body.includes('当前可玩主线内容已完成。'))
   check('显示「《追寻黄金兔子王》将在后续阶段继续。」', body.includes('《追寻黄金兔子王》将在后续阶段继续。'))

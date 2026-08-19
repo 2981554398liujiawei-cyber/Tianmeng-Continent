@@ -690,16 +690,22 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
               <p className="font-bold text-bone-100">{activeNpc.name}</p>
               <p className="mb-2 text-xs text-bone-500">{activeNpc.role}</p>
               {/* TM-P1-004：已回应且关系合法时，后续关系反应替代原 greeting 正文位置（不重复显示旧文案）；否则回退原 greeting */}
-              {/* TM-P1-031：修复 NPC 失忆——王财已取回项链后、马科第五主线完成后，greeting 按 QuestState 替换为推进后的台词（不建 DialogueSystem） */}
+              {/* TM-P1-031/031-R1：修复 NPC 失忆——王财已取回项链后、马科按第五主线阶段（in_progress/completable/completed）分别替换 greeting（不建 DialogueSystem）；available/未接继续用原 greeting */}
               <p className="mb-3 text-bone-300">
                 {elderReaction === 'respect'
                   ? '村长郑重地点了点头：“若你还要继续追查，务必小心。”'
                   : elderReaction === 'trust'
                     ? '村长舒展了眉头：“好，村里能安稳一些就好。”'
-                    : activeNpc.id === 'merchant_wangcai' && kuidongNecklaceReturned
-                      ? '王财把项链小心收好，见到你时郑重地点了点头。'
-                      : activeNpc.id === 'knight_captain_make' && wangcaiQuest?.status === 'completed'
-                        ? '黑石塔的情况我已经记下了。你先休整一下。'
+                    : activeNpc.id === 'knight_captain_make'
+                      ? wangcaiQuest?.status === 'in_progress'
+                        ? '王财的事情有进展了吗？黑石塔那边不要大意。'
+                        : wangcaiQuest?.status === 'completable'
+                          ? '王财那边已经处理好了？把黑石塔里的情况告诉我。'
+                          : wangcaiQuest?.status === 'completed'
+                            ? '黑石塔的情况我已经记下了。你先休整一下。'
+                            : activeNpc.greeting
+                      : activeNpc.id === 'merchant_wangcai' && kuidongNecklaceReturned
+                        ? '王财把项链小心收好，见到你时郑重地点了点头。'
                         : activeNpc.greeting}
               </p>
               {/* TM-P1-002/003：村长对话显示信任+尊敬（读 NpcState；未建立状态时 UI fallback 0，打开对话不创建状态） */}

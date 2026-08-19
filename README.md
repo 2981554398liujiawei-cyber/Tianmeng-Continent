@@ -618,6 +618,11 @@ TM-P1-031（Phase 1 剧情连续性与明显 Bug 收口——消除开发占位�
 - playthrough 新增 continuity 断言（qa/phase1-playthrough.mjs）：全流程 UI 不得出现【待补充】/待开放/TODO/TBD/undefined/未知任务/未知物品/缺失物品定义（青石村阶段完成、天龙城、黑石塔三层女妖击败后、第一阶段完成后四处扫描）+ 完成后单当前目标（无「将夔峒项链交还王财」「返回武馆向马科复命」残留）
 - schema 不变、SAVE_VERSION=1；npcs.ts/locations.ts/enemies.ts/items.ts/professions.ts/CombatPage.tsx/types/storage/rules/gameStore.ts 零修改；git diff 仅 quests.ts + content.test.ts + GamePage.tsx + qa/e2e.mjs + qa/phase1-playthrough.mjs + README（不含 qa/*.png）
 
+TM-P1-031-R1（修正马科任务阶段对话——修复剩余 NPC 失忆：马科在第五主线 in_progress/completable 阶段仍显示「刚到天龙城？」）：
+- GamePage 马科 greeting 由仅 completed 分支扩展为按 QuestState 三分支（不建对话系统）：in_progress→「王财的事情有进展了吗？黑石塔那边不要大意。」；completable（项链已还、回来复命）→「王财那边已经处理好了？把黑石塔里的情况告诉我。」；completed→「黑石塔的情况我已经记下了。你先休整一下。」；available/未接仍用原 greeting；王财分支不受影响
+- playthrough 新增回归断言锁 3 个状态（均同时断言不出现「刚到天龙城？」）：①接受《商人王财的麻烦》后点开马科→显示调查中 greeting；②交还项链、回武馆提交前→显示复命 greeting；③提交完成后→显示完成 greeting
+- schema 不变、SAVE_VERSION=1；gameStore.ts/npcs.ts/quests.ts/schema 零修改；git diff 仅 GamePage.tsx + qa/phase1-playthrough.mjs + README（不含 qa/*.png）
+
 ## 目录结构
 
 ```
