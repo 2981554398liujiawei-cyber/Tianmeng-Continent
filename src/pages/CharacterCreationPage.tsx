@@ -13,25 +13,37 @@ interface CharacterCreationPageProps {
 
 const GENDER_LABELS: Record<Gender, string> = { male: '男', female: '女' }
 
-/** 默认预填（与默认开发角色一致，剩余点数 0） */
-const DEFAULT_ATTRIBUTES: Attributes = { str: 14, con: 12, agi: 10, mnd: 8, lck: 10 }
+/** 初始属性：全部 8，剩余 14 点由玩家主动分配（TM-P2-001 A3） */
+const BASE_ATTRIBUTES: Attributes = { str: 8, con: 8, agi: 8, mnd: 8, lck: 8 }
+
+/** 职业推荐配点（TM-P2-001 A3）：全部总和 54；只是便利按钮，不是自动应用 */
+const RECOMMENDED_ATTRIBUTES: Record<ProfessionId, Attributes> = {
+  warrior: { str: 16, con: 14, agi: 8, mnd: 8, lck: 8 },
+  knight: { str: 14, con: 16, agi: 8, mnd: 8, lck: 8 },
+  ranger: { str: 8, con: 10, agi: 16, mnd: 8, lck: 12 },
+  mage: { str: 8, con: 10, agi: 8, mnd: 16, lck: 12 },
+}
 
 function signed(n: number): string {
   return n > 0 ? `+${n}` : `${n}`
 }
 
 export default function CharacterCreationPage({ onConfirm, onBack }: CharacterCreationPageProps) {
-  const [name, setName] = useState('石头城')
+  // TM-P2-001 A1：进入创建页时姓名框为空，必须输入合法姓名才能进入游戏
+  const [name, setName] = useState('')
   const [gender, setGender] = useState<Gender>('male')
-  const [profession, setProfession] = useState<ProfessionId>('knight')
-  const [attributes, setAttributes] = useState<Attributes>({ ...DEFAULT_ATTRIBUTES })
+  // TM-P2-001 A2：初始四个职业均未选择
+  const [profession, setProfession] = useState<ProfessionId | null>(null)
+  // TM-P2-001 A3：初始属性全 8，剩余 14 点
+  const [attributes, setAttributes] = useState<Attributes>({ ...BASE_ATTRIBUTES })
 
   const pointsSpent = ATTRIBUTE_KEYS.reduce((sum, key) => sum + attributes[key], 0)
   const pointsLeft = ATTRIBUTE_TOTAL - pointsSpent
 
   const trimmedName = name.trim()
   const nameValid = trimmedName.length >= 1 && trimmedName.length <= NAME_MAX_LENGTH
-  const canConfirm = nameValid && pointsLeft === 0
+  // TM-P2-001 A2：姓名合法 && 已选择职业 && 属性点全部分配
+  const canConfirm = nameValid && profession !== null && pointsLeft === 0
 
   const adjust = (key: AttributeKey, delta: 1 | -1) => {
     setAttributes((prev) => {
@@ -42,13 +54,26 @@ export default function CharacterCreationPage({ onConfirm, onBack }: CharacterCr
     })
   }
 
+  /** TM-P2-001 A3：职业推荐配点（一次性覆盖当前属性；未选职业时不显示按钮） */
+  const applyRecommendedAttributes = () => {
+    if (!profession) return
+    setAttributes({ ...RECOMMENDED_ATTRIBUTES[profession] })
+  }
+
+  /** TM-P2-001 A3：重置属性 —— 全部恢复 8 */
+  const resetAttributes = () => {
+    setAttributes({ ...BASE_ATTRIBUTES })
+  }
+
   const maxHp = getStartingMaxHp(attributes.con)
   const maxMp = getStartingMaxMp(attributes.mnd)
 
   const handleConfirm = () => {
-    if (!canConfirm) return
+    if (!canConfirm || profession === null) return
     onConfirm({ name: trimmedName, gender, profession, attributes: { ...attributes } })
   }
+
+  const professionName = profession ? PROFESSIONS[profession].name : null
 
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-3xl flex-col gap-6 px-4 py-6">
@@ -148,6 +173,22 @@ export default function CharacterCreationPage({ onConfirm, onBack }: CharacterCr
             )
           })}
         </div>
+        {/* TM-P2-001 A3：职业推荐配点（非强制便利按钮）——职业选择后显示；不自动应用 */}
+        {profession && (
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <Button variant="primary" onClick={applyRecommendedAttributes}>
+              使用职业推荐配点
+            </Button>
+            <Button variant="ghost" onClick={resetAttributes}>
+              重置属性
+            </Button>
+            <span className="text-xs text-bone-500">
+              推荐配点（{professionName}）：{RECOMMENDED_ATTRIBUTES[profession].str} 力 /{' '}
+              {RECOMMENDED_ATTRIBUTES[profession].con} 体 / {RECOMMENDED_ATTRIBUTES[profession].agi} 敏 /{' '}
+              {RECOMMENDED_ATTRIBUTES[profession].mnd} 冥 / {RECOMMENDED_ATTRIBUTES[profession].lck} 幸
+            </span>
+          </div>
+        )}
         <p className="mt-3 text-xs text-bone-500">
           可分配属性点 {ATTRIBUTE_POINT_BUDGET}，属性范围 {ATTRIBUTE_MIN}–{ATTRIBUTE_MAX}，最终五属性总和固定 {ATTRIBUTE_TOTAL}；
           初始生命 {10}+体质、初始灵力 max(0, 冥想−2)。
@@ -159,7 +200,7 @@ export default function CharacterCreationPage({ onConfirm, onBack }: CharacterCr
         <p className="text-base font-bold text-bone-100">
           {trimmedName || '——'}
           <span className="ml-2 text-sm font-normal text-bone-500">
-            {GENDER_LABELS[gender]} · {PROFESSIONS[profession].name} · Lv.1
+            {GENDER_LABELS[gender]} · {professionName ?? '未选择职业'} · Lv.1
           </span>
         </p>
         <div className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1 sm:grid-cols-3">

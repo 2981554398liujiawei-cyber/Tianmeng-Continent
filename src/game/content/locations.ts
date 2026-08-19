@@ -47,8 +47,8 @@ export const LOCATIONS: Record<string, LocationDefinition> = {
     id: 'tianlong_city',
     name: '天龙城',
     description: '天龙王朝的皇城。高大的城墙、宽阔的街道与成片建筑构成这座繁华城市。',
-    // TM-P1-024：天龙城与武馆双向连接（本卡唯一城市子区域）；TM-P1-025：增加黑石塔一层（未解锁时按钮 disabled）
-    connections: ['tianlong_martial_hall', 'black_stone_tower_floor1'],
+    // TM-P1-024：天龙城与武馆双向连接（本卡唯一城市子区域）；TM-P1-025：增加黑石塔一层（未解锁时按钮 disabled）；TM-P2-001 D1：增加北门
+    connections: ['tianlong_martial_hall', 'black_stone_tower_floor1', 'tianlong_north_gate'],
     enemyIds: [],
   },
   // TM-P1-024：天龙城第一段子区域——武馆（骑士队长马科驻地；无敌人、无其他连接）
@@ -89,5 +89,13 @@ export const LOCATIONS: Record<string, LocationDefinition> = {
     requiredFlag: 'black_stone_tower_floor3_unlocked',
     connections: ['black_stone_tower_floor2'],
     enemyIds: ['skeleton_witch'],
+  },
+  // TM-P2-001 D1：Phase 2 新地点——天龙城北门（与天龙城双向连接；北门本身无需 requiredFlag，任何时候可参观；任务行动只在正确状态出现）
+  tianlong_north_gate: {
+    id: 'tianlong_north_gate',
+    name: '天龙城北门',
+    description: '高大的城门向北方荒野敞开。往来的商旅明显比南城稀少，城墙下能看到巡逻骑士留下的马蹄印。',
+    connections: ['tianlong_city'],
+    enemyIds: ['black_mane_wolf'],
   },
 }

@@ -132,4 +132,16 @@ export const ENEMIES: Record<string, EnemyDefinition> = {
     attackBonus: 5,
     damage: 5,
   },
+  // TM-P2-001 D4：Phase 2 新敌人——黑鬃魔狼（北门外荒野；无技能系统，继续普通战斗模型；仅任务进行中+已调查痕迹+未击败时出现）
+  black_mane_wolf: {
+    id: 'black_mane_wolf',
+    name: '黑鬃魔狼',
+    level: 3,
+    description: '鬃毛乌黑发亮的魔狼，碧绿的眼瞳里没有一丝畏惧，盯上了追查踪迹的你。',
+    tags: ['beast'],
+    maxHp: 15,
+    defense: 12,
+    attackBonus: 3,
+    damage: 3,
+  },
 }

@@ -90,7 +90,12 @@ export function getRangerSwiftStrikeDamage(agi: number, weaponDamageBonus = 0): 
 /** 压制猛击灵力消耗（唯一业务常量，CombatPage 与 Store 都读取它） */
 export const WARRIOR_SUPPRESS_STRIKE_MP_COST = 2
 
-export type AttackOutcome = 'critical_hit' | 'hit' | 'miss' | 'critical_miss'
+// ---- Phase 2：战斗规则 V2（TM-P2-001 C）----
+
+/** 攻击结算模式：玩家使用 V2 擦中规则；敌人保持 命中/未命中/暴击/大失败（有意的不对称设计） */
+export type AttackMode = 'player' | 'enemy'
+
+export type AttackOutcome = 'critical_hit' | 'hit' | 'glancing_hit' | 'miss' | 'critical_miss'
 
 export interface AttackResult {
   roll: number
@@ -103,13 +108,41 @@ export interface AttackResult {
   outcome: AttackOutcome
 }
 
-/** 确定性攻击结算（测试入口）：骰面必须为 1–20 整数 */
+/**
+ * 基础等级伤害成长（TM-P2-001 C4）：Lv1–2 +0 / Lv3–4 +1 / Lv5–6 +2 / Lv7–8 +3 ...
+ * 适用于所有玩家直接伤害（普通攻击/骑士重击/迅捷突袭/法术攻击/压制猛击）。
+ */
+export function getPlayerLevelDamageBonus(level: number): number {
+  if (!Number.isInteger(level) || level < 1) {
+    throw new RangeError('等级必须为正整数')
+  }
+  return Math.floor((level - 1) / 2)
+}
+
+/** 擦中伤害：max(1, ceil(baseDamage / 2))（TM-P2-001 C1，整数结算向上取整） */
+export function getGlancingDamage(baseDamage: number): number {
+  return Math.max(1, Math.ceil(baseDamage / 2))
+}
+
+/** 暴击伤害：ceil(baseDamage * 1.5)（TM-P2-001 C1/C2，玩家与敌人都从 200% 降为 150%） */
+export function getCriticalDamage(baseDamage: number): number {
+  return Math.ceil(baseDamage * 1.5)
+}
+
+/**
+ * 确定性攻击结算（测试入口）：骰面必须为 1–20 整数。
+ * 默认 mode='player'（V2 擦中规则）；mode='enemy' 时无擦中（TM-P2-001 C2）。
+ */
 export function resolveAttack(
   roll: number,
   attackBonus: number,
   defense: number,
   baseDamage: number,
+  mode: AttackMode = 'player',
 ): AttackResult {
+  if (mode !== 'player' && mode !== 'enemy') {
+    throw new RangeError('攻击模式必须为 player 或 enemy')
+  }
   if (!Number.isInteger(roll) || roll < 1 || roll > 20) {
     throw new RangeError('骰面必须是 1–20 之间的整数')
   }
@@ -129,9 +162,9 @@ export function resolveAttack(
     throw new RangeError('攻击结算结果溢出')
   }
 
-  // 天然 20：必定暴击命中，伤害双倍，无视 total
+  // 天然 20：必定暴击命中，伤害 150%（原 200%），无视 total
   if (roll === 20) {
-    const criticalDamage = baseDamage * 2
+    const criticalDamage = getCriticalDamage(baseDamage)
     if (!Number.isFinite(criticalDamage)) {
       throw new RangeError('暴击伤害溢出')
     }
@@ -159,6 +192,23 @@ export function resolveAttack(
       outcome: 'critical_miss',
     }
   }
+  // 玩家 V2：defense-4 <= total < defense → 擦中（50% 伤害，向上取整，至少 1）
+  if (mode === 'player' && total < defense && total >= defense - 4) {
+    const glancingDamage = getGlancingDamage(baseDamage)
+    if (!Number.isFinite(glancingDamage)) {
+      throw new RangeError('擦中伤害溢出')
+    }
+    return {
+      roll,
+      attackBonus,
+      total,
+      defense,
+      hit: true,
+      critical: false,
+      damage: glancingDamage,
+      outcome: 'glancing_hit',
+    }
+  }
   if (total >= defense) {
     return {
       roll,
@@ -184,8 +234,8 @@ export function resolveAttack(
 }
 
 /** 随机攻击入口：复用现有 rollD20，不实现第二个 D20 函数 */
-export function performAttack(attackBonus: number, defense: number, baseDamage: number): AttackResult {
-  return resolveAttack(rollD20(), attackBonus, defense, baseDamage)
+export function performAttack(attackBonus: number, defense: number, baseDamage: number, mode: AttackMode = 'player'): AttackResult {
+  return resolveAttack(rollD20(), attackBonus, defense, baseDamage, mode)
 }
 
 // ---- 单回合战斗阶段辅助（TM-P0-008-R1：确定性可测）----

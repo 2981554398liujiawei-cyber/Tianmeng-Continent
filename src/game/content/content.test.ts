@@ -47,8 +47,8 @@ describe('TM-P0-002：内容注册表交叉引用一致性', () => {
 })
 
 describe('TM-P0-002：内容数量与指定条目', () => {
-  it('地点 9 个：青石村/村外草原/废弃矿洞/兔王巢穴/天龙城/武馆/黑石塔一层/黑石塔二层/黑石塔三层', () => {
-    expect(Object.keys(LOCATIONS)).toHaveLength(9)
+  it('地点 10 个：青石村/村外草原/废弃矿洞/兔王巢穴/天龙城/武馆/黑石塔一层/黑石塔二层/黑石塔三层/天龙城北门', () => {
+    expect(Object.keys(LOCATIONS)).toHaveLength(10)
     expect(getLocation('qingshi_village')?.name).toBe('青石村')
     expect(getLocation('village_grassland')?.name).toBe('村外草原')
     expect(getLocation('abandoned_mine')?.name).toBe('废弃矿洞')
@@ -58,6 +58,8 @@ describe('TM-P0-002：内容数量与指定条目', () => {
     expect(getLocation('black_stone_tower_floor1')?.name).toBe('黑石塔一层')
     expect(getLocation('black_stone_tower_floor2')?.name).toBe('黑石塔二层')
     expect(getLocation('black_stone_tower_floor3')?.name).toBe('黑石塔三层')
+    // TM-P2-001 D1：Phase 2 新地点——天龙城北门
+    expect(getLocation('tianlong_north_gate')?.name).toBe('天龙城北门')
   })
 
   // TM-P1-023：天龙城落点锁定——本卡只做区域切换与落点；TM-P1-024 起 connections=['tianlong_martial_hall']（双向武馆）、enemyIds=[]（无假内容）
@@ -93,8 +95,12 @@ describe('TM-P0-002：内容数量与指定条目', () => {
     // TM-P1-027：一层连接精确包含天龙城与黑石塔二层（二层未解锁时移动按钮 disabled）
     expect(tower?.connections).toEqual(['tianlong_city', 'black_stone_tower_floor2'])
     expect(tower?.enemyIds).toEqual(['skeleton_soldier', 'skeleton_captain'])
-    // 天龙城正式连接包含黑石塔一层（未解锁时移动按钮 disabled）
-    expect(getLocation('tianlong_city')?.connections).toEqual(['tianlong_martial_hall', 'black_stone_tower_floor1'])
+    // TM-P2-001 D1：天龙城连接更新——武馆/黑石塔一层/北门（北门无需解锁 flag）
+    expect(getLocation('tianlong_city')?.connections).toEqual([
+      'tianlong_martial_hall',
+      'black_stone_tower_floor1',
+      'tianlong_north_gate',
+    ])
     // 不建独立入口节点/城外道路
     expect(getLocation('black_stone_tower_entrance')).toBeUndefined()
     expect(getLocation('black_stone_tower_outskirts')).toBeUndefined()
@@ -145,8 +151,8 @@ describe('TM-P0-002：内容数量与指定条目', () => {
     expect(getNpc('merchant_wangcai')?.locationId).toBe('tianlong_city')
   })
 
-  it('敌人 10 个且等级符合设定', () => {
-    expect(Object.keys(ENEMIES)).toHaveLength(10)
+  it('敌人 11 个且等级符合设定', () => {
+    expect(Object.keys(ENEMIES)).toHaveLength(11)
     expect(getEnemy('corrupted_rabbit')?.level).toBe(1)
     expect(getEnemy('corrupted_rat')?.level).toBe(1)
     expect(getEnemy('corrupted_wolf')?.level).toBe(2)
@@ -157,6 +163,8 @@ describe('TM-P0-002：内容数量与指定条目', () => {
     expect(getEnemy('black_mage')?.level).toBe(4)
     expect(getEnemy('skeleton_warrior')?.level).toBe(5)
     expect(getEnemy('skeleton_witch')?.level).toBe(5)
+    // TM-P2-001 D4：Phase 2 新敌人——黑鬃魔狼 Lv.3
+    expect(getEnemy('black_mane_wolf')?.level).toBe(3)
   })
 
   // TM-P1-025：骷髅士兵完整锁定（普通战斗规则，无技能/状态/抗性/掉落）
@@ -247,6 +255,33 @@ describe('TM-P0-002：内容数量与指定条目', () => {
     expect(witch?.damage).toBe(5)
   })
 
+  // TM-P2-001 D4：黑鬃魔狼完整锁定（北门外荒野——普通战斗模型；无技能系统）
+  it('TM-P2-001 D4：黑鬃魔狼注册表定义锁定（id/name/level=3/tags/maxHp/defense/attackBonus/damage）', () => {
+    const wolf = getEnemy('black_mane_wolf')
+    expect(wolf).toBeDefined()
+    expect(wolf?.id).toBe('black_mane_wolf')
+    expect(wolf?.name).toBe('黑鬃魔狼')
+    expect(wolf?.level).toBe(3)
+    expect(wolf?.tags).toEqual(['beast'])
+    expect(wolf?.maxHp).toBe(15)
+    expect(wolf?.defense).toBe(12)
+    expect(wolf?.attackBonus).toBe(3)
+    expect(wolf?.damage).toBe(3)
+  })
+
+  // TM-P2-001 D1：天龙城北门注册表锁定（Phase 2 新地点；无需 requiredFlag；连接天龙城；投放黑鬃魔狼）
+  it('TM-P2-001 D1：天龙城北门注册表定义锁定（id/name/description/无 requiredFlag/connections/enemyIds）', () => {
+    const gate = getLocation('tianlong_north_gate')
+    expect(gate).toBeDefined()
+    expect(gate?.id).toBe('tianlong_north_gate')
+    expect(gate?.name).toBe('天龙城北门')
+    expect(gate?.description).toContain('城门')
+    expect(gate?.description).toContain('北方荒野')
+    expect(gate?.requiredFlag).toBeUndefined()
+    expect(gate?.connections).toEqual(['tianlong_city'])
+    expect(gate?.enemyIds).toEqual(['black_mane_wolf'])
+  })
+
   it('任务 quest_village_monsters 由村长发布', () => {
     expect(getQuest('quest_village_monsters')?.title).toBe('村外异动')
     expect(getQuest('quest_village_monsters')?.giverNpcId).toBe('village_elder')
@@ -335,15 +370,19 @@ describe('TM-P0-002-R1：关键内容身份锁', () => {
     expect(necklace?.value).toBe(0)
   })
 
-  it('注册表数量与 ID 未被改动（无新增黄金兔子王条目；TM-P1-005 新增《矿洞清理》、TM-P1-010 新增《草原狼影》、TM-P1-017 新增《追寻黄金兔子王》、TM-P1-021 新增《采药受阻》、TM-P1-022 新增《矿洞余患》、TM-P1-024 新增《商人王财的麻烦》与马科/王财、TM-P1-025 新增骷髅士兵、TM-P1-026 新增骷髅队长、TM-P1-027 新增僵尸/黑法师与黑石塔二层、TM-P1-028 新增骷髅战士、TM-P1-029 新增骷髅女妖/黑石塔三层/夔峒项链）', () => {
-    expect(Object.keys(ENEMIES)).toHaveLength(10)
+  it('注册表数量与 ID 未被改动（无新增黄金兔子王条目；TM-P1-005 新增《矿洞清理》、TM-P1-010 新增《草原狼影》、TM-P1-017 新增《追寻黄金兔子王》、TM-P1-021 新增《采药受阻》、TM-P1-022 新增《矿洞余患》、TM-P1-024 新增《商人王财的麻烦》与马科/王财、TM-P1-025 新增骷髅士兵、TM-P1-026 新增骷髅队长、TM-P1-027 新增僵尸/黑法师与黑石塔二层、TM-P1-028 新增骷髅战士、TM-P1-029 新增骷髅女妖/黑石塔三层/夔峒项链、TM-P2-001 新增北门失联/天龙城北门/黑鬃魔狼）', () => {
+    expect(Object.keys(ENEMIES)).toHaveLength(11)
     expect(Object.keys(NPCS)).toHaveLength(5)
-    expect(Object.keys(QUESTS)).toHaveLength(7)
+    expect(Object.keys(QUESTS)).toHaveLength(8)
     expect(Object.keys(ITEMS)).toHaveLength(6)
     expect(getEnemy('golden_rabbit_king')).toBeUndefined()
     // TM-P1-028/029：骷髅战士、骷髅女妖已注册（本卡新增）
     expect(getEnemy('skeleton_warrior')).toBeDefined()
     expect(getEnemy('skeleton_witch')).toBeDefined()
+    // TM-P2-001：北门失联任务 / 天龙城北门地点 / 黑鬃魔狼已注册
+    expect(getQuest('quest_north_gate_missing_patrol')).toBeDefined()
+    expect(getLocation('tianlong_north_gate')).toBeDefined()
+    expect(getEnemy('black_mane_wolf')).toBeDefined()
   })
 
   // TM-P1-024：第五正式主线 + 天龙城 NPC 注册表锁定（无 goldReward、本卡不完成任务；马科/王财无 relationship）
@@ -402,17 +441,17 @@ describe('TM-P0-002-R1：关键内容身份锁', () => {
     expect(quest?.summary).toContain('查看采药区域')
   })
 
-  // TM-P1-022：第二条正式支线注册表锁定（复用废弃矿洞/魔化鼠/战斗系统；goldReward 10 走 generic 提交路径）
-  it('TM-P1-022：《矿洞余患》注册表定义锁定（title/giver/goldReward 10/summary 含关键文案）', () => {
-    const quest = getQuest('quest_blacksmith_mine_remnant')
+  // TM-P2-001 D2：Phase 2 新主线《北门失联》注册表锁定（马科发布；仅《商人王财的麻烦》completed 可发现；goldReward 30 走 generic 提交路径）
+  it('TM-P2-001 D2：《北门失联》注册表定义锁定（title/giver=马科/goldReward 30/summary 含关键文案）', () => {
+    const quest = getQuest('quest_north_gate_missing_patrol')
     expect(quest).toBeDefined()
-    expect(quest?.id).toBe('quest_blacksmith_mine_remnant')
-    expect(quest?.title).toBe('矿洞余患')
-    expect(quest?.giverNpcId).toBe('blacksmith')
-    expect(quest?.goldReward).toBe(10)
-    expect(quest?.summary).toContain('矿洞清理')
-    expect(quest?.summary).toContain('废弃矿洞')
-    expect(quest?.summary).toContain('魔化鼠')
+    expect(quest?.id).toBe('quest_north_gate_missing_patrol')
+    expect(quest?.title).toBe('北门失联')
+    expect(quest?.giverNpcId).toBe('knight_captain_make')
+    expect(quest?.goldReward).toBe(30)
+    expect(quest?.summary).toContain('天龙城北门')
+    expect(quest?.summary).toContain('骑士小队')
+    expect(quest?.summary).toContain('踪迹')
   })
 })
 

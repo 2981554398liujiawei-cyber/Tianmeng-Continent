@@ -66,4 +66,12 @@ export const QUESTS: Record<string, QuestDefinition> = {
     summary: '骑士队长马科请你找到商人王财，了解他最近在黑石塔附近遇到的麻烦。',
     giverNpcId: 'knight_captain_make',
   },
+  // TM-P2-001 D2：Phase 2 新主线《北门失联》（马科发布；仅《商人王财的麻烦》完成后可发现；奖励 30 gold；不升级、不建经验系统）
+  quest_north_gate_missing_patrol: {
+    id: 'quest_north_gate_missing_patrol',
+    title: '北门失联',
+    summary: '一支前往天龙城北门外巡查的骑士小队迟迟没有返回。马科希望你先去北门附近寻找他们留下的踪迹。',
+    giverNpcId: 'knight_captain_make',
+    goldReward: 30,
+  },
 }

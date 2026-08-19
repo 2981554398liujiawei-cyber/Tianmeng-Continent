@@ -74,6 +74,8 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
   const unlockBlackStoneTowerFloor3 = useGameStore((s) => s.unlockBlackStoneTowerFloor3)
   const returnKuidongNecklaceToWangcai = useGameStore((s) => s.returnKuidongNecklaceToWangcai)
   const restAtTianlongMartialHall = useGameStore((s) => s.restAtTianlongMartialHall)
+  // TM-P2-001 D3：北门痕迹调查 action
+  const investigateNorthGateTrail = useGameStore((s) => s.investigateNorthGateTrail)
   const [saveResult, setSaveResult] = useState<'saved' | 'failed' | null>(null)
   const [travelError, setTravelError] = useState(false)
   // TM-P0-015：活动对话 NPC（仅 UI 本地状态，不进入 GameState / 存档）
@@ -84,6 +86,8 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
   const [showLevelUpNotice, setShowLevelUpNotice] = useState(false)
   /** TM-P1-023：天龙城离村二次确认（UI 本地状态，不写 GameState；确认后才调用 Store action） */
   const [showTianlongDepartureConfirm, setShowTianlongDepartureConfirm] = useState(false)
+  /** TM-P2-001 B3：手机角色详情展开（仅 UI 本地状态；桌面端始终完整显示） */
+  const [showCharacterDetails, setShowCharacterDetails] = useState(false)
 
   /** TM-P1-012：任务提交 handler——completeQuest 成功且为《草原狼影》时显示升级提示（最小局部逻辑，不建通知系统） */
   const handleCompleteQuest = (questId: string) => {
@@ -204,6 +208,25 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
     floor3SkeletonWitchDefeated === true &&
     hasValidKuidongNecklace &&
     kuidongNecklaceReturnPending
+  // TM-P2-001 D2/D3/D5：北门任务 QuestState（只读）——trail_checked 驱动调查入口与剧情；wolf_defeated 驱动敌人可见性与胜利剧情
+  const northGateQuest = gameState.quests.find((q) => q.questId === 'quest_north_gate_missing_patrol')
+  const northGateQuestInProgress = northGateQuest?.status === 'in_progress' && northGateQuest?.stage === 0
+  const northGateTrailChecked = northGateQuest?.flags.north_gate_trail_checked === true
+  const northGateWolfDefeated = northGateQuest?.flags.north_gate_wolf_defeated === true
+  // 调查入口窄守卫（与 Store investigateNorthGateTrail 一致）：flag 只允许 undefined/false 视为「待调查」
+  const northGateTrailFlag = northGateQuest?.flags.north_gate_trail_checked
+  const northGateTrailPending = northGateTrailFlag === undefined || northGateTrailFlag === false
+  // 黑鬃魔狼可见性窄守卫（与 Store resolveCombatVictory/App handleEngage 一致）：狼击败 flag 非 true（undefined/false 才显示）
+  const northGateWolfFlag = northGateQuest?.flags.north_gate_wolf_defeated
+  const northGateWolfOk = northGateWolfFlag !== true && (typeof northGateWolfFlag === 'undefined' || typeof northGateWolfFlag === 'boolean')
+  const northGateWolfVisible =
+    world.currentLocationId === 'tianlong_north_gate' &&
+    northGateQuestInProgress &&
+    northGateTrailChecked &&
+    northGateWolfOk
+  // 北门调查入口（只读 Store 同款前置）
+  const northGateInvestigateVisible =
+    world.currentLocationId === 'tianlong_north_gate' && northGateQuestInProgress && northGateTrailPending
   // TM-P0-006：附近委托 = 给予者位于当前地点的注册任务（不写死地点 ID）
   const localQuests = Object.values(QUESTS).filter((quest) => {
     const giver = getNpc(quest.giverNpcId)
@@ -228,10 +251,20 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
     if (quest.id === 'quest_blacksmith_mine_remnant') {
       return gameState.quests.some((q) => q.questId === 'quest_mine_cleanup' && q.status === 'completed')
     }
+    // TM-P2-001 D2：UI 侧窄前置（与 Store discoverQuest 一致）——《北门失联》仅在《商人王财的麻烦》completed 后可见
+    if (quest.id === 'quest_north_gate_missing_patrol') {
+      return gameState.quests.some((q) => q.questId === 'quest_wangcai_trouble' && q.status === 'completed')
+    }
     return true
   })
   // TM-P0-015：附近人物 = 常驻当前地点的注册 NPC（动态过滤，不硬编码列表）
   const localNpcs = Object.values(NPCS).filter((npc) => npc.locationId === world.currentLocationId)
+
+  // 当前装备武器（左栏手机概览 + 装备区共用）
+  const equippedWeaponDef = gameState.equipment.weapon ? getItem(gameState.equipment.weapon) : undefined
+  const equippedWeaponName = gameState.equipment.weapon
+    ? (equippedWeaponDef?.name ?? `未知武器（${gameState.equipment.weapon}）`)
+    : '未装备'
 
   const handleSave = () => {
     const ok = saveGame()
@@ -275,45 +308,34 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
     return null
   })()
 
+  // 移动目标列表（中栏「地图/移动」块；位置在手机排到最后）
+  const travelTargets =
+    location?.connections
+      .map((targetId) => ({ targetId, target: getLocation(targetId) }))
+      .filter((entry): entry is { targetId: string; target: NonNullable<ReturnType<typeof getLocation>> } => entry.target !== undefined) ?? []
+
   return (
-    <div className="mx-auto flex min-h-screen w-full max-w-3xl flex-col gap-6 px-4 py-6">
-      <header className="flex items-center justify-between border-b border-ink-600 pb-4">
-        <h2 className="text-xl font-bold tracking-widest text-gold-300">冒险日志</h2>
-        <Button variant="ghost" onClick={onBackToMenu}>
-          返回主菜单
-        </Button>
+    <div className="mx-auto min-h-screen w-full max-w-[1600px] px-4 py-6">
+      {/* 顶栏：天梦大陆 / 当前地点 + 保存 / 主菜单 */}
+      <header className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-ink-600 pb-4">
+        <div>
+          <h2 className="text-xl font-bold tracking-widest text-gold-300">天梦大陆</h2>
+          <p className="text-sm text-bone-500">当前地点：{location?.name ?? '未知地点'}</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          {saveResult === 'saved' && <span className="text-sm text-gold-300">✓ 已保存</span>}
+          {saveResult === 'failed' && <span className="text-sm text-red-300">✗ 保存失败</span>}
+          <Button variant="primary" onClick={handleSave}>
+            保存游戏
+          </Button>
+          <Button variant="ghost" onClick={onBackToMenu}>
+            返回主菜单
+          </Button>
+        </div>
       </header>
 
-      <section className="rounded border border-ink-600 bg-ink-800/50 p-5">
-        <h3 className="mb-4 text-lg font-bold text-bone-100">
-          {player.name}
-          <span className="ml-3 text-sm font-normal text-bone-500">
-            Lv.{player.level} · {getProfessionName(player.profession)}
-          </span>
-        </h3>
-
-        <div className="mb-4 flex flex-col gap-2">
-          <Bar label="生命" value={player.hp} max={player.maxHp} />
-          <Bar label="灵力" value={player.mp} max={player.maxMp} />
-        </div>
-
-        <div className="grid grid-cols-2 gap-x-6 gap-y-1 sm:grid-cols-3">
-          {ATTRIBUTE_KEYS.map((key) => (
-            <div key={key} className="flex justify-between text-sm">
-              <span className="text-bone-500">{ATTRIBUTE_LABELS[key]}</span>
-              <span className="tabular-nums text-bone-300">{player.attributes[key]}</span>
-            </div>
-          ))}
-          <div className="flex justify-between text-sm">
-            <span className="text-bone-500">金币</span>
-            <span className="tabular-nums text-gold-300">{player.gold}</span>
-          </div>
-        </div>
-      </section>
-
-      {/* TM-P1-012：Lv.2 里程碑升级提示——只由《草原狼影》本次提交成功触发（UI 本地状态，不持久化；点击「知道了」关闭，不自动消失） */}
       {showLevelUpNotice && (
-        <section className="rounded border border-gold-500/60 bg-gold-900/30 p-5 text-sm">
+        <section className="mb-6 rounded border border-gold-500/60 bg-gold-900/30 p-5 text-sm">
           <h3 className="text-lg font-bold text-gold-300">等级提升！</h3>
           <p className="mt-2 text-bone-200">你已达到 Lv.2。</p>
           <p className="mt-1 text-bone-300">
@@ -325,21 +347,158 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
         </section>
       )}
 
-      <section className="rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
-        <p className="mb-2 text-bone-500">当前位置</p>
-        {location ? (
-          <>
-            <h3 className="text-lg font-bold text-bone-100">{location.name}</h3>
-            <p className="mt-2 leading-relaxed">{location.description}</p>
-            <p className="mt-2 text-xs text-bone-500">{location.id}</p>
-            <div className="mt-4">
+      {/* TM-P2-001 B1/B2/B3：三栏 / 两栏 / 单栏响应式骨架 */}
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-[minmax(0,1fr)_minmax(0,360px)] xl:grid-cols-[280px_minmax(0,1fr)_340px] xl:grid-rows-1">
+        {/* ============ 左栏：角色（手机仅概览，可展开完整详情） ============ */}
+        <section
+          data-testid="player-column"
+          className="order-1 flex flex-col gap-6 md:col-start-2 md:row-start-2 xl:col-start-1 xl:row-start-1"
+        >
+          {/* 手机角色概览（桌面隐藏）：姓名 / Lv·职业 / HP / MP / 当前武器 + 查看角色详情 */}
+          <section className="rounded border border-ink-600 bg-ink-800/50 p-5 md:hidden">
+            <h3 className="text-lg font-bold text-bone-100">
+              {player.name}
+              <span className="ml-3 text-sm font-normal text-bone-500">
+                Lv.{player.level} · {getProfessionName(player.profession)}
+              </span>
+            </h3>
+            <div className="mt-3 flex flex-col gap-2">
+              <Bar label="生命" value={player.hp} max={player.maxHp} />
+              <Bar label="灵力" value={player.mp} max={player.maxMp} />
+            </div>
+            <p className="mt-2 text-sm text-bone-300">
+              当前武器：<span className="text-bone-100">{equippedWeaponName}</span>
+            </p>
+            <Button className="mt-3" variant="primary" onClick={() => setShowCharacterDetails((v) => !v)}>
+              {showCharacterDetails ? '收起角色详情' : '查看角色详情'}
+            </Button>
+          </section>
+
+          {/* 完整角色区：手机由「查看角色详情」展开；md+ 始终显示 */}
+          <div className={`flex flex-col gap-6 ${showCharacterDetails ? 'flex' : 'hidden'} md:flex`}>
+            <section className="rounded border border-ink-600 bg-ink-800/50 p-5">
+              <h3 className="mb-4 text-lg font-bold text-bone-100">
+                {player.name}
+                <span className="ml-3 text-sm font-normal text-bone-500">
+                  Lv.{player.level} · {getProfessionName(player.profession)}
+                </span>
+              </h3>
+              <div className="mb-4 flex flex-col gap-2">
+                <Bar label="生命" value={player.hp} max={player.maxHp} />
+                <Bar label="灵力" value={player.mp} max={player.maxMp} />
+              </div>
+              <div className="grid grid-cols-2 gap-x-6 gap-y-1 sm:grid-cols-3">
+                {ATTRIBUTE_KEYS.map((key) => (
+                  <div key={key} className="flex justify-between text-sm">
+                    <span className="text-bone-500">{ATTRIBUTE_LABELS[key]}</span>
+                    <span className="tabular-nums text-bone-300">{player.attributes[key]}</span>
+                  </div>
+                ))}
+                <div className="flex justify-between text-sm">
+                  <span className="text-bone-500">金币</span>
+                  <span className="tabular-nums text-gold-300">{player.gold}</span>
+                </div>
+              </div>
+            </section>
+
+            <section className="rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
+              <h3 className="mb-3 text-sm font-bold tracking-wider text-bone-500">装备</h3>
+              <p>
+                武器：{' '}
+                {equippedWeaponDef ? (
+                  <span className="text-bone-100">{equippedWeaponDef.name}</span>
+                ) : gameState.equipment.weapon ? (
+                  <span className="text-bone-100">
+                    未知武器 <span className="text-bone-500">（{gameState.equipment.weapon}）</span>
+                  </span>
+                ) : (
+                  <span className="text-bone-500">未装备</span>
+                )}
+              </p>
+            </section>
+
+            <section className="rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
+              <h3 className="mb-3 text-sm font-bold tracking-wider text-bone-500">背包</h3>
+              {gameState.inventory.length === 0 ? (
+                <p className="text-bone-500">背包空空如也。</p>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {gameState.inventory.map((entry) => {
+                    const def = getItem(entry.itemId)
+                    // TM-P0-010：只有治疗药水提供使用入口；满血 / HP 0 时禁用
+                    const isPotion = def?.id === 'healing_potion'
+                    const canUse = isPotion && player.hp > 0 && player.hp < player.maxHp
+                    // TM-P0-013：铁剑提供装备/卸下入口（装备不消耗 inventory）
+                    const isWeapon = def?.id === 'iron_sword'
+                    const isEquipped = gameState.equipment.weapon === 'iron_sword'
+                    return (
+                      <div
+                        key={entry.itemId}
+                        className="flex items-center justify-between gap-3 rounded border border-ink-600 bg-ink-900/40 p-3"
+                      >
+                        <div>
+                          <p className="font-bold text-bone-100">
+                            {def?.name ?? '未知物品'} <span className="text-xs font-normal text-bone-500">×{entry.quantity}</span>
+                          </p>
+                          <p className="mt-1 text-xs text-bone-500">
+                            {def ? def.description : `（缺失物品定义：${entry.itemId}）`}
+                          </p>
+                        </div>
+                        <div className="flex flex-col items-end gap-1">
+                          {isWeapon && (
+                            <Button
+                              variant="primary"
+                              onClick={() => (isEquipped ? unequipWeapon() : equipWeapon(entry.itemId))}
+                            >
+                              {isEquipped ? '卸下' : '装备'}
+                            </Button>
+                          )}
+                          {isPotion && (
+                            <>
+                              <Button variant="primary" disabled={!canUse} onClick={() => useHealingPotion()}>
+                                使用
+                              </Button>
+                              {player.hp >= player.maxHp && <span className="text-xs text-bone-500">生命已满</span>}
+                              {player.hp <= 0 && <span className="text-xs text-red-300">当前无法使用</span>}
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </section>
+          </div>
+        </section>
+
+        {/* ============ 中栏：主玩法区（地点/剧情/NPC/敌人/调查/委托/移动） ============ */}
+        <section
+          data-testid="main-column"
+          className="order-3 flex flex-col gap-6 md:col-start-1 md:row-start-1 md:row-span-2 xl:col-start-2 xl:row-start-1"
+        >
+          {/* 当前区域（地点描述；手机第 3 位） */}
+          <section className="order-1 rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
+            <p className="mb-2 text-bone-500">当前位置</p>
+            {location ? (
+              <>
+                <h3 className="text-lg font-bold text-bone-100">{location.name}</h3>
+                <p className="mt-2 leading-relaxed">{location.description}</p>
+                <p className="mt-2 text-xs text-bone-500">{location.id}</p>
+              </>
+            ) : (
+              // TM-P0-005：未知当前位置安全边界——不崩溃、不提供移动按钮
+              <p className="text-bone-300">未知地点（{world.currentLocationId}）</p>
+            )}
+          </section>
+
+          {/* 地图 / 移动（手机排到最后；桌面紧跟地点描述之后） */}
+          {location && location.connections.length > 0 && (
+            <section className="order-2 max-md:order-last rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
               <p className="mb-2 text-bone-500">可前往：</p>
               <div className="flex flex-wrap gap-4">
-                {location.connections.map((targetId) => {
-                  const target = getLocation(targetId)
-                  if (!target) return null
-                  const locked =
-                    target.requiredFlag !== undefined && world.flags[target.requiredFlag] !== true
+                {travelTargets.map(({ targetId, target }) => {
+                  const locked = target.requiredFlag !== undefined && world.flags[target.requiredFlag] !== true
                   return (
                     <div key={targetId} className="flex flex-col items-start gap-1">
                       <Button
@@ -349,978 +508,1023 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
                       >
                         {target.name}
                       </Button>
-                      {locked && (
-                        <span className="text-xs text-bone-500">尚未找到进入此地的方法</span>
+                      {locked && <span className="text-xs text-bone-500">尚未找到进入此地的方法</span>}
+                    </div>
+                  )
+                })}
+              </div>
+              {travelError && <p className="mt-3 text-sm text-red-300">无法前往该地点。</p>}
+            </section>
+          )}
+
+          {/* ---- 剧情与行动块（中栏中部；手机在描述之后、移动之前） ---- */}
+
+          {/* TM-P2-001 D3：北门调查入口 / 痕迹剧情 —— 天龙城北门 + 北门任务 in_progress + 未调查时显示入口；调查后显示固定剧情（黑鬃魔狼由附近威胁区在正确状态出现） */}
+          {world.currentLocationId === 'tianlong_north_gate' && northGateQuestInProgress && (
+            <section className="order-3 rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
+              {northGateTrailChecked ? (
+                <>
+                  <p className="leading-relaxed text-bone-200">城门外侧的泥地上散落着凌乱马蹄印。</p>
+                  <p className="mt-1 leading-relaxed text-bone-200">其中一串痕迹突然偏离官道，消失在北面的荒草间。</p>
+                  <p className="mt-1 leading-relaxed text-bone-200">草叶间还残留着明显的魔化气息。</p>
+                </>
+              ) : (
+                <>
+                  <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">北门调查</h3>
+                  <p className="leading-relaxed text-bone-200">城门外的泥地上似乎留有巡逻队经过的痕迹。</p>
+                  {northGateTrailPending && (
+                    <Button className="mt-3" variant="primary" onClick={() => investigateNorthGateTrail()}>
+                      查看巡逻队留下的痕迹
+                    </Button>
+                  )}
+                </>
+              )}
+            </section>
+          )}
+
+          {/* TM-P2-001 D5：北门胜利剧情 —— 黑鬃魔狼击败后固定文案 + 新目标 */}
+          {world.currentLocationId === 'tianlong_north_gate' && northGateWolfDefeated && (
+            <section className="order-3 rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
+              <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">荒草之间</h3>
+              <p className="leading-relaxed text-bone-200">黑鬃魔狼倒在荒草之间。</p>
+              <p className="mt-1 leading-relaxed text-bone-200">你在附近找到了一块刻着骑士团纹章的断裂铜牌。</p>
+              <p className="mt-1 leading-relaxed text-bone-200">马蹄印和拖拽痕迹仍然继续向北延伸。</p>
+              <p className="mt-1 leading-relaxed text-bone-200">失联巡逻队显然没有停在这里。</p>
+              <p className="mt-2 text-gold-300">当前目标：返回武馆，将发现告诉马科。</p>
+            </section>
+          )}
+
+          {/* TM-P1-016：青石村阶段完成 —— 只读 world.flags.rabbit_path_reported===true（Store action 已保证该 flag 只能在正确前提下产生，不重算任务链）；持久剧情状态展示，非弹窗/toast；【待补充】为剧情边界，无新地点按钮 */}
+          {world.flags.rabbit_path_reported === true && (
+            <section className="order-3 rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
+              <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">青石村阶段完成</h3>
+              <p className="leading-relaxed text-bone-200">
+                你已经处理了村外异动、矿洞威胁与草原狼影，并取得了《兔子的路径》。
+              </p>
+              <p className="mt-2 text-bone-300">现有线索还不足以确认黄金兔子王的最终去向。</p>
+            </section>
+          )}
+
+          {/* TM-P1-020：兔王巢穴地图复查 —— 第四任务 in_progress + 村内调查已复命 + 未复查时显示入口；成功后按钮消失并显示固定结果（不虚构路线/足迹/方向/坐标） */}
+          {world.currentLocationId === 'rabbit_lair' && goldenSearchInProgress && goldenVillageInquiryReported && (
+            goldenLairRechecked ? (
+              <section className="order-3 rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
+                <p className="text-bone-200">你重新比对了地图与巢穴周边，但仍没有找到足以确认下一处地点的线索。</p>
+                <p className="mt-2 text-bone-300">现有线索还不足以确认黄金兔子王的最终去向。</p>
+              </section>
+            ) : (
+              <section className="order-3 rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
+                <p className="mb-3 text-bone-300">你带着《兔子的路径》返回兔王巢穴，准备重新比对地图上的标记。</p>
+                <Button variant="primary" onClick={() => recheckGoldenRabbitMapAtLair()}>
+                  重新比对地图
+                </Button>
+              </section>
+            )
+          )}
+
+          {/* TM-P1-021：村外草原采药区域调查 —— 支线 in_progress（未调查入口）或已查看（成功结果）时显示；成功后按钮消失并显示固定结果（无草药/采集物/危险值/随机结果） */}
+          {world.currentLocationId === 'village_grassland' && (herbInProgress || herbGrasslandChecked) && (
+            herbGrasslandChecked ? (
+              <section className="order-3 rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
+                <p className="text-bone-200">你检查了附近的采药区域，确认魔化野兽的活动确实影响了这里。</p>
+                <p className="mt-2 text-bone-300">可以回青石村向药师复命了。</p>
+              </section>
+            ) : (
+              <section className="order-3 rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
+                <p className="mb-3 text-bone-300">药师常来这一带采药。附近魔化野兽的活动让这里变得不再安全。</p>
+                <Button variant="primary" onClick={() => inspectApothecaryHerbRoute()}>
+                  查看采药区域
+                </Button>
+              </section>
+            )
+          )}
+
+          {/* TM-P1-023：离开青石村前往天龙城 —— 黄金主线收束后显示「新的旅程」入口；已接触未完成支线时只提示不提供按钮；二次确认后才调用 Store action（不可逆，单向离村） */}
+          {goldenDepartureReady && (
+            <section className="order-3 rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
+              <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">新的旅程</h3>
+              {sideQuestsBlocking ? (
+                <p className="leading-relaxed text-bone-200">你还有已经接触但尚未结束的村内委托，处理完再离开。</p>
+              ) : (
+                <>
+                  <p className="leading-relaxed text-bone-200">青石村的事情暂时告一段落。你已经可以前往天龙城继续旅程。</p>
+                  {!showTianlongDepartureConfirm ? (
+                    <Button variant="primary" onClick={() => setShowTianlongDepartureConfirm(true)}>
+                      准备前往天龙城
+                    </Button>
+                  ) : (
+                    <div className="mt-3 rounded border border-red-400/40 bg-ink-900/40 p-3">
+                      <p className="text-bone-200">离开青石村后将无法返回。</p>
+                      <p className="mt-1 text-bone-300">尚未发现的村内委托将被留在这里。</p>
+                      <div className="mt-3 flex flex-wrap gap-3">
+                        <Button variant="primary" onClick={() => departQingshiVillageToTianlongCity()}>
+                          前往天龙城
+                        </Button>
+                        <Button variant="ghost" onClick={() => setShowTianlongDepartureConfirm(false)}>
+                          暂不离开
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </section>
+          )}
+
+          {/* TM-P1-025：黑石塔调查入口 —— 天龙城 + 第五主线 in_progress/stage 0 + 已向王财了解情况 + unlock flag undefined/false（待解锁）时显示；只调用 Store action（不直接写 world flag）；stage!=0 或 unlock flag 异常非 boolean/已 true 一律不显示，避免死按钮 */}
+          {world.currentLocationId === 'tianlong_city' && towerQuestInProgress && wangcaiBriefed && towerUnlockPending && (
+            <section className="order-3 rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
+              <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">黑石塔调查</h3>
+              <p className="leading-relaxed text-bone-200">王财提供的情况已经足够，你可以动身前往黑石塔调查。</p>
+              <Button variant="primary" onClick={() => unlockBlackStoneTowerInvestigation()}>
+                动身调查黑石塔
+              </Button>
+            </section>
+          )}
+
+          {/* TM-P1-025/P1-026：黑石塔一层剧情 —— 骷髅士兵击败后显示前两句（无【待开放】；此时附近威胁正式出现骷髅队长）；骷髅队长击败后显示 Boss 战后固定文案（无按钮；二层本卡不开放） */}
+          {world.currentLocationId === 'black_stone_tower_floor1' && floor1SoldierDefeated && (
+            <section className="order-3 rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
+              <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">大厅深处</h3>
+              {!floor1CaptainDefeated ? (
+                <>
+                  <p className="leading-relaxed text-bone-200">大厅中的骷髅士兵已经被击败。</p>
+                  <p className="mt-1 leading-relaxed text-bone-200">
+                    更深处传来沉重的骨骼碰撞声，一名身材高大的骷髅队长守在前方。
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="leading-relaxed text-bone-200">骷髅队长已经倒下。</p>
+                  <p className="mt-1 leading-relaxed text-bone-200">你检查了骷髅队长与周围，没有发现夔峒项链。</p>
+                  <p className="mt-1 leading-relaxed text-bone-200">通往黑石塔更深处的道路仍需继续调查。</p>
+                  <p className="mt-2 text-gold-300">黑石塔上层尚未开启。</p>
+                </>
+              )}
+            </section>
+          )}
+
+          {/* TM-P0-022：村中休整 —— 仅青石村显示；免费恢复 HP/MP 至最大值（战败软锁出口） */}
+          {world.currentLocationId === 'qingshi_village' && (
+            <section className="order-3 rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
+              <h3 className="mb-3 text-sm font-bold tracking-wider text-bone-500">村中休整</h3>
+              <p className="mb-3 text-bone-300">在村里稍作休息，可以恢复生命与灵力。</p>
+              {(() => {
+                const needsRest = player.hp < player.maxHp || player.mp < player.maxMp
+                return (
+                  <div className="flex flex-col items-start gap-1">
+                    <Button variant="primary" disabled={!needsRest} onClick={() => restAtVillage()}>
+                      休整
+                    </Button>
+                    {!needsRest && <span className="text-xs text-bone-500">状态良好，无需休整</span>}
+                  </div>
+                )
+              })()}
+            </section>
+          )}
+
+          {/* TM-P1-027：武馆休整 —— 仅天龙城武馆显示；免费恢复 HP/MP 至最大值（离开青石村后的 HP=0 软锁出口）；只调 Store action */}
+          {world.currentLocationId === 'tianlong_martial_hall' && (
+            <section className="order-3 rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
+              <h3 className="mb-3 text-sm font-bold tracking-wider text-bone-500">武馆休整</h3>
+              <p className="mb-3 text-bone-300">武馆里有专供休整的静室，可以恢复生命与灵力。</p>
+              {(() => {
+                const needsRest = player.hp < player.maxHp || player.mp < player.maxMp
+                return (
+                  <div className="flex flex-col items-start gap-1">
+                    <Button variant="primary" disabled={!needsRest} onClick={() => restAtTianlongMartialHall()}>
+                      休整
+                    </Button>
+                    {!needsRest && <span className="text-xs text-bone-500">状态良好，无需休整</span>}
+                  </div>
+                )
+              })()}
+            </section>
+          )}
+
+          {/* TM-P1-027：黑石塔二层解锁入口 —— 黑石塔一层 + 士兵与队长均已击败 + floor2 flag undefined/false（待解锁）时显示；只调用 Store action（不直接写 world flag） */}
+          {world.currentLocationId === 'black_stone_tower_floor1' &&
+            towerQuestInProgress &&
+            wangcaiBriefed &&
+            towerUnlocked &&
+            floor1SoldierDefeated &&
+            floor1CaptainDefeated &&
+            towerFloor2UnlockPending && (
+              <section className="order-3 rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
+                <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">继续深入</h3>
+                <p className="leading-relaxed text-bone-200">一层大厅已经清空，通往黑石塔二层的阶梯就在更深处。</p>
+                <Button variant="primary" onClick={() => unlockBlackStoneTowerFloor2()}>
+                  深入黑石塔二层
+                </Button>
+              </section>
+            )}
+
+          {/* TM-P1-027/P1-028：黑石塔二层入口区清场剧情 —— 僵尸与黑法师均击败后显示固定文案（骷髅战士只作为剧情文本预告，直到本卡击败前仍镇守深处） */}
+          {world.currentLocationId === 'black_stone_tower_floor2' &&
+            floor2ZombieDefeated &&
+            floor2BlackMageDefeated &&
+            !floor2SkeletonWarriorDefeated && (
+              <section className="order-3 rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
+                <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">二层前段</h3>
+                <p className="leading-relaxed text-bone-200">二层前段的僵尸与黑法师已经被清理。</p>
+                <p className="mt-1 leading-relaxed text-bone-200">
+                  曲折的通道继续向深处延伸，前方小厅中出现了更强的骷髅战士，挡住继续深入的道路。
+                </p>
+              </section>
+            )}
+
+          {/* TM-P1-028：骷髅战士击败后固定剧情（找项链主线推进）——三层未解锁时显示「继续向上」入口（仅调 Store action）；已解锁则入口隐藏、经移动按钮前往三层 */}
+          {world.currentLocationId === 'black_stone_tower_floor2' && floor2SkeletonWarriorDefeated && (
+            <section className="order-3 rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
+              <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">二层深处</h3>
+              <p className="leading-relaxed text-bone-200">小厅中的骷髅战士已经倒下。</p>
+              <p className="mt-1 leading-relaxed text-bone-200">你仔细搜索了周围，依然没有发现王财遗失的夔峒项链。</p>
+              <p className="mt-1 leading-relaxed text-bone-200">小厅后方，一道向上的石阶通往黑石塔更高处。</p>
+              {canUnlockTowerFloor3 && (
+                <div className="mt-3">
+                  <Button variant="primary" onClick={() => unlockBlackStoneTowerFloor3()}>
+                    继续向上
+                  </Button>
+                </div>
+              )}
+            </section>
+          )}
+
+          {/* TM-P1-029：黑石塔三层——骷髅女妖击败后固定剧情（找到夔峒项链 ×1；不交还王财、不完成任务） */}
+          {world.currentLocationId === 'black_stone_tower_floor3' && floor3SkeletonWitchDefeated && (
+            <section className="order-3 rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
+              <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">三层厅堂</h3>
+              <p className="leading-relaxed text-bone-200">骷髅女妖倒在破碎的石柱之间。</p>
+              <p className="mt-1 leading-relaxed text-bone-200">你在厅堂深处搜索时，发现了一条被灰尘覆盖的项链。</p>
+              <p className="mt-1 leading-relaxed text-bone-200">这正是王财所说的夔峒项链。</p>
+              <p className="mt-2 text-gold-300">夔峒项链 ×1 已获得。</p>
+              <p className="mt-1">当前目标：返回天龙城，将夔峒项链交还王财。</p>
+            </section>
+          )}
+
+          {/* TM-P0-015：附近人物 —— 仅当前地点存在注册 NPC 时显示 */}
+          {localNpcs.length > 0 && (
+            <section className="order-4 rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
+              <h3 className="mb-3 text-sm font-bold tracking-wider text-bone-500">附近人物</h3>
+              {showDialog && activeNpc && (
+                <div className="mb-3 rounded border border-gold-500/40 bg-ink-900/60 p-4">
+                  <p className="mb-1 text-xs tracking-wider text-bone-500">与{activeNpc.name}交谈</p>
+                  <p className="font-bold text-bone-100">{activeNpc.name}</p>
+                  <p className="mb-2 text-xs text-bone-500">{activeNpc.role}</p>
+                  {/* TM-P1-004：已回应且关系合法时，后续关系反应替代原 greeting 正文位置（不重复显示旧文案）；否则回退原 greeting */}
+                  {/* TM-P1-031/031-R1：修复 NPC 失忆——王财已取回项链后、马科按第五主线阶段（in_progress/completable/completed）分别替换 greeting（不建 DialogueSystem）；available/未接继续用原 greeting */}
+                  {/* TM-P2-001 D2/D6：马科新增《北门失联》阶段 greeting（王财主线 completed 后生效） */}
+                  <p className="mb-3 text-bone-300">
+                    {elderReaction === 'respect'
+                      ? '村长郑重地点了点头：“若你还要继续追查，务必小心。”'
+                      : elderReaction === 'trust'
+                        ? '村长舒展了眉头：“好，村里能安稳一些就好。”'
+                        : activeNpc.id === 'knight_captain_make'
+                          ? northGateQuest?.status === 'in_progress'
+                            ? '北门那边有消息了吗？发现什么痕迹一定要告诉我。'
+                            : northGateQuest?.status === 'completable'
+                              ? '北门外找到什么了？'
+                              : northGateQuest?.status === 'completed'
+                                ? '北面的情况我已经记下了。你先休整一下。'
+                                : wangcaiQuest?.status === 'in_progress'
+                                  ? '王财的事情有进展了吗？黑石塔那边不要大意。'
+                                  : wangcaiQuest?.status === 'completable'
+                                    ? '王财那边已经处理好了？把黑石塔里的情况告诉我。'
+                                    : wangcaiQuest?.status === 'completed'
+                                      ? '黑石塔的情况我已经记下了。你先休整一下。'
+                                      : activeNpc.greeting
+                          : activeNpc.id === 'merchant_wangcai' && kuidongNecklaceReturned
+                            ? '王财把项链小心收好，见到你时郑重地点了点头。'
+                            : activeNpc.greeting}
+                  </p>
+                  {/* TM-P1-002/003：村长对话显示信任+尊敬（读 NpcState；未建立状态时 UI fallback 0，打开对话不创建状态） */}
+                  {activeNpc.id === 'village_elder' && (
+                    <p className="mb-3 text-xs text-bone-500">
+                      信任：{world.npcStates[activeNpc.id]?.relationship.trust ?? 0}
+                      {'　'}尊敬：{world.npcStates[activeNpc.id]?.relationship.respect ?? 0}
+                    </p>
+                  )}
+                  {/* TM-P1-003：《村外异动》完成后村长一次性回应选择（复用 completedEvents 记录，仅未回应时显示） */}
+                  {activeNpc.id === 'village_elder' &&
+                    (gameState.quests.some((q) => q.questId === 'quest_village_monsters' && q.status === 'completed')) &&
+                    !world.completedEvents.includes(VILLAGE_ELDER_POST_QUEST_EVENT_ID) && (
+                      <div className="mb-3 rounded border border-ink-600 bg-ink-900/40 p-3">
+                        <p className="mb-2 text-xs text-bone-300">村长看着你，神色比之前放松了一些。</p>
+                        <div className="flex flex-col items-start gap-2">
+                          <Button variant="primary" onClick={() => respondToVillageElderAfterQuest('reassure')}>
+                            村子平安就好。
+                          </Button>
+                          <Button variant="primary" onClick={() => respondToVillageElderAfterQuest('resolve')}>
+                            我会继续追查这些异动。
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  {/* TM-P1-016：向村长汇报《兔子的路径》——青石村阶段收束入口（不依赖 P1-003 回应选择/关系值；Store flag 是唯一真源） */}
+                  {activeNpc.id === 'village_elder' &&
+                    gameState.inventory.some((e) => e.itemId === 'rabbit_path' && Number.isSafeInteger(e.quantity) && e.quantity >= 1) &&
+                    world.flags.rabbit_path_examined === true &&
+                    gameState.quests.some((q) => q.questId === 'quest_grassland_wolf' && q.status === 'completed') &&
+                    world.flags.rabbit_path_reported !== true && (
+                      <div className="mb-3 rounded border border-ink-600 bg-ink-900/40 p-3">
+                        <p className="mb-2 text-xs text-bone-300">你带回了一张指向黄金兔子王所在之地的地图。</p>
+                        <Button variant="primary" onClick={() => reportRabbitPathToVillageElder()}>
+                          向村长展示《兔子的路径》
+                        </Button>
+                      </div>
+                    )}
+                  {/* TM-P1-016：已汇报固定文案（汇报后按钮消失；地图仍指向【待补充】） */}
+                  {activeNpc.id === 'village_elder' && world.flags.rabbit_path_reported === true && (
+                    <div className="mb-3 rounded border border-gold-500/40 bg-ink-900/40 p-3">
+                      <p className="text-bone-200">你已经把《兔子的路径》展示给村长。</p>
+                      <p className="mt-1 text-bone-300">地图仍指向黄金兔子王所在之地。</p>
+                      <p className="mt-1 text-bone-300">地图上的标记仍无法对应到任何已知地点。</p>
+                    </div>
+                  )}
+                  {/* TM-P1-019：向村长复命村内调查——第四任务 in_progress + 调查 2/2 + 未复命时显示入口（与 P1-016 地图汇报入口严格分开）；成功后按钮消失并显示固定文案 */}
+                  {activeNpc.id === 'village_elder' && goldenSearchInProgress && goldenInvestigationCount === 2 && (
+                    goldenVillageInquiryReported ? (
+                      <div className="mb-3 rounded border border-gold-500/40 bg-ink-900/40 p-3">
+                        <p className="text-bone-200">你已经把调查结果告诉了村长。</p>
+                        <p className="mt-1 text-bone-300">村里目前没人能够确认地图上的标记。</p>
+                        <p className="mt-1 text-bone-300">现有线索还不足以确认黄金兔子王的最终去向。</p>
+                      </div>
+                    ) : (
+                      <div className="mb-3 rounded border border-ink-600 bg-ink-900/40 p-3">
+                        <p className="mb-2 text-xs text-bone-300">你已经问过铁匠和药师，但两人都无法辨认地图上的标记。</p>
+                        <Button variant="primary" onClick={() => reportGoldenRabbitVillageInvestigation()}>
+                          向村长汇报调查结果
+                        </Button>
+                      </div>
+                    )
+                  )}
+                  {/* TM-P1-018：向铁匠打听地图——第四任务 in_progress 且未询问时显示入口；成功后隐藏按钮并显示固定回复（剧情块在 greeting 之后，不修改 npcs.ts） */}
+                  {activeNpc.id === 'blacksmith' && goldenSearchInProgress && (
+                    goldenAskedBlacksmith ? (
+                      <div className="mb-3 rounded border border-gold-500/40 bg-ink-900/40 p-3">
+                        <p className="text-bone-200">铁匠看了看地图，摇了摇头：“这上面的路线，我认不出来。”</p>
+                      </div>
+                    ) : (
+                      <div className="mb-3 rounded border border-ink-600 bg-ink-900/40 p-3">
+                        <p className="mb-2 text-xs text-bone-300">你把《兔子的路径》拿给铁匠辨认。</p>
+                        <Button variant="primary" onClick={() => consultGoldenRabbitSearchNpc('blacksmith')}>
+                          向铁匠打听地图
+                        </Button>
+                      </div>
+                    )
+                  )}
+                  {/* TM-P1-018：向药师打听地图——同上 */}
+                  {activeNpc.id === 'apothecary' && goldenSearchInProgress && (
+                    goldenAskedApothecary ? (
+                      <div className="mb-3 rounded border border-gold-500/40 bg-ink-900/40 p-3">
+                        <p className="text-bone-200">药师仔细辨认了一会儿：“我也没见过这处标记。”</p>
+                      </div>
+                    ) : (
+                      <div className="mb-3 rounded border border-ink-600 bg-ink-900/40 p-3">
+                        <p className="mb-2 text-xs text-bone-300">你请药师看看《兔子的路径》上的标记。</p>
+                        <Button variant="primary" onClick={() => consultGoldenRabbitSearchNpc('apothecary')}>
+                          向药师打听地图
+                        </Button>
+                      </div>
+                    )
+                  )}
+                  {/* TM-P1-024：向王财询问黑石塔附近的遭遇——第五主线 in_progress 且未说明时显示入口（仅剧情标记驱动，不依赖 npcs.ts 改动）；成功后按钮消失并显示固定说明（黑石塔仍不开放） */}
+                  {activeNpc.id === 'merchant_wangcai' && wangcaiQuest?.status === 'in_progress' && (
+                    wangcaiBriefed ? (
+                      <div className="mb-3 rounded border border-gold-500/40 bg-ink-900/40 p-3">
+                        <p className="text-bone-200">王财告诉你，几天前他在黑石塔附近遭到魔物袭击，混乱中遗失了妻子的夔峒项链。</p>
+                        <p className="mt-1 text-bone-300">他希望你能前去调查，并设法找回项链。</p>
+                      </div>
+                    ) : (
+                      <div className="mb-3 rounded border border-ink-600 bg-ink-900/40 p-3">
+                        <p className="mb-2 text-xs text-bone-300">马科让你来了解王财最近遇到的麻烦。</p>
+                        <Button variant="primary" onClick={() => askWangcaiAboutTrouble()}>
+                          询问黑石塔附近的遭遇
+                        </Button>
+                      </div>
+                    )
+                  )}
+                  {/* TM-P1-030：将夔峒项链交还王财——天龙城 + 全前置 + 背包持有项链 + flag 非 true 时显示入口（与 Store 前置一致，避免 dead button）；成功后显示固定剧情并移除按钮 */}
+                  {activeNpc.id === 'merchant_wangcai' && canReturnNecklaceToWangcai && (
+                    <div className="mb-3 rounded border border-gold-500/40 bg-ink-900/40 p-3">
+                      <p className="mb-2 text-bone-200">你取出了黑石塔三层找到的夔峒项链。</p>
+                      <Button variant="primary" onClick={() => returnKuidongNecklaceToWangcai()}>
+                        将夔峒项链交还王财
+                      </Button>
+                    </div>
+                  )}
+                  {activeNpc.id === 'merchant_wangcai' && kuidongNecklaceReturned && (
+                    <div className="mb-3 rounded border border-gold-500/40 bg-ink-900/40 p-3">
+                      <p className="text-bone-200">王财接过项链，久久没有说话。</p>
+                      <p className="mt-1 text-bone-200">“没错……就是它。这是我妻子留下的东西。”</p>
+                      <p className="mt-1 text-bone-200">“谢谢你。若不是你，我恐怕再也找不回来了。”</p>
+                      <p className="mt-1 text-bone-300">王财收好项链，又向你郑重道谢。</p>
+                      <p className="mt-1 text-bone-300">“黑石塔里的情况，也请你告诉马科队长。”</p>
+                    </div>
+                  )}
+                  <Button variant="ghost" onClick={() => setActiveNpcId(null)}>
+                    结束交谈
+                  </Button>
+                </div>
+              )}
+              <div className="flex flex-col gap-2">
+                {localNpcs.map((npc) => (
+                  <div
+                    key={npc.id}
+                    className="flex items-center justify-between gap-3 rounded border border-ink-600 bg-ink-900/40 p-3"
+                  >
+                    <div>
+                      <p className="font-bold text-bone-100">
+                        {npc.name} <span className="text-xs font-normal text-bone-500">{npc.role}</span>
+                      </p>
+                      <p className="mt-1 text-xs text-bone-500">{npc.summary}</p>
+                    </div>
+                    <Button variant="primary" onClick={() => setActiveNpcId(npc.id)}>
+                      交谈
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* TM-P0-014：药师商店 —— 仅当前地点存在药师时显示（读 NPC 注册表） */}
+          {getNpc('apothecary')?.locationId === world.currentLocationId && (
+            <section className="order-4 rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
+              <h3 className="mb-3 text-sm font-bold tracking-wider text-bone-500">药师的小铺</h3>
+              {(() => {
+                const potion = getItem('healing_potion')
+                if (!potion) return <p className="text-bone-500">货架空空如也。</p>
+                const price = potion.value
+                const canAfford = player.gold >= price
+                return (
+                  <div className="flex items-center justify-between gap-3 rounded border border-ink-600 bg-ink-900/40 p-3">
+                    <div>
+                      <p className="font-bold text-bone-100">{potion.name}</p>
+                      <p className="mt-1 text-xs text-bone-500">
+                        {potion.description}
+                        {potion.healAmount !== undefined && <span> 恢复生命：{potion.healAmount}</span>}
+                        <span> 价格：{price} 金币</span>
+                      </p>
+                    </div>
+                    <div className="flex flex-col items-end gap-1">
+                      <Button variant="primary" disabled={!canAfford} onClick={() => buyHealingPotion()}>
+                        购买
+                      </Button>
+                      {!canAfford && <span className="text-xs text-red-300">金币不足</span>}
+                    </div>
+                  </div>
+                )
+              })()}
+            </section>
+          )}
+
+          {/* TM-P0-021：铁匠收购 —— 仅当前地点存在铁匠时显示（读 NPC 注册表） */}
+          {getNpc('blacksmith')?.locationId === world.currentLocationId && (
+            <section className="order-4 rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
+              <h3 className="mb-3 text-sm font-bold tracking-wider text-bone-500">铁匠的收购</h3>
+              {(() => {
+                const ore = getItem('iron_ore')
+                if (!ore) return <p className="text-bone-500">货架空空如也。</p>
+                const price = ore.value
+                const held = gameState.inventory.find((e) => e.itemId === 'iron_ore')?.quantity ?? 0
+                const canSell = held >= 1
+                return (
+                  <div className="flex items-center justify-between gap-3 rounded border border-ink-600 bg-ink-900/40 p-3">
+                    <div>
+                      <p className="font-bold text-bone-100">{ore.name}</p>
+                      <p className="mt-1 text-xs text-bone-500">
+                        {ore.description} 收购价：{price} 金币
+                      </p>
+                      <p className="mt-1 text-xs text-bone-500">持有：{held}</p>
+                    </div>
+                    <div className="flex flex-col items-end gap-1">
+                      <Button variant="primary" disabled={!canSell} onClick={() => sellIronOre()}>
+                        出售 1 个
+                      </Button>
+                      {!canSell && <span className="text-xs text-red-300">没有可出售的铁矿石</span>}
+                    </div>
+                  </div>
+                )
+              })()}
+            </section>
+          )}
+
+          {/* TM-P0-017：附近威胁 —— 仅当前地点配置了敌人时显示（青石村等无敌人地点整个区域隐藏） */}
+          {(() => {
+            const configuredEnemies = location?.enemyIds ?? []
+            if (configuredEnemies.length === 0) return null
+            // TM-P1-010/P1-014：先计算「实际可见」敌人（魔化狼仅任务 in_progress 可见；嘟嘟兔持有《兔子的路径》后清场不可见），
+            // 可见敌人为空时整个「附近威胁」区域不渲染（避免兔王巢穴嘟嘟兔清场后残留空面板）
+            // TM-P2-001 D4：黑鬃魔狼仅任务 in_progress + 已调查痕迹 + 未击败时可见
+            const visibleEnemies = configuredEnemies
+              .map((enemyId) => getEnemy(enemyId))
+              .filter((threat): threat is NonNullable<typeof threat> => {
+                if (!threat) return false
+                if (threat.id === 'corrupted_wolf') {
+                  const wolfQuest = gameState.quests.find((q) => q.questId === 'quest_grassland_wolf')
+                  if (wolfQuest?.status !== 'in_progress') return false
+                }
+                if (threat.id === 'dudu_rabbit') {
+                  const hasPath = gameState.inventory.some((e) => e.itemId === 'rabbit_path')
+                  if (hasPath) return false
+                }
+                // TM-P1-025：骷髅士兵可见性窄条件——当前位置黑石塔一层 + 第五主线 in_progress/stage 0 + wangcai_briefed===true + black_stone_tower_unlocked===true + floor1_soldier_defeated 非 true（已击败/异常非 boolean 一律不显示）
+                if (threat.id === 'skeleton_soldier') {
+                  const defeated = wangcaiQuest?.flags.floor1_soldier_defeated
+                  const defeatedOk = defeated !== true && (typeof defeated === 'undefined' || typeof defeated === 'boolean')
+                  if (!towerQuestInProgress || !wangcaiBriefed || !towerUnlocked || !defeatedOk) return false
+                }
+                // TM-P1-026：骷髅队长可见性窄条件——士兵已击败（floor1_soldier_defeated===true）+ floor1_captain_defeated 非 true（undefined/false 才显示；异常非 boolean 不显示）
+                if (threat.id === 'skeleton_captain') {
+                  const captainFlag = wangcaiQuest?.flags.floor1_captain_defeated
+                  const captainOk = captainFlag !== true && (typeof captainFlag === 'undefined' || typeof captainFlag === 'boolean')
+                  if (!towerQuestInProgress || !wangcaiBriefed || !towerUnlocked || floor1SoldierDefeated !== true || !captainOk) return false
+                }
+                // TM-P1-027：二层僵尸可见性窄条件（严格 boolean）——二层 + 任务 in_progress/stage 0 + briefed===true + unlocked===true + floor2_unlocked===true + soldier===true + captain===true + floor2_zombie_defeated 非 true
+                if (threat.id === 'tower_zombie') {
+                  const zombieFlag = wangcaiQuest?.flags.floor2_zombie_defeated
+                  const zombieOk = zombieFlag !== true && (typeof zombieFlag === 'undefined' || typeof zombieFlag === 'boolean')
+                  if (
+                    !towerQuestInProgress ||
+                    !wangcaiBriefed ||
+                    !towerUnlocked ||
+                    !towerFloor2Unlocked ||
+                    floor1SoldierDefeated !== true ||
+                    floor1CaptainDefeated !== true ||
+                    !zombieOk
+                  ) {
+                    return false
+                  }
+                }
+                // TM-P1-027：二层黑法师可见性窄条件（严格 boolean）——额外要求 floor2_zombie_defeated===true（僵尸未击败不显示黑法师）+ floor2_black_mage_defeated 非 true
+                if (threat.id === 'black_mage') {
+                  const mageFlag = wangcaiQuest?.flags.floor2_black_mage_defeated
+                  const mageOk = mageFlag !== true && (typeof mageFlag === 'undefined' || typeof mageFlag === 'boolean')
+                  if (
+                    !towerQuestInProgress ||
+                    !wangcaiBriefed ||
+                    !towerUnlocked ||
+                    !towerFloor2Unlocked ||
+                    floor1SoldierDefeated !== true ||
+                    floor1CaptainDefeated !== true ||
+                    floor2ZombieDefeated !== true ||
+                    !mageOk
+                  ) {
+                    return false
+                  }
+                }
+                // TM-P1-028：二层骷髅战士可见性窄条件（严格 boolean）——额外要求 floor2_zombie_defeated===true 且 floor2_black_mage_defeated===true（入口区两敌未全部击败不显示骷髅战士）+ floor2_skeleton_warrior_defeated 非 true
+                if (threat.id === 'skeleton_warrior') {
+                  const warriorFlag = wangcaiQuest?.flags.floor2_skeleton_warrior_defeated
+                  const warriorOk = warriorFlag !== true && (typeof warriorFlag === 'undefined' || typeof warriorFlag === 'boolean')
+                  if (
+                    !towerQuestInProgress ||
+                    !wangcaiBriefed ||
+                    !towerUnlocked ||
+                    !towerFloor2Unlocked ||
+                    floor1SoldierDefeated !== true ||
+                    floor1CaptainDefeated !== true ||
+                    floor2ZombieDefeated !== true ||
+                    floor2BlackMageDefeated !== true ||
+                    !warriorOk
+                  ) {
+                    return false
+                  }
+                }
+                // TM-P1-029：三层骷髅女妖可见性窄条件（严格 boolean）——必须在三层 + 全部前序严格 true + floor3_skeleton_witch_defeated 非 true
+                if (threat.id === 'skeleton_witch') {
+                  const witchFlag = wangcaiQuest?.flags.floor3_skeleton_witch_defeated
+                  const witchOk = witchFlag !== true && (typeof witchFlag === 'undefined' || typeof witchFlag === 'boolean')
+                  if (
+                    !towerQuestInProgress ||
+                    !wangcaiBriefed ||
+                    !towerUnlocked ||
+                    !towerFloor2Unlocked ||
+                    !towerFloor3Unlocked ||
+                    floor1SoldierDefeated !== true ||
+                    floor1CaptainDefeated !== true ||
+                    floor2ZombieDefeated !== true ||
+                    floor2BlackMageDefeated !== true ||
+                    floor2SkeletonWarriorDefeated !== true ||
+                    !witchOk
+                  ) {
+                    return false
+                  }
+                }
+                // TM-P2-001 D4：黑鬃魔狼可见性窄条件（严格 boolean）——北门 + 北门任务 in_progress/stage 0 + trail_checked===true + wolf_defeated 非 true（未调查/已击败/异常非 boolean 一律不显示）
+                if (threat.id === 'black_mane_wolf') {
+                  if (!northGateWolfVisible) return false
+                }
+                return true
+              })
+            if (visibleEnemies.length === 0) return null
+            return (
+              <section className="order-4 rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
+                <h3 className="mb-3 text-sm font-bold tracking-wider text-bone-500">附近威胁</h3>
+                <div className="flex flex-col gap-3">
+                  {visibleEnemies.map((threat) => {
+                    const cannotFight = player.hp <= 0
+                    return (
+                      <div key={threat.id} className="rounded border border-ink-600 bg-ink-900/40 p-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="font-bold text-bone-100">
+                              {threat.name} <span className="text-xs font-normal text-bone-500">· Lv.{threat.level}</span>
+                            </p>
+                            <p className="mt-1 text-xs text-bone-500">
+                              HP {threat.maxHp} · 防御 {threat.defense}
+                            </p>
+                          </div>
+                          <Button variant="primary" disabled={cannotFight} onClick={() => onEngage(threat.id)}>
+                            迎战
+                          </Button>
+                        </div>
+                        {cannotFight && <p className="mt-2 text-xs text-red-300">当前状态无法战斗</p>}
+                      </div>
+                    )
+                  })}
+                </div>
+              </section>
+            )
+          })()}
+
+          {/* TM-P0-016：废弃矿洞调查 —— 仅废弃矿洞显示；DC 来自 CHECK_DC.moderate，不复制常量 */}
+          {world.currentLocationId === 'abandoned_mine' && (
+            <section className="order-4 rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
+              <h3 className="mb-3 text-sm font-bold tracking-wider text-bone-500">调查矿洞</h3>
+              {(() => {
+                const done = world.flags.abandoned_mine_investigation
+                return (
+                  <>
+                    {lastMineInvestigation && (
+                      <div className="mb-3 rounded border border-gold-500/40 bg-ink-900/60 p-3">
+                        <p className="text-bone-300">
+                          D20 {lastMineInvestigation.roll} + 心智修正 {lastMineInvestigation.attributeModifier} ={' '}
+                          {lastMineInvestigation.total}
+                        </p>
+                        <p className="text-bone-500">DC {lastMineInvestigation.dc}</p>
+                        <p className="font-bold text-gold-300">结果：{CHECK_OUTCOME_LABELS[lastMineInvestigation.outcome]}</p>
+                      </div>
+                    )}
+                    {done === 'success' && (
+                      <>
+                        <p className="mb-2 text-bone-300">你在洞口附近发现了被利爪抓乱的泥痕，痕迹延伸向矿洞深处。</p>
+                        <p className="text-xs text-bone-500">调查已完成</p>
+                      </>
+                    )}
+                    {done === 'failure' && (
+                      <>
+                        <p className="mb-2 text-bone-300">昏暗与杂乱遮掩了细节，你没能判断这些痕迹的来源。</p>
+                        <p className="text-xs text-bone-500">调查已完成</p>
+                      </>
+                    )}
+                    {done === undefined && (
+                      <>
+                        <p className="mb-2 text-bone-300">矿洞入口一带残留着杂乱痕迹，也许能从中看出些什么。</p>
+                        <p className="mb-3 text-xs text-bone-500">
+                          心智检定 · DC {CHECK_DC.moderate}（当前心智 {player.attributes.mnd}）
+                        </p>
+                        <Button variant="primary" onClick={handleInvestigateMine}>
+                          仔细调查
+                        </Button>
+                      </>
+                    )}
+                  </>
+                )
+              })()}
+            </section>
+          )}
+
+          {/* 附近委托（接任务入口；中栏底部） */}
+          <section className="order-5 rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
+            <h3 className="mb-3 text-sm font-bold tracking-wider text-bone-500">附近委托</h3>
+            {localQuests.length === 0 ? (
+              <p className="text-bone-500">这里暂时没有可接的委托。</p>
+            ) : (
+              localQuests.map((quest) => {
+                const qs = gameState.quests.find((q) => q.questId === quest.id)
+                const status = qs?.status ?? 'undiscovered'
+                const giver = getNpc(quest.giverNpcId)
+                if (status === 'undiscovered') {
+                  return (
+                    <div key={quest.id} className="flex items-center justify-between gap-4">
+                      <p>{giver?.name ?? quest.giverNpcId}似乎有事相托。</p>
+                      <Button variant="ghost" onClick={() => discoverQuest(quest.id)}>
+                        查看委托
+                      </Button>
+                    </div>
+                  )
+                }
+                if (status === 'available') {
+                  return (
+                    <div key={quest.id}>
+                      <p className="font-bold text-bone-100">{quest.title}</p>
+                      <p className="mt-1 leading-relaxed">{quest.summary}</p>
+                      <p className="mt-1 text-xs text-bone-500">发布者：{giver?.name ?? quest.giverNpcId}</p>
+                      <div className="mt-2">
+                        <Button variant="primary" onClick={() => acceptQuest(quest.id)}>
+                          接受任务
+                        </Button>
+                      </div>
+                    </div>
+                  )
+                }
+                return null // 已接/已完成：委托入口不重复显示
+              })
+            )}
+          </section>
+        </section>
+
+        {/* ============ 右栏：当前目标 / 新线索 / 任务日志 / 冒险日志 ============ */}
+        <section
+          data-testid="quest-column"
+          className="order-2 flex flex-col gap-6 md:col-start-2 md:row-start-1 xl:col-start-3 xl:row-start-1"
+        >
+          {/* 当前目标（主线/支线摘要；手机第 2 位） */}
+          {(() => {
+            const activeQuests = gameState.quests.filter(
+              (q) => q.status === 'in_progress' || q.status === 'completable',
+            )
+            if (activeQuests.length === 0) return null
+            return (
+              <section className="rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
+                <h3 className="mb-3 text-sm font-bold tracking-wider text-bone-500">当前目标</h3>
+                <div className="flex flex-col gap-2">
+                  {activeQuests.map((qs) => {
+                    const def = getQuest(qs.questId)
+                    const statusLabel = qs.status === 'completable' ? '可完成' : '进行中'
+                    return (
+                      <div key={qs.questId} className="rounded border border-ink-600 bg-ink-900/40 p-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="font-bold text-bone-100">{def?.title ?? '未知任务'}</p>
+                          <span className="shrink-0 text-xs text-gold-300">{statusLabel}</span>
+                        </div>
+                        {/* TM-P2-001 D5：北门任务关键目标行 */}
+                        {qs.questId === 'quest_north_gate_missing_patrol' && qs.status === 'completable' && (
+                          <p className="mt-1 text-xs text-bone-400">返回武馆，将发现告诉马科。</p>
+                        )}
+                        {qs.questId === 'quest_north_gate_missing_patrol' &&
+                          qs.status === 'in_progress' &&
+                          !northGateTrailChecked && (
+                            <p className="mt-1 text-xs text-bone-400">前往天龙城北门，寻找巡逻队留下的踪迹。</p>
+                          )}
+                        {qs.questId === 'quest_north_gate_missing_patrol' &&
+                          qs.status === 'in_progress' &&
+                          northGateTrailChecked &&
+                          !northGateWolfDefeated && (
+                            <p className="mt-1 text-xs text-bone-400">调查北门外的异常痕迹。</p>
+                          )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </section>
+            )
+          })()}
+
+          {/* TM-P0-019：新的线索 —— 仅当背包实际拥有 rabbit_path（quantity>=1）且注册表定义存在时显示；名称/描述全部读 getItem，不复制静态文案 */}
+          {(() => {
+            const pathDef = getItem('rabbit_path')
+            const hasPath =
+              pathDef !== undefined && gameState.inventory.some((e) => e.itemId === 'rabbit_path' && e.quantity >= 1)
+            if (!hasPath) return null
+            // TM-P1-013：已查看状态以 Store 为唯一真实状态来源（不增加 UI local flag）
+            const examined = world.flags.rabbit_path_examined === true
+            return (
+              <section className="rounded border border-gold-500/40 bg-gold-500/5 p-5 text-sm text-bone-300">
+                <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">新的线索</h3>
+                <p className="font-bold text-bone-100">{pathDef.name}</p>
+                <p className="mt-1 leading-relaxed text-bone-300">{pathDef.description}</p>
+                {examined ? (
+                  <>
+                    {/* TM-P1-013：已查看固定文案（【待补充】为占位，未虚构地点） */}
+                    <p className="mt-3 border-t border-gold-500/20 pt-3 text-bone-200">
+                      地图上的路线最终指向黄金兔子王所在之地。
+                    </p>
+                    <p className="mt-1 text-bone-300">地图上的标记仍无法对应到任何已知地点。</p>
+                  </>
+                ) : (
+                  <div className="mt-3">
+                    {/* TM-P1-013：未查看时显示展开地图（inspectRabbitPath 返回 true 后 Store 状态驱动切换） */}
+                    <Button variant="primary" onClick={() => inspectRabbitPath()}>
+                      展开地图
+                    </Button>
+                  </div>
+                )}
+              </section>
+            )
+          })()}
+
+          {/* 冒险日志（含任务卡与完成剧情；手机第 6 位附近） */}
+          <section className="rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
+            <h3 className="mb-3 text-sm font-bold tracking-wider text-bone-500">冒险日志</h3>
+            {gameState.quests.length === 0 ? (
+              <p className="text-bone-500">日志为空。</p>
+            ) : (
+              <div className="flex flex-col gap-3">
+                {gameState.quests.map((qs) => {
+                  const def = getQuest(qs.questId)
+                  const giver = def ? getNpc(def.giverNpcId) : undefined
+                  const canSubmit = qs.status === 'completable' && giver?.locationId === world.currentLocationId
+                  return (
+                    <div key={qs.questId} className="rounded border border-ink-600 bg-ink-900/40 p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="font-bold text-bone-100">{def?.title ?? '未知任务'}</p>
+                        <span className="shrink-0 text-xs text-gold-300">{QUEST_STATUS_LABELS[qs.status]}</span>
+                      </div>
+                      <p className="mt-1 text-xs leading-relaxed text-bone-500">
+                        {def?.summary ?? `${qs.questId}（缺失任务定义）`}
+                      </p>
+                      {/* TM-P0-018：任务固定金币奖励（读 QuestDefinition.goldReward，不复制常量） */}
+                      {def?.goldReward !== undefined && (
+                        <p className="mt-1 text-xs text-gold-300">奖励：{def.goldReward} 金币</p>
+                      )}
+                      {/* TM-P1-018：第四任务调查进度——严格从 QuestState.flags 读取；2/2 时额外显示调查结果固定文案（本卡结尾，不虚构下一地点） */}
+                      {qs.questId === 'quest_golden_rabbit_search' && qs.status === 'in_progress' && (
+                        <p className="mt-1 text-xs text-bone-400">
+                          地图线索调查：{goldenInvestigationCount} / 2
+                        </p>
+                      )}
+                      {qs.questId === 'quest_golden_rabbit_search' && goldenInvestigationCount === 2 && (
+                        <div className="mt-2 rounded border border-gold-500/40 bg-ink-900/40 p-2 text-xs leading-relaxed text-bone-200">
+                          <p>你已经向铁匠和药师打听过，但仍无法确认地图指向的具体地点。</p>
+                          <p className="mt-1 text-bone-300">地图上的标记仍无法对应到任何已知地点。</p>
+                        </div>
+                      )}
+                      {/* TM-P1-019：复命后阶段提示——保留 2/2 调查结果，额外显示已汇报（不覆盖历史进度） */}
+                      {qs.questId === 'quest_golden_rabbit_search' && goldenVillageInquiryReported && (
+                        <p className="mt-1 text-xs text-gold-300">村内调查已汇报。</p>
+                      )}
+                      {/* TM-P1-020：已复命未复查时显示行动目标；复查后目标消失并显示复查完成（不新增 lore） */}
+                      {qs.questId === 'quest_golden_rabbit_search' && goldenVillageInquiryReported && !goldenLairRechecked && (
+                        <p className="mt-1 text-xs text-bone-400">当前目标：返回兔王巢穴重新比对地图。</p>
+                      )}
+                      {qs.questId === 'quest_golden_rabbit_search' && goldenLairRechecked && (
+                        <p className="mt-1 text-xs text-gold-300">巢穴复查完成。</p>
+                      )}
+                      {/* TM-P1-021：支线《采药受阻》进度提示——接受后显示目标；调查成功后显示已查看+新目标（调查后任务即 completable，任务卡下方出现提交任务按钮走 generic 奖励） */}
+                      {qs.questId === 'quest_apothecary_herb_route' && qs.status === 'in_progress' && (
+                        <p className="mt-1 text-xs text-bone-400">当前目标：前往村外草原查看采药区域。</p>
+                      )}
+                      {qs.questId === 'quest_apothecary_herb_route' && herbGrasslandChecked && qs.status === 'completable' && (
+                        <div className="mt-1 text-xs text-bone-400">
+                          <p className="text-gold-300">采药区域已查看。</p>
+                          <p className="mt-1">当前目标：返回青石村向药师复命。</p>
+                        </div>
+                      )}
+                      {/* TM-P1-022：支线《矿洞余患》进度提示——接受后显示目标；魔化鼠胜利推进 completable 后显示已确认+新目标（无专属 flag，Quest status 表达状态） */}
+                      {qs.questId === 'quest_blacksmith_mine_remnant' && qs.status === 'in_progress' && (
+                        <p className="mt-1 text-xs text-bone-400">当前目标：前往废弃矿洞处理残余的魔化鼠。</p>
+                      )}
+                      {qs.questId === 'quest_blacksmith_mine_remnant' && qs.status === 'completable' && (
+                        <div className="mt-1 text-xs text-bone-400">
+                          <p className="text-gold-300">矿洞余患已确认。</p>
+                          <p className="mt-1">当前目标：返回青石村向铁匠复命。</p>
+                        </div>
+                      )}
+                      {/* TM-P1-024/P1-025/P1-026：第五主线《商人王财的麻烦》进度提示——五态（未询问/已询问未解锁/已解锁未清士兵/士兵清场未清队长/队长清场；黑石塔：【待开放】与黑石塔二层：【待开放】为实现状态，非 lore）；TM-P1-030 起在 completable（交还项链后）也显示日志「已交还/回武馆复命」，completed 不显示（由完成剧情块接管） */}
+                      {qs.questId === 'quest_wangcai_trouble' && (qs.status === 'in_progress' || qs.status === 'completable') && (
+                        <div className="mt-1 text-xs text-bone-400">
+                          {!wangcaiBriefed ? (
+                            <p>当前目标：返回天龙城，找到商人王财了解情况。</p>
+                          ) : !towerUnlocked ? (
+                            <>
+                              <p className="text-gold-300">已向王财了解情况。</p>
+                              <p className="mt-1">当前目标：调查黑石塔附近的情况。</p>
+                              <p className="mt-1">黑石塔的调查尚未开始。</p>
+                            </>
+                          ) : !floor1SoldierDefeated ? (
+                            <>
+                              <p className="text-gold-300">已向王财了解情况。</p>
+                              <p className="mt-1 text-gold-300">黑石塔路线已确认。</p>
+                              <p className="mt-1">当前目标：前往黑石塔一层调查。</p>
+                            </>
+                          ) : !floor1CaptainDefeated ? (
+                            <>
+                              <p className="text-gold-300">已向王财了解情况。</p>
+                              <p className="mt-1 text-gold-300">黑石塔路线已确认。</p>
+                              <p className="mt-1 text-gold-300">黑石塔一层：已击败骷髅士兵。</p>
+                              <p className="mt-1">当前目标：击败骷髅队长。</p>
+                            </>
+                          ) : !floor2ZombieDefeated || !floor2BlackMageDefeated ? (
+                            <>
+                              <p className="text-gold-300">已向王财了解情况。</p>
+                              <p className="mt-1 text-gold-300">黑石塔路线已确认。</p>
+                              <p className="mt-1 text-gold-300">黑石塔一层：已击败骷髅士兵。</p>
+                              <p className="mt-1 text-gold-300">黑石塔一层：骷髅队长已击败，未发现夔峒项链。</p>
+                              <p className="mt-1">当前目标：继续深入黑石塔。</p>
+                              <p className="mt-1">黑石塔上层尚未开启。</p>
+                            </>
+                          ) : !floor2SkeletonWarriorDefeated ? (
+                            <>
+                              <p className="text-gold-300">已向王财了解情况。</p>
+                              <p className="mt-1 text-gold-300">黑石塔路线已确认。</p>
+                              <p className="mt-1 text-gold-300">黑石塔一层：已击败骷髅士兵。</p>
+                              <p className="mt-1 text-gold-300">黑石塔一层：骷髅队长已击败，未发现夔峒项链。</p>
+                              <p className="mt-1 text-gold-300">黑石塔二层：入口区域已清理。</p>
+                              <p className="mt-1">当前目标：击败骷髅战士。</p>
+                            </>
+                          ) : !floor3SkeletonWitchDefeated ? (
+                            <>
+                              <p className="text-gold-300">已向王财了解情况。</p>
+                              <p className="mt-1 text-gold-300">黑石塔路线已确认。</p>
+                              <p className="mt-1 text-gold-300">黑石塔一层：已击败骷髅士兵。</p>
+                              <p className="mt-1 text-gold-300">黑石塔一层：骷髅队长已击败，未发现夔峒项链。</p>
+                              <p className="mt-1 text-gold-300">黑石塔二层：入口区域已清理。</p>
+                              <p className="mt-1 text-gold-300">黑石塔二层深处：骷髅战士已击败，仍未发现夔峒项链。</p>
+                              <p className="mt-1">当前目标：击败骷髅女妖。</p>
+                            </>
+                          ) : kuidongNecklaceReturned ? (
+                            <>
+                              <p className="text-gold-300">已向王财了解情况。</p>
+                              <p className="mt-1 text-gold-300">黑石塔路线已确认。</p>
+                              <p className="mt-1 text-gold-300">黑石塔一层：已击败骷髅士兵。</p>
+                              <p className="mt-1 text-gold-300">黑石塔一层：骷髅队长已击败，未发现夔峒项链。</p>
+                              <p className="mt-1 text-gold-300">黑石塔二层：入口区域已清理。</p>
+                              <p className="mt-1 text-gold-300">黑石塔二层深处：骷髅战士已击败，仍未发现夔峒项链。</p>
+                              <p className="mt-1 text-gold-300">黑石塔三层：骷髅女妖已击败。</p>
+                              <p className="mt-1 text-gold-300">黑石塔三层：已找到夔峒项链。</p>
+                              <p className="mt-1 text-gold-300">夔峒项链：已交还王财。</p>
+                              <p className="mt-1">当前目标：返回武馆，向马科复命。</p>
+                            </>
+                          ) : (
+                            <>
+                              <p className="text-gold-300">已向王财了解情况。</p>
+                              <p className="mt-1 text-gold-300">黑石塔路线已确认。</p>
+                              <p className="mt-1 text-gold-300">黑石塔一层：已击败骷髅士兵。</p>
+                              <p className="mt-1 text-gold-300">黑石塔一层：骷髅队长已击败，未发现夔峒项链。</p>
+                              <p className="mt-1 text-gold-300">黑石塔二层：入口区域已清理。</p>
+                              <p className="mt-1 text-gold-300">黑石塔二层深处：骷髅战士已击败，仍未发现夔峒项链。</p>
+                              <p className="mt-1 text-gold-300">黑石塔三层：骷髅女妖已击败。</p>
+                              <p className="mt-1 text-gold-300">黑石塔三层：已找到夔峒项链。</p>
+                              <p className="mt-1">当前目标：返回天龙城，将夔峒项链交还王财。</p>
+                            </>
+                          )}
+                        </div>
+                      )}
+                      {/* TM-P1-030：王财任务完成（向马科复命成功后）——马科短剧情 + 第一阶段完成提示；黄金兔子长期线不 completed/failed、不改 flag/stage/兔子的路径（冻结保留） */}
+                      {qs.questId === 'quest_wangcai_trouble' && qs.status === 'completed' && (
+                        <div className="mt-2 rounded border border-gold-500/40 bg-ink-900/40 p-2 text-xs leading-relaxed text-bone-200">
+                          <p>马科听完黑石塔里的经过，神情明显严肃起来。</p>
+                          <p className="mt-1">“看来最近的魔物异动并不是偶然。”</p>
+                          <p className="mt-1">“这件事我会向上面汇报。你先休息一下。”</p>
+                          <p className="mt-1 text-bone-300">黑石塔的调查暂时告一段落。</p>
+                          <div className="mt-2 rounded border border-gold-500/40 bg-ink-900/40 p-2">
+                            <p className="text-gold-300">第一阶段完成</p>
+                            <p className="mt-1">当前可玩主线内容已完成。</p>
+                            <p>《追寻黄金兔子王》将在后续阶段继续。</p>
+                          </div>
+                        </div>
+                      )}
+                      {/* TM-P2-001 D2：北门任务进度提示（in_progress：未调查/已调查；completable：已击败狼，回武馆复命） */}
+                      {qs.questId === 'quest_north_gate_missing_patrol' && qs.status === 'in_progress' && (
+                        <div className="mt-1 text-xs text-bone-400">
+                          {!northGateTrailChecked ? (
+                            <>
+                              <p>当前目标：前往天龙城北门，寻找巡逻队留下的踪迹。</p>
+                              <p className="mt-1 text-bone-300">巡逻队离开前最后的路线是经过北门。</p>
+                            </>
+                          ) : (
+                            <>
+                              <p className="text-gold-300">北门外的痕迹已发现。</p>
+                              <p className="mt-1">当前目标：调查北门外的异常痕迹。</p>
+                            </>
+                          )}
+                        </div>
+                      )}
+                      {qs.questId === 'quest_north_gate_missing_patrol' && qs.status === 'completable' && (
+                        <div className="mt-1 text-xs text-bone-400">
+                          <p className="text-gold-300">黑鬃魔狼已击败，找到了断裂的铜牌。</p>
+                          <p className="mt-1">当前目标：返回武馆，将发现告诉马科。</p>
+                        </div>
+                      )}
+                      {/* TM-P2-001 D6：北门任务完成（向马科提交成功后）——马科固定剧情；Phase 2 只是第一段开场，不解决失踪小队 */}
+                      {qs.questId === 'quest_north_gate_missing_patrol' && qs.status === 'completed' && (
+                        <div className="mt-2 rounded border border-gold-500/40 bg-ink-900/40 p-2 text-xs leading-relaxed text-bone-200">
+                          <p>马科接过断裂的铜牌，脸色沉了下来。</p>
+                          <p className="mt-1">“这是北门第三巡逻队的东西。”</p>
+                          <p className="mt-1">“看来黑石塔之外，北面的情况也不对劲。”</p>
+                          <p className="mt-1">“我会先派人封锁消息。下一步，我们得沿着他们留下的路线继续查。”</p>
+                          <p className="mt-1 text-gold-300">北门失联 · 已完成</p>
+                        </div>
+                      )}
+                      {canSubmit && (
+                        <div className="mt-2">
+                          {/* TM-P1-012：提交成功（仅《草原狼影》）触发升级提示 */}
+                          <Button variant="primary" onClick={() => handleCompleteQuest(qs.questId)}>
+                            提交任务
+                          </Button>
+                        </div>
                       )}
                     </div>
                   )
                 })}
               </div>
-            </div>
-          </>
-        ) : (
-          // TM-P0-005：未知当前位置安全边界——不崩溃、不提供移动按钮
-          <p className="text-bone-300">未知地点（{world.currentLocationId}）</p>
-        )}
-        {travelError && <p className="mt-3 text-sm text-red-300">无法前往该地点。</p>}
-      </section>
-
-      <section className="rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
-        <h3 className="mb-3 text-sm font-bold tracking-wider text-bone-500">装备</h3>
-        {(() => {
-          const weaponDef = gameState.equipment.weapon ? getItem(gameState.equipment.weapon) : undefined
-          return (
-            <p>
-              武器：{' '}
-              {weaponDef ? (
-                <span className="text-bone-100">{weaponDef.name}</span>
-              ) : gameState.equipment.weapon ? (
-                <span className="text-bone-100">
-                  未知武器 <span className="text-bone-500">（{gameState.equipment.weapon}）</span>
-                </span>
-              ) : (
-                <span className="text-bone-500">未装备</span>
-              )}
-            </p>
-          )
-        })()}
-      </section>
-
-      <section className="rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
-        <h3 className="mb-3 text-sm font-bold tracking-wider text-bone-500">背包</h3>
-        {gameState.inventory.length === 0 ? (
-          <p className="text-bone-500">背包空空如也。</p>
-        ) : (
-          <div className="flex flex-col gap-2">
-            {gameState.inventory.map((entry) => {
-              const def = getItem(entry.itemId)
-              // TM-P0-010：只有治疗药水提供使用入口；满血 / HP 0 时禁用
-              const isPotion = def?.id === 'healing_potion'
-              const canUse = isPotion && player.hp > 0 && player.hp < player.maxHp
-              // TM-P0-013：铁剑提供装备/卸下入口（装备不消耗 inventory）
-              const isWeapon = def?.id === 'iron_sword'
-              const isEquipped = gameState.equipment.weapon === 'iron_sword'
-              return (
-                <div
-                  key={entry.itemId}
-                  className="flex items-center justify-between gap-3 rounded border border-ink-600 bg-ink-900/40 p-3"
-                >
-                  <div>
-                    <p className="font-bold text-bone-100">
-                      {def?.name ?? '未知物品'} <span className="text-xs font-normal text-bone-500">×{entry.quantity}</span>
-                    </p>
-                    <p className="mt-1 text-xs text-bone-500">
-                      {def ? def.description : `（缺失物品定义：${entry.itemId}）`}
-                    </p>
-                  </div>
-                  <div className="flex flex-col items-end gap-1">
-                    {isWeapon && (
-                      <Button
-                        variant="primary"
-                        onClick={() => (isEquipped ? unequipWeapon() : equipWeapon(entry.itemId))}
-                      >
-                        {isEquipped ? '卸下' : '装备'}
-                      </Button>
-                    )}
-                    {isPotion && (
-                      <>
-                        <Button variant="primary" disabled={!canUse} onClick={() => useHealingPotion()}>
-                          使用
-                        </Button>
-                        {player.hp >= player.maxHp && <span className="text-xs text-bone-500">生命已满</span>}
-                        {player.hp <= 0 && <span className="text-xs text-red-300">当前无法使用</span>}
-                      </>
-                    )}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        )}
-      </section>
-
-      {/* TM-P0-019：新的线索 —— 仅当背包实际拥有 rabbit_path（quantity>=1）且注册表定义存在时显示；名称/描述全部读 getItem，不复制静态文案 */}
-      {(() => {
-        const pathDef = getItem('rabbit_path')
-        const hasPath =
-          pathDef !== undefined && gameState.inventory.some((e) => e.itemId === 'rabbit_path' && e.quantity >= 1)
-        if (!hasPath) return null
-        // TM-P1-013：已查看状态以 Store 为唯一真实状态来源（不增加 UI local flag）
-        const examined = world.flags.rabbit_path_examined === true
-        return (
-          <section className="rounded border border-gold-500/40 bg-gold-500/5 p-5 text-sm text-bone-300">
-            <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">新的线索</h3>
-            <p className="font-bold text-bone-100">{pathDef.name}</p>
-            <p className="mt-1 leading-relaxed text-bone-300">{pathDef.description}</p>
-            {examined ? (
-              <>
-                {/* TM-P1-013：已查看固定文案（【待补充】为占位，未虚构地点） */}
-                <p className="mt-3 border-t border-gold-500/20 pt-3 text-bone-200">
-                  地图上的路线最终指向黄金兔子王所在之地。
-                </p>
-                <p className="mt-1 text-bone-300">地图上的标记仍无法对应到任何已知地点。</p>
-              </>
-            ) : (
-              <div className="mt-3">
-                {/* TM-P1-013：未查看时显示展开地图（inspectRabbitPath 返回 true 后 Store 状态驱动切换） */}
-                <Button variant="primary" onClick={() => inspectRabbitPath()}>
-                  展开地图
-                </Button>
-              </div>
             )}
           </section>
-        )
-      })()}
-
-      {/* TM-P1-016：青石村阶段完成 —— 只读 world.flags.rabbit_path_reported===true（Store action 已保证该 flag 只能在正确前提下产生，不重算任务链）；持久剧情状态展示，非弹窗/toast；【待补充】为剧情边界，无新地点按钮 */}
-      {world.flags.rabbit_path_reported === true && (
-        <section className="rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
-          <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">青石村阶段完成</h3>
-          <p className="leading-relaxed text-bone-200">
-            你已经处理了村外异动、矿洞威胁与草原狼影，并取得了《兔子的路径》。
-          </p>
-          <p className="mt-2 text-bone-300">现有线索还不足以确认黄金兔子王的最终去向。</p>
         </section>
-      )}
-
-      {/* TM-P1-020：兔王巢穴地图复查 —— 第四任务 in_progress + 村内调查已复命 + 未复查时显示入口；成功后按钮消失并显示固定结果（不虚构路线/足迹/方向/坐标） */}
-      {world.currentLocationId === 'rabbit_lair' && goldenSearchInProgress && goldenVillageInquiryReported && (
-        goldenLairRechecked ? (
-          <section className="rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
-            <p className="text-bone-200">你重新比对了地图与巢穴周边，但仍没有找到足以确认下一处地点的线索。</p>
-            <p className="mt-2 text-bone-300">现有线索还不足以确认黄金兔子王的最终去向。</p>
-          </section>
-        ) : (
-          <section className="rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
-            <p className="mb-3 text-bone-300">你带着《兔子的路径》返回兔王巢穴，准备重新比对地图上的标记。</p>
-            <Button variant="primary" onClick={() => recheckGoldenRabbitMapAtLair()}>
-              重新比对地图
-            </Button>
-          </section>
-        )
-      )}
-
-      {/* TM-P1-021：村外草原采药区域调查 —— 支线 in_progress（未调查入口）或已查看（成功结果）时显示；成功后按钮消失并显示固定结果（无草药/采集物/危险值/随机结果） */}
-      {world.currentLocationId === 'village_grassland' && (herbInProgress || herbGrasslandChecked) && (
-        herbGrasslandChecked ? (
-          <section className="rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
-            <p className="text-bone-200">你检查了附近的采药区域，确认魔化野兽的活动确实影响了这里。</p>
-            <p className="mt-2 text-bone-300">可以回青石村向药师复命了。</p>
-          </section>
-        ) : (
-          <section className="rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
-            <p className="mb-3 text-bone-300">药师常来这一带采药。附近魔化野兽的活动让这里变得不再安全。</p>
-            <Button variant="primary" onClick={() => inspectApothecaryHerbRoute()}>
-              查看采药区域
-            </Button>
-          </section>
-        )
-      )}
-
-      {/* TM-P1-023：离开青石村前往天龙城 —— 黄金主线收束后显示「新的旅程」入口；已接触未完成支线时只提示不提供按钮；二次确认后才调用 Store action（不可逆，单向离村） */}
-      {goldenDepartureReady && (
-        <section className="rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
-          <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">新的旅程</h3>
-          {sideQuestsBlocking ? (
-            <p className="leading-relaxed text-bone-200">你还有已经接触但尚未结束的村内委托，处理完再离开。</p>
-          ) : (
-            <>
-              <p className="leading-relaxed text-bone-200">青石村的事情暂时告一段落。你已经可以前往天龙城继续旅程。</p>
-              {!showTianlongDepartureConfirm ? (
-                <Button variant="primary" onClick={() => setShowTianlongDepartureConfirm(true)}>
-                  准备前往天龙城
-                </Button>
-              ) : (
-                <div className="mt-3 rounded border border-red-400/40 bg-ink-900/40 p-3">
-                  <p className="text-bone-200">离开青石村后将无法返回。</p>
-                  <p className="mt-1 text-bone-300">尚未发现的村内委托将被留在这里。</p>
-                  <div className="mt-3 flex flex-wrap gap-3">
-                    <Button variant="primary" onClick={() => departQingshiVillageToTianlongCity()}>
-                      前往天龙城
-                    </Button>
-                    <Button variant="ghost" onClick={() => setShowTianlongDepartureConfirm(false)}>
-                      暂不离开
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-        </section>
-      )}
-
-      {/* TM-P1-025：黑石塔调查入口 —— 天龙城 + 第五主线 in_progress/stage 0 + 已向王财了解情况 + unlock flag undefined/false（待解锁）时显示；只调用 Store action（不直接写 world flag）；stage!=0 或 unlock flag 异常非 boolean/已 true 一律不显示，避免死按钮 */}
-      {world.currentLocationId === 'tianlong_city' && towerQuestInProgress && wangcaiBriefed && towerUnlockPending && (
-        <section className="rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
-          <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">黑石塔调查</h3>
-          <p className="leading-relaxed text-bone-200">王财提供的情况已经足够，你可以动身前往黑石塔调查。</p>
-          <Button variant="primary" onClick={() => unlockBlackStoneTowerInvestigation()}>
-            动身调查黑石塔
-          </Button>
-        </section>
-      )}
-
-      {/* TM-P1-025/P1-026：黑石塔一层剧情 —— 骷髅士兵击败后显示前两句（无【待开放】；此时附近威胁正式出现骷髅队长）；骷髅队长击败后显示 Boss 战后固定文案（无按钮；二层本卡不开放） */}
-      {world.currentLocationId === 'black_stone_tower_floor1' && floor1SoldierDefeated && (
-        <section className="rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
-          <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">大厅深处</h3>
-          {!floor1CaptainDefeated ? (
-            <>
-              <p className="leading-relaxed text-bone-200">大厅中的骷髅士兵已经被击败。</p>
-              <p className="mt-1 leading-relaxed text-bone-200">
-                更深处传来沉重的骨骼碰撞声，一名身材高大的骷髅队长守在前方。
-              </p>
-            </>
-          ) : (
-            <>
-              <p className="leading-relaxed text-bone-200">骷髅队长已经倒下。</p>
-              <p className="mt-1 leading-relaxed text-bone-200">你检查了骷髅队长与周围，没有发现夔峒项链。</p>
-              <p className="mt-1 leading-relaxed text-bone-200">通往黑石塔更深处的道路仍需继续调查。</p>
-              <p className="mt-2 text-gold-300">黑石塔上层尚未开启。</p>
-            </>
-          )}
-        </section>
-      )}
-
-      {/* TM-P0-022：村中休整 —— 仅青石村显示；免费恢复 HP/MP 至最大值（战败软锁出口） */}
-      {world.currentLocationId === 'qingshi_village' && (
-        <section className="rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
-          <h3 className="mb-3 text-sm font-bold tracking-wider text-bone-500">村中休整</h3>
-          <p className="mb-3 text-bone-300">在村里稍作休息，可以恢复生命与灵力。</p>
-          {(() => {
-            const needsRest = player.hp < player.maxHp || player.mp < player.maxMp
-            return (
-              <div className="flex flex-col items-start gap-1">
-                <Button variant="primary" disabled={!needsRest} onClick={() => restAtVillage()}>
-                  休整
-                </Button>
-                {!needsRest && <span className="text-xs text-bone-500">状态良好，无需休整</span>}
-              </div>
-            )
-          })()}
-        </section>
-      )}
-
-      {/* TM-P1-027：武馆休整 —— 仅天龙城武馆显示；免费恢复 HP/MP 至最大值（离开青石村后的 HP=0 软锁出口）；只调 Store action */}
-      {world.currentLocationId === 'tianlong_martial_hall' && (
-        <section className="rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
-          <h3 className="mb-3 text-sm font-bold tracking-wider text-bone-500">武馆休整</h3>
-          <p className="mb-3 text-bone-300">武馆里有专供休整的静室，可以恢复生命与灵力。</p>
-          {(() => {
-            const needsRest = player.hp < player.maxHp || player.mp < player.maxMp
-            return (
-              <div className="flex flex-col items-start gap-1">
-                <Button variant="primary" disabled={!needsRest} onClick={() => restAtTianlongMartialHall()}>
-                  休整
-                </Button>
-                {!needsRest && <span className="text-xs text-bone-500">状态良好，无需休整</span>}
-              </div>
-            )
-          })()}
-        </section>
-      )}
-
-      {/* TM-P1-027：黑石塔二层解锁入口 —— 黑石塔一层 + 士兵与队长均已击败 + floor2 flag undefined/false（待解锁）时显示；只调用 Store action（不直接写 world flag） */}
-      {world.currentLocationId === 'black_stone_tower_floor1' &&
-        towerQuestInProgress &&
-        wangcaiBriefed &&
-        towerUnlocked &&
-        floor1SoldierDefeated &&
-        floor1CaptainDefeated &&
-        towerFloor2UnlockPending && (
-          <section className="rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
-            <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">继续深入</h3>
-            <p className="leading-relaxed text-bone-200">一层大厅已经清空，通往黑石塔二层的阶梯就在更深处。</p>
-            <Button variant="primary" onClick={() => unlockBlackStoneTowerFloor2()}>
-              深入黑石塔二层
-            </Button>
-          </section>
-        )}
-
-      {/* TM-P1-027/P1-028：黑石塔二层入口区清场剧情 —— 僵尸与黑法师均击败后显示固定文案（骷髅战士只作为剧情文本预告，直到本卡击败前仍镇守深处） */}
-      {world.currentLocationId === 'black_stone_tower_floor2' &&
-        floor2ZombieDefeated &&
-        floor2BlackMageDefeated &&
-        !floor2SkeletonWarriorDefeated && (
-          <section className="rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
-            <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">二层前段</h3>
-            <p className="leading-relaxed text-bone-200">二层前段的僵尸与黑法师已经被清理。</p>
-            <p className="mt-1 leading-relaxed text-bone-200">
-              曲折的通道继续向深处延伸，前方小厅中出现了更强的骷髅战士，挡住继续深入的道路。
-            </p>
-          </section>
-        )}
-
-      {/* TM-P1-028：骷髅战士击败后固定剧情（找项链主线推进）——三层未解锁时显示「继续向上」入口（仅调 Store action）；已解锁则入口隐藏、经移动按钮前往三层 */}
-      {world.currentLocationId === 'black_stone_tower_floor2' && floor2SkeletonWarriorDefeated && (
-        <section className="rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
-          <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">二层深处</h3>
-          <p className="leading-relaxed text-bone-200">小厅中的骷髅战士已经倒下。</p>
-          <p className="mt-1 leading-relaxed text-bone-200">你仔细搜索了周围，依然没有发现王财遗失的夔峒项链。</p>
-          <p className="mt-1 leading-relaxed text-bone-200">小厅后方，一道向上的石阶通往黑石塔更高处。</p>
-          {canUnlockTowerFloor3 && (
-            <div className="mt-3">
-              <Button variant="primary" onClick={() => unlockBlackStoneTowerFloor3()}>
-                继续向上
-              </Button>
-            </div>
-          )}
-        </section>
-      )}
-
-      {/* TM-P1-029：黑石塔三层——骷髅女妖击败后固定剧情（找到夔峒项链 ×1；不交还王财、不完成任务） */}
-      {world.currentLocationId === 'black_stone_tower_floor3' && floor3SkeletonWitchDefeated && (
-        <section className="rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
-          <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">三层厅堂</h3>
-          <p className="leading-relaxed text-bone-200">骷髅女妖倒在破碎的石柱之间。</p>
-          <p className="mt-1 leading-relaxed text-bone-200">你在厅堂深处搜索时，发现了一条被灰尘覆盖的项链。</p>
-          <p className="mt-1 leading-relaxed text-bone-200">这正是王财所说的夔峒项链。</p>
-          <p className="mt-2 text-gold-300">夔峒项链 ×1 已获得。</p>
-          <p className="mt-1">当前目标：返回天龙城，将夔峒项链交还王财。</p>
-        </section>
-      )}
-
-      {/* TM-P0-015：附近人物 —— 仅当前地点存在注册 NPC 时显示 */}
-      {localNpcs.length > 0 && (
-        <section className="rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
-          <h3 className="mb-3 text-sm font-bold tracking-wider text-bone-500">附近人物</h3>
-          {showDialog && activeNpc && (
-            <div className="mb-3 rounded border border-gold-500/40 bg-ink-900/60 p-4">
-              <p className="mb-1 text-xs tracking-wider text-bone-500">与{activeNpc.name}交谈</p>
-              <p className="font-bold text-bone-100">{activeNpc.name}</p>
-              <p className="mb-2 text-xs text-bone-500">{activeNpc.role}</p>
-              {/* TM-P1-004：已回应且关系合法时，后续关系反应替代原 greeting 正文位置（不重复显示旧文案）；否则回退原 greeting */}
-              {/* TM-P1-031/031-R1：修复 NPC 失忆——王财已取回项链后、马科按第五主线阶段（in_progress/completable/completed）分别替换 greeting（不建 DialogueSystem）；available/未接继续用原 greeting */}
-              <p className="mb-3 text-bone-300">
-                {elderReaction === 'respect'
-                  ? '村长郑重地点了点头：“若你还要继续追查，务必小心。”'
-                  : elderReaction === 'trust'
-                    ? '村长舒展了眉头：“好，村里能安稳一些就好。”'
-                    : activeNpc.id === 'knight_captain_make'
-                      ? wangcaiQuest?.status === 'in_progress'
-                        ? '王财的事情有进展了吗？黑石塔那边不要大意。'
-                        : wangcaiQuest?.status === 'completable'
-                          ? '王财那边已经处理好了？把黑石塔里的情况告诉我。'
-                          : wangcaiQuest?.status === 'completed'
-                            ? '黑石塔的情况我已经记下了。你先休整一下。'
-                            : activeNpc.greeting
-                      : activeNpc.id === 'merchant_wangcai' && kuidongNecklaceReturned
-                        ? '王财把项链小心收好，见到你时郑重地点了点头。'
-                        : activeNpc.greeting}
-              </p>
-              {/* TM-P1-002/003：村长对话显示信任+尊敬（读 NpcState；未建立状态时 UI fallback 0，打开对话不创建状态） */}
-              {activeNpc.id === 'village_elder' && (
-                <p className="mb-3 text-xs text-bone-500">
-                  信任：{world.npcStates[activeNpc.id]?.relationship.trust ?? 0}
-                  {'　'}尊敬：{world.npcStates[activeNpc.id]?.relationship.respect ?? 0}
-                </p>
-              )}
-              {/* TM-P1-003：《村外异动》完成后村长一次性回应选择（复用 completedEvents 记录，仅未回应时显示） */}
-              {activeNpc.id === 'village_elder' &&
-                (gameState.quests.some((q) => q.questId === 'quest_village_monsters' && q.status === 'completed')) &&
-                !world.completedEvents.includes(VILLAGE_ELDER_POST_QUEST_EVENT_ID) && (
-                  <div className="mb-3 rounded border border-ink-600 bg-ink-900/40 p-3">
-                    <p className="mb-2 text-xs text-bone-300">村长看着你，神色比之前放松了一些。</p>
-                    <div className="flex flex-col items-start gap-2">
-                      <Button variant="primary" onClick={() => respondToVillageElderAfterQuest('reassure')}>
-                        村子平安就好。
-                      </Button>
-                      <Button variant="primary" onClick={() => respondToVillageElderAfterQuest('resolve')}>
-                        我会继续追查这些异动。
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              {/* TM-P1-016：向村长汇报《兔子的路径》——青石村阶段收束入口（不依赖 P1-003 回应选择/关系值；Store flag 是唯一真源） */}
-              {activeNpc.id === 'village_elder' &&
-                gameState.inventory.some((e) => e.itemId === 'rabbit_path' && Number.isSafeInteger(e.quantity) && e.quantity >= 1) &&
-                world.flags.rabbit_path_examined === true &&
-                gameState.quests.some((q) => q.questId === 'quest_grassland_wolf' && q.status === 'completed') &&
-                world.flags.rabbit_path_reported !== true && (
-                  <div className="mb-3 rounded border border-ink-600 bg-ink-900/40 p-3">
-                    <p className="mb-2 text-xs text-bone-300">你带回了一张指向黄金兔子王所在之地的地图。</p>
-                    <Button variant="primary" onClick={() => reportRabbitPathToVillageElder()}>
-                      向村长展示《兔子的路径》
-                    </Button>
-                  </div>
-                )}
-              {/* TM-P1-016：已汇报固定文案（汇报后按钮消失；地图仍指向【待补充】） */}
-              {activeNpc.id === 'village_elder' && world.flags.rabbit_path_reported === true && (
-                <div className="mb-3 rounded border border-gold-500/40 bg-ink-900/40 p-3">
-                  <p className="text-bone-200">你已经把《兔子的路径》展示给村长。</p>
-                  <p className="mt-1 text-bone-300">地图仍指向黄金兔子王所在之地。</p>
-                  <p className="mt-1 text-bone-300">地图上的标记仍无法对应到任何已知地点。</p>
-                </div>
-              )}
-              {/* TM-P1-019：向村长复命村内调查——第四任务 in_progress + 调查 2/2 + 未复命时显示入口（与 P1-016 地图汇报入口严格分开）；成功后按钮消失并显示固定文案 */}
-              {activeNpc.id === 'village_elder' && goldenSearchInProgress && goldenInvestigationCount === 2 && (
-                goldenVillageInquiryReported ? (
-                  <div className="mb-3 rounded border border-gold-500/40 bg-ink-900/40 p-3">
-                    <p className="text-bone-200">你已经把调查结果告诉了村长。</p>
-                    <p className="mt-1 text-bone-300">村里目前没人能够确认地图上的标记。</p>
-                    <p className="mt-1 text-bone-300">现有线索还不足以确认黄金兔子王的最终去向。</p>
-                  </div>
-                ) : (
-                  <div className="mb-3 rounded border border-ink-600 bg-ink-900/40 p-3">
-                    <p className="mb-2 text-xs text-bone-300">你已经问过铁匠和药师，但两人都无法辨认地图上的标记。</p>
-                    <Button variant="primary" onClick={() => reportGoldenRabbitVillageInvestigation()}>
-                      向村长汇报调查结果
-                    </Button>
-                  </div>
-                )
-              )}
-              {/* TM-P1-018：向铁匠打听地图——第四任务 in_progress 且未询问时显示入口；成功后隐藏按钮并显示固定回复（剧情块在 greeting 之后，不修改 npcs.ts） */}
-              {activeNpc.id === 'blacksmith' && goldenSearchInProgress && (
-                goldenAskedBlacksmith ? (
-                  <div className="mb-3 rounded border border-gold-500/40 bg-ink-900/40 p-3">
-                    <p className="text-bone-200">铁匠看了看地图，摇了摇头：“这上面的路线，我认不出来。”</p>
-                  </div>
-                ) : (
-                  <div className="mb-3 rounded border border-ink-600 bg-ink-900/40 p-3">
-                    <p className="mb-2 text-xs text-bone-300">你把《兔子的路径》拿给铁匠辨认。</p>
-                    <Button variant="primary" onClick={() => consultGoldenRabbitSearchNpc('blacksmith')}>
-                      向铁匠打听地图
-                    </Button>
-                  </div>
-                )
-              )}
-              {/* TM-P1-018：向药师打听地图——同上 */}
-              {activeNpc.id === 'apothecary' && goldenSearchInProgress && (
-                goldenAskedApothecary ? (
-                  <div className="mb-3 rounded border border-gold-500/40 bg-ink-900/40 p-3">
-                    <p className="text-bone-200">药师仔细辨认了一会儿：“我也没见过这处标记。”</p>
-                  </div>
-                ) : (
-                  <div className="mb-3 rounded border border-ink-600 bg-ink-900/40 p-3">
-                    <p className="mb-2 text-xs text-bone-300">你请药师看看《兔子的路径》上的标记。</p>
-                    <Button variant="primary" onClick={() => consultGoldenRabbitSearchNpc('apothecary')}>
-                      向药师打听地图
-                    </Button>
-                  </div>
-                )
-              )}
-              {/* TM-P1-024：向王财询问黑石塔附近的遭遇——第五主线 in_progress 且未说明时显示入口（仅剧情标记驱动，不依赖 npcs.ts 改动）；成功后按钮消失并显示固定说明（黑石塔仍不开放） */}
-              {activeNpc.id === 'merchant_wangcai' && wangcaiQuest?.status === 'in_progress' && (
-                wangcaiBriefed ? (
-                  <div className="mb-3 rounded border border-gold-500/40 bg-ink-900/40 p-3">
-                    <p className="text-bone-200">王财告诉你，几天前他在黑石塔附近遭到魔物袭击，混乱中遗失了妻子的夔峒项链。</p>
-                    <p className="mt-1 text-bone-300">他希望你能前去调查，并设法找回项链。</p>
-                  </div>
-                ) : (
-                  <div className="mb-3 rounded border border-ink-600 bg-ink-900/40 p-3">
-                    <p className="mb-2 text-xs text-bone-300">马科让你来了解王财最近遇到的麻烦。</p>
-                    <Button variant="primary" onClick={() => askWangcaiAboutTrouble()}>
-                      询问黑石塔附近的遭遇
-                    </Button>
-                  </div>
-                )
-              )}
-              {/* TM-P1-030：将夔峒项链交还王财——天龙城 + 全前置 + 背包持有项链 + flag 非 true 时显示入口（与 Store 前置一致，避免 dead button）；成功后显示固定剧情并移除按钮 */}
-              {activeNpc.id === 'merchant_wangcai' && canReturnNecklaceToWangcai && (
-                <div className="mb-3 rounded border border-gold-500/40 bg-ink-900/40 p-3">
-                  <p className="mb-2 text-bone-200">你取出了黑石塔三层找到的夔峒项链。</p>
-                  <Button variant="primary" onClick={() => returnKuidongNecklaceToWangcai()}>
-                    将夔峒项链交还王财
-                  </Button>
-                </div>
-              )}
-              {activeNpc.id === 'merchant_wangcai' && kuidongNecklaceReturned && (
-                <div className="mb-3 rounded border border-gold-500/40 bg-ink-900/40 p-3">
-                  <p className="text-bone-200">王财接过项链，久久没有说话。</p>
-                  <p className="mt-1 text-bone-200">“没错……就是它。这是我妻子留下的东西。”</p>
-                  <p className="mt-1 text-bone-200">“谢谢你。若不是你，我恐怕再也找不回来了。”</p>
-                  <p className="mt-1 text-bone-300">王财收好项链，又向你郑重道谢。</p>
-                  <p className="mt-1 text-bone-300">“黑石塔里的情况，也请你告诉马科队长。”</p>
-                </div>
-              )}
-              <Button variant="ghost" onClick={() => setActiveNpcId(null)}>
-                结束交谈
-              </Button>
-            </div>
-          )}
-          <div className="flex flex-col gap-2">
-            {localNpcs.map((npc) => (
-              <div
-                key={npc.id}
-                className="flex items-center justify-between gap-3 rounded border border-ink-600 bg-ink-900/40 p-3"
-              >
-                <div>
-                  <p className="font-bold text-bone-100">
-                    {npc.name} <span className="text-xs font-normal text-bone-500">{npc.role}</span>
-                  </p>
-                  <p className="mt-1 text-xs text-bone-500">{npc.summary}</p>
-                </div>
-                <Button variant="primary" onClick={() => setActiveNpcId(npc.id)}>
-                  交谈
-                </Button>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* TM-P0-014：药师商店 —— 仅当前地点存在药师时显示（读 NPC 注册表） */}
-      {getNpc('apothecary')?.locationId === world.currentLocationId && (
-        <section className="rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
-          <h3 className="mb-3 text-sm font-bold tracking-wider text-bone-500">药师的小铺</h3>
-          {(() => {
-            const potion = getItem('healing_potion')
-            if (!potion) return <p className="text-bone-500">货架空空如也。</p>
-            const price = potion.value
-            const canAfford = player.gold >= price
-            return (
-              <div className="flex items-center justify-between gap-3 rounded border border-ink-600 bg-ink-900/40 p-3">
-                <div>
-                  <p className="font-bold text-bone-100">{potion.name}</p>
-                  <p className="mt-1 text-xs text-bone-500">
-                    {potion.description}
-                    {potion.healAmount !== undefined && <span> 恢复生命：{potion.healAmount}</span>}
-                    <span> 价格：{price} 金币</span>
-                  </p>
-                </div>
-                <div className="flex flex-col items-end gap-1">
-                  <Button variant="primary" disabled={!canAfford} onClick={() => buyHealingPotion()}>
-                    购买
-                  </Button>
-                  {!canAfford && <span className="text-xs text-red-300">金币不足</span>}
-                </div>
-              </div>
-            )
-          })()}
-        </section>
-      )}
-
-      {/* TM-P0-021：铁匠收购 —— 仅当前地点存在铁匠时显示（读 NPC 注册表） */}
-      {getNpc('blacksmith')?.locationId === world.currentLocationId && (
-        <section className="rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
-          <h3 className="mb-3 text-sm font-bold tracking-wider text-bone-500">铁匠的收购</h3>
-          {(() => {
-            const ore = getItem('iron_ore')
-            if (!ore) return <p className="text-bone-500">货架空空如也。</p>
-            const price = ore.value
-            const held = gameState.inventory.find((e) => e.itemId === 'iron_ore')?.quantity ?? 0
-            const canSell = held >= 1
-            return (
-              <div className="flex items-center justify-between gap-3 rounded border border-ink-600 bg-ink-900/40 p-3">
-                <div>
-                  <p className="font-bold text-bone-100">{ore.name}</p>
-                  <p className="mt-1 text-xs text-bone-500">
-                    {ore.description} 收购价：{price} 金币
-                  </p>
-                  <p className="mt-1 text-xs text-bone-500">持有：{held}</p>
-                </div>
-                <div className="flex flex-col items-end gap-1">
-                  <Button variant="primary" disabled={!canSell} onClick={() => sellIronOre()}>
-                    出售 1 个
-                  </Button>
-                  {!canSell && <span className="text-xs text-red-300">没有可出售的铁矿石</span>}
-                </div>
-              </div>
-            )
-          })()}
-        </section>
-      )}
-
-      {/* TM-P0-017：附近威胁 —— 仅当前地点配置了敌人时显示（青石村等无敌人地点整个区域隐藏） */}
-      {(() => {
-        const configuredEnemies = location?.enemyIds ?? []
-        if (configuredEnemies.length === 0) return null
-        // TM-P1-010/P1-014：先计算「实际可见」敌人（魔化狼仅任务 in_progress 可见；嘟嘟兔持有《兔子的路径》后清场不可见），
-        // 可见敌人为空时整个「附近威胁」区域不渲染（避免兔王巢穴嘟嘟兔清场后残留空面板）
-        const visibleEnemies = configuredEnemies
-          .map((enemyId) => getEnemy(enemyId))
-          .filter((threat): threat is NonNullable<typeof threat> => {
-            if (!threat) return false
-            if (threat.id === 'corrupted_wolf') {
-              const wolfQuest = gameState.quests.find((q) => q.questId === 'quest_grassland_wolf')
-              if (wolfQuest?.status !== 'in_progress') return false
-            }
-            if (threat.id === 'dudu_rabbit') {
-              const hasPath = gameState.inventory.some((e) => e.itemId === 'rabbit_path')
-              if (hasPath) return false
-            }
-            // TM-P1-025：骷髅士兵可见性窄条件——当前位置黑石塔一层 + 第五主线 in_progress/stage 0 + wangcai_briefed===true + black_stone_tower_unlocked===true + floor1_soldier_defeated 非 true（已击败/异常非 boolean 一律不显示）
-            if (threat.id === 'skeleton_soldier') {
-              const defeated = wangcaiQuest?.flags.floor1_soldier_defeated
-              const defeatedOk = defeated !== true && (typeof defeated === 'undefined' || typeof defeated === 'boolean')
-              if (!towerQuestInProgress || !wangcaiBriefed || !towerUnlocked || !defeatedOk) return false
-            }
-            // TM-P1-026：骷髅队长可见性窄条件——士兵已击败（floor1_soldier_defeated===true）+ floor1_captain_defeated 非 true（undefined/false 才显示；异常非 boolean 不显示）
-            if (threat.id === 'skeleton_captain') {
-              const captainFlag = wangcaiQuest?.flags.floor1_captain_defeated
-              const captainOk = captainFlag !== true && (typeof captainFlag === 'undefined' || typeof captainFlag === 'boolean')
-              if (!towerQuestInProgress || !wangcaiBriefed || !towerUnlocked || floor1SoldierDefeated !== true || !captainOk) return false
-            }
-            // TM-P1-027：二层僵尸可见性窄条件（严格 boolean）——二层 + 任务 in_progress/stage 0 + briefed===true + unlocked===true + floor2_unlocked===true + soldier===true + captain===true + floor2_zombie_defeated 非 true
-            if (threat.id === 'tower_zombie') {
-              const zombieFlag = wangcaiQuest?.flags.floor2_zombie_defeated
-              const zombieOk = zombieFlag !== true && (typeof zombieFlag === 'undefined' || typeof zombieFlag === 'boolean')
-              if (
-                !towerQuestInProgress ||
-                !wangcaiBriefed ||
-                !towerUnlocked ||
-                !towerFloor2Unlocked ||
-                floor1SoldierDefeated !== true ||
-                floor1CaptainDefeated !== true ||
-                !zombieOk
-              ) {
-                return false
-              }
-            }
-            // TM-P1-027：二层黑法师可见性窄条件（严格 boolean）——额外要求 floor2_zombie_defeated===true（僵尸未击败不显示黑法师）+ floor2_black_mage_defeated 非 true
-            if (threat.id === 'black_mage') {
-              const mageFlag = wangcaiQuest?.flags.floor2_black_mage_defeated
-              const mageOk = mageFlag !== true && (typeof mageFlag === 'undefined' || typeof mageFlag === 'boolean')
-              if (
-                !towerQuestInProgress ||
-                !wangcaiBriefed ||
-                !towerUnlocked ||
-                !towerFloor2Unlocked ||
-                floor1SoldierDefeated !== true ||
-                floor1CaptainDefeated !== true ||
-                floor2ZombieDefeated !== true ||
-                !mageOk
-              ) {
-                return false
-              }
-            }
-            // TM-P1-028：二层骷髅战士可见性窄条件（严格 boolean）——额外要求 floor2_zombie_defeated===true 且 floor2_black_mage_defeated===true（入口区两敌未全部击败不显示骷髅战士）+ floor2_skeleton_warrior_defeated 非 true
-            if (threat.id === 'skeleton_warrior') {
-              const warriorFlag = wangcaiQuest?.flags.floor2_skeleton_warrior_defeated
-              const warriorOk = warriorFlag !== true && (typeof warriorFlag === 'undefined' || typeof warriorFlag === 'boolean')
-              if (
-                !towerQuestInProgress ||
-                !wangcaiBriefed ||
-                !towerUnlocked ||
-                !towerFloor2Unlocked ||
-                floor1SoldierDefeated !== true ||
-                floor1CaptainDefeated !== true ||
-                floor2ZombieDefeated !== true ||
-                floor2BlackMageDefeated !== true ||
-                !warriorOk
-              ) {
-                return false
-              }
-            }
-            // TM-P1-029：三层骷髅女妖可见性窄条件（严格 boolean）——必须在三层 + 全部前序严格 true + floor3_skeleton_witch_defeated 非 true
-            if (threat.id === 'skeleton_witch') {
-              const witchFlag = wangcaiQuest?.flags.floor3_skeleton_witch_defeated
-              const witchOk = witchFlag !== true && (typeof witchFlag === 'undefined' || typeof witchFlag === 'boolean')
-              if (
-                !towerQuestInProgress ||
-                !wangcaiBriefed ||
-                !towerUnlocked ||
-                !towerFloor2Unlocked ||
-                !towerFloor3Unlocked ||
-                floor1SoldierDefeated !== true ||
-                floor1CaptainDefeated !== true ||
-                floor2ZombieDefeated !== true ||
-                floor2BlackMageDefeated !== true ||
-                floor2SkeletonWarriorDefeated !== true ||
-                !witchOk
-              ) {
-                return false
-              }
-            }
-            return true
-          })
-        if (visibleEnemies.length === 0) return null
-        return (
-          <section className="rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
-            <h3 className="mb-3 text-sm font-bold tracking-wider text-bone-500">附近威胁</h3>
-            <div className="flex flex-col gap-3">
-              {visibleEnemies.map((threat) => {
-                const cannotFight = player.hp <= 0
-                return (
-                  <div key={threat.id} className="rounded border border-ink-600 bg-ink-900/40 p-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="font-bold text-bone-100">
-                          {threat.name} <span className="text-xs font-normal text-bone-500">· Lv.{threat.level}</span>
-                        </p>
-                        <p className="mt-1 text-xs text-bone-500">
-                          HP {threat.maxHp} · 防御 {threat.defense}
-                        </p>
-                      </div>
-                      <Button variant="primary" disabled={cannotFight} onClick={() => onEngage(threat.id)}>
-                        迎战
-                      </Button>
-                    </div>
-                    {cannotFight && <p className="mt-2 text-xs text-red-300">当前状态无法战斗</p>}
-                  </div>
-                )
-              })}
-            </div>
-          </section>
-        )
-      })()}
-
-      {/* TM-P0-016：废弃矿洞调查 —— 仅废弃矿洞显示；DC 来自 CHECK_DC.moderate，不复制常量 */}
-      {world.currentLocationId === 'abandoned_mine' && (
-        <section className="rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
-          <h3 className="mb-3 text-sm font-bold tracking-wider text-bone-500">调查矿洞</h3>
-          {(() => {
-            const done = world.flags.abandoned_mine_investigation
-            return (
-              <>
-                {lastMineInvestigation && (
-                  <div className="mb-3 rounded border border-gold-500/40 bg-ink-900/60 p-3">
-                    <p className="text-bone-300">
-                      D20 {lastMineInvestigation.roll} + 心智修正 {lastMineInvestigation.attributeModifier} ={' '}
-                      {lastMineInvestigation.total}
-                    </p>
-                    <p className="text-bone-500">DC {lastMineInvestigation.dc}</p>
-                    <p className="font-bold text-gold-300">结果：{CHECK_OUTCOME_LABELS[lastMineInvestigation.outcome]}</p>
-                  </div>
-                )}
-                {done === 'success' && (
-                  <>
-                    <p className="mb-2 text-bone-300">你在洞口附近发现了被利爪抓乱的泥痕，痕迹延伸向矿洞深处。</p>
-                    <p className="text-xs text-bone-500">调查已完成</p>
-                  </>
-                )}
-                {done === 'failure' && (
-                  <>
-                    <p className="mb-2 text-bone-300">昏暗与杂乱遮掩了细节，你没能判断这些痕迹的来源。</p>
-                    <p className="text-xs text-bone-500">调查已完成</p>
-                  </>
-                )}
-                {done === undefined && (
-                  <>
-                    <p className="mb-2 text-bone-300">矿洞入口一带残留着杂乱痕迹，也许能从中看出些什么。</p>
-                    <p className="mb-3 text-xs text-bone-500">
-                      心智检定 · DC {CHECK_DC.moderate}（当前心智 {player.attributes.mnd}）
-                    </p>
-                    <Button variant="primary" onClick={handleInvestigateMine}>
-                      仔细调查
-                    </Button>
-                  </>
-                )}
-              </>
-            )
-          })()}
-        </section>
-      )}
-
-      <section className="rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
-        <h3 className="mb-3 text-sm font-bold tracking-wider text-bone-500">附近委托</h3>        {localQuests.length === 0 ? (
-          <p className="text-bone-500">这里暂时没有可接的委托。</p>
-        ) : (
-          localQuests.map((quest) => {
-            const qs = gameState.quests.find((q) => q.questId === quest.id)
-            const status = qs?.status ?? 'undiscovered'
-            const giver = getNpc(quest.giverNpcId)
-            if (status === 'undiscovered') {
-              return (
-                <div key={quest.id} className="flex items-center justify-between gap-4">
-                  <p>{giver?.name ?? quest.giverNpcId}似乎有事相托。</p>
-                  <Button variant="ghost" onClick={() => discoverQuest(quest.id)}>
-                    查看委托
-                  </Button>
-                </div>
-              )
-            }
-            if (status === 'available') {
-              return (
-                <div key={quest.id}>
-                  <p className="font-bold text-bone-100">{quest.title}</p>
-                  <p className="mt-1 leading-relaxed">{quest.summary}</p>
-                  <p className="mt-1 text-xs text-bone-500">发布者：{giver?.name ?? quest.giverNpcId}</p>
-                  <div className="mt-2">
-                    <Button variant="primary" onClick={() => acceptQuest(quest.id)}>
-                      接受任务
-                    </Button>
-                  </div>
-                </div>
-              )
-            }
-            return null // 已接/已完成：委托入口不重复显示
-          })
-        )}
-      </section>
-
-      <section className="rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
-        <h3 className="mb-3 text-sm font-bold tracking-wider text-bone-500">任务日志</h3>
-        {gameState.quests.length === 0 ? (
-          <p className="text-bone-500">日志为空。</p>
-        ) : (
-          <div className="flex flex-col gap-3">
-            {gameState.quests.map((qs) => {
-              const def = getQuest(qs.questId)
-              const giver = def ? getNpc(def.giverNpcId) : undefined
-              const canSubmit = qs.status === 'completable' && giver?.locationId === world.currentLocationId
-              return (
-                <div key={qs.questId} className="rounded border border-ink-600 bg-ink-900/40 p-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="font-bold text-bone-100">{def?.title ?? '未知任务'}</p>
-                    <span className="shrink-0 text-xs text-gold-300">{QUEST_STATUS_LABELS[qs.status]}</span>
-                  </div>
-                  <p className="mt-1 text-xs leading-relaxed text-bone-500">
-                    {def?.summary ?? `${qs.questId}（缺失任务定义）`}
-                  </p>
-                  {/* TM-P0-018：任务固定金币奖励（读 QuestDefinition.goldReward，不复制常量） */}
-                  {def?.goldReward !== undefined && (
-                    <p className="mt-1 text-xs text-gold-300">奖励：{def.goldReward} 金币</p>
-                  )}
-                  {/* TM-P1-018：第四任务调查进度——严格从 QuestState.flags 读取；2/2 时额外显示调查结果固定文案（本卡结尾，不虚构下一地点） */}
-                  {qs.questId === 'quest_golden_rabbit_search' && qs.status === 'in_progress' && (
-                    <p className="mt-1 text-xs text-bone-400">
-                      地图线索调查：{goldenInvestigationCount} / 2
-                    </p>
-                  )}
-                  {qs.questId === 'quest_golden_rabbit_search' && goldenInvestigationCount === 2 && (
-                    <div className="mt-2 rounded border border-gold-500/40 bg-ink-900/40 p-2 text-xs leading-relaxed text-bone-200">
-                      <p>你已经向铁匠和药师打听过，但仍无法确认地图指向的具体地点。</p>
-                      <p className="mt-1 text-bone-300">地图上的标记仍无法对应到任何已知地点。</p>
-                    </div>
-                  )}
-                  {/* TM-P1-019：复命后阶段提示——保留 2/2 调查结果，额外显示已汇报（不覆盖历史进度） */}
-                  {qs.questId === 'quest_golden_rabbit_search' && goldenVillageInquiryReported && (
-                    <p className="mt-1 text-xs text-gold-300">村内调查已汇报。</p>
-                  )}
-                  {/* TM-P1-020：已复命未复查时显示行动目标；复查后目标消失并显示复查完成（不新增 lore） */}
-                  {qs.questId === 'quest_golden_rabbit_search' && goldenVillageInquiryReported && !goldenLairRechecked && (
-                    <p className="mt-1 text-xs text-bone-400">当前目标：返回兔王巢穴重新比对地图。</p>
-                  )}
-                  {qs.questId === 'quest_golden_rabbit_search' && goldenLairRechecked && (
-                    <p className="mt-1 text-xs text-gold-300">巢穴复查完成。</p>
-                  )}
-                  {/* TM-P1-021：支线《采药受阻》进度提示——接受后显示目标；调查成功后显示已查看+新目标（调查后任务即 completable，任务卡下方出现提交任务按钮走 generic 奖励） */}
-                  {qs.questId === 'quest_apothecary_herb_route' && qs.status === 'in_progress' && (
-                    <p className="mt-1 text-xs text-bone-400">当前目标：前往村外草原查看采药区域。</p>
-                  )}
-                  {qs.questId === 'quest_apothecary_herb_route' && herbGrasslandChecked && qs.status === 'completable' && (
-                    <div className="mt-1 text-xs text-bone-400">
-                      <p className="text-gold-300">采药区域已查看。</p>
-                      <p className="mt-1">当前目标：返回青石村向药师复命。</p>
-                    </div>
-                  )}
-                  {/* TM-P1-022：支线《矿洞余患》进度提示——接受后显示目标；魔化鼠胜利推进 completable 后显示已确认+新目标（无专属 flag，Quest status 表达状态） */}
-                  {qs.questId === 'quest_blacksmith_mine_remnant' && qs.status === 'in_progress' && (
-                    <p className="mt-1 text-xs text-bone-400">当前目标：前往废弃矿洞处理残余的魔化鼠。</p>
-                  )}
-                  {qs.questId === 'quest_blacksmith_mine_remnant' && qs.status === 'completable' && (
-                    <div className="mt-1 text-xs text-bone-400">
-                      <p className="text-gold-300">矿洞余患已确认。</p>
-                      <p className="mt-1">当前目标：返回青石村向铁匠复命。</p>
-                    </div>
-                  )}
-                  {/* TM-P1-024/P1-025/P1-026：第五主线《商人王财的麻烦》进度提示——五态（未询问/已询问未解锁/已解锁未清士兵/士兵清场未清队长/队长清场；黑石塔：【待开放】与黑石塔二层：【待开放】为实现状态，非 lore）；TM-P1-030 起在 completable（交还项链后）也显示日志「已交还/回武馆复命」，completed 不显示（由完成剧情块接管） */}
-                  {qs.questId === 'quest_wangcai_trouble' && (qs.status === 'in_progress' || qs.status === 'completable') && (
-                    <div className="mt-1 text-xs text-bone-400">
-                      {!wangcaiBriefed ? (
-                        <p>当前目标：返回天龙城，找到商人王财了解情况。</p>
-                      ) : !towerUnlocked ? (
-                        <>
-                          <p className="text-gold-300">已向王财了解情况。</p>
-                          <p className="mt-1">当前目标：调查黑石塔附近的情况。</p>
-                          <p className="mt-1">黑石塔的调查尚未开始。</p>
-                        </>
-                      ) : !floor1SoldierDefeated ? (
-                        <>
-                          <p className="text-gold-300">已向王财了解情况。</p>
-                          <p className="mt-1 text-gold-300">黑石塔路线已确认。</p>
-                          <p className="mt-1">当前目标：前往黑石塔一层调查。</p>
-                        </>
-                      ) : !floor1CaptainDefeated ? (
-                        <>
-                          <p className="text-gold-300">已向王财了解情况。</p>
-                          <p className="mt-1 text-gold-300">黑石塔路线已确认。</p>
-                          <p className="mt-1 text-gold-300">黑石塔一层：已击败骷髅士兵。</p>
-                          <p className="mt-1">当前目标：击败骷髅队长。</p>
-                        </>
-                      ) : !floor2ZombieDefeated || !floor2BlackMageDefeated ? (
-                        <>
-                          <p className="text-gold-300">已向王财了解情况。</p>
-                          <p className="mt-1 text-gold-300">黑石塔路线已确认。</p>
-                          <p className="mt-1 text-gold-300">黑石塔一层：已击败骷髅士兵。</p>
-                          <p className="mt-1 text-gold-300">黑石塔一层：骷髅队长已击败，未发现夔峒项链。</p>
-                          <p className="mt-1">当前目标：继续深入黑石塔。</p>
-                          <p className="mt-1">黑石塔上层尚未开启。</p>
-                        </>
-                      ) : !floor2SkeletonWarriorDefeated ? (
-                        <>
-                          <p className="text-gold-300">已向王财了解情况。</p>
-                          <p className="mt-1 text-gold-300">黑石塔路线已确认。</p>
-                          <p className="mt-1 text-gold-300">黑石塔一层：已击败骷髅士兵。</p>
-                          <p className="mt-1 text-gold-300">黑石塔一层：骷髅队长已击败，未发现夔峒项链。</p>
-                          <p className="mt-1 text-gold-300">黑石塔二层：入口区域已清理。</p>
-                          <p className="mt-1">当前目标：击败骷髅战士。</p>
-                        </>
-                      ) : !floor3SkeletonWitchDefeated ? (
-                        <>
-                          <p className="text-gold-300">已向王财了解情况。</p>
-                          <p className="mt-1 text-gold-300">黑石塔路线已确认。</p>
-                          <p className="mt-1 text-gold-300">黑石塔一层：已击败骷髅士兵。</p>
-                          <p className="mt-1 text-gold-300">黑石塔一层：骷髅队长已击败，未发现夔峒项链。</p>
-                          <p className="mt-1 text-gold-300">黑石塔二层：入口区域已清理。</p>
-                          <p className="mt-1 text-gold-300">黑石塔二层深处：骷髅战士已击败，仍未发现夔峒项链。</p>
-                          <p className="mt-1">当前目标：击败骷髅女妖。</p>
-                        </>
-                      ) : kuidongNecklaceReturned ? (
-                        <>
-                          <p className="text-gold-300">已向王财了解情况。</p>
-                          <p className="mt-1 text-gold-300">黑石塔路线已确认。</p>
-                          <p className="mt-1 text-gold-300">黑石塔一层：已击败骷髅士兵。</p>
-                          <p className="mt-1 text-gold-300">黑石塔一层：骷髅队长已击败，未发现夔峒项链。</p>
-                          <p className="mt-1 text-gold-300">黑石塔二层：入口区域已清理。</p>
-                          <p className="mt-1 text-gold-300">黑石塔二层深处：骷髅战士已击败，仍未发现夔峒项链。</p>
-                          <p className="mt-1 text-gold-300">黑石塔三层：骷髅女妖已击败。</p>
-                          <p className="mt-1 text-gold-300">黑石塔三层：已找到夔峒项链。</p>
-                          <p className="mt-1 text-gold-300">夔峒项链：已交还王财。</p>
-                          <p className="mt-1">当前目标：返回武馆，向马科复命。</p>
-                        </>
-                      ) : (
-                        <>
-                          <p className="text-gold-300">已向王财了解情况。</p>
-                          <p className="mt-1 text-gold-300">黑石塔路线已确认。</p>
-                          <p className="mt-1 text-gold-300">黑石塔一层：已击败骷髅士兵。</p>
-                          <p className="mt-1 text-gold-300">黑石塔一层：骷髅队长已击败，未发现夔峒项链。</p>
-                          <p className="mt-1 text-gold-300">黑石塔二层：入口区域已清理。</p>
-                          <p className="mt-1 text-gold-300">黑石塔二层深处：骷髅战士已击败，仍未发现夔峒项链。</p>
-                          <p className="mt-1 text-gold-300">黑石塔三层：骷髅女妖已击败。</p>
-                          <p className="mt-1 text-gold-300">黑石塔三层：已找到夔峒项链。</p>
-                          <p className="mt-1">当前目标：返回天龙城，将夔峒项链交还王财。</p>
-                        </>
-                      )}
-                    </div>
-                  )}
-                  {/* TM-P1-030：王财任务完成（向马科复命成功后）——马科短剧情 + 第一阶段完成提示；黄金兔子长期线不 completed/failed、不改 flag/stage/兔子的路径（冻结保留） */}
-                  {qs.questId === 'quest_wangcai_trouble' && qs.status === 'completed' && (
-                    <div className="mt-2 rounded border border-gold-500/40 bg-ink-900/40 p-2 text-xs leading-relaxed text-bone-200">
-                      <p>马科听完黑石塔里的经过，神情明显严肃起来。</p>
-                      <p className="mt-1">“看来最近的魔物异动并不是偶然。”</p>
-                      <p className="mt-1">“这件事我会向上面汇报。你先休息一下。”</p>
-                      <p className="mt-1 text-bone-300">黑石塔的调查暂时告一段落。</p>
-                      <div className="mt-2 rounded border border-gold-500/40 bg-ink-900/40 p-2">
-                        <p className="text-gold-300">第一阶段完成</p>
-                        <p className="mt-1">当前可玩主线内容已完成。</p>
-                        <p>《追寻黄金兔子王》将在后续阶段继续。</p>
-                      </div>
-                    </div>
-                  )}
-                  {canSubmit && (
-                    <div className="mt-2">
-                      {/* TM-P1-012：提交成功（仅《草原狼影》）触发升级提示 */}
-                      <Button variant="primary" onClick={() => handleCompleteQuest(qs.questId)}>
-                        提交任务
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        )}
-      </section>
-
-      <footer className="flex items-center gap-4">
-        <Button variant="primary" onClick={handleSave}>
-          保存游戏
-        </Button>
-        {saveResult === 'saved' && <span className="text-sm text-gold-300">✓ 已保存</span>}
-        {saveResult === 'failed' && <span className="text-sm text-red-300">✗ 保存失败</span>}
-      </footer>
+      </div>
     </div>
   )
 }

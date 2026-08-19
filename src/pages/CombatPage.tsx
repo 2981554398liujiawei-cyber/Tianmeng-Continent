@@ -15,6 +15,7 @@ import {
   getPlayerAttackBonus,
   getPlayerAttackDamage,
   getPlayerDefense,
+  getPlayerLevelDamageBonus,
   performAttack,
   getCombatPhaseAfterEnemyAttack,
   resolvePlayerStrike,
@@ -33,6 +34,7 @@ interface CombatPageProps {
 const ATTACK_OUTCOME_LABELS: Record<AttackResult['outcome'], string> = {
   critical_hit: '暴击',
   hit: '命中',
+  glancing_hit: '擦中',
   miss: '未命中',
   critical_miss: '大失败',
 }
@@ -107,9 +109,12 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
     .filter((entry) => entry.itemId === 'healing_potion' && Number.isSafeInteger(entry.quantity) && entry.quantity >= 1)
     .reduce((total, entry) => total + entry.quantity, 0)
 
-  /** TM-P1-015：最小敌方反击 helper——保留既有 D20/伤害/失败阶段逻辑；普通攻击/职业技能与喝药行动共用，不建 TurnManager */
+  /** TM-P2-001 C4：基础等级伤害成长（Lv1–2 +0 / Lv3–4 +1 ...）——适用于所有玩家直接伤害 */
+  const levelDamageBonus = getPlayerLevelDamageBonus(player.level)
+
+  /** TM-P1-015：最小敌方反击 helper——复用既有 D20/伤害/失败阶段逻辑；敌人使用 mode='enemy'（无擦中，TM-P2-001 C2） */
   const applyEnemyCounter = () => {
-    const enemyResult = performAttack(enemy.attackBonus, playerDefense, enemy.damage)
+    const enemyResult = performAttack(enemy.attackBonus, playerDefense, enemy.damage, 'enemy')
     setLastEnemyAttack(enemyResult)
     if (enemyResult.hit) {
       damagePlayer(enemyResult.damage)
@@ -139,7 +144,7 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
     const playerResult = performAttack(
       getPlayerAttackBonus(player.attributes.str, player.level),
       enemy.defense,
-      getPlayerAttackDamage(player.attributes.str, weaponDamageBonus),
+      getPlayerAttackDamage(player.attributes.str, weaponDamageBonus) + levelDamageBonus,
     )
     applyPlayerAttack(playerResult, 'basic')
   }
@@ -152,7 +157,7 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
     const spellResult = performAttack(
       getMageSpellAttackBonus(player.attributes.mnd, player.level),
       enemy.defense,
-      getMageSpellDamage(player.attributes.mnd),
+      getMageSpellDamage(player.attributes.mnd) + levelDamageBonus,
     )
     applyPlayerAttack(spellResult, 'mage_spell')
   }
@@ -165,7 +170,7 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
     const strikeResult = performAttack(
       getPlayerAttackBonus(player.attributes.str, player.level),
       enemy.defense,
-      getKnightPowerStrikeDamage(player.attributes.str, weaponDamageBonus),
+      getKnightPowerStrikeDamage(player.attributes.str, weaponDamageBonus) + levelDamageBonus,
     )
     applyPlayerAttack(strikeResult, 'knight_power_strike')
   }
@@ -178,7 +183,7 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
     const strikeResult = performAttack(
       getRangerSwiftStrikeAttackBonus(player.attributes.agi, player.level),
       enemy.defense,
-      getRangerSwiftStrikeDamage(player.attributes.agi, weaponDamageBonus),
+      getRangerSwiftStrikeDamage(player.attributes.agi, weaponDamageBonus) + levelDamageBonus,
     )
     applyPlayerAttack(strikeResult, 'ranger_swift_strike')
   }
@@ -191,7 +196,7 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
     const strikeResult = performAttack(
       getPlayerAttackBonus(player.attributes.str, player.level),
       enemy.defense,
-      getPlayerAttackDamage(player.attributes.str, weaponDamageBonus),
+      getPlayerAttackDamage(player.attributes.str, weaponDamageBonus) + levelDamageBonus,
     )
     applyPlayerAttack(strikeResult, 'warrior_suppress_strike')
   }
@@ -214,9 +219,12 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
       return
     }
 
-    // TM-P1-008：压制猛击命中且敌人存活 → 压制本次反击（本次行动结束，不执行敌人 performAttack）
+    // TM-P2-001 C3：压制猛击仅在「正常命中」或「暴击」时压制本次反击（擦中只造成半伤害，不能触发压制效果）
     // 未命中（miss/天然1）不压制 → 敌人正常反击；普通攻击反击规则完全不变（只作用于 warrior_suppress_strike 行动）
-    if (action === 'warrior_suppress_strike' && attack.hit) {
+    if (
+      action === 'warrior_suppress_strike' &&
+      (attack.outcome === 'hit' || attack.outcome === 'critical_hit')
+    ) {
       return
     }
 

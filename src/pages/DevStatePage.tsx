@@ -41,6 +41,7 @@ const OUTCOME_LABELS: Record<D20CheckResult['outcome'], string> = {
 const ATTACK_OUTCOME_LABELS: Record<AttackResult['outcome'], string> = {
   critical_hit: '暴击',
   hit: '命中',
+  glancing_hit: '擦中',
   miss: '未命中',
   critical_miss: '大失败',
 }
@@ -104,7 +105,8 @@ export default function DevStatePage({ onBackToMenu }: DevStatePageProps) {
       return
     }
     try {
-      setAttackResult(performAttack(enemy.attackBonus, getPlayerDefense(gameState.player.attributes.agi), enemy.damage))
+      // TM-P2-001 C2：敌人攻击使用 enemy 模式（无擦中）
+      setAttackResult(performAttack(enemy.attackBonus, getPlayerDefense(gameState.player.attributes.agi), enemy.damage, 'enemy'))
     } catch (err) {
       setAttackError(err instanceof Error ? err.message : '攻击结算失败')
     }

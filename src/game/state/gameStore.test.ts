@@ -6418,3 +6418,362 @@ describe('TM-P1-027：黑石塔二层——武馆休整、僵尸与黑法师', (
     expect(useGameStore.getState().hasSave).toBe(false)
   })
 })
+
+// ---- Phase 2：天龙城北门新剧情（TM-P2-001 D）----
+
+describe('TM-P2-001 D2：发现《北门失联》前置（仅《商人王财的麻烦》completed）', () => {
+  const northQuest = () => useGameStore.getState().gameState?.quests.find((q) => q.questId === 'quest_north_gate_missing_patrol')
+
+  const seedWangcaiCompleted = () => {
+    useGameStore.getState().newGame()
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return {
+        gameState: {
+          ...s.gameState,
+          quests: [{ questId: 'quest_wangcai_trouble', status: 'completed', stage: 0, flags: {} }],
+        },
+      }
+    })
+  }
+
+  it('A. 王财任务未完成（不存在）→ 不能发现', () => {
+    useGameStore.getState().newGame()
+    expect(useGameStore.getState().discoverQuest('quest_north_gate_missing_patrol')).toBe(false)
+    expect(northQuest()).toBeUndefined()
+  })
+
+  it('B. 王财任务 in_progress → 不能发现', () => {
+    useGameStore.getState().newGame()
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return {
+        gameState: {
+          ...s.gameState,
+          quests: [{ questId: 'quest_wangcai_trouble', status: 'in_progress', stage: 0, flags: {} }],
+        },
+      }
+    })
+    expect(useGameStore.getState().discoverQuest('quest_north_gate_missing_patrol')).toBe(false)
+    expect(northQuest()).toBeUndefined()
+  })
+
+  it('C. 王财任务 completed → 可发现（available）', () => {
+    seedWangcaiCompleted()
+    expect(useGameStore.getState().discoverQuest('quest_north_gate_missing_patrol')).toBe(true)
+    expect(northQuest()?.status).toBe('available')
+  })
+
+  it('D. 已 available 不重复创建', () => {
+    seedWangcaiCompleted()
+    useGameStore.getState().discoverQuest('quest_north_gate_missing_patrol')
+    const before = JSON.stringify(useGameStore.getState().gameState)
+    expect(useGameStore.getState().discoverQuest('quest_north_gate_missing_patrol')).toBe(false)
+    expect(JSON.stringify(useGameStore.getState().gameState)).toBe(before)
+  })
+})
+
+describe('TM-P2-001 D3：investigateNorthGateTrail 北门痕迹调查', () => {
+  const northQuest = () => useGameStore.getState().gameState?.quests.find((q) => q.questId === 'quest_north_gate_missing_patrol')
+  const currentLocation = () => useGameStore.getState().gameState?.world.currentLocationId
+  const snapshot = () => JSON.stringify(useGameStore.getState().gameState)
+
+  /** 北门 + 北门任务 in_progress/stage 0（未调查） */
+  const seedNorthGateInProgress = () => {
+    useGameStore.getState().newGame()
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return {
+        gameState: {
+          ...s.gameState,
+          world: { ...s.gameState.world, currentLocationId: 'tianlong_north_gate' },
+          quests: [{ questId: 'quest_north_gate_missing_patrol', status: 'in_progress', stage: 0, flags: {} }],
+        },
+      }
+    })
+  }
+
+  /** 直接设置 trail flag 值（undefined 删除键） */
+  const seedTrailFlag = (value: string | number | boolean | undefined) => {
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return {
+        gameState: {
+          ...s.gameState,
+          quests: s.gameState.quests.map((q) => {
+            if (q.questId !== 'quest_north_gate_missing_patrol') return q
+            if (value === undefined) {
+              const nextFlags = { ...q.flags }
+              delete nextFlags.north_gate_trail_checked
+              return { ...q, flags: nextFlags }
+            }
+            return { ...q, flags: { ...q.flags, north_gate_trail_checked: value } }
+          }),
+        },
+      }
+    })
+  }
+
+  it('A. 无 gameState → false', () => {
+    useGameStore.setState({ gameState: null })
+    expect(useGameStore.getState().investigateNorthGateTrail()).toBe(false)
+  })
+
+  it('B. 不在北门 → false（完全不变）', () => {
+    seedNorthGateInProgress()
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return { gameState: { ...s.gameState, world: { ...s.gameState.world, currentLocationId: 'tianlong_city' } } }
+    })
+    const before = snapshot()
+    expect(useGameStore.getState().investigateNorthGateTrail()).toBe(false)
+    expect(snapshot()).toBe(before)
+  })
+
+  it('C. 任务不存在 → false', () => {
+    useGameStore.getState().newGame()
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return { gameState: { ...s.gameState, world: { ...s.gameState.world, currentLocationId: 'tianlong_north_gate' } } }
+    })
+    const before = snapshot()
+    expect(useGameStore.getState().investigateNorthGateTrail()).toBe(false)
+    expect(snapshot()).toBe(before)
+  })
+
+  it('D. 任务非 in_progress（available/completable/completed）→ false', () => {
+    seedNorthGateInProgress()
+    for (const status of ['available', 'completable', 'completed', 'failed'] as const) {
+      useGameStore.setState((s) => {
+        if (!s.gameState) return {}
+        return {
+          gameState: {
+            ...s.gameState,
+            quests: s.gameState.quests.map((q) => (q.questId === 'quest_north_gate_missing_patrol' ? { ...q, status } : q)),
+          },
+        }
+      })
+      expect(useGameStore.getState().investigateNorthGateTrail()).toBe(false)
+    }
+  })
+
+  it('E. 非 boolean 异常 flag（"yes"/1/0.5）→ false 且完全不变（不修复）', () => {
+    seedNorthGateInProgress()
+    for (const bad of ['yes', 1, 0.5] as const) {
+      seedTrailFlag(bad)
+      const before = snapshot()
+      expect(useGameStore.getState().investigateNorthGateTrail()).toBe(false)
+      expect(snapshot()).toBe(before)
+    }
+  })
+
+  it('F. 已 true 重复调用 → false 且 GameState 同一引用', () => {
+    seedNorthGateInProgress()
+    seedTrailFlag(true)
+    const before = useGameStore.getState().gameState
+    expect(useGameStore.getState().investigateNorthGateTrail()).toBe(false)
+    expect(useGameStore.getState().gameState).toBe(before)
+  })
+
+  it('G. 成功 → 只写 quest.flags.north_gate_trail_checked=true（status/stage 不变）', () => {
+    seedNorthGateInProgress()
+    expect(useGameStore.getState().investigateNorthGateTrail()).toBe(true)
+    expect(northQuest()?.flags.north_gate_trail_checked).toBe(true)
+    expect(northQuest()?.status).toBe('in_progress')
+    expect(northQuest()?.stage).toBe(0)
+  })
+
+  it('H. 调查不自动保存', () => {
+    seedNorthGateInProgress()
+    useGameStore.getState().investigateNorthGateTrail()
+    expect(useGameStore.getState().hasSave).toBe(false)
+  })
+})
+
+describe('TM-P2-001 D4/D5：resolveCombatVictory 黑鬃魔狼（北门外）', () => {
+  const northQuest = () => useGameStore.getState().gameState?.quests.find((q) => q.questId === 'quest_north_gate_missing_patrol')
+  const currentLocation = () => useGameStore.getState().gameState?.world.currentLocationId
+  const snapshot = () => JSON.stringify(useGameStore.getState().gameState)
+
+  /** 北门 + 任务 in_progress/stage 0 + 已调查痕迹（可刷狼的合法前置） */
+  const seedWolfReady = () => {
+    useGameStore.getState().newGame()
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return {
+        gameState: {
+          ...s.gameState,
+          world: { ...s.gameState.world, currentLocationId: 'tianlong_north_gate' },
+          quests: [
+            {
+              questId: 'quest_north_gate_missing_patrol',
+              status: 'in_progress',
+              stage: 0,
+              flags: { north_gate_trail_checked: true },
+            },
+          ],
+        },
+      }
+    })
+  }
+
+  /** 直接设置 wolf flag 值（undefined 删除键） */
+  const seedWolfFlag = (value: string | number | boolean | undefined) => {
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return {
+        gameState: {
+          ...s.gameState,
+          quests: s.gameState.quests.map((q) => {
+            if (q.questId !== 'quest_north_gate_missing_patrol') return q
+            if (value === undefined) {
+              const nextFlags = { ...q.flags }
+              delete nextFlags.north_gate_wolf_defeated
+              return { ...q, flags: nextFlags }
+            }
+            return { ...q, flags: { ...q.flags, north_gate_wolf_defeated: value } }
+          }),
+        },
+      }
+    })
+  }
+
+  it('A. 未接任务 → 不能刷狼（胜利拒绝且完全不变）', () => {
+    useGameStore.getState().newGame()
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return { gameState: { ...s.gameState, world: { ...s.gameState.world, currentLocationId: 'tianlong_north_gate' } } }
+    })
+    const before = snapshot()
+    expect(useGameStore.getState().resolveCombatVictory('black_mane_wolf')).toBe(false)
+    expect(snapshot()).toBe(before)
+  })
+
+  it('B. 未调查痕迹（trail_checked 非 true）→ 不能刷狼', () => {
+    seedWolfReady()
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return {
+        gameState: {
+          ...s.gameState,
+          quests: s.gameState.quests.map((q) =>
+            q.questId === 'quest_north_gate_missing_patrol' ? { ...q, flags: {} } : q,
+          ),
+        },
+      }
+    })
+    const before = snapshot()
+    expect(useGameStore.getState().resolveCombatVictory('black_mane_wolf')).toBe(false)
+    expect(snapshot()).toBe(before)
+  })
+
+  it('C. 任务非 in_progress / stage!=0 → 拒绝', () => {
+    seedWolfReady()
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return {
+        gameState: {
+          ...s.gameState,
+          quests: s.gameState.quests.map((q) =>
+            q.questId === 'quest_north_gate_missing_patrol' ? { ...q, status: 'available' as const, stage: 0 } : q,
+          ),
+        },
+      }
+    })
+    expect(useGameStore.getState().resolveCombatVictory('black_mane_wolf')).toBe(false)
+  })
+
+  it('D. 不在北门（其他地点）→ 拒绝', () => {
+    seedWolfReady()
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return { gameState: { ...s.gameState, world: { ...s.gameState.world, currentLocationId: 'tianlong_city' } } }
+    })
+    expect(useGameStore.getState().resolveCombatVictory('black_mane_wolf')).toBe(false)
+  })
+
+  it('E. 非法 wolf flag（"yes"/1/0.5）→ 拒绝且完全不变（不修复）', () => {
+    seedWolfReady()
+    for (const bad of ['yes', 1, 0.5] as const) {
+      seedWolfFlag(bad)
+      const before = snapshot()
+      expect(useGameStore.getState().resolveCombatVictory('black_mane_wolf')).toBe(false)
+      expect(snapshot()).toBe(before)
+    }
+  })
+
+  it('F. 击败后不能复活（重复胜利拒绝且完全不变）', () => {
+    seedWolfReady()
+    expect(useGameStore.getState().resolveCombatVictory('black_mane_wolf')).toBe(true)
+    const before = snapshot()
+    expect(useGameStore.getState().resolveCombatVictory('black_mane_wolf')).toBe(false)
+    expect(snapshot()).toBe(before)
+  })
+
+  it('G. 合法首次胜利 → wolf_defeated=true + status→completable（stage 保持 0；无金币/物品奖励）', () => {
+    seedWolfReady()
+    const goldBefore = useGameStore.getState().gameState?.player.gold
+    const invBefore = JSON.stringify(useGameStore.getState().gameState?.inventory)
+    expect(useGameStore.getState().resolveCombatVictory('black_mane_wolf')).toBe(true)
+    expect(northQuest()?.flags.north_gate_wolf_defeated).toBe(true)
+    expect(northQuest()?.status).toBe('completable')
+    expect(northQuest()?.stage).toBe(0)
+    expect(northQuest()?.flags.north_gate_trail_checked).toBe(true)
+    expect(useGameStore.getState().gameState?.player.gold).toBe(goldBefore)
+    expect(JSON.stringify(useGameStore.getState().gameState?.inventory)).toBe(invBefore)
+  })
+
+  it('H. 胜利不自动保存', () => {
+    seedWolfReady()
+    useGameStore.getState().resolveCombatVictory('black_mane_wolf')
+    expect(useGameStore.getState().hasSave).toBe(false)
+  })
+})
+
+describe('TM-P2-001 D6：完成《北门失联》（generic 提交，金币 +30）', () => {
+  const northQuest = () => useGameStore.getState().gameState?.quests.find((q) => q.questId === 'quest_north_gate_missing_patrol')
+
+  const seedCompletable = () => {
+    useGameStore.getState().newGame()
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return {
+        gameState: {
+          ...s.gameState,
+          world: { ...s.gameState.world, currentLocationId: 'tianlong_martial_hall' },
+          quests: [
+            {
+              questId: 'quest_north_gate_missing_patrol',
+              status: 'completable',
+              stage: 0,
+              flags: { north_gate_trail_checked: true, north_gate_wolf_defeated: true },
+            },
+          ],
+        },
+      }
+    })
+  }
+
+  it('A. completable → completed 且金币 +30', () => {
+    seedCompletable()
+    const goldBefore = useGameStore.getState().gameState?.player.gold
+    expect(useGameStore.getState().completeQuest('quest_north_gate_missing_patrol')).toBe(true)
+    expect(northQuest()?.status).toBe('completed')
+    expect(useGameStore.getState().gameState?.player.gold).toBe((goldBefore ?? 0) + 30)
+  })
+
+  it('B. 已完成不能重复奖励', () => {
+    seedCompletable()
+    useGameStore.getState().completeQuest('quest_north_gate_missing_patrol')
+    const gold = useGameStore.getState().gameState?.player.gold
+    expect(useGameStore.getState().completeQuest('quest_north_gate_missing_patrol')).toBe(false)
+    expect(useGameStore.getState().gameState?.player.gold).toBe(gold)
+  })
+
+  it('C. 王财任务完成后《北门失联》任务保持完成（不反转）', () => {
+    seedCompletable()
+    useGameStore.getState().completeQuest('quest_north_gate_missing_patrol')
+    expect(northQuest()?.status).toBe('completed')
+    expect(useGameStore.getState().gameState?.player.level).toBe(1) // 不升级、不建经验系统
+  })
+})

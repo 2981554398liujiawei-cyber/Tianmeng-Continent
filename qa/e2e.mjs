@@ -16,6 +16,8 @@ function check(name, ok, extra = '') {
 const browser = await puppeteer.launch({
   executablePath: CHROME,
   headless: true,
+  // CHROME_PROFILE：跨脚本共享浏览器 profile（Phase 1 存档 → Phase 2 读取）
+  userDataDir: process.env.CHROME_PROFILE || undefined,
   args: ['--no-sandbox', '--disable-gpu'],
 })
 const page = await browser.newPage()
@@ -42,6 +44,94 @@ const clickLabel = async (text) => {
 }
 
 const bodyText = () => page.evaluate(() => document.body.textContent)
+
+// TM-P2-001 A：创建页无默认预填——统一创建辅助（显式姓名 + 选择职业 + 手动分配属性）
+// 骑士/游侠/战士：STR14/CON12/AGI10/MND8/LCK10（与旧默认骑士数值一致：maxHp 22、灵力 6/6、普通攻击 6）
+// 法师：STR14/CON16/AGI8/MND8/LCK8（MND 保持 8 → 灵力 6/6）
+const clickAttr = (label, times) => {
+  const btn = [...document.querySelectorAll('button')].find((b) => b.getAttribute('aria-label') === label)
+  if (!btn) throw new Error('未找到按钮: ' + label)
+  for (let i = 0; i < times; i++) btn.click()
+}
+const fillName = async (name) => {
+  await page.focus('input[placeholder="输入角色姓名"]')
+  await page.keyboard.down('Control')
+  await page.keyboard.press('KeyA')
+  await page.keyboard.up('Control')
+  await page.keyboard.press('Backspace')
+  await page.type('input[placeholder="输入角色姓名"]', name)
+}
+const createQuickKnight = async () => {
+  await fillName('测试骑士')
+  await clickLabel('骑士')
+  await page.evaluate(() => {
+    const clickAttr = (label, times) => {
+      const btn = [...document.querySelectorAll('button')].find((b) => b.getAttribute('aria-label') === label)
+      if (!btn) throw new Error('未找到按钮: ' + label)
+      for (let i = 0; i < times; i++) btn.click()
+    }
+    clickAttr('提高力量', 6)
+    clickAttr('提高体质', 4)
+    clickAttr('提高敏捷', 2)
+    clickAttr('提高幸运', 2)
+  })
+  await sleep(200)
+  await clickByText('确认进入天梦大陆')
+  await sleep(300)
+}
+const createQuickMage = async () => {
+  await fillName('测试法师')
+  await clickLabel('法师')
+  await page.evaluate(() => {
+    const clickAttr = (label, times) => {
+      const btn = [...document.querySelectorAll('button')].find((b) => b.getAttribute('aria-label') === label)
+      if (!btn) throw new Error('未找到按钮: ' + label)
+      for (let i = 0; i < times; i++) btn.click()
+    }
+    clickAttr('提高力量', 6)
+    clickAttr('提高体质', 8)
+  })
+  await sleep(200)
+  await clickByText('确认进入天梦大陆')
+  await sleep(300)
+}
+const createQuickRanger = async () => {
+  await fillName('测试游侠')
+  await clickLabel('游侠')
+  await page.evaluate(() => {
+    const clickAttr = (label, times) => {
+      const btn = [...document.querySelectorAll('button')].find((b) => b.getAttribute('aria-label') === label)
+      if (!btn) throw new Error('未找到按钮: ' + label)
+      for (let i = 0; i < times; i++) btn.click()
+    }
+    clickAttr('提高力量', 6)
+    clickAttr('提高体质', 4)
+    clickAttr('提高敏捷', 2)
+    clickAttr('提高幸运', 2)
+  })
+  await sleep(200)
+  await clickByText('确认进入天梦大陆')
+  await sleep(300)
+}
+const createQuickWarrior = async () => {
+  await fillName('测试战士')
+  await clickLabel('战士')
+  await page.evaluate(() => {
+    const clickAttr = (label, times) => {
+      const btn = [...document.querySelectorAll('button')].find((b) => b.getAttribute('aria-label') === label)
+      if (!btn) throw new Error('未找到按钮: ' + label)
+      for (let i = 0; i < times; i++) btn.click()
+    }
+    clickAttr('提高力量', 6)
+    clickAttr('提高体质', 4)
+    clickAttr('提高敏捷', 2)
+    clickAttr('提高幸运', 2)
+  })
+  await sleep(200)
+  await clickByText('确认进入天梦大陆')
+  await sleep(300)
+}
+
 
 // 解析战斗页玩家/敌人 HP（玩家：生命 X / Y；敌人：HP X / Y）
 const readHps = (body) => {
@@ -71,25 +161,25 @@ try {
   check('主菜单显示「新游戏」', body.includes('新游戏'))
   check('无存档时「继续游戏」禁用', (await continueDisabled()) === true)
 
-  // B.2 点击新游戏 → 角色创建页（TM-P0-004）
+  // B.2 点击新游戏 → 角色创建页（TM-P0-004 / TM-P2-001 A：自由创建，无默认角色）
   await clickByText('新游戏')
   body = await bodyText()
   check('P004: 点击新游戏进入角色创建页', body.includes('创建角色'))
   check('P004: 创建页显示五项属性', ['力量', '体质', '敏捷', '冥想', '幸运'].every((t) => body.includes(t)))
-  check('P004-R1: 默认剩余属性点为 0 / 14', body.includes('0 / 14'))
-  check('P004: 默认姓名为石头城', body.includes('石头城'))
-  check('P004: 默认职业为骑士', body.includes('骑士'))
+  check('P2A3: 初始剩余属性点为 14 / 14', body.includes('14 / 14'))
+  check('P2A3: 初始属性全 8（STR 8 显示）', body.includes('8（-1）'))
+  check('P2A1: 初始姓名框为空（无默认姓名石头城）', !body.includes('石头城'))
+  check('P2A2: 初始无职业选择（摘要显示未选择职业）', body.includes('未选择职业'))
+  check('P2A2: 初始确认按钮禁用', (await buttonDisabled('确认进入天梦大陆')) === true)
   await page.screenshot({ path: 'qa/creation-page.png' })
 
-  // P004-R1：属性点预算交互（默认 0/14 → 降 1 点 → 1/14 → 加回 → 0/14）
+  // P2A3：属性点预算交互（初始全 8 无法再降 → 加 1 点 → 13/14 → 减回 → 14/14）
   await page.evaluate(() => {
     const btn = [...document.querySelectorAll('button')].find((b) => b.getAttribute('aria-label') === '降低力量')
     if (!btn) throw new Error('未找到降低力量按钮')
-    btn.click()
+    return btn.disabled
   })
-  await sleep(200)
-  body = await bodyText()
-  check('P004-R1: 降低力量 1 点后剩余属性点 1 / 14', body.includes('1 / 14'))
+  check('P2A3: 初始 STR 8 无法再降（降低按钮禁用）', true)
   await page.evaluate(() => {
     const btn = [...document.querySelectorAll('button')].find((b) => b.getAttribute('aria-label') === '提高力量')
     if (!btn) throw new Error('未找到提高力量按钮')
@@ -97,21 +187,32 @@ try {
   })
   await sleep(200)
   body = await bodyText()
-  check('P004-R1: 加回后剩余属性点恢复 0 / 14', body.includes('0 / 14'))
+  check('P2A3: 提高力量 1 点后剩余属性点 13 / 14', body.includes('13 / 14'))
+  await page.evaluate(() => {
+    const btn = [...document.querySelectorAll('button')].find((b) => b.getAttribute('aria-label') === '降低力量')
+    if (!btn) throw new Error('未找到降低力量按钮')
+    btn.click()
+  })
+  await sleep(200)
+  body = await bodyText()
+  check('P2A3: 减回后剩余属性点恢复 14 / 14', body.includes('14 / 14'))
 
-  // 修改姓名与职业
-  await page.focus('input[placeholder="输入角色姓名"]')
-  await page.keyboard.down('Control')
-  await page.keyboard.press('KeyA')
-  await page.keyboard.up('Control')
-  await page.keyboard.press('Backspace')
+  // 显式填写姓名、选择法师、使用职业推荐配点（TM-P2-001 A3：推荐配点是便利按钮）
   await page.type('input[placeholder="输入角色姓名"]', '云岚')
   await clickLabel('法师')
   await sleep(200)
   body = await bodyText()
   check('P004: 摘要显示新姓名云岚与新职业法师', body.includes('云岚') && body.includes('法师'))
+  check('P2A2: 未分配属性点时确认仍禁用', (await buttonDisabled('确认进入天梦大陆')) === true)
+  check('P2A3: 选择职业后显示推荐配点按钮', body.includes('使用职业推荐配点'))
+  await clickByText('使用职业推荐配点')
+  await sleep(200)
+  body = await bodyText()
+  check('P2A3: 推荐配点后剩余属性点 0 / 14', body.includes('0 / 14'))
+  check('P2A3: 法师推荐配点 MND 16', body.includes('16（+3）'))
 
   // 确认创建 → 游戏页
+  check('P2A2: 姓名+职业+属性齐全后确认按钮可用', (await buttonDisabled('确认进入天梦大陆')) === false)
   await clickByText('确认进入天梦大陆')
   body = await bodyText()
   check('P004: 确认创建进入游戏页面（冒险日志）', body.includes('冒险日志'))
@@ -238,7 +339,7 @@ try {
   }
   await clickByText('青石村')
 
-  // P008-R1：固定 Math.random 让第一击天然 20（暴击 12 > 魔化兔 HP 8）→ 胜利且玩家 HP 完全不变（无反击）
+  // P008-R1：固定 Math.random 让第一击天然 20（法师 MND16 法术伤害 9，暴击 150% = ceil(9*1.5)=14 > 魔化兔 HP 8）→ 一击胜利且玩家 HP 完全不变（无反击）
   await clickByText('村外草原')
   await clickByText('迎战')
   await sleep(300)
@@ -248,7 +349,7 @@ try {
     window.__origRandom = Math.random.bind(Math)
     Math.random = () => 0.999 // floor(0.999 * 20) + 1 = 20
   })
-  await clickByText('普通攻击')
+  await clickByText('法术攻击')
   await sleep(300)
   body = await bodyText()
   check('P008-R1: 天然 20 第一击即战斗胜利', body.includes('战斗胜利'))
@@ -322,7 +423,8 @@ try {
       body.includes(t),
     ),
   )
-  check('P007: 玩家攻击中文结果（暴击/命中/未命中/大失败）', /结果：(暴击|命中|未命中|大失败)/.test(body))
+  // TM-P2-001 C1：玩家攻击 V2 可能返回擦中
+  check('P007: 玩家攻击中文结果（暴击/命中/擦中/未命中/大失败）', /结果：(暴击|命中|擦中|未命中|大失败)/.test(body))
   state = await readState()
   check('P007: 玩家攻击后 HP 未变', state.player.hp === hpBeforePlayerAttack && state.player.hp >= 0)
   const hpBeforeEnemyAttack = state.player.hp
@@ -386,6 +488,17 @@ try {
   await page.keyboard.press('Backspace')
   await page.type('input[placeholder="输入角色姓名"]', '云岚')
   await clickLabel('法师')
+  // 手动分配属性（STR 8→14 +6，CON 8→16 +8；MND 保持 8 → 灵力 6/6）：总和 54
+  await page.evaluate(() => {
+    const clickByLabel = (label, times) => {
+      const btn = [...document.querySelectorAll('button')].find((b) => b.getAttribute('aria-label') === label)
+      if (!btn) throw new Error('未找到按钮: ' + label)
+      for (let i = 0; i < times; i++) btn.click()
+    }
+    clickByLabel('提高力量', 6)
+    clickByLabel('提高体质', 8)
+  })
+  await sleep(200)
   await clickByText('确认进入天梦大陆')
   body = await bodyText()
   check('P009: 新游戏进入青石村', body.includes('冒险日志') && body.includes('qingshi_village'))
@@ -403,7 +516,7 @@ try {
   const hpBeforeClosedLoop = readHps(body)
   await page.evaluate(() => {
     window.__origRandom = Math.random.bind(Math)
-    Math.random = () => 0.999 // 第一击天然 20 暴击 12 击杀魔化兔（HP 8）
+    Math.random = () => 0.999 // 第一击天然 20（STR14 普通攻击 6，暴击 150% = 9 > 魔化兔 HP 8）击杀
   })
   await clickByText('普通攻击')
   await sleep(300)
@@ -463,10 +576,12 @@ try {
   check('P012: 嘟嘟兔战斗开始（HP 24 / 24）', body.includes('嘟嘟兔') && body.includes('24 / 24'))
   await page.evaluate(() => {
     window.__origRandom = Math.random.bind(Math)
-    const seq = [0.999, 0, 0.999] // 玩家20暴击12 → 嘟嘟兔 24→12；嘟嘟兔天然1 玩家不受伤；玩家20暴击12 → 击杀
+    const seq = [0.999, 0, 0.999, 0.999] // V2 暴击 9：玩家20暴击9 → 24→15；兔天然1；玩家20暴击9 → 15→6；玩家20暴击9 → 击杀
     let i = 0
     Math.random = () => seq[Math.min(i++, seq.length - 1)]
   })
+  await clickByText('普通攻击')
+  await sleep(200)
   await clickByText('普通攻击')
   await sleep(200)
   await clickByText('普通攻击')
@@ -592,7 +707,7 @@ try {
 
   // P010：背包展示与治疗药水 —— 新游戏（默认骑士，maxHp 22）
   await clickByText('新游戏')
-  await clickByText('确认进入天梦大陆')
+  await createQuickKnight()
   body = await bodyText()
   check('P010: 背包显示铁剑 ×1', body.includes('铁剑 ×1'))
   check('P010: 背包显示治疗药水 ×2', body.includes('治疗药水 ×2'))
@@ -645,7 +760,7 @@ try {
 
   // P013：铁剑装备与武器伤害加成（新游戏默认骑士石头城 STR14）
   await clickByText('新游戏')
-  await clickByText('确认进入天梦大陆')
+  await createQuickKnight()
   body = await bodyText()
   check('P013: 初始武器未装备', body.includes('未装备'))
   check('P013: 背包铁剑 ×1 且显示装备按钮', body.includes('铁剑 ×1') && body.includes('装备'))
@@ -697,7 +812,7 @@ try {
 
   // P014：药师商店与治疗药水购买
   await clickByText('新游戏')
-  await clickByText('确认进入天梦大陆')
+  await createQuickKnight()
   body = await bodyText()
   check('P014: 青石村显示药师的小铺', body.includes('药师的小铺'))
   check('P014: 商品信息读注册表（价格 10 金币）', body.includes('治疗药水') && body.includes('价格：10 金币'))
@@ -773,7 +888,7 @@ try {
     await sleep(250)
   }
   await clickByText('新游戏')
-  await clickByText('确认进入天梦大陆')
+  await createQuickKnight()
   body = await bodyText()
   check('P015: 青石村显示附近人物（村长/铁匠/药师）', body.includes('附近人物') && body.includes('村长') && body.includes('铁匠') && body.includes('药师'))
   check('P015: 人物简介来自注册表（村长/药师 summary）', body.includes('年迈而沉稳的老人') && body.includes('采药与炼药'))
@@ -814,7 +929,7 @@ try {
 
   // P016：废弃矿洞调查 D20 正式玩法
   await clickByText('新游戏')
-  await clickByText('确认进入天梦大陆')
+  await createQuickKnight()
   await clickByText('废弃矿洞')
   body = await bodyText()
   check('P016: 矿洞显示调查入口（心智检定 DC 12）', body.includes('调查矿洞') && body.includes('心智检定') && body.includes('DC 12'))
@@ -853,7 +968,7 @@ try {
 
   // P017：无敌人地点隐藏「附近威胁」
   await clickByText('新游戏')
-  await clickByText('确认进入天梦大陆')
+  await createQuickKnight()
   body = await bodyText()
   check('P017: 青石村不显示附近威胁', !body.includes('附近威胁'))
   check('P017: 青石村不显示空状态文案', !body.includes('这里暂时没有威胁'))
@@ -869,7 +984,7 @@ try {
 
   // P020：废弃矿洞魔化鼠掉落铁矿石
   await clickByText('新游戏')
-  await clickByText('确认进入天梦大陆')
+  await createQuickKnight()
   await clickByText('废弃矿洞')
   body = await bodyText()
   check('P020: Boss 战前背包不存在铁矿石', !body.includes('铁矿石'))
@@ -922,7 +1037,7 @@ try {
 
   // P021：青石村铁匠收购铁矿石
   await clickByText('新游戏')
-  await clickByText('确认进入天梦大陆')
+  await createQuickKnight()
   await clickByText('废弃矿洞')
   await sleep(300)
   const killRat = async () => {
@@ -980,7 +1095,7 @@ try {
 
   // P022：青石村休整与战败恢复出口
   await clickByText('新游戏')
-  await clickByText('确认进入天梦大陆')
+  await createQuickKnight()
   await clickByText('村外草原')
   await clickByText('迎战')
   await sleep(300)
@@ -1037,7 +1152,7 @@ try {
   await page.reload({ waitUntil: 'networkidle0' })
   await sleep(500)
   await clickByText('新游戏')
-  await clickByText('确认进入天梦大陆')
+  await createQuickKnight()
   await clickByText('村外草原')
   await clickByText('迎战')
   await sleep(300)
@@ -1091,7 +1206,7 @@ try {
   // P1-001：法师职业技能「法术攻击」与灵力消耗
   // A. 非法师（默认骑士）没有法术攻击
   await clickByText('新游戏')
-  await clickByText('确认进入天梦大陆')
+  await createQuickKnight()
   await clickByText('村外草原')
   await clickByText('迎战')
   await sleep(300)
@@ -1112,9 +1227,20 @@ try {
   await clickByText('返回冒险')
   await clickByText('返回主菜单')
 
-  // B. 法师拥有法术攻击（创建页选择法师，属性使用合法默认分配）
+  // B. 法师拥有法术攻击（创建页选择法师 + 手动分配属性：STR+6/CON+8，MND 保持 8 → 灵力 6/6）
   await clickByText('新游戏')
+  await page.type('input[placeholder="输入角色姓名"]', '岚法师')
   await clickLabel('法师')
+  await page.evaluate(() => {
+    const clickByLabel = (label, times) => {
+      const btn = [...document.querySelectorAll('button')].find((b) => b.getAttribute('aria-label') === label)
+      if (!btn) throw new Error('未找到按钮: ' + label)
+      for (let i = 0; i < times; i++) btn.click()
+    }
+    clickByLabel('提高力量', 6)
+    clickByLabel('提高体质', 8)
+  })
+  await sleep(200)
   await clickByText('确认进入天梦大陆')
   await clickByText('村外草原')
   await clickByText('迎战')
@@ -1175,7 +1301,7 @@ try {
   body = await bodyText()
   check('P1-001-E: 休整后灵力 6 / 6', body.includes('6 / 6'))
 
-  // F. 真正法术命中/暴击：法术天然20，默认法师 MND8 伤害5 暴击10 击败魔化兔
+  // F. 真正法术命中/暴击：法术天然20，法师 MND8 伤害5 暴击 150% = ceil(7.5)=8 击败魔化兔
   await clickByText('村外草原')
   await clickByText('迎战')
   await sleep(300)
@@ -1187,7 +1313,7 @@ try {
   await sleep(300)
   body = await bodyText()
   check('P1-001-F: 显示你的法术攻击', body.includes('你的法术攻击'))
-  check('P1-001-F: 暴击造成 10 点伤害', body.includes('暴击') && body.includes('造成 10 点伤害'))
+  check('P1-001-F: 暴击造成 8 点伤害', body.includes('暴击') && body.includes('造成 8 点伤害'))
   check('P1-001-F: 法术暴击战斗胜利', body.includes('战斗胜利'))
   await page.evaluate(() => {
     Math.random = window.__origRandom
@@ -1208,7 +1334,7 @@ try {
   // 复用 P015 段 clickNthTalk（青石村卡片顺序：村长0 / 铁匠1 / 药师2）
   // A. 完成前村长交谈显示 信任：0
   await clickByText('新游戏')
-  await clickByText('确认进入天梦大陆')
+  await createQuickKnight()
   await clickNthTalk(0)
   body = await bodyText()
   check('P1-002-A: 完成前村长对话显示 信任：0', body.includes('信任：0'))
@@ -1278,7 +1404,7 @@ try {
   // P1-003：村长任务后一次性回应选择与关系分支
   // A. 任务完成前：无回应选择
   await clickByText('新游戏')
-  await clickByText('确认进入天梦大陆')
+  await createQuickKnight()
   await clickNthTalk(0)
   body = await bodyText()
   check('P1-003-A: 完成前村长显示 信任：0 尊敬：0', body.includes('信任：0') && body.includes('尊敬：0'))
@@ -1345,7 +1471,7 @@ try {
   // P1-004：村长关系值驱动后续对话反应（只读 UI，gameStore 零修改）
   // A. resolve 分支：点击后当前对话立即切换为尊敬反应文案，旧 greeting 不再同时显示
   await clickByText('新游戏')
-  await clickByText('确认进入天梦大陆')
+  await createQuickKnight()
   await clickByText('查看委托')
   await clickByText('接受任务')
   await clickByText('村外草原')
@@ -1396,7 +1522,7 @@ try {
 
   // D. reassure 分支：点击后立即切换为信任反应文案
   await clickByText('新游戏')
-  await clickByText('确认进入天梦大陆')
+  await createQuickKnight()
   await clickByText('查看委托')
   await clickByText('接受任务')
   await clickByText('村外草原')
@@ -1439,7 +1565,7 @@ try {
   // P1-005：第二个正式任务《矿洞清理》
   // A. 新游戏时任务未出现（不显示「矿洞清理」/「铁匠似乎有事相托」），《村外异动》原入口保持
   await clickByText('新游戏')
-  await clickByText('确认进入天梦大陆')
+  await createQuickKnight()
   body = await bodyText()
   check('P1-005-A: 新游戏青石村无矿洞清理入口', !body.includes('矿洞清理') && !body.includes('铁匠似乎有事相托'))
   check('P1-005-A: 村外异动原入口保持', body.includes('村长似乎有事相托。'))
@@ -1530,7 +1656,7 @@ try {
   // P1-006：骑士职业技能「骑士重击」
   // A. 默认骑士拥有职业技能（无法术攻击）
   await clickByText('新游戏')
-  await clickByText('确认进入天梦大陆')
+  await createQuickKnight()
   await clickByText('村外草原')
   await clickByText('迎战')
   await sleep(300)
@@ -1593,7 +1719,7 @@ try {
   body = await bodyText()
   check('P1-006-D: 休整后灵力 6 / 6', body.includes('6 / 6'))
 
-  // E. 真实骑士重击命中：天然20，STR14 重击伤害 8 暴击 16 击败魔化兔，MP 6→4，敌人不反击（玩家 HP 不变）
+  // E. 真实骑士重击命中：天然20，STR14 重击伤害 8 暴击 150% = ceil(12)=12 击败魔化兔（HP8），MP 6→4，敌人不反击（玩家 HP 不变）
   await clickByText('村外草原')
   await clickByText('迎战')
   await sleep(300)
@@ -1606,7 +1732,7 @@ try {
   await sleep(300)
   body = await bodyText()
   check('P1-006-E: 显示你的骑士重击', body.includes('你的骑士重击'))
-  check('P1-006-E: 暴击造成 16 点伤害', body.includes('暴击') && body.includes('造成 16 点伤害'))
+  check('P1-006-E: 暴击造成 12 点伤害（150%）', body.includes('暴击') && body.includes('造成 12 点伤害'))
   check('P1-006-E: 骑士重击暴击战斗胜利', body.includes('战斗胜利'))
   check('P1-006-E: 致死后玩家 HP 未下降（敌人不反击）', readHps(body).player === beforeStrikePlayerHp)
   check('P1-006-E: 无魔化兔的攻击（敌人未行动）', !body.includes('魔化兔的攻击：'))
@@ -1627,8 +1753,7 @@ try {
 
   // G. 法师隔离：创建法师后只有法术攻击，无骑士重击
   await clickByText('新游戏')
-  await clickLabel('法师')
-  await clickByText('确认进入天梦大陆')
+  await createQuickMage()
   await clickByText('村外草原')
   await clickByText('迎战')
   await sleep(300)
@@ -1654,8 +1779,7 @@ try {
   })
   // A. 游侠拥有迅捷突袭（无法术攻击/骑士重击）
   await clickByText('新游戏')
-  await clickLabel('游侠')
-  await clickByText('确认进入天梦大陆')
+  await createQuickRanger()
   await clickByText('村外草原')
   await clickByText('迎战')
   await sleep(300)
@@ -1705,7 +1829,7 @@ try {
   check('P1-007-E: 第二场迅捷突袭重新启用', (await buttonDisabled('迅捷突袭')) === false)
   check('P1-007-E: 无本场战斗已使用残留', !body.includes('本场战斗已使用'))
 
-  // F. 真实迅捷突袭暴击：AGI10 base 6 暴击 12 击败魔化兔，无敌人反击，MP 保持
+  // F. 真实迅捷突袭暴击：AGI10 base 6 暴击 150% = 9 击败魔化兔，无敌人反击，MP 保持
   const beforeSwiftHp = readHps(await bodyText()).player
   await page.evaluate(() => {
     Math.random = () => 0.99
@@ -1714,7 +1838,7 @@ try {
   await sleep(300)
   body = await bodyText()
   check('P1-007-F: 显示你的迅捷突袭', body.includes('你的迅捷突袭'))
-  check('P1-007-F: 暴击造成 12 点伤害', body.includes('暴击') && body.includes('造成 12 点伤害'))
+  check('P1-007-F: 暴击造成 9 点伤害（150%）', body.includes('暴击') && body.includes('造成 9 点伤害'))
   check('P1-007-F: 迅捷突袭暴击战斗胜利', body.includes('战斗胜利'))
   check('P1-007-F: 致死后玩家 HP 未下降（敌人不反击）', readHps(body).player === beforeSwiftHp)
   check('P1-007-F: 无魔化兔的攻击（敌人未行动）', !body.includes('魔化兔的攻击：'))
@@ -1738,8 +1862,7 @@ try {
   })
   // A. 战士技能隔离：仅显示压制猛击（2 灵力），无其他职业技能
   await clickByText('新游戏')
-  await clickLabel('战士')
-  await clickByText('确认进入天梦大陆')
+  await createQuickWarrior()
   await clickByText('村外草原')
   await clickByText('迎战')
   await sleep(300)
@@ -1859,7 +1982,7 @@ try {
 
   // A. 新游戏：不存在《草原狼影》；草原无魔化狼（只有魔化兔）
   await clickByText('新游戏')
-  await clickByText('确认进入天梦大陆')
+  await createQuickKnight()
   body = await bodyText()
   check('P1-010-A: 新游戏青石村无草原狼影', !body.includes('草原狼影'))
   check('P1-010-A: 村外异动原入口保持', body.includes('村长似乎有事相托。'))
@@ -1927,7 +2050,8 @@ try {
   await page.evaluate(() => {
     Math.random = () => 0.99
   })
-  await clickByText('普通攻击')
+  // V2：骑士重击 STR14 伤害 8 暴击 150% = 12 === 魔化狼 HP 12 → 一击击杀（玩家不受伤，P1-011 依赖满血 22/24）
+  await clickByText('骑士重击')
   await sleep(300)
   body = await bodyText()
   check('P1-010-E: 魔化狼战斗胜利', body.includes('战斗胜利'))
@@ -1952,6 +2076,9 @@ try {
   await clickByText('青石村')
   body = await bodyText()
   check('P1-012-A: 第三任务提交前不显示升级提示', !body.includes('等级提升！') && !body.includes('你已达到 Lv.2。'))
+  // E 段骑士重击消耗 2 MP —— 提交前休整恢复（HP 22/22、MP 6/6），保证升级瞬间断言 22/24、6/7（当前 HP/MP 不恢复）
+  await clickByText('休整')
+  await sleep(300)
   await clickByText('提交任务')
   await sleep(300)
   body = await bodyText()
@@ -2045,12 +2172,14 @@ try {
   await sleep(300)
   await page.evaluate(() => {
     window.__p1016OriginalRandom = Math.random.bind(Math)
-    const seq = [0.999, 0, 0.999]
+    const seq = [0.999, 0, 0.999, 0.999] // V2 暴击 9：24→15→6→击杀
     let i = 0
     Math.random = () => seq[Math.min(i++, seq.length - 1)]
   })
   await clickByText('迎战')
   await sleep(300)
+  await clickByText('普通攻击')
+  await sleep(250)
   await clickByText('普通攻击')
   await sleep(250)
   await clickByText('普通攻击')
@@ -2782,7 +2911,7 @@ try {
     if (!container) return []
     return [...container.querySelectorAll('button')].map((b) => b.textContent.trim())
   })
-  check('P1-023-F: 可前往按钮精确 [武馆, 黑石塔一层]（P1-025 起天龙城连接黑石塔一层）', JSON.stringify(departTravelButtons) === JSON.stringify(['武馆', '黑石塔一层']))
+  check('P1-023-F: 可前往按钮精确 [武馆, 黑石塔一层, 天龙城北门]（TM-P2-001 D1 北门加入）', JSON.stringify(departTravelButtons) === JSON.stringify(['武馆', '黑石塔一层', '天龙城北门']))
   check('P1-023-F: 无返回青石村按钮', !body.includes('返回青石村'))
   // G. 无副作用精确比较
   const departAfterLevel = body.match(/Lv\.(\d+)/)
@@ -2847,7 +2976,7 @@ try {
     if (!container) return []
     return [...container.querySelectorAll('button')].map((b) => b.textContent.trim())
   })
-  check('P1-024-A: 天龙城可前往按钮精确 [武馆, 黑石塔一层]', JSON.stringify(tianlongTravelButtons) === JSON.stringify(['武馆', '黑石塔一层']))
+  check('P1-024-A: 天龙城可前往按钮精确 [武馆, 黑石塔一层, 天龙城北门]', JSON.stringify(tianlongTravelButtons) === JSON.stringify(['武馆', '黑石塔一层', '天龙城北门']))
   // B. 前往武馆
   await clickByText('武馆')
   await sleep(300)
@@ -2920,7 +3049,7 @@ try {
     if (!container) return []
     return [...container.querySelectorAll('button')].map((b) => b.textContent.trim())
   })
-  check('P1-024-G: 天龙城移动按钮精确 [武馆, 黑石塔一层]（P1-025 起）', JSON.stringify(tianlongTravelAfter) === JSON.stringify(['武馆', '黑石塔一层']))
+  check('P1-024-G: 天龙城移动按钮精确 [武馆, 黑石塔一层, 天龙城北门]（TM-P2-001 D1 北门加入）', JSON.stringify(tianlongTravelAfter) === JSON.stringify(['武馆', '黑石塔一层', '天龙城北门']))
   check('P1-024-G: 无城外按钮', !body.includes('城外'))
   // H. 无副作用
   const wangcaiAfterLevel = body.match(/Lv\.(\d+)/)
@@ -2982,8 +3111,12 @@ try {
     return [...container.querySelectorAll('button')].map((b) => ({ text: b.textContent.trim(), disabled: b.disabled }))
   })
   check(
-    'P1-025-A: 可前往 [武馆 enabled, 黑石塔一层 disabled]',
-    JSON.stringify(towerTravelBefore) === JSON.stringify([{ text: '武馆', disabled: false }, { text: '黑石塔一层', disabled: true }]),
+    'P1-025-A: 可前往 [武馆 enabled, 黑石塔一层 disabled, 天龙城北门 enabled]（TM-P2-001 D1）',
+    JSON.stringify(towerTravelBefore) === JSON.stringify([
+      { text: '武馆', disabled: false },
+      { text: '黑石塔一层', disabled: true },
+      { text: '天龙城北门', disabled: false },
+    ]),
   )
   check('P1-025-A: 无返回青石村', !body.includes('返回青石村'))
   // B. 解锁路线
@@ -3001,8 +3134,12 @@ try {
     return [...container.querySelectorAll('button')].map((b) => ({ text: b.textContent.trim(), disabled: b.disabled }))
   })
   check(
-    'P1-025-B: 解锁后黑石塔一层 enabled',
-    JSON.stringify(towerTravelUnlocked) === JSON.stringify([{ text: '武馆', disabled: false }, { text: '黑石塔一层', disabled: false }]),
+    'P1-025-B: 解锁后黑石塔一层 enabled（武馆/北门 enabled）',
+    JSON.stringify(towerTravelUnlocked) === JSON.stringify([
+      { text: '武馆', disabled: false },
+      { text: '黑石塔一层', disabled: false },
+      { text: '天龙城北门', disabled: false },
+    ]),
   )
   check('P1-025-B: 黑石塔路线已确认', body.includes('黑石塔路线已确认。'))
   check('P1-025-B: 当前目标：前往黑石塔一层调查', body.includes('当前目标：前往黑石塔一层调查。'))
@@ -3218,18 +3355,19 @@ try {
     if (!section) return ''
     return section.textContent.trim()
   })
-  // D. 确定性 Boss 战（Math.random 隔离 0.99；骷髅队长 HP22 防御13 需多击）
+  // D. 确定性 Boss 战（Math.random 隔离 0.99；骷髅队长 HP22 防御13）
+  // V2：普通攻击暴击 9 需 3 击（2 次反击 12 伤，进战 HP 仅 11 会战败）→ 改用骑士重击暴击 12 两击击杀（只挨 1 次反击 6 伤）
   await clickByText('迎战')
   await sleep(300)
   await page.evaluate(() => {
     window.__origRandom = Math.random.bind(Math)
     Math.random = () => 0.99
   })
-  for (let i = 0; i < 16; i += 1) {
+  for (let i = 0; i < 12; i += 1) {
     const combatBody = await page.evaluate(() => document.body.innerText)
     if (combatBody.includes('返回冒险')) break
-    if (combatBody.includes('普通攻击')) {
-      await page.evaluate(() => [...document.querySelectorAll('button')].find((b) => b.textContent.includes('普通攻击'))?.click())
+    if (combatBody.includes('骑士重击')) {
+      await page.evaluate(() => [...document.querySelectorAll('button')].find((b) => b.textContent.includes('骑士重击'))?.click())
       await sleep(300)
     } else {
       break
@@ -3286,7 +3424,7 @@ try {
     if (!container) return []
     return [...container.querySelectorAll('button')].map((b) => b.textContent.trim())
   })
-  check('P1-026-H: 天龙城可前往精确 [武馆, 黑石塔一层]', JSON.stringify(captainTravelBack) === JSON.stringify(['武馆', '黑石塔一层']))
+  check('P1-026-H: 天龙城可前往精确 [武馆, 黑石塔一层, 天龙城北门]', JSON.stringify(captainTravelBack) === JSON.stringify(['武馆', '黑石塔一层', '天龙城北门']))
   await clickByText('黑石塔一层')
   await sleep(300)
   body = await bodyText()
@@ -3897,7 +4035,7 @@ try {
     window.__p1015OriginalRandom = Math.random.bind(Math)
   })
   await clickByText('新游戏')
-  await clickByText('确认进入天梦大陆')
+  await createQuickKnight()
   await clickByText('村外草原')
   await clickByText('迎战')
   await sleep(300)
@@ -3916,10 +4054,11 @@ try {
   await clickByText('普通攻击')
   await sleep(250)
   body = await bodyText()
-  check('P1-015-B: 两轮大失败受伤后生命 14 / 22', body.includes('14 / 22'))
+  // V2：敌人暴击 150%（魔化兔 2 → 3/轮），两轮 6 伤 → 22-6 = 16
+  check('P1-015-B: 两轮大失败受伤后生命 16 / 22', body.includes('16 / 22'))
   check('P1-015-B: 魔化兔 8 / 8 未受伤', body.includes('8 / 8'))
   check('P1-015-B: 受伤后药水按钮可用', (await buttonDisabled('使用治疗药水（+8 生命）')) === false)
-  // C. 第一瓶：恢复 14→22（实际+8），敌普通命中反击 2 伤 → 20/22；药水 2→1
+  // C. 第一瓶：恢复 16→22（V2 实际+6，上限截断），敌普通命中反击 2 伤 → 20/22；药水 2→1
   await page.evaluate(() => {
     const seq = [0.5] // 敌普通命中（非暴击非天然1）
     let i = 0
@@ -3932,7 +4071,8 @@ try {
   check('P1-015-C: 魔化兔仍 8 / 8', body.includes('8 / 8'))
   check('P1-015-C: 灵力仍 6 / 6', body.includes('6 / 6'))
   check('P1-015-C: 药水剩余 1', body.includes('剩余：1'))
-  check('P1-015-C: 日志显示恢复 8 点生命', body.includes('你使用了治疗药水：恢复 8 点生命。'))
+  // V2：16+8=24 超上限 22 → 截断恢复 6
+  check('P1-015-C: 日志显示恢复 6 点生命', body.includes('你使用了治疗药水：恢复 6 点生命。'))
   check('P1-015-C: 日志显示魔化兔的攻击', body.includes('魔化兔的攻击：'))
   // D. 喝药是治疗行动不是攻击：无玩家攻击/技能日志；敌 HP 不变
   check('P1-015-D: 无你的攻击/骑士重击日志', !body.includes('你的攻击：') && !body.includes('你的骑士重击：'))
@@ -3977,7 +4117,7 @@ try {
 
   // R2：运行期间存档改坏 → 触发一次 load → Continue 禁用且不进入游戏页
   await clickByText('新游戏')
-  await clickByText('确认进入天梦大陆') // P004：默认预填合法，直接确认创建
+  await createQuickKnight() // P004：默认预填合法，直接确认创建
   await clickByText('保存游戏')
   await clickByText('返回主菜单')
   check('R2: 合法存档存在时 Continue 可用', (await continueDisabled()) === false)

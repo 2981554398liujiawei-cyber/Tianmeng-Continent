@@ -1,0 +1,148 @@
+// ============================================================================
+// 《天梦大陆》响应式布局 E2E 验收脚本（TM-P2-001 B）
+// 运行：node qa/responsive-e2e.mjs （需 dev server 已在 5199 端口运行）
+// 环境变量：CHROME_PATH（默认系统 Chrome）、BASE_URL（默认 http://localhost:5199/）
+//
+// 三个 viewport：
+//   390×844：单栏，无横向滚动，主要按钮不溢出
+//   1024×768：两栏（主玩法区 + 状态/任务区，角色信息在右侧任务栏下方）
+//   1440×900：三栏（左：角色 / 中：主玩法 / 右：任务）
+// 使用稳定 data-testid（player-column / main-column / quest-column）+
+// getBoundingClientRect() 验证布局，避免截图像素测试。
+// ============================================================================
+import puppeteer from 'puppeteer-core'
+
+const CHROME = process.env.CHROME_PATH || 'C:/Program Files/Google/Chrome/Application/chrome.exe'
+const URL = process.env.BASE_URL || 'http://localhost:5199/'
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+
+const results = []
+function check(name, ok, extra = '') {
+  results.push({ name, ok })
+  console.log(`${ok ? 'PASS' : 'FAIL'} | ${name}${extra ? ' | ' + extra : ''}`)
+}
+
+const browser = await puppeteer.launch({
+  executablePath: CHROME,
+  headless: true,
+  // CHROME_PROFILE：跨脚本共享浏览器 profile（Phase 1 存档 → Phase 2 读取）
+  userDataDir: process.env.CHROME_PROFILE || undefined,
+  args: ['--no-sandbox', '--disable-gpu'],
+})
+const page = await browser.newPage()
+
+const clickByText = async (text) => {
+  await page.evaluate((t) => {
+    const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.includes(t))
+    if (!btn) throw new Error('未找到按钮: ' + t)
+    btn.click()
+  }, text)
+  await sleep(250)
+}
+
+const clickLabel = async (text) => {
+  await page.evaluate((t) => {
+    const labels = [...document.querySelectorAll('label')]
+    const target = labels.find((l) => l.textContent.includes(t))
+    if (!target) throw new Error('未找到选项: ' + t)
+    target.click()
+  }, text)
+  await sleep(250)
+}
+
+// 创建角色并进入游戏页（TM-P2-001 A：显式填写姓名 + 选择骑士 + 使用推荐配点）
+const createCharacterAndEnter = async () => {
+  await clickByText('新游戏')
+  await sleep(250)
+  await page.type('input[placeholder="输入角色姓名"]', '布局测试员')
+  await clickLabel('骑士')
+  await sleep(200)
+  await clickByText('使用职业推荐配点')
+  await sleep(200)
+  await clickByText('确认进入天梦大陆')
+  await sleep(400)
+}
+
+// 读取三栏的 bounding rect
+const readColumnRects = () =>
+  page.evaluate(() => {
+    const get = (id) => {
+      const el = document.querySelector(`[data-testid="${id}"]`)
+      if (!el) return null
+      const r = el.getBoundingClientRect()
+      return { left: Math.round(r.left), top: Math.round(r.top), width: Math.round(r.width), right: Math.round(r.right) }
+    }
+    return {
+      player: get('player-column'),
+      main: get('main-column'),
+      quest: get('quest-column'),
+      scrollWidth: document.documentElement.scrollWidth,
+      innerWidth: window.innerWidth,
+      docScrollWidth: document.body.scrollWidth,
+    }
+  })
+
+// 清空存档并重新加载主菜单
+const resetAndLoad = async () => {
+  await page.goto(URL, { waitUntil: 'networkidle0' })
+  await page.evaluate(() => localStorage.removeItem('tianmeng_continent_save'))
+  await page.reload({ waitUntil: 'networkidle0' })
+  await sleep(500)
+}
+
+try {
+  // ============ 390×844：单栏，无横向滚动 ============
+  await page.setViewport({ width: 390, height: 844 })
+  await resetAndLoad()
+  await createCharacterAndEnter()
+  await sleep(400)
+  const r390 = await readColumnRects()
+  check('390: 三栏均渲染（player/main/quest）', r390.player !== null && r390.main !== null && r390.quest !== null)
+  check('390: 单栏（三栏 left 相同）', r390.player && r390.main && r390.quest && r390.player.left === r390.main.left && r390.main.left === r390.quest.left)
+  check('390: 垂直排列（top 递增）', r390.player && r390.main && r390.quest && r390.player.top < r390.quest.top && r390.quest.top < r390.main.top)
+  check('390: 无横向滚动（scrollWidth <= 390）', r390.scrollWidth <= 390 && r390.docScrollWidth <= 390, `scrollWidth=${r390.scrollWidth} body=${r390.docScrollWidth}`)
+  check('390: 三栏宽度不溢出（right <= 390）', r390.player && r390.main && r390.quest && r390.player.right <= 390 && r390.main.right <= 390 && r390.quest.right <= 390)
+  // 手机角色概览：进入游戏页时完整角色详情默认折叠（不先滚两屏属性表），概览包含当前武器
+  const body390 = await page.evaluate(() => document.body.textContent)
+  check('390: 角色概览显示当前武器', body390.includes('当前武器'))
+  check('390: 查看角色详情按钮存在', body390.includes('查看角色详情'))
+  check('390: 主要玩法按钮不溢出（保存游戏/主菜单按钮存在）', body390.includes('保存游戏') && body390.includes('主菜单'))
+  // 展开角色详情
+  await clickByText('查看角色详情')
+  await sleep(300)
+  const body390b = await page.evaluate(() => document.body.textContent)
+  check('390: 展开后显示装备区', body390b.includes('装备') && body390b.includes('背包'))
+  await page.screenshot({ path: 'qa/responsive-390.png' })
+
+  // ============ 1024×768：两栏 ============
+  await page.setViewport({ width: 1024, height: 768 })
+  await resetAndLoad()
+  await createCharacterAndEnter()
+  await sleep(400)
+  const r1024 = await readColumnRects()
+  check('1024: 两栏（main 与 quest 左右分列）', r1024.main && r1024.quest && r1024.main.left < r1024.quest.left)
+  check('1024: 角色信息在右侧任务栏下方（player.left >= quest.left 且 player.top > quest.top）', r1024.player && r1024.quest && r1024.player.left >= r1024.quest.left - 8 && r1024.player.top > r1024.quest.top)
+  check('1024: 无横向滚动', r1024.scrollWidth <= 1024)
+  await page.screenshot({ path: 'qa/responsive-1024.png' })
+
+  // ============ 1440×900：三栏 ============
+  await page.setViewport({ width: 1440, height: 900 })
+  await resetAndLoad()
+  await createCharacterAndEnter()
+  await sleep(400)
+  const r1440 = await readColumnRects()
+  check('1440: 三栏 left 递增（player < main < quest）', r1440.player && r1440.main && r1440.quest && r1440.player.left < r1440.main.left && r1440.main.left < r1440.quest.left)
+  check('1440: 三栏同一行（top 相同）', r1440.player && r1440.main && r1440.quest && r1440.player.top === r1440.main.top && r1440.main.top === r1440.quest.top)
+  check('1440: 左栏宽度约 260-300', r1440.player && r1440.player.width >= 240 && r1440.player.width <= 340, `width=${r1440.player?.width}`)
+  check('1440: 右栏宽度约 320-360', r1440.quest && r1440.quest.width >= 300 && r1440.quest.width <= 400, `width=${r1440.quest?.width}`)
+  check('1440: 无横向滚动', r1440.scrollWidth <= 1440)
+  await page.screenshot({ path: 'qa/responsive-1440.png' })
+} catch (err) {
+  check('脚本执行无异常', false, err && err.message ? err.message : String(err))
+} finally {
+  await browser.close()
+}
+
+const failed = results.filter((r) => !r.ok)
+console.log(`\n===== 结果：${results.length - failed.length}/${results.length} 通过 =====`)
+process.exit(failed.length > 0 ? 1 : 0)

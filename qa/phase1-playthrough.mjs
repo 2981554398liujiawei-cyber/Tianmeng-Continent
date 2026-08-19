@@ -4,7 +4,7 @@
 // 环境变量：CHROME_PATH（默认系统 Chrome）、BASE_URL（默认 http://localhost:5199/）
 //
 // 路线（全程正式 UI / Store 入口推进，严禁开发者控制台/直接改 GameState/localStorage）：
-//   1. 空存档 → 新游戏 → 创建角色（默认骑士）→ 青石村
+//   1. 空存档 → 新游戏 → 创建角色（显式填写姓名 + 选择骑士 + 使用推荐配点）→ 青石村
 //   2. 村长《村外异动》→ 村外草原战魔化兔 → 提交（金币 +20）
 //   3. 铁匠《矿洞清理》→ 废弃矿洞战魔化鼠 → 提交（金币 +15）
 //   4. 村长《草原狼影》→ 村外草原战魔化狼 → 提交（金币 +25，升级提示点「知道了」）
@@ -38,6 +38,8 @@ function check(name, ok, extra = '') {
 const browser = await puppeteer.launch({
   executablePath: CHROME,
   headless: true,
+  // CHROME_PROFILE：跨脚本共享浏览器 profile（Phase 1 存档 → Phase 2 读取）
+  userDataDir: process.env.CHROME_PROFILE || undefined,
   args: ['--no-sandbox', '--disable-gpu'],
 })
 const page = await browser.newPage()
@@ -50,6 +52,17 @@ const clickByText = async (text) => {
     const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.includes(t))
     if (!btn) throw new Error('未找到按钮: ' + t)
     btn.click()
+  }, text)
+  await sleep(250)
+}
+
+// 点击包含指定文本的 label（用于职业 radio 选择）
+const clickLabel = async (text) => {
+  await page.evaluate((t) => {
+    const labels = [...document.querySelectorAll('label')]
+    const target = labels.find((l) => l.textContent.includes(t))
+    if (!target) throw new Error('未找到选项: ' + t)
+    target.click()
   }, text)
   await sleep(250)
 }
@@ -202,11 +215,26 @@ try {
   check('清空存档后主菜单显示「天梦大陆」', body.includes('天梦大陆'))
   check('空存档时「继续游戏」禁用', (await continueDisabled()) === true)
 
-  // 1. 新游戏 → 创建角色（默认骑士）→ 青石村
+  // 1. 新游戏 → 创建角色（TM-P2-001 A：显式填写姓名 + 显式选择骑士 + 使用职业推荐配点，不再依赖默认角色）→ 青石村
   await clickByText('新游戏')
   body = await bodyText()
   check('进入角色创建页', body.includes('创建角色'))
-  check('默认职业骑士', body.includes('骑士'))
+  check('初始姓名为空（无默认石头城）', !body.includes('石头城'))
+  check('初始无职业选择（未选择职业）', body.includes('未选择职业'))
+  check('初始剩余属性点 14 / 14', body.includes('14 / 14'))
+  check('初始确认按钮禁用', (await buttonDisabled('确认进入天梦大陆')) === true)
+  // 显式填写姓名
+  await page.type('input[placeholder="输入角色姓名"]', '石敢当')
+  // 显式选择骑士
+  await clickLabel('骑士')
+  await sleep(200)
+  body = await bodyText()
+  check('选择骑士后显示推荐配点按钮', body.includes('使用职业推荐配点'))
+  await clickByText('使用职业推荐配点')
+  await sleep(200)
+  body = await bodyText()
+  check('推荐配点后剩余属性点 0 / 14', body.includes('0 / 14'))
+  check('姓名+职业+属性齐全后确认按钮可用', (await buttonDisabled('确认进入天梦大陆')) === false)
   await clickByText('确认进入天梦大陆')
   body = await bodyText()
   check('创建完成进入游戏页（冒险日志）', body.includes('冒险日志'))

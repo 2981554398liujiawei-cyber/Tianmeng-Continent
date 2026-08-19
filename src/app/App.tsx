@@ -165,6 +165,21 @@ export default function App() {
         return
       }
     }
+    // TM-P2-001 D4：黑鬃魔狼正式战斗入口硬守（不只靠 UI）——当前位置天龙城北门 + 《北门失联》in_progress/stage 0 + north_gate_trail_checked===true（未调查痕迹不得提前刷狼）+ north_gate_wolf_defeated 非 true（true/非 boolean 拒绝）
+    if (enemyId === 'black_mane_wolf') {
+      const northQuest = state.quests.find((q) => q.questId === 'quest_north_gate_missing_patrol')
+      const wolfFlag = northQuest?.flags.north_gate_wolf_defeated
+      const wolfOk = wolfFlag !== true && (typeof wolfFlag === 'undefined' || typeof wolfFlag === 'boolean')
+      if (
+        state.world.currentLocationId !== 'tianlong_north_gate' ||
+        northQuest?.status !== 'in_progress' ||
+        northQuest?.stage !== 0 ||
+        northQuest?.flags.north_gate_trail_checked !== true ||
+        !wolfOk
+      ) {
+        return
+      }
+    }
     setCombatEnemyId(enemyId)
     setScreen('combat')
   }

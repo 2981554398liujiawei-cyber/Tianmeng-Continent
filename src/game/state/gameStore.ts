@@ -107,6 +107,8 @@ interface GameStoreState {
   unlockBlackStoneTowerFloor3: () => boolean
   /** 交还夔峒项链给王财（TM-P1-030）：天龙城 + 第五主线 in_progress/stage 0 + wangcai_briefed 严格 true + 黑石塔一二三层全部解锁 + 一层两敌/二层三敌/三层骷髅女妖全部严格 true + 背包合法持有夔峒项链（唯一 entry、quantity===1）+ 目标 flag kuidong_necklace_returned undefined/false → 成功原子完成：删除夔峒项链 + kuidong_necklace_returned=true + status→completable（stage 保持 0）；目标 flag 已 true 或非 boolean（"yes"/1/0.5）整次拒绝且完全不变（不修复）；无金币/XP/等级/装备/关系值/其他奖励；player/equipment/npcStates/completedEvents/其他 world.flags/quests（除本任务 status）全不变；不自动保存 */
   returnKuidongNecklaceToWangcai: () => boolean
+  /** 查看北门巡逻队痕迹（TM-P2-001 D3）：天龙城北门 + 《北门失联》in_progress/stage 0 + north_gate_trail_checked undefined/false 时成功，只写 quest.flags.north_gate_trail_checked=true（status/stage 不变）；非 boolean 异常 flag 整次拒绝且完全不变（不修复）；已 true 重复调用 false 且 GameState 同一引用；无金币/HP/MP/物品/装备/关系/flags/completedEvents 副作用、不自动保存 */
+  investigateNorthGateTrail: () => boolean
 }
 
 /** 任务发现：不存在 → 创建 available；undiscovered → available；其余状态不重复创建。非法返回 null（TM-P0-006） */
@@ -125,6 +127,11 @@ function applyQuestDiscovery(gameState: GameState, questId: string): GameState |
   if (questId === 'quest_blacksmith_mine_remnant') {
     const mineQuest = gameState.quests.find((q) => q.questId === 'quest_mine_cleanup')
     if (mineQuest?.status !== 'completed') return null
+  }
+  // TM-P2-001 D2：《北门失联》窄特判——仅《商人王财的麻烦》completed（Phase 1 主线收束）才能发现；不建 prerequisite 系统
+  if (questId === 'quest_north_gate_missing_patrol') {
+    const wangcaiQuest = gameState.quests.find((q) => q.questId === 'quest_wangcai_trouble')
+    if (wangcaiQuest?.status !== 'completed') return null
   }
   const index = gameState.quests.findIndex((q) => q.questId === questId)
   if (index < 0) {
@@ -530,6 +537,21 @@ export const useGameStore = create<GameStoreState>()((set) => ({
           return {}
         }
       }
+      // TM-P2-001 D4/D5：黑鬃魔狼（北门外）完整前置守卫——必须在天龙城北门 + 《北门失联》in_progress/stage 0 + north_gate_trail_checked===true（未调查痕迹不得提前刷狼）+ north_gate_wolf_defeated undefined/false（true/非 boolean 拒绝）；否则拒绝
+      if (enemyId === 'black_mane_wolf' && location.id === 'tianlong_north_gate') {
+        const quest = s.gameState.quests.find((q) => q.questId === 'quest_north_gate_missing_patrol')
+        const wolfFlag = quest?.flags.north_gate_wolf_defeated
+        const wolfOk = wolfFlag !== true && (typeof wolfFlag === 'undefined' || typeof wolfFlag === 'boolean')
+        if (
+          !quest ||
+          quest.status !== 'in_progress' ||
+          quest.stage !== 0 ||
+          quest.flags.north_gate_trail_checked !== true ||
+          !wolfOk
+        ) {
+          return {}
+        }
+      }
       ok = true
       // 《村外异动》任务推进：村外草原击败魔化兔 → completable（复用封板状态机）
       // 《村外异动》任务推进：村外草原击败魔化兔 → completable（复用封板状态机）
@@ -655,6 +677,22 @@ export const useGameStore = create<GameStoreState>()((set) => ({
             const hasNecklace = s.gameState.inventory.some((i) => i.itemId === 'kuidong_necklace')
             const nextInventory = hasNecklace ? s.gameState.inventory : [...s.gameState.inventory, { itemId: 'kuidong_necklace', quantity: 1 }]
             return { gameState: { ...s.gameState, quests: nextQuests, inventory: nextInventory } }
+          }
+        }
+      }
+      // 黑鬃魔狼（TM-P2-001 D5）：合法首次胜利推进《北门失联》——只写 quest.flags.north_gate_wolf_defeated=true 且 status→completable（stage 保持 0；无金币/物品/装备/经验/等级/关系奖励——金币在回武馆提交时获得；不自动保存）
+      if (enemyId === 'black_mane_wolf' && location.id === 'tianlong_north_gate') {
+        const questIndex = s.gameState.quests.findIndex((q) => q.questId === 'quest_north_gate_missing_patrol')
+        if (questIndex >= 0) {
+          const quest = s.gameState.quests[questIndex]
+          if (quest) {
+            const nextQuests = [...s.gameState.quests]
+            nextQuests[questIndex] = {
+              ...quest,
+              status: 'completable',
+              flags: { ...quest.flags, north_gate_wolf_defeated: true },
+            }
+            return { gameState: { ...s.gameState, quests: nextQuests } }
           }
         }
       }
@@ -1456,6 +1494,30 @@ export const useGameStore = create<GameStoreState>()((set) => ({
         q.questId === 'quest_wangcai_trouble' ? { ...q, status: 'completable' as const, flags: { ...q.flags, kuidong_necklace_returned: true } } : q,
       )
       return { gameState: { ...s.gameState, inventory: nextInventory, quests: nextQuests } }
+    })
+    return changed
+  },
+
+  investigateNorthGateTrail: () => {
+    let changed = false
+    set((s) => {
+      if (!s.gameState) return {}
+      // TM-P2-001 D3：必须在天龙城北门（痕迹所在地）
+      if (s.gameState.world.currentLocationId !== 'tianlong_north_gate') return {}
+      const questIndex = s.gameState.quests.findIndex((q) => q.questId === 'quest_north_gate_missing_patrol')
+      if (questIndex < 0) return {}
+      const quest = s.gameState.quests[questIndex]
+      if (!quest) return {}
+      if (quest.status !== 'in_progress') return {}
+      // north_gate_trail_checked 只允许 undefined/false/true；非 boolean（"yes"/1/0.5）整次拒绝且完全不变（不修复）；已 true 重复调用拒绝
+      const checked = quest.flags.north_gate_trail_checked
+      if (typeof checked !== 'undefined' && typeof checked !== 'boolean') return {}
+      if (checked === true) return {}
+      changed = true
+      // 成功只写 quest.flags.north_gate_trail_checked=true（status 保持 in_progress、stage 保持 0；无奖励/状态污染，不自动保存）
+      const nextQuests = [...s.gameState.quests]
+      nextQuests[questIndex] = { ...quest, flags: { ...quest.flags, north_gate_trail_checked: true } }
+      return { gameState: { ...s.gameState, quests: nextQuests } }
     })
     return changed
   },
