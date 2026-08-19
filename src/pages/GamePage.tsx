@@ -168,6 +168,19 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
   const towerFloor3UnlockFlag = world.flags.black_stone_tower_floor3_unlocked
   const towerFloor3UnlockPending = towerFloor3UnlockFlag === undefined || towerFloor3UnlockFlag === false
   const floor3SkeletonWitchDefeated = wangcaiQuest?.flags.floor3_skeleton_witch_defeated === true
+  /** TM-P1-029-R1：三层「继续向上」入口窄守卫——与 Store unlockBlackStoneTowerFloor3 前置完全一致（含一层两敌/二层三敌/briefed/unlocked/floor2_unlocked），避免 dead button（UI 与 Store guard 不一致）；target flag 只允许 undefined/false 视为「待解锁」（已 true/异常非 boolean 不显示入口） */
+  const canUnlockTowerFloor3 =
+    world.currentLocationId === 'black_stone_tower_floor2' &&
+    towerQuestInProgress &&
+    wangcaiBriefed &&
+    towerUnlocked &&
+    towerFloor2Unlocked &&
+    floor1SoldierDefeated === true &&
+    floor1CaptainDefeated === true &&
+    floor2ZombieDefeated === true &&
+    floor2BlackMageDefeated === true &&
+    floor2SkeletonWarriorDefeated === true &&
+    towerFloor3UnlockPending
   // TM-P0-006：附近委托 = 给予者位于当前地点的注册任务（不写死地点 ID）
   const localQuests = Object.values(QUESTS).filter((quest) => {
     const giver = getNpc(quest.giverNpcId)
@@ -622,7 +635,7 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
           <p className="leading-relaxed text-bone-200">小厅中的骷髅战士已经倒下。</p>
           <p className="mt-1 leading-relaxed text-bone-200">你仔细搜索了周围，依然没有发现王财遗失的夔峒项链。</p>
           <p className="mt-1 leading-relaxed text-bone-200">小厅后方，一道向上的石阶通往黑石塔更高处。</p>
-          {towerFloor3UnlockPending && (
+          {canUnlockTowerFloor3 && (
             <div className="mt-3">
               <Button variant="primary" onClick={() => unlockBlackStoneTowerFloor3()}>
                 继续向上

@@ -3632,6 +3632,48 @@ try {
   check('P1-029-A: 骷髅战士已消失', !body.includes('骷髅战士 · Lv.5'))
   check('P1-029-A: 继续向上入口存在', body.includes('继续向上'))
   check('P1-029-A: 无附近威胁/迎战', !body.includes('附近威胁') && !body.includes('迎战'))
+  // R1：三层「继续向上」UI guard 负路径——注入异常存档验证入口不显示（合法状态已由 A 段确认入口存在）
+  const floor3UnlockLegalSave = await page.evaluate(() => localStorage.getItem('tianmeng_continent_save'))
+  const injectFloor3Entry = async (mutateBody) => {
+    // 在浏览器侧执行注入（Node 侧无 localStorage）：mutateBody 是 new Function('gs', body) 的函数体字符串
+    await page.evaluate((body) => {
+      const raw = localStorage.getItem('tianmeng_continent_save')
+      if (!raw) return
+      const save = JSON.parse(raw)
+      save.gameState.world.currentLocationId = 'black_stone_tower_floor2'
+      // eslint-disable-next-line no-new-func
+      const fn = new Function('gs', body)
+      fn(save.gameState)
+      localStorage.setItem('tianmeng_continent_save', JSON.stringify(save))
+    }, mutateBody)
+    await page.reload()
+    await sleep(600)
+    await clickByText('继续游戏')
+    await sleep(300)
+    return await bodyText()
+  }
+  // ① stage=1 → 不显示
+  let b = await injectFloor3Entry("const q = gs.quests.find((x) => x.questId === 'quest_wangcai_trouble'); if (q) q.stage = 1")
+  check('P1-029-R1: stage=1 不显示继续向上', !b.includes('继续向上'))
+  // ② wangcai_briefed=false → 不显示
+  b = await injectFloor3Entry("const q = gs.quests.find((x) => x.questId === 'quest_wangcai_trouble'); if (q) q.flags.wangcai_briefed = false")
+  check('P1-029-R1: briefed=false 不显示继续向上', !b.includes('继续向上'))
+  // ③ floor2_black_mage_defeated=false → 不显示
+  b = await injectFloor3Entry("const q = gs.quests.find((x) => x.questId === 'quest_wangcai_trouble'); if (q) q.flags.floor2_black_mage_defeated = false")
+  check('P1-029-R1: mage=false 不显示继续向上', !b.includes('继续向上'))
+  // ④ black_stone_tower_floor3_unlocked="yes" → 不显示（malformed 不当 false）
+  b = await injectFloor3Entry("gs.world.flags.black_stone_tower_floor3_unlocked = 'yes'")
+  check('P1-029-R1: floor3_unlocked="yes" 不显示继续向上', !b.includes('继续向上'))
+  // ⑤ 恢复合法存档 → 入口重新出现
+  await page.evaluate((saveStr) => {
+    localStorage.setItem('tianmeng_continent_save', saveStr)
+  }, floor3UnlockLegalSave)
+  await page.reload()
+  await sleep(600)
+  await clickByText('继续游戏')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-029-R1: 恢复合法存档后继续向上入口重新出现', body.includes('继续向上'))
   // B. 继续向上 → 解锁三层
   await clickByText('继续向上')
   await sleep(300)
