@@ -72,6 +72,7 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
   const unlockBlackStoneTowerInvestigation = useGameStore((s) => s.unlockBlackStoneTowerInvestigation)
   const unlockBlackStoneTowerFloor2 = useGameStore((s) => s.unlockBlackStoneTowerFloor2)
   const unlockBlackStoneTowerFloor3 = useGameStore((s) => s.unlockBlackStoneTowerFloor3)
+  const returnKuidongNecklaceToWangcai = useGameStore((s) => s.returnKuidongNecklaceToWangcai)
   const restAtTianlongMartialHall = useGameStore((s) => s.restAtTianlongMartialHall)
   const [saveResult, setSaveResult] = useState<'saved' | 'failed' | null>(null)
   const [travelError, setTravelError] = useState(false)
@@ -181,6 +182,26 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
     floor2BlackMageDefeated === true &&
     floor2SkeletonWarriorDefeated === true &&
     towerFloor3UnlockPending
+  /** TM-P1-030：将夔峒项链交还王财 窄守卫——与 Store returnKuidongNecklaceToWangcai 前置完全一致（天龙城 + 任务 in_progress/stage 0 + briefed + 一二三层全解锁 + 一层两敌/二层三敌/三层女妖全击败 + 背包唯一持有项链 + flag 非 true/非 malformed）；只读 */
+  const kuidongNecklaceReturned = wangcaiQuest?.flags.kuidong_necklace_returned === true
+  const kuidongNecklaceReturnPending = wangcaiQuest?.flags.kuidong_necklace_returned === undefined || wangcaiQuest?.flags.kuidong_necklace_returned === false
+  const hasKuidongNecklace = gameState.inventory.some((i) => i.itemId === 'kuidong_necklace')
+  const canReturnNecklaceToWangcai =
+    world.currentLocationId === 'tianlong_city' &&
+    wangcaiQuest?.status === 'in_progress' &&
+    wangcaiQuest?.stage === 0 &&
+    wangcaiBriefed &&
+    towerUnlocked &&
+    towerFloor2Unlocked &&
+    towerFloor3Unlocked &&
+    floor1SoldierDefeated === true &&
+    floor1CaptainDefeated === true &&
+    floor2ZombieDefeated === true &&
+    floor2BlackMageDefeated === true &&
+    floor2SkeletonWarriorDefeated === true &&
+    floor3SkeletonWitchDefeated === true &&
+    hasKuidongNecklace &&
+    kuidongNecklaceReturnPending
   // TM-P0-006：附近委托 = 给予者位于当前地点的注册任务（不写死地点 ID）
   const localQuests = Object.values(QUESTS).filter((quest) => {
     const giver = getNpc(quest.giverNpcId)
@@ -781,6 +802,24 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
                   </div>
                 )
               )}
+              {/* TM-P1-030：将夔峒项链交还王财——天龙城 + 全前置 + 背包持有项链 + flag 非 true 时显示入口（与 Store 前置一致，避免 dead button）；成功后显示固定剧情并移除按钮 */}
+              {activeNpc.id === 'merchant_wangcai' && canReturnNecklaceToWangcai && (
+                <div className="mb-3 rounded border border-gold-500/40 bg-ink-900/40 p-3">
+                  <p className="mb-2 text-bone-200">你取出了黑石塔三层找到的夔峒项链。</p>
+                  <Button variant="primary" onClick={() => returnKuidongNecklaceToWangcai()}>
+                    将夔峒项链交还王财
+                  </Button>
+                </div>
+              )}
+              {activeNpc.id === 'merchant_wangcai' && kuidongNecklaceReturned && (
+                <div className="mb-3 rounded border border-gold-500/40 bg-ink-900/40 p-3">
+                  <p className="text-bone-200">王财接过项链，久久没有说话。</p>
+                  <p className="mt-1 text-bone-200">“没错……就是它。这是我妻子留下的东西。”</p>
+                  <p className="mt-1 text-bone-200">“谢谢你。若不是你，我恐怕再也找不回来了。”</p>
+                  <p className="mt-1 text-bone-300">王财收好项链，又向你郑重道谢。</p>
+                  <p className="mt-1 text-bone-300">“黑石塔里的情况，也请你告诉马科队长。”</p>
+                </div>
+              )}
               <Button variant="ghost" onClick={() => setActiveNpcId(null)}>
                 结束交谈
               </Button>
@@ -1153,8 +1192,8 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
                       <p className="mt-1">当前目标：返回青石村向铁匠复命。</p>
                     </div>
                   )}
-                  {/* TM-P1-024/P1-025/P1-026：第五主线《商人王财的麻烦》进度提示——五态（未询问/已询问未解锁/已解锁未清士兵/士兵清场未清队长/队长清场；黑石塔：【待开放】与黑石塔二层：【待开放】为实现状态，非 lore） */}
-                  {qs.questId === 'quest_wangcai_trouble' && qs.status === 'in_progress' && (
+                  {/* TM-P1-024/P1-025/P1-026：第五主线《商人王财的麻烦》进度提示——五态（未询问/已询问未解锁/已解锁未清士兵/士兵清场未清队长/队长清场；黑石塔：【待开放】与黑石塔二层：【待开放】为实现状态，非 lore）；TM-P1-030 起在 completable（交还项链后）也显示日志「已交还/回武馆复命」，completed 不显示（由完成剧情块接管） */}
+                  {qs.questId === 'quest_wangcai_trouble' && (qs.status === 'in_progress' || qs.status === 'completable') && (
                     <div className="mt-1 text-xs text-bone-400">
                       {!wangcaiBriefed ? (
                         <p>当前目标：返回天龙城，找到商人王财了解情况。</p>
@@ -1205,6 +1244,19 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
                           <p className="mt-1 text-gold-300">黑石塔二层深处：骷髅战士已击败，仍未发现夔峒项链。</p>
                           <p className="mt-1">当前目标：击败骷髅女妖。</p>
                         </>
+                      ) : kuidongNecklaceReturned ? (
+                        <>
+                          <p className="text-gold-300">已向王财了解情况。</p>
+                          <p className="mt-1 text-gold-300">黑石塔路线已确认。</p>
+                          <p className="mt-1 text-gold-300">黑石塔一层：已击败骷髅士兵。</p>
+                          <p className="mt-1 text-gold-300">黑石塔一层：骷髅队长已击败，未发现夔峒项链。</p>
+                          <p className="mt-1 text-gold-300">黑石塔二层：入口区域已清理。</p>
+                          <p className="mt-1 text-gold-300">黑石塔二层深处：骷髅战士已击败，仍未发现夔峒项链。</p>
+                          <p className="mt-1 text-gold-300">黑石塔三层：骷髅女妖已击败。</p>
+                          <p className="mt-1 text-gold-300">黑石塔三层：已找到夔峒项链。</p>
+                          <p className="mt-1 text-gold-300">夔峒项链：已交还王财。</p>
+                          <p className="mt-1">当前目标：返回武馆，向马科复命。</p>
+                        </>
                       ) : (
                         <>
                           <p className="text-gold-300">已向王财了解情况。</p>
@@ -1218,6 +1270,20 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
                           <p className="mt-1">当前目标：返回天龙城，将夔峒项链交还王财。</p>
                         </>
                       )}
+                    </div>
+                  )}
+                  {/* TM-P1-030：王财任务完成（向马科复命成功后）——马科短剧情 + 第一阶段完成提示；黄金兔子长期线不 completed/failed、不改 flag/stage/兔子的路径（冻结保留） */}
+                  {qs.questId === 'quest_wangcai_trouble' && qs.status === 'completed' && (
+                    <div className="mt-2 rounded border border-gold-500/40 bg-ink-900/40 p-2 text-xs leading-relaxed text-bone-200">
+                      <p>马科听完黑石塔里的经过，神情明显严肃起来。</p>
+                      <p className="mt-1">“看来最近的魔物异动并不是偶然。”</p>
+                      <p className="mt-1">“这件事我会向上面汇报。你先休息一下。”</p>
+                      <p className="mt-1 text-bone-300">黑石塔的调查暂时告一段落。</p>
+                      <div className="mt-2 rounded border border-gold-500/40 bg-ink-900/40 p-2">
+                        <p className="text-gold-300">第一阶段完成</p>
+                        <p className="mt-1">当前可玩主线内容已完成。</p>
+                        <p>《追寻黄金兔子王》将在后续阶段继续。</p>
+                      </div>
                     </div>
                   )}
                   {canSubmit && (

@@ -105,6 +105,8 @@ interface GameStoreState {
   unlockBlackStoneTowerFloor2: () => boolean
   /** 解锁黑石塔三层（TM-P1-029）：黑石塔二层 + 第五主线 in_progress/stage 0 + wangcai_briefed 严格 true + black_stone_tower_unlocked 严格 true + black_stone_tower_floor2_unlocked 严格 true + floor1_soldier_defeated/captain_defeated + floor2_zombie_defeated/black_mage_defeated/skeleton_warrior_defeated 全部严格 true + 目标 flag black_stone_tower_floor3_unlocked undefined/false → 成功原子写 world.flags.black_stone_tower_floor3_unlocked=true；目标 flag 已 true 或非 boolean（"yes"/1/0.5）整次拒绝且完全不变（不修复）；不建 DungeonEngine/楼层系统；player/inventory/equipment/quests/其他 world.flags/npcStates/completedEvents 全不变；不自动保存 */
   unlockBlackStoneTowerFloor3: () => boolean
+  /** 交还夔峒项链给王财（TM-P1-030）：天龙城 + 第五主线 in_progress/stage 0 + wangcai_briefed 严格 true + 黑石塔一二三层全部解锁 + 一层两敌/二层三敌/三层骷髅女妖全部严格 true + 背包合法持有夔峒项链（唯一 entry、quantity===1）+ 目标 flag kuidong_necklace_returned undefined/false → 成功原子完成：删除夔峒项链 + kuidong_necklace_returned=true + status→completable（stage 保持 0）；目标 flag 已 true 或非 boolean（"yes"/1/0.5）整次拒绝且完全不变（不修复）；无金币/XP/等级/装备/关系值/其他奖励；player/equipment/npcStates/completedEvents/其他 world.flags/quests（除本任务 status）全不变；不自动保存 */
+  returnKuidongNecklaceToWangcai: () => boolean
 }
 
 /** 任务发现：不存在 → 创建 available；undiscovered → available；其余状态不重复创建。非法返回 null（TM-P0-006） */
@@ -1418,6 +1420,42 @@ export const useGameStore = create<GameStoreState>()((set) => ({
           world: { ...s.gameState.world, flags: { ...s.gameState.world.flags, black_stone_tower_floor3_unlocked: true } },
         },
       }
+    })
+    return changed
+  },
+  returnKuidongNecklaceToWangcai: () => {
+    let changed = false
+    set((s) => {
+      if (!s.gameState) return {}
+      // TM-P1-030：必须在天龙城（向王财交还）
+      if (s.gameState.world.currentLocationId !== 'tianlong_city') return {}
+      const quest = s.gameState.quests.find((q) => q.questId === 'quest_wangcai_trouble')
+      if (!quest || quest.status !== 'in_progress' || quest.stage !== 0) return {}
+      // 全部前置严格 true：briefed / 一二三层解锁 / 一层两敌 / 二层三敌 / 三层女妖
+      if (quest.flags.wangcai_briefed !== true) return {}
+      if (s.gameState.world.flags.black_stone_tower_unlocked !== true) return {}
+      if (s.gameState.world.flags.black_stone_tower_floor2_unlocked !== true) return {}
+      if (s.gameState.world.flags.black_stone_tower_floor3_unlocked !== true) return {}
+      if (quest.flags.floor1_soldier_defeated !== true) return {}
+      if (quest.flags.floor1_captain_defeated !== true) return {}
+      if (quest.flags.floor2_zombie_defeated !== true) return {}
+      if (quest.flags.floor2_black_mage_defeated !== true) return {}
+      if (quest.flags.floor2_skeleton_warrior_defeated !== true) return {}
+      if (quest.flags.floor3_skeleton_witch_defeated !== true) return {}
+      // 目标 flag 只允许 undefined/false；非 boolean（"yes"/1/0.5）整次拒绝且完全不变（不修复）；已 true 重复调用拒绝
+      const target = quest.flags.kuidong_necklace_returned
+      if (typeof target !== 'undefined' && typeof target !== 'boolean') return {}
+      if (target === true) return {}
+      // 背包必须合法持有夔峒项链（唯一 entry、quantity===1）；否则拒绝
+      const necklaceEntries = s.gameState.inventory.filter((i) => i.itemId === 'kuidong_necklace')
+      if (necklaceEntries.length !== 1 || necklaceEntries[0]?.quantity !== 1) return {}
+      changed = true
+      // 成功原子完成：删除夔峒项链 + kuidong_necklace_returned=true + status→completable（stage 保持 0；无金币/XP/等级/装备/关系值/其他奖励；不自动保存）
+      const nextInventory = s.gameState.inventory.filter((i) => i.itemId !== 'kuidong_necklace')
+      const nextQuests = s.gameState.quests.map((q) =>
+        q.questId === 'quest_wangcai_trouble' ? { ...q, status: 'completable' as const, flags: { ...q.flags, kuidong_necklace_returned: true } } : q,
+      )
+      return { gameState: { ...s.gameState, inventory: nextInventory, quests: nextQuests } }
     })
     return changed
   },

@@ -6319,4 +6319,102 @@ describe('TM-P1-027：黑石塔二层——武馆休整、僵尸与黑法师', (
     expect(wangcaiQuest()?.flags.floor3_skeleton_witch_defeated).toBe(true)
     expect(useGameStore.getState().hasSave).toBe(false)
   })
+
+  // ---------- returnKuidongNecklaceToWangcai（TM-P1-030） ----------
+
+  /** 击败骷髅女妖拿到项链并回到天龙城（可交还项链的完整合法状态） */
+  const seedReturnNecklaceReady = () => {
+    seedWitchReady()
+    useGameStore.getState().resolveCombatVictory('skeleton_witch')
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return { gameState: { ...s.gameState, world: { ...s.gameState.world, currentLocationId: 'tianlong_city' } } }
+    })
+  }
+
+  it('X1. 合法交还项链 → true 且原子完成：删除项链 + flag=true + status=completable + stage 保持 0', () => {
+    seedReturnNecklaceReady()
+    expect(wangcaiQuest()?.flags.kuidong_necklace_returned).toBeUndefined()
+    expect(useGameStore.getState().gameState!.inventory.filter((i) => i.itemId === 'kuidong_necklace')).toHaveLength(1)
+    expect(useGameStore.getState().returnKuidongNecklaceToWangcai()).toBe(true)
+    expect(wangcaiQuest()?.flags.kuidong_necklace_returned).toBe(true)
+    expect(wangcaiQuest()?.status).toBe('completable')
+    expect(wangcaiQuest()?.stage).toBe(0)
+    expect(useGameStore.getState().gameState!.inventory.filter((i) => i.itemId === 'kuidong_necklace')).toHaveLength(0)
+  })
+
+  it.each([
+    ['错误 location', (s: GameState) => ({ ...s, world: { ...s.world, currentLocationId: 'black_stone_tower_floor1' } })],
+    ['任务不存在', (s: GameState) => ({ ...s, quests: s.quests.filter((q) => q.questId !== 'quest_wangcai_trouble') })],
+    ['任务 available', (s: GameState) => ({ ...s, quests: s.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, status: 'available' as const } : q)) })],
+    ['任务 stage 1', (s: GameState) => ({ ...s, quests: s.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, stage: 1 } : q)) })],
+    ['wangcai_briefed 非 true', (s: GameState) => ({ ...s, quests: s.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, flags: { ...q.flags, wangcai_briefed: false } } : q)) })],
+    ['黑石塔未解锁', (s: GameState) => ({ ...s, world: { ...s.world, flags: { ...s.world.flags, black_stone_tower_unlocked: false } } })],
+    ['二层未解锁', (s: GameState) => ({ ...s, world: { ...s.world, flags: { ...s.world.flags, black_stone_tower_floor2_unlocked: false } } })],
+    ['三层未解锁', (s: GameState) => ({ ...s, world: { ...s.world, flags: { ...s.world.flags, black_stone_tower_floor3_unlocked: false } } })],
+    ['soldier 非 true', (s: GameState) => ({ ...s, quests: s.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, flags: { ...q.flags, floor1_soldier_defeated: false } } : q)) })],
+    ['captain 非 true', (s: GameState) => ({ ...s, quests: s.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, flags: { ...q.flags, floor1_captain_defeated: false } } : q)) })],
+    ['zombie 非 true', (s: GameState) => ({ ...s, quests: s.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, flags: { ...q.flags, floor2_zombie_defeated: false } } : q)) })],
+    ['mage 非 true', (s: GameState) => ({ ...s, quests: s.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, flags: { ...q.flags, floor2_black_mage_defeated: false } } : q)) })],
+    ['warrior 非 true', (s: GameState) => ({ ...s, quests: s.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, flags: { ...q.flags, floor2_skeleton_warrior_defeated: false } } : q)) })],
+    ['witch 非 true', (s: GameState) => ({ ...s, quests: s.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, flags: { ...q.flags, floor3_skeleton_witch_defeated: false } } : q)) })],
+    ['背包无项链', (s: GameState) => ({ ...s, inventory: s.inventory.filter((i) => i.itemId !== 'kuidong_necklace') })],
+    ['项链 quantity 2', (s: GameState) => ({ ...s, inventory: s.inventory.map((i) => (i.itemId === 'kuidong_necklace' ? { ...i, quantity: 2 } : i)) })],
+    ['项链两条 entry', (s: GameState) => ({ ...s, inventory: [...s.inventory, { itemId: 'kuidong_necklace', quantity: 1 }] })],
+    ['returned flag true', (s: GameState) => ({ ...s, quests: s.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, flags: { ...q.flags, kuidong_necklace_returned: true } } : q)) })],
+    ['returned flag "yes"', (s: GameState) => ({ ...s, quests: s.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, flags: { ...q.flags, kuidong_necklace_returned: 'yes' as unknown as boolean } } : q)) })],
+    ['returned flag 1', (s: GameState) => ({ ...s, quests: s.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, flags: { ...q.flags, kuidong_necklace_returned: 1 as unknown as boolean } } : q)) })],
+    ['returned flag 0.5', (s: GameState) => ({ ...s, quests: s.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, flags: { ...q.flags, kuidong_necklace_returned: 0.5 as unknown as boolean } } : q)) })],
+  ])('X2. 交还项链拒绝：%s（false 且完整 GameState unchanged）', (_label, mutate) => {
+    seedReturnNecklaceReady()
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return { gameState: mutate(s.gameState) }
+    })
+    const before = useGameStore.getState().gameState
+    expect(useGameStore.getState().returnKuidongNecklaceToWangcai()).toBe(false)
+    expect(useGameStore.getState().gameState).toBe(before)
+  })
+
+  it('X3. 交还项链无金币/XP/等级/装备奖励（player/equipment 全不变）', () => {
+    seedReturnNecklaceReady()
+    const beforePlayer = useGameStore.getState().gameState!.player
+    const beforeEquipment = useGameStore.getState().gameState!.equipment
+    useGameStore.getState().returnKuidongNecklaceToWangcai()
+    const after = useGameStore.getState().gameState!
+    expect(after.player).toEqual(beforePlayer)
+    expect(after.equipment).toEqual(beforeEquipment)
+  })
+
+  it('X4. 重复交还无副作用（第二次 false 且 GameState 同一引用、项链不再出现）', () => {
+    seedReturnNecklaceReady()
+    useGameStore.getState().returnKuidongNecklaceToWangcai()
+    const before = useGameStore.getState().gameState
+    expect(useGameStore.getState().returnKuidongNecklaceToWangcai()).toBe(false)
+    expect(useGameStore.getState().gameState).toBe(before)
+    expect(wangcaiQuest()?.flags.kuidong_necklace_returned).toBe(true)
+    expect(useGameStore.getState().gameState!.inventory.filter((i) => i.itemId === 'kuidong_necklace')).toHaveLength(0)
+  })
+
+  it('X5. 黄金兔子 QuestState 整体深比较不变（交还项链后）', () => {
+    seedReturnNecklaceReady()
+    const beforeGolden = JSON.stringify(goldenQuest())
+    useGameStore.getState().returnKuidongNecklaceToWangcai()
+    const afterGolden = JSON.stringify(goldenQuest())
+    expect(afterGolden).toBe(beforeGolden)
+    const golden = goldenQuest()
+    expect(golden?.status).toBe('in_progress')
+    expect(golden?.stage).toBe(0)
+    expect(golden?.flags.asked_blacksmith).toBe(true)
+    expect(golden?.flags.asked_apothecary).toBe(true)
+    expect(golden?.flags.village_inquiry_reported).toBe(true)
+    expect(golden?.flags.rabbit_lair_rechecked).toBe(true)
+  })
+
+  it('X6. 交还项链不自动保存', () => {
+    seedReturnNecklaceReady()
+    useGameStore.getState().returnKuidongNecklaceToWangcai()
+    expect(wangcaiQuest()?.flags.kuidong_necklace_returned).toBe(true)
+    expect(useGameStore.getState().hasSave).toBe(false)
+  })
 })

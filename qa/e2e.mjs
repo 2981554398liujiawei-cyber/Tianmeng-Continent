@@ -3636,7 +3636,9 @@ try {
   const floor3UnlockLegalSave = await page.evaluate(() => localStorage.getItem('tianmeng_continent_save'))
   const injectFloor3Entry = async (mutateBody) => {
     // 在浏览器侧执行注入（Node 侧无 localStorage）：mutateBody 是 new Function('gs', body) 的函数体字符串
-    await page.evaluate((body) => {
+    // 每条负路径先从 floor3UnlockLegalSave 恢复再注入单一异常（保证隔离，避免 stage=1 残留到下一条）
+    await page.evaluate((body, legalSave) => {
+      localStorage.setItem('tianmeng_continent_save', legalSave)
       const raw = localStorage.getItem('tianmeng_continent_save')
       if (!raw) return
       const save = JSON.parse(raw)
@@ -3645,7 +3647,7 @@ try {
       const fn = new Function('gs', body)
       fn(save.gameState)
       localStorage.setItem('tianmeng_continent_save', JSON.stringify(save))
-    }, mutateBody)
+    }, mutateBody, floor3UnlockLegalSave)
     await page.reload()
     await sleep(600)
     await clickByText('继续游戏')
@@ -3768,6 +3770,94 @@ try {
   check('P1-029-I: 无附近威胁/迎战', !body.includes('附近威胁') && !body.includes('迎战'))
   check('P1-029-I: 黄金兔子主线仍进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
   await clickByText('返回主菜单')
+
+  // ================= TM-P1-030：交还夔峒项链 → 向马科复命 → Phase 1 收口 =================
+  // 起点：P1-029-I 保存的三层档（位置 floor3、女妖已击败、项链 ×1；主菜单）
+  // A. Continue → 三层 + 项链 + 女妖已击败
+  await clickByText('继续游戏')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-030-A: 当前位置 floor3', body.includes('当前位置') && body.includes('black_stone_tower_floor3'))
+  check('P1-030-A: 夔峒项链 ×1', body.includes('夔峒项链 ×1'))
+  check('P1-030-A: 女妖已击败剧情', body.includes('骷髅女妖倒在破碎的石柱之间。'))
+  check('P1-030-A: 无附近威胁/迎战', !body.includes('附近威胁') && !body.includes('迎战'))
+  // B. 移动回天龙城（三层→二层→一层→天龙城）
+  await clickByText('黑石塔二层')
+  await sleep(250)
+  body = await bodyText()
+  check('P1-030-B: 经二层回城', body.includes('当前位置') && body.includes('black_stone_tower_floor2'))
+  await clickByText('黑石塔一层')
+  await sleep(250)
+  body = await bodyText()
+  check('P1-030-B: 经一层回城', body.includes('当前位置') && body.includes('black_stone_tower_floor1'))
+  await clickByText('天龙城')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-030-B: 已到天龙城', body.includes('当前位置') && body.includes('tianlong_city'))
+  // C. 找王财交还
+  check('P1-030-C: 附近人物王财', body.includes('王财') && body.includes('商人'))
+  await clickByText('交谈')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-030-C: 交还项链按钮存在', (await buttonDisabled('将夔峒项链交还王财')) === false)
+  // D. 交还项链
+  await clickByText('将夔峒项链交还王财')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-030-D: 王财接过项链', body.includes('王财接过项链，久久没有说话。'))
+  check('P1-030-D: 正是我妻子留下的东西', body.includes('“没错……就是它。这是我妻子留下的东西。”'))
+  check('P1-030-D: 谢谢你找回', body.includes('“谢谢你。若不是你，我恐怕再也找不回来了。”'))
+  check('P1-030-D: 王财郑重道谢', body.includes('王财收好项链，又向你郑重道谢。'))
+  check('P1-030-D: 请告诉马科队长', body.includes('“黑石塔里的情况，也请你告诉马科队长。”'))
+  check('P1-030-D: 交还按钮消失', (await page.evaluate(() => [...document.querySelectorAll('button')].some((b) => b.textContent.trim() === '将夔峒项链交还王财'))) === false)
+  check('P1-030-D: 背包无夔峒项链', !body.includes('夔峒项链 ×'))
+  await clickByText('结束交谈')
+  // E. 日志：交还后回武馆复命
+  body = await bodyText()
+  check('P1-030-E: 日志夔峒项链已交还王财', body.includes('夔峒项链：已交还王财。'))
+  check('P1-030-E: 当前目标返回武馆向马科复命', body.includes('当前目标：返回武馆，向马科复命。'))
+  // F. 去武馆找马科
+  await clickByText('武馆')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-030-F: 已到武馆', body.includes('当前位置') && body.includes('tianlong_martial_hall'))
+  check('P1-030-F: 附近人物马科', body.includes('马科'))
+  await clickByText('交谈')
+  await sleep(300)
+  body = await bodyText()
+  // G. 提交任务（复用 generic；交还后 completable）
+  check('P1-030-G: 提交任务按钮存在', (await buttonDisabled('提交任务')) === false)
+  await clickByText('提交任务')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-030-G: 马科听完经过', body.includes('马科听完黑石塔里的经过，神情明显严肃起来。'))
+  check('P1-030-G: 魔物异动不是偶然', body.includes('“看来最近的魔物异动并不是偶然。”'))
+  check('P1-030-G: 向上面汇报你先休息', body.includes('“这件事我会向上面汇报。你先休息一下。”'))
+  check('P1-030-G: 黑石塔调查告一段落', body.includes('黑石塔的调查暂时告一段落。'))
+  check('P1-030-G: 第一阶段完成', body.includes('第一阶段完成'))
+  check('P1-030-G: 当前可玩主线内容已完成', body.includes('当前可玩主线内容已完成。'))
+  check('P1-030-G: 黄金兔子后续阶段继续', body.includes('《追寻黄金兔子王》将在后续阶段继续。'))
+  check('P1-030-G: 王财任务已完成', body.includes('商人王财的麻烦') && body.includes('已完成'))
+  // H. 黄金兔子仍冻结 + 项链不在背包 + 无 dead button
+  check('P1-030-H: 黄金兔子主线仍进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
+  check('P1-030-H: 兔子的路径 ×1', body.includes('兔子的路径 ×1'))
+  check('P1-030-H: 背包无夔峒项链', !body.includes('夔峒项链 ×'))
+  check('P1-030-H: 无交还按钮残留', (await page.evaluate(() => [...document.querySelectorAll('button')].some((b) => b.textContent.includes('交还王财')))) === false)
+  check('P1-030-H: 无提交任务按钮残留', (await page.evaluate(() => [...document.querySelectorAll('button')].some((b) => b.textContent.trim() === '提交任务'))) === false)
+  await clickByText('结束交谈')
+  // I. Save → 主菜单 → Continue 后 Phase1 完成状态保持
+  await clickByText('保存游戏')
+  await clickByText('返回主菜单')
+  await clickByText('继续游戏')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-030-I: Continue 后第一阶段完成保持', body.includes('第一阶段完成'))
+  check('P1-030-I: 王财任务已完成', body.includes('商人王财的麻烦') && body.includes('已完成'))
+  check('P1-030-I: 黄金兔子主线仍进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
+  check('P1-030-I: 兔子的路径 ×1 保持', body.includes('兔子的路径 ×1'))
+  check('P1-030-I: 背包无夔峒项链', !body.includes('夔峒项链 ×'))
+  await clickByText('返回主菜单')
+
 
   // TM-P1-015：战斗中使用治疗药水（独立最小段：默认骑士 + 村外草原魔化兔；魔化兔零修改 HP8/DEF11/atk+2/dmg2）
   // P1-007-R1 模式：段首只保存一次真实 Math.random
