@@ -456,7 +456,7 @@ try {
 
   // P012：击败嘟嘟兔获得唯一《兔子的路径》
   check('P012: Boss 战前背包无兔子的路径', !body.includes('兔子的路径'))
-  check('P1-013-A: Boss 战前无展开地图且无具体地点占位', !body.includes('展开地图') && !body.includes('具体地点：【待补充】'))
+  check('P1-013-A: Boss 战前无展开地图且无具体地点占位', !body.includes('展开地图') && !body.includes('地图上的标记仍无法对应到任何已知地点。'))
   await clickByText('迎战')
   await sleep(300)
   body = await bodyText()
@@ -485,7 +485,7 @@ try {
   // TM-P1-013：正式查看《兔子的路径》
   // B. 获得地图后：展开地图 enabled；未查看前不得提前显示具体地点占位
   check('P1-013-B: 显示展开地图按钮（enabled）', (await buttonDisabled('展开地图')) === false)
-  check('P1-013-B: 未查看前不显示具体地点：【待补充】', !body.includes('具体地点：【待补充】'))
+  check('P1-013-B: 未查看前不显示地图上的标记仍无法对应到任何已知地点。', !body.includes('地图上的标记仍无法对应到任何已知地点。'))
   // D. 查看前状态快照（等级/生命/灵力/金币/当前位置 ID——位置 ID 从「当前位置」区域确定性读取，不用模糊文本）
   const beforePathLevel = body.match(/Lv\.(\d+)/)
   const beforePathHp = body.match(/生命\s*(\d+)\s*\/\s*(\d+)/)
@@ -504,7 +504,7 @@ try {
   await sleep(300)
   body = await bodyText()
   check('P1-013-C: 显示固定文案（地图指向黄金兔子王所在之地）', body.includes('地图上的路线最终指向黄金兔子王所在之地。'))
-  check('P1-013-C: 显示具体地点：【待补充】', body.includes('具体地点：【待补充】'))
+  check('P1-013-C: 显示地图上的标记仍无法对应到任何已知地点。', body.includes('地图上的标记仍无法对应到任何已知地点。'))
   check('P1-013-C: 展开地图按钮消失（不残留 disabled）', !body.includes('展开地图'))
   check('P1-013-C: 兔子的路径仍 ×1（不消耗地图）', body.includes('兔子的路径 ×1'))
   // D. 查看后无其他状态副作用
@@ -566,7 +566,7 @@ try {
   check('P012: Continue 后兔子的路径仍 ×1', body.includes('兔子的路径 ×1'))
   check('P019: Continue 后新的线索仍显示', body.includes('新的线索'))
   // TM-P1-013-E：Save/Continue 保持查看状态（rabbit_path_examined 经 world.flags 自然持久化）
-  check('P1-013-E: Continue 后已查看文案保持', body.includes('地图上的路线最终指向黄金兔子王所在之地。') && body.includes('具体地点：【待补充】'))
+  check('P1-013-E: Continue 后已查看文案保持', body.includes('地图上的路线最终指向黄金兔子王所在之地。') && body.includes('地图上的标记仍无法对应到任何已知地点。'))
   check('P1-013-E: Continue 后无展开地图按钮', !body.includes('展开地图'))
   // TM-P1-014-D：Save/Continue 后 Boss 不重生——重进巢穴威胁区仍不存在，查看状态继续保持
   await clickByText('兔王巢穴')
@@ -2074,7 +2074,7 @@ try {
   await clickByText('展开地图')
   await sleep(300)
   body = await bodyText()
-  check('P1-016-A: 展开地图后已查看且具体地点仍【待补充】', body.includes('具体地点：【待补充】') && !body.includes('展开地图'))
+  check('P1-016-A: 展开地图后已查看且具体地点仍【待补充】', body.includes('地图上的标记仍无法对应到任何已知地点。') && !body.includes('展开地图'))
   await clickByText('村外草原')
   await clickByText('青石村')
   // B. 已查看+狼 completed：村长对话显示汇报入口（enabled）
@@ -2101,7 +2101,7 @@ try {
   body = await bodyText()
   check('P1-016-D: 已汇报文案（展示给村长）', body.includes('你已经把《兔子的路径》展示给村长。'))
   check('P1-016-D: 地图仍指向黄金兔子王所在之地', body.includes('地图仍指向黄金兔子王所在之地。'))
-  check('P1-016-D: 下一步目的地：【待补充】', body.includes('下一步目的地：【待补充】'))
+  check('P1-016-D: 现有线索还不足以确认黄金兔子王的最终去向。', body.includes('现有线索还不足以确认黄金兔子王的最终去向。'))
   check('P1-016-D: 向村长展示按钮消失（不残留 disabled）', !body.includes('向村长展示《兔子的路径》'))
   // E. 无副作用：与 C 对比
   const reportAfterLv = body.match(/Lv\.(\d+)/)
@@ -2123,7 +2123,7 @@ try {
   body = await bodyText()
   check('P1-016-F: 显示青石村阶段完成', body.includes('青石村阶段完成'))
   check('P1-016-F: 阶段正文（处理三威胁并取得地图）', body.includes('你已经处理了村外异动、矿洞威胁与草原狼影，并取得了《兔子的路径》。'))
-  check('P1-016-F: 下一步目的地：【待补充】', body.includes('下一步目的地：【待补充】'))
+  check('P1-016-F: 现有线索还不足以确认黄金兔子王的最终去向。', body.includes('现有线索还不足以确认黄金兔子王的最终去向。'))
   check('P1-016-F: 无新地点按钮（无前往【待补充】/下一章/进入新区域）', !body.includes('前往【待补充】') && !body.includes('下一章') && !body.includes('进入新区域'))
   // G. Save/Continue 保持 reported；重开村长不重复汇报
   await clickByText('保存游戏')
@@ -2131,7 +2131,7 @@ try {
   await clickByText('继续游戏')
   body = await bodyText()
   check('P1-016-G: Continue 后青石村阶段完成保持', body.includes('青石村阶段完成'))
-  check('P1-016-G: Continue 后下一步目的地：【待补充】', body.includes('下一步目的地：【待补充】'))
+  check('P1-016-G: Continue 后现有线索还不足以确认黄金兔子王的最终去向。', body.includes('现有线索还不足以确认黄金兔子王的最终去向。'))
   check('P1-016-G: Continue 后兔子的路径仍 ×1', body.includes('兔子的路径 ×1'))
   await clickByText('交谈')
   body = await bodyText()
@@ -2162,7 +2162,7 @@ try {
   await clickByText('查看委托')
   body = await bodyText()
   check('P1-017-B: 追寻黄金兔子王状态可接受', body.includes('追寻黄金兔子王') && body.includes('可接受'))
-  check('P1-017-B: 任务描述含《兔子的路径》与具体目的地【待补充】', body.includes('《兔子的路径》指向黄金兔子王所在之地') && body.includes('具体目的地：【待补充】'))
+  check('P1-017-B: 任务描述含《兔子的路径》与具体目的地【待补充】', body.includes('《兔子的路径》指向黄金兔子王所在之地') && body.includes('地图上的标记还无法对应到任何已知地点'))
   // D 前置：接受任务前真实记录金币（P1-017-R1：不能只证明存在金币数字）
   const p1017GoldBefore = body.match(/金币\s*(\d+)/)
   // C. 接受任务 → 进行中（附近委托入口消失，任务日志显示进行中）
@@ -2178,7 +2178,7 @@ try {
     p1017GoldBefore !== null && p1017GoldAfter !== null && p1017GoldAfter[1] === p1017GoldBefore[1],
   )
   check('P1-017-D: 青石村阶段完成 panel 仍保留', body.includes('青石村阶段完成'))
-  check('P1-017-D: 下一步目的地仍【待补充】', body.includes('下一步目的地：【待补充】'))
+  check('P1-017-D: 下一步目的地仍【待补充】', body.includes('现有线索还不足以确认黄金兔子王的最终去向。'))
   check('P1-017-D: 兔子的路径仍 ×1（发现/接受不消耗）', body.includes('兔子的路径 ×1'))
   check('P1-017-D: 等级仍 Lv.2', body.includes('Lv.2'))
   // E. 没有新移动入口：从「当前位置」section 内精确读取真实可前往 button 文本集合，排序后精确等于 村外草原+废弃矿洞（P1-017-R1：不得用模糊文本代替）
@@ -2206,7 +2206,7 @@ try {
   check('P1-017-F: Continue 后追寻黄金兔子王进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
   check('P1-017-F: Continue 后兔子的路径仍 ×1', body.includes('兔子的路径 ×1'))
   check('P1-017-F: Continue 后青石村阶段完成保留', body.includes('青石村阶段完成'))
-  check('P1-017-F: Continue 后具体目的地【待补充】', body.includes('具体目的地：【待补充】'))
+  check('P1-017-F: Continue 后具体目的地【待补充】', body.includes('地图上的标记还无法对应到任何已知地点'))
   await clickByText('返回主菜单')
 
   // TM-P1-018：《追寻黄金兔子王》第一步——向村中两人打听地图线索（直接继续 P1-017 第四任务 in_progress 档）
@@ -2253,7 +2253,7 @@ try {
   body = await bodyText()
   check('P1-018-E: 地图线索调查 2 / 2', body.includes('地图线索调查：2 / 2'))
   check('P1-018-E: 调查结果固定文案', body.includes('你已经向铁匠和药师打听过，但仍无法确认地图指向的具体地点。'))
-  check('P1-018-E: 下一步目的地：【待补充】', body.includes('下一步目的地：【待补充】'))
+  check('P1-018-E: 现有线索还不足以确认黄金兔子王的最终去向。', body.includes('现有线索还不足以确认黄金兔子王的最终去向。'))
   check('P1-018-E: 状态仍进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
   // F. 无副作用：Lv/HP/MP/金币/地图数精确对比（信任/尊敬从村长对话验证）
   const invAfterLevel = body.match(/Lv\.(\d+)/)
@@ -2290,7 +2290,7 @@ try {
   body = await bodyText()
   check('P1-018-H: Continue 后追寻黄金兔子王进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
   check('P1-018-H: Continue 后地图线索调查 2 / 2', body.includes('地图线索调查：2 / 2'))
-  check('P1-018-H: Continue 后下一步目的地【待补充】', body.includes('下一步目的地：【待补充】'))
+  check('P1-018-H: Continue 后下一步目的地【待补充】', body.includes('现有线索还不足以确认黄金兔子王的最终去向。'))
   await clickNthTalk(1)
   body = await bodyText()
   check('P1-018-H: 重开铁匠显示已询问回复', body.includes('铁匠看了看地图，摇了摇头：“这上面的路线，我认不出来。”'))
@@ -2338,7 +2338,7 @@ try {
   body = await bodyText()
   check('P1-019-D: 已复命固定文案（告诉村长）', body.includes('你已经把调查结果告诉了村长。'))
   check('P1-019-D: 村里没人能够确认地图标记', body.includes('村里目前没人能够确认地图上的标记。'))
-  check('P1-019-D: 下一步目的地：【待补充】', body.includes('下一步目的地：【待补充】'))
+  check('P1-019-D: 现有线索还不足以确认黄金兔子王的最终去向。', body.includes('现有线索还不足以确认黄金兔子王的最终去向。'))
   check('P1-019-D: 复命按钮消失', !body.includes('向村长汇报调查结果'))
   await clickByText('结束交谈')
   // E. 任务仍进行中：任务日志 2/2 + 村内调查已汇报 + 【待补充】+ 无完成/提交
@@ -2346,7 +2346,7 @@ try {
   check('P1-019-E: 追寻黄金兔子王进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
   check('P1-019-E: 地图线索调查 2 / 2', body.includes('地图线索调查：2 / 2'))
   check('P1-019-E: 村内调查已汇报', body.includes('村内调查已汇报。'))
-  check('P1-019-E: 下一步目的地：【待补充】', body.includes('下一步目的地：【待补充】'))
+  check('P1-019-E: 现有线索还不足以确认黄金兔子王的最终去向。', body.includes('现有线索还不足以确认黄金兔子王的最终去向。'))
   check('P1-019-E: 原 2/2 调查结果保留', body.includes('你已经向铁匠和药师打听过，但仍无法确认地图指向的具体地点。'))
   check('P1-019-E: 第四任务状态标签仍进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
   check('P1-019-E: 无提交任务按钮（不可完成/不可提交）', !body.includes('提交任务') && !body.includes('可完成'))
@@ -2387,7 +2387,7 @@ try {
   check('P1-019-H: Continue 后追寻黄金兔子王进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
   check('P1-019-H: Continue 后地图线索调查 2 / 2', body.includes('地图线索调查：2 / 2'))
   check('P1-019-H: Continue 后村内调查已汇报', body.includes('村内调查已汇报。'))
-  check('P1-019-H: Continue 后下一步目的地【待补充】', body.includes('下一步目的地：【待补充】'))
+  check('P1-019-H: Continue 后下一步目的地【待补充】', body.includes('现有线索还不足以确认黄金兔子王的最终去向。'))
   await clickNthTalk(0)
   body = await bodyText()
   check('P1-019-H: 重开村长显示已复命文案', body.includes('你已经把调查结果告诉了村长。'))
@@ -2445,14 +2445,14 @@ try {
   await sleep(300)
   body = await bodyText()
   check('P1-020-E: 复查固定结果', body.includes('你重新比对了地图与巢穴周边，但仍没有找到足以确认下一处地点的线索。'))
-  check('P1-020-E: 下一步目的地：【待补充】', body.includes('下一步目的地：【待补充】'))
+  check('P1-020-E: 现有线索还不足以确认黄金兔子王的最终去向。', body.includes('现有线索还不足以确认黄金兔子王的最终去向。'))
   check('P1-020-E: 重新比对地图按钮消失', !body.includes('重新比对地图'))
   // F. 任务状态：进行中 + 2/2 + 村内调查已汇报 + 巢穴复查完成 + 【待补充】+ 无完成/提交
   check('P1-020-F: 追寻黄金兔子王进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
   check('P1-020-F: 地图线索调查 2 / 2', body.includes('地图线索调查：2 / 2'))
   check('P1-020-F: 村内调查已汇报', body.includes('村内调查已汇报。'))
   check('P1-020-F: 巢穴复查完成', body.includes('巢穴复查完成。'))
-  check('P1-020-F: 下一步目的地：【待补充】', body.includes('下一步目的地：【待补充】'))
+  check('P1-020-F: 现有线索还不足以确认黄金兔子王的最终去向。', body.includes('现有线索还不足以确认黄金兔子王的最终去向。'))
   check('P1-020-F: 复查前当前目标已消失', !body.includes('当前目标：返回兔王巢穴重新比对地图。'))
   check('P1-020-F: 无可完成/提交任务', !body.includes('可完成') && !body.includes('提交任务'))
   // G. 无副作用精确比较
@@ -2476,7 +2476,7 @@ try {
   await sleep(300)
   body = await bodyText()
   check('P1-020-H: Continue 后巢穴复查完成', body.includes('巢穴复查完成。'))
-  check('P1-020-H: Continue 后下一步目的地【待补充】', body.includes('下一步目的地：【待补充】'))
+  check('P1-020-H: Continue 后下一步目的地【待补充】', body.includes('现有线索还不足以确认黄金兔子王的最终去向。'))
   check('P1-020-H: Continue 后第四任务仍进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
   check('P1-020-H: Continue 后兔子的路径 ×1', body.includes('兔子的路径 ×1'))
   await clickByText('村外草原')
@@ -2504,7 +2504,7 @@ try {
   body = await bodyText()
   check('P1-021-A: 黄金主线仍进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
   check('P1-021-A: 巢穴复查完成保留', body.includes('巢穴复查完成。'))
-  check('P1-021-A: 下一步目的地【待补充】', body.includes('下一步目的地：【待补充】'))
+  check('P1-021-A: 下一步目的地【待补充】', body.includes('现有线索还不足以确认黄金兔子王的最终去向。'))
   // B. 药师委托出现
   check('P1-021-B: 附近委托出现药师入口', body.includes('药师似乎有事相托'))
   await clickByText('查看委托')
@@ -2569,7 +2569,7 @@ try {
   check('P1-021-H: Continue 后采药受阻已完成', body.includes('采药受阻') && body.includes('已完成'))
   check('P1-021-H: Continue 后黄金主线进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
   check('P1-021-H: Continue 后巢穴复查完成', body.includes('巢穴复查完成。'))
-  check('P1-021-H: Continue 后下一步目的地【待补充】', body.includes('下一步目的地：【待补充】'))
+  check('P1-021-H: Continue 后下一步目的地【待补充】', body.includes('现有线索还不足以确认黄金兔子王的最终去向。'))
   await clickByText('村外草原')
   await sleep(300)
   body = await bodyText()
@@ -2587,7 +2587,7 @@ try {
   check('P1-022-A: 采药受阻已完成', body.includes('采药受阻') && body.includes('已完成'))
   check('P1-022-A: 追寻黄金兔子王进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
   check('P1-022-A: 巢穴复查完成', body.includes('巢穴复查完成。'))
-  check('P1-022-A: 下一步目的地【待补充】', body.includes('下一步目的地：【待补充】'))
+  check('P1-022-A: 下一步目的地【待补充】', body.includes('现有线索还不足以确认黄金兔子王的最终去向。'))
   // B. 铁匠支线：发现→查看→接受
   check('P1-022-B: 附近委托出现铁匠入口', body.includes('铁匠似乎有事相托'))
   await clickByText('查看委托')
@@ -2645,7 +2645,7 @@ try {
   // F. 主线零回归
   check('P1-022-F: 追寻黄金兔子王进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
   check('P1-022-F: 巢穴复查完成', body.includes('巢穴复查完成。'))
-  check('P1-022-F: 下一步目的地【待补充】', body.includes('下一步目的地：【待补充】'))
+  check('P1-022-F: 下一步目的地【待补充】', body.includes('现有线索还不足以确认黄金兔子王的最终去向。'))
   check('P1-022-F: 采药受阻已完成', body.includes('采药受阻') && body.includes('已完成'))
   // G. Save/Continue：支线均已完成，不重新出现为可接受
   await clickByText('保存游戏')
@@ -2801,7 +2801,7 @@ try {
   // H. 黄金兔子长期线保持（不把天龙城写成目标）
   check('P1-023-H: 追寻黄金兔子王进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
   check('P1-023-H: 巢穴复查完成', body.includes('巢穴复查完成。'))
-  check('P1-023-H: 具体目的地【待补充】', body.includes('具体目的地：【待补充】'))
+  check('P1-023-H: 具体目的地【待补充】', body.includes('地图上的标记还无法对应到任何已知地点'))
   check('P1-023-H: 两条支线仍已完成', body.includes('采药受阻') && body.includes('已完成') && body.includes('矿洞余患') && body.includes('已完成'))
   // I. Save/Continue：仍在天龙城
   await clickByText('保存游戏')
@@ -2909,7 +2909,7 @@ try {
   body = await bodyText()
   check('P1-024-E: 任务日志已向王财了解情况', body.includes('已向王财了解情况。'))
   check('P1-024-E: 当前目标：调查黑石塔附近的情况', body.includes('当前目标：调查黑石塔附近的情况。'))
-  check('P1-024-E: 黑石塔：【待开放】', body.includes('黑石塔：【待开放】'))
+  check('P1-024-E: 黑石塔的调查尚未开始。', body.includes('黑石塔的调查尚未开始。'))
   // F. 任务不能完成
   check('P1-024-F: 无可完成/提交任务/已完成（商人王财的麻烦仍进行中）', !body.includes('提交任务') && !body.includes('可完成') && body.includes('商人王财的麻烦') && body.includes('进行中'))
   // G. 黑石塔不能前往
@@ -2938,7 +2938,7 @@ try {
   )
   check('P1-024-H: 黄金兔子主线仍进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
   check('P1-024-H: 巢穴复查完成', body.includes('巢穴复查完成。'))
-  check('P1-024-H: 具体目的地【待补充】', body.includes('具体目的地：【待补充】'))
+  check('P1-024-H: 具体目的地【待补充】', body.includes('地图上的标记还无法对应到任何已知地点'))
   // I. Save/Continue
   await clickByText('保存游戏')
   await clickByText('返回主菜单')
@@ -2956,7 +2956,7 @@ try {
   check('P1-024-I: Continue 后当前位置 = tianlong_city', wangcaiLocAfter === 'tianlong_city')
   check('P1-024-I: 商人王财的麻烦进行中', body.includes('商人王财的麻烦') && body.includes('进行中'))
   check('P1-024-I: 已向王财了解情况', body.includes('已向王财了解情况。'))
-  check('P1-024-I: 黑石塔：【待开放】', body.includes('黑石塔：【待开放】'))
+  check('P1-024-I: 黑石塔的调查尚未开始。', body.includes('黑石塔的调查尚未开始。'))
   check('P1-024-I: 追寻黄金兔子王进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
   // I：再次打开王财——显示已说明剧情，无询问按钮
   await clickByText('交谈')
@@ -3006,7 +3006,7 @@ try {
   )
   check('P1-025-B: 黑石塔路线已确认', body.includes('黑石塔路线已确认。'))
   check('P1-025-B: 当前目标：前往黑石塔一层调查', body.includes('当前目标：前往黑石塔一层调查。'))
-  check('P1-025-B: 不再显示黑石塔：【待开放】', !body.includes('黑石塔：【待开放】'))
+  check('P1-025-B: 不再显示黑石塔的调查尚未开始。', !body.includes('黑石塔的调查尚未开始。'))
   // C. 进入黑石塔一层
   await clickByText('黑石塔一层')
   await sleep(300)
@@ -3246,7 +3246,7 @@ try {
   check('P1-026-E: 骷髅队长已经倒下', body.includes('骷髅队长已经倒下。'))
   check('P1-026-E: 未发现夔峒项链', body.includes('你检查了骷髅队长与周围，没有发现夔峒项链。'))
   check('P1-026-E: 通往更深处的道路仍需继续调查', body.includes('通往黑石塔更深处的道路仍需继续调查。'))
-  check('P1-026-E: 黑石塔二层：【待开放】', body.includes('黑石塔二层：【待开放】'))
+  check('P1-026-E: 黑石塔上层尚未开启。', body.includes('黑石塔上层尚未开启。'))
   check('P1-026-E: 无附近威胁/迎战/威胁卡片骷髅士兵', !body.includes('附近威胁') && !body.includes('迎战') && !body.includes('骷髅士兵 · Lv.3'))
   // F. 第五主线推进（不完成）
   check('P1-026-F: 商人王财的麻烦进行中', body.includes('商人王财的麻烦') && body.includes('进行中'))
@@ -3292,7 +3292,7 @@ try {
   body = await bodyText()
   check('P1-026-H: 骷髅队长不复活（无迎战/附近威胁）', !body.includes('附近威胁') && !body.includes('迎战'))
   check('P1-026-H: 骷髅士兵不复活', !body.includes('骷髅士兵 · Lv.3'))
-  check('P1-026-H: Boss 后剧情仍显示', body.includes('骷髅队长已经倒下。') && body.includes('黑石塔二层：【待开放】'))
+  check('P1-026-H: Boss 后剧情仍显示', body.includes('骷髅队长已经倒下。') && body.includes('黑石塔上层尚未开启。'))
   const captainFloor1Travel = await page.evaluate(() => {
     const label = [...document.querySelectorAll('p')].find((el) => el.textContent.trim() === '可前往：')
     if (!label) return []
@@ -3326,7 +3326,7 @@ try {
   check('P1-026-I: 黑石塔一层：已击败骷髅士兵', body.includes('黑石塔一层：已击败骷髅士兵。'))
   check('P1-026-I: 骷髅队长已击败未发现项链', body.includes('黑石塔一层：骷髅队长已击败，未发现夔峒项链。'))
   check('P1-026-I: 当前目标：继续深入黑石塔', body.includes('当前目标：继续深入黑石塔。'))
-  check('P1-026-I: 黑石塔二层：【待开放】', body.includes('黑石塔二层：【待开放】'))
+  check('P1-026-I: 黑石塔上层尚未开启。', body.includes('黑石塔上层尚未开启。'))
   check('P1-026-I: 无附近威胁', !body.includes('附近威胁') && !body.includes('迎战'))
   check('P1-026-I: 黄金兔子主线仍进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
   check('P1-026-I: 兔子的路径 ×1', body.includes('兔子的路径 ×1'))

@@ -609,6 +609,15 @@ TM-P1-030（Phase 1 收口：交还夔峒项链 → 向马科复命 → 第五�
 - 顺手修正 P1-029-R1 隔离：injectFloor3Entry 每条负路径先从 floor3UnlockLegalSave 恢复再注入单一异常（不让 stage=1 残留到下一条 briefed=false），不改业务逻辑
 - TM-P1-030-R1（对齐王财交还项链 UI guard，修复审计发现的 UI/Store 不一致 dead button——GamePage 原 hasKuidongNecklace 只用 some(itemId==='kuidong_necklace') 布尔判断，quantity=2 或两条 entry 的异常存档下交还按钮仍显示但 Store 拒绝）：GamePage 改为 kuidongNecklaceEntries = inventory.filter(itemId==='kuidong_necklace') + hasValidKuidongNecklace = length===1 && [0]?.quantity===1，canReturnNecklaceToWangcai 使用 hasValidKuidongNecklace（其余 guard 不动）；不动 Store（Store 正确）；E2E 补两条独立负路径（P1-030-R1：quantity=2→不显示交还按钮、两条 entry×1→不显示、恢复合法（唯一 entry quantity=1）→按钮重现；每条从合法基线独立恢复再注入单一异常；断言用精确 button 元素匹配而非 body 文本，避免误匹配日志「将夔峒项链交还王财」文案）；phase1-playthrough.mjs 不受影响
 
+TM-P1-031（Phase 1 剧情连续性与明显 Bug 收口——消除开发占位符、修复 NPC 失忆、按真实玩家视角复查整段；禁止新增内容/地点/任务/奖励/系统/重构/schema/SAVE_VERSION/依赖）：
+- 消除玩家界面全部开发占位符：地图查看「具体地点：【待补充】」→「地图上的标记仍无法对应到任何已知地点。」；青石村阶段完成/兔王巢穴复查/村长汇报/调查日志「下一步目的地：【待补充】」→「现有线索还不足以确认黄金兔子王的最终去向。」；quest_golden_rabbit_search 正式任务简介「具体目的地：【待补充】」→「《兔子的路径》指向黄金兔子王所在之地，但地图上的标记还无法对应到任何已知地点。」；黑石塔解锁前「黑石塔：【待开放】」→「黑石塔的调查尚未开始。」、「黑石塔二层：【待开放】」→「黑石塔上层尚未开启。」；不编造黄金兔子王目的地、不新增地点
+- 修复 NPC 失忆（GamePage 按 QuestState 选择 greeting，不建 DialogueSystem）：王财在 kuidong_necklace_returned===true 后 greeting 由「唉……最近实在诸事不顺。」替换为「王财把项链小心收好，见到你时郑重地点了点头。」；马科在第五主线 completed 后 greeting 由「刚到天龙城？…」替换为「黑石塔的情况我已经记下了。你先休整一下。」
+- 全流程连续性检查（据实，见交付报告）：村长信任+1 反应替代原 greeting（P1-002/003/004 已锁）；各任务完成提示/提交/NPC 回复前后一致（playthrough 全流程覆盖）；嘟嘟兔→兔子的路径→展开地图→村长→铁匠/药师→巢穴复查顺序讲得通；离村不可逆提示「离开青石村后将无法返回。」；黑石塔一层→三层「没找到项链→继续深入→找到项链」无旧目标回跳（日志八态按 flag 顺序递进）；拿项链后日志只指向王财、交还后只指向马科、复命后无旧目标（单当前目标断言）；Phase1 完成后黄金兔子仍进行中、表达为「后续阶段继续」而非程序未写完
+- 明显 Bug 检测：占位符 dead 文案（已修）；交还项链 quantity/两条 entry dead button（P1-030-R1 已修）；NPC greeting 失忆（已修）；其余（敌人击败不复活、HP=0 软锁、Save/Continue 剧情倒退、malformed flag、重复提交/交还、任务物品重复、锁定地点绕过）经单测负路径 + E2E + playthrough 检查未发现新问题
+- content 测试：quest_golden_rabbit_search summary 断言从含【待补充】改为不含【待补充】且含「地图上的标记还无法对应到任何已知地点」
+- playthrough 新增 continuity 断言（qa/phase1-playthrough.mjs）：全流程 UI 不得出现【待补充】/待开放/TODO/TBD/undefined/未知任务/未知物品/缺失物品定义（青石村阶段完成、天龙城、黑石塔三层女妖击败后、第一阶段完成后四处扫描）+ 完成后单当前目标（无「将夔峒项链交还王财」「返回武馆向马科复命」残留）
+- schema 不变、SAVE_VERSION=1；npcs.ts/locations.ts/enemies.ts/items.ts/professions.ts/CombatPage.tsx/types/storage/rules/gameStore.ts 零修改；git diff 仅 quests.ts + content.test.ts + GamePage.tsx + qa/e2e.mjs + qa/phase1-playthrough.mjs + README（不含 qa/*.png）
+
 ## 目录结构
 
 ```

@@ -56,6 +56,14 @@ const clickByText = async (text) => {
 
 const bodyText = () => page.evaluate(() => document.body.textContent)
 
+// TM-P1-031：continuity 占位符扫描——玩家正式流程 UI 不得出现任何开发占位/未定义/缺失文案
+const PLACEHOLDER_MARKERS = ['待补充', '待开放', 'TODO', 'TBD', 'undefined', '未知任务', '未知物品', '缺失物品定义']
+const assertNoPlaceholders = async (label) => {
+  const t = await page.evaluate(() => document.body.textContent)
+  const hit = PLACEHOLDER_MARKERS.filter((m) => t.includes(m))
+  check(label, hit.length === 0, hit.length ? hit.join('、') : '')
+}
+
 const continueDisabled = () =>
   page.evaluate(() => {
     const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.includes('继续游戏'))
@@ -312,7 +320,7 @@ try {
   await clickByText('展开地图')
   await sleep(300)
   body = await bodyText()
-  check('地图已查看（指向黄金兔子王）', body.includes('地图上的路线最终指向黄金兔子王所在之地。') && body.includes('具体地点：【待补充】'))
+  check('地图已查看（指向黄金兔子王）', body.includes('地图上的路线最终指向黄金兔子王所在之地。') && body.includes('地图上的标记仍无法对应到任何已知地点。'))
   check('地图仍保留（兔子的路径 ×1）', body.includes('兔子的路径 ×1'))
 
   // 6. 黄金兔子调查：铁匠打听 + 药师打听 → 村长汇报（《追寻黄金兔子王》in_progress）
@@ -333,6 +341,7 @@ try {
   await sleep(200)
   body = await bodyText()
   check('青石村阶段完成面板出现', body.includes('青石村阶段完成'))
+  await assertNoPlaceholders('continuity：青石村阶段完成无占位符')
   // 6b. 接受《追寻黄金兔子王》
   await clickByText('查看委托')
   await sleep(300)
@@ -463,6 +472,7 @@ try {
   await sleep(300)
   body = await bodyText()
   check('到达天龙城（tianlong_city）', body.includes('tianlong_city') && body.includes('天龙王朝的皇城'))
+  await assertNoPlaceholders('continuity：天龙城无占位符')
   check('离村后《追寻黄金兔子王》仍进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
   check('离村后兔子的路径仍 ×1', body.includes('兔子的路径 ×1'))
   check('离村后无返回青石村按钮', !body.includes('返回青石村'))
@@ -497,7 +507,7 @@ try {
   await clickByText('结束交谈')
   await sleep(200)
   body = await bodyText()
-  check('日志已向王财了解情况（wangcai_briefed）', body.includes('已向王财了解情况。') && body.includes('黑石塔：【待开放】'))
+  check('日志已向王财了解情况（wangcai_briefed）', body.includes('已向王财了解情况。') && body.includes('黑石塔的调查尚未开始。'))
 
   // 11. 黑石塔一层：动身调查 → 骷髅士兵 → 休整 → 骷髅队长
   await restAtMartialHall() // 进塔前满血
@@ -528,7 +538,7 @@ try {
   await sleep(300)
   await combatLoop('骷髅队长', 4)
   body = await bodyText()
-  check('骷髅队长已击败（未发现项链）', body.includes('骷髅队长已经倒下。') && body.includes('你检查了骷髅队长与周围，没有发现夔峒项链。') && body.includes('黑石塔二层：【待开放】'))
+  check('骷髅队长已击败（未发现项链）', body.includes('骷髅队长已经倒下。') && body.includes('你检查了骷髅队长与周围，没有发现夔峒项链。') && body.includes('黑石塔上层尚未开启。'))
 
   // 12. 黑石塔二层：僵尸 → 黑法师 → 骷髅战士（解锁三层）
   await restAtMartialHall()
@@ -595,6 +605,7 @@ try {
   check('骷髅女妖已击败', body.includes('骷髅女妖倒在破碎的石柱之间。'))
   check('找到夔峒项链（×1 已获得）', body.includes('夔峒项链 ×1') && body.includes('夔峒项链 ×1 已获得。'))
   check('当前目标：返回天龙城交还王财', body.includes('当前目标：返回天龙城，将夔峒项链交还王财。'))
+  await assertNoPlaceholders('continuity：黑石塔三层女妖击败后无占位符')
 
   // 14. 返回天龙城 → 王财交还项链 → 武馆马科提交（第一阶段完成）
   await clickByText('黑石塔二层')
@@ -640,6 +651,10 @@ try {
   check('《追寻黄金兔子王》仍进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
   check('兔子的路径 ×1 仍在背包', body.includes('兔子的路径 ×1'))
   check('背包无夔峒项链', !body.includes('夔峒项链 ×'))
+  await assertNoPlaceholders('continuity：第一阶段完成后无占位符')
+  // 单当前目标：完成后不再出现旧目标/矛盾目标（找项链/交还/去黑石塔/提交均不得残留）
+  check('完成后无「交还王财」目标残留', !body.includes('将夔峒项链交还王财'))
+  check('完成后无「返回武馆向马科复命」目标残留', !body.includes('当前目标：返回武馆，向马科复命。'))
   await clickByText('结束交谈')
   await sleep(200)
   body = await bodyText()

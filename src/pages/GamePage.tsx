@@ -458,7 +458,7 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
                 <p className="mt-3 border-t border-gold-500/20 pt-3 text-bone-200">
                   地图上的路线最终指向黄金兔子王所在之地。
                 </p>
-                <p className="mt-1 text-bone-300">具体地点：【待补充】</p>
+                <p className="mt-1 text-bone-300">地图上的标记仍无法对应到任何已知地点。</p>
               </>
             ) : (
               <div className="mt-3">
@@ -479,7 +479,7 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
           <p className="leading-relaxed text-bone-200">
             你已经处理了村外异动、矿洞威胁与草原狼影，并取得了《兔子的路径》。
           </p>
-          <p className="mt-2 text-bone-300">下一步目的地：【待补充】</p>
+          <p className="mt-2 text-bone-300">现有线索还不足以确认黄金兔子王的最终去向。</p>
         </section>
       )}
 
@@ -488,7 +488,7 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
         goldenLairRechecked ? (
           <section className="rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
             <p className="text-bone-200">你重新比对了地图与巢穴周边，但仍没有找到足以确认下一处地点的线索。</p>
-            <p className="mt-2 text-bone-300">下一步目的地：【待补充】</p>
+            <p className="mt-2 text-bone-300">现有线索还不足以确认黄金兔子王的最终去向。</p>
           </section>
         ) : (
           <section className="rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
@@ -576,7 +576,7 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
               <p className="leading-relaxed text-bone-200">骷髅队长已经倒下。</p>
               <p className="mt-1 leading-relaxed text-bone-200">你检查了骷髅队长与周围，没有发现夔峒项链。</p>
               <p className="mt-1 leading-relaxed text-bone-200">通往黑石塔更深处的道路仍需继续调查。</p>
-              <p className="mt-2 text-gold-300">黑石塔二层：【待开放】</p>
+              <p className="mt-2 text-gold-300">黑石塔上层尚未开启。</p>
             </>
           )}
         </section>
@@ -690,12 +690,17 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
               <p className="font-bold text-bone-100">{activeNpc.name}</p>
               <p className="mb-2 text-xs text-bone-500">{activeNpc.role}</p>
               {/* TM-P1-004：已回应且关系合法时，后续关系反应替代原 greeting 正文位置（不重复显示旧文案）；否则回退原 greeting */}
+              {/* TM-P1-031：修复 NPC 失忆——王财已取回项链后、马科第五主线完成后，greeting 按 QuestState 替换为推进后的台词（不建 DialogueSystem） */}
               <p className="mb-3 text-bone-300">
                 {elderReaction === 'respect'
                   ? '村长郑重地点了点头：“若你还要继续追查，务必小心。”'
                   : elderReaction === 'trust'
                     ? '村长舒展了眉头：“好，村里能安稳一些就好。”'
-                    : activeNpc.greeting}
+                    : activeNpc.id === 'merchant_wangcai' && kuidongNecklaceReturned
+                      ? '王财把项链小心收好，见到你时郑重地点了点头。'
+                      : activeNpc.id === 'knight_captain_make' && wangcaiQuest?.status === 'completed'
+                        ? '黑石塔的情况我已经记下了。你先休整一下。'
+                        : activeNpc.greeting}
               </p>
               {/* TM-P1-002/003：村长对话显示信任+尊敬（读 NpcState；未建立状态时 UI fallback 0，打开对话不创建状态） */}
               {activeNpc.id === 'village_elder' && (
@@ -738,7 +743,7 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
                 <div className="mb-3 rounded border border-gold-500/40 bg-ink-900/40 p-3">
                   <p className="text-bone-200">你已经把《兔子的路径》展示给村长。</p>
                   <p className="mt-1 text-bone-300">地图仍指向黄金兔子王所在之地。</p>
-                  <p className="mt-1 text-bone-300">下一步目的地：【待补充】</p>
+                  <p className="mt-1 text-bone-300">地图上的标记仍无法对应到任何已知地点。</p>
                 </div>
               )}
               {/* TM-P1-019：向村长复命村内调查——第四任务 in_progress + 调查 2/2 + 未复命时显示入口（与 P1-016 地图汇报入口严格分开）；成功后按钮消失并显示固定文案 */}
@@ -747,7 +752,7 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
                   <div className="mb-3 rounded border border-gold-500/40 bg-ink-900/40 p-3">
                     <p className="text-bone-200">你已经把调查结果告诉了村长。</p>
                     <p className="mt-1 text-bone-300">村里目前没人能够确认地图上的标记。</p>
-                    <p className="mt-1 text-bone-300">下一步目的地：【待补充】</p>
+                    <p className="mt-1 text-bone-300">现有线索还不足以确认黄金兔子王的最终去向。</p>
                   </div>
                 ) : (
                   <div className="mb-3 rounded border border-ink-600 bg-ink-900/40 p-3">
@@ -1160,7 +1165,7 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
                   {qs.questId === 'quest_golden_rabbit_search' && goldenInvestigationCount === 2 && (
                     <div className="mt-2 rounded border border-gold-500/40 bg-ink-900/40 p-2 text-xs leading-relaxed text-bone-200">
                       <p>你已经向铁匠和药师打听过，但仍无法确认地图指向的具体地点。</p>
-                      <p className="mt-1 text-bone-300">下一步目的地：【待补充】</p>
+                      <p className="mt-1 text-bone-300">地图上的标记仍无法对应到任何已知地点。</p>
                     </div>
                   )}
                   {/* TM-P1-019：复命后阶段提示——保留 2/2 调查结果，额外显示已汇报（不覆盖历史进度） */}
@@ -1203,7 +1208,7 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
                         <>
                           <p className="text-gold-300">已向王财了解情况。</p>
                           <p className="mt-1">当前目标：调查黑石塔附近的情况。</p>
-                          <p className="mt-1">黑石塔：【待开放】</p>
+                          <p className="mt-1">黑石塔的调查尚未开始。</p>
                         </>
                       ) : !floor1SoldierDefeated ? (
                         <>
@@ -1225,7 +1230,7 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
                           <p className="mt-1 text-gold-300">黑石塔一层：已击败骷髅士兵。</p>
                           <p className="mt-1 text-gold-300">黑石塔一层：骷髅队长已击败，未发现夔峒项链。</p>
                           <p className="mt-1">当前目标：继续深入黑石塔。</p>
-                          <p className="mt-1">黑石塔二层：【待开放】</p>
+                          <p className="mt-1">黑石塔上层尚未开启。</p>
                         </>
                       ) : !floor2SkeletonWarriorDefeated ? (
                         <>

@@ -383,7 +383,9 @@ describe('TM-P0-002-R1：关键内容身份锁', () => {
     expect(quest?.goldReward).toBeUndefined()
     expect(quest?.summary).toContain('《兔子的路径》')
     expect(quest?.summary).toContain('黄金兔子王')
-    expect(quest?.summary).toContain('具体目的地：【待补充】')
+    // TM-P1-031：正式任务简介不得含开发占位符【待补充】；表述为目的地未知的自然剧情态（不编造地点）
+    expect(quest?.summary).not.toContain('【待补充】')
+    expect(quest?.summary).toContain('地图上的标记还无法对应到任何已知地点')
     // 不测试额外不存在的 lore
   })
 
