@@ -142,6 +142,29 @@ export default function App() {
         return
       }
     }
+    // TM-P1-029：三层骷髅女妖正式战斗入口硬守——必须三层 + 全部前序严格 true（含二层三敌均击败）+ floor3_skeleton_witch_defeated 非 true
+    if (enemyId === 'skeleton_witch') {
+      const towerQuest = state.quests.find((q) => q.questId === 'quest_wangcai_trouble')
+      const witchFlag = towerQuest?.flags.floor3_skeleton_witch_defeated
+      const witchOk = witchFlag !== true && (typeof witchFlag === 'undefined' || typeof witchFlag === 'boolean')
+      if (
+        state.world.currentLocationId !== 'black_stone_tower_floor3' ||
+        towerQuest?.status !== 'in_progress' ||
+        towerQuest?.stage !== 0 ||
+        towerQuest?.flags.wangcai_briefed !== true ||
+        state.world.flags.black_stone_tower_unlocked !== true ||
+        state.world.flags.black_stone_tower_floor2_unlocked !== true ||
+        state.world.flags.black_stone_tower_floor3_unlocked !== true ||
+        towerQuest?.flags.floor1_soldier_defeated !== true ||
+        towerQuest?.flags.floor1_captain_defeated !== true ||
+        towerQuest?.flags.floor2_zombie_defeated !== true ||
+        towerQuest?.flags.floor2_black_mage_defeated !== true ||
+        towerQuest?.flags.floor2_skeleton_warrior_defeated !== true ||
+        !witchOk
+      ) {
+        return
+      }
+    }
     setCombatEnemyId(enemyId)
     setScreen('combat')
   }

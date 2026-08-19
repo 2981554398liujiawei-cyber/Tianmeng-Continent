@@ -120,4 +120,16 @@ export const ENEMIES: Record<string, EnemyDefinition> = {
     attackBonus: 4,
     damage: 4,
   },
+  // TM-P1-029：黑石塔三层骷髅女妖（三层守卫；继续现有普通确定性 D20 战斗；不因「女妖」二字增加法术系统——无诅咒/恐惧/吸血/灵魂攻击/暗属性/召唤/特殊 AI）
+  skeleton_witch: {
+    id: 'skeleton_witch',
+    name: '骷髅女妖',
+    level: 5,
+    description: '披着破碎长袍的骷髅女妖，嘶哑的哭嚎在黑暗厅堂中回荡。',
+    tags: ['undead'],
+    maxHp: 18,
+    defense: 12,
+    attackBonus: 5,
+    damage: 5,
+  },
 }

@@ -71,6 +71,7 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
   const askWangcaiAboutTrouble = useGameStore((s) => s.askWangcaiAboutTrouble)
   const unlockBlackStoneTowerInvestigation = useGameStore((s) => s.unlockBlackStoneTowerInvestigation)
   const unlockBlackStoneTowerFloor2 = useGameStore((s) => s.unlockBlackStoneTowerFloor2)
+  const unlockBlackStoneTowerFloor3 = useGameStore((s) => s.unlockBlackStoneTowerFloor3)
   const restAtTianlongMartialHall = useGameStore((s) => s.restAtTianlongMartialHall)
   const [saveResult, setSaveResult] = useState<'saved' | 'failed' | null>(null)
   const [travelError, setTravelError] = useState(false)
@@ -161,6 +162,12 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
   const floor2BlackMageDefeated = wangcaiQuest?.flags.floor2_black_mage_defeated === true
   /** TM-P1-028：二层深处骷髅战士清场（只读）——驱动骷髅战士可见性与三层预告剧情 */
   const floor2SkeletonWarriorDefeated = wangcaiQuest?.flags.floor2_skeleton_warrior_defeated === true
+  /** TM-P1-029：黑石塔三层路线（只读）——floor3_unlocked 驱动移动按钮与三层敌人可见性 */
+  const towerFloor3Unlocked = world.flags.black_stone_tower_floor3_unlocked === true
+  // 三层解锁入口窄守卫：target flag 只允许 undefined/false 视为「待解锁」（已 true/异常非 boolean 不显示行动按钮）
+  const towerFloor3UnlockFlag = world.flags.black_stone_tower_floor3_unlocked
+  const towerFloor3UnlockPending = towerFloor3UnlockFlag === undefined || towerFloor3UnlockFlag === false
+  const floor3SkeletonWitchDefeated = wangcaiQuest?.flags.floor3_skeleton_witch_defeated === true
   // TM-P0-006：附近委托 = 给予者位于当前地点的注册任务（不写死地点 ID）
   const localQuests = Object.values(QUESTS).filter((quest) => {
     const giver = getNpc(quest.giverNpcId)
@@ -608,14 +615,32 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
           </section>
         )}
 
-      {/* TM-P1-028：骷髅战士击败后固定剧情（找项链主线推进；不创建三层） */}
+      {/* TM-P1-028：骷髅战士击败后固定剧情（找项链主线推进）——三层未解锁时显示「继续向上」入口（仅调 Store action）；已解锁则入口隐藏、经移动按钮前往三层 */}
       {world.currentLocationId === 'black_stone_tower_floor2' && floor2SkeletonWarriorDefeated && (
         <section className="rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
           <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">二层深处</h3>
           <p className="leading-relaxed text-bone-200">小厅中的骷髅战士已经倒下。</p>
           <p className="mt-1 leading-relaxed text-bone-200">你仔细搜索了周围，依然没有发现王财遗失的夔峒项链。</p>
           <p className="mt-1 leading-relaxed text-bone-200">小厅后方，一道向上的石阶通往黑石塔更高处。</p>
-          <p className="mt-2 text-gold-300">黑石塔三层：【待开放】</p>
+          {towerFloor3UnlockPending && (
+            <div className="mt-3">
+              <Button variant="primary" onClick={() => unlockBlackStoneTowerFloor3()}>
+                继续向上
+              </Button>
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* TM-P1-029：黑石塔三层——骷髅女妖击败后固定剧情（找到夔峒项链 ×1；不交还王财、不完成任务） */}
+      {world.currentLocationId === 'black_stone_tower_floor3' && floor3SkeletonWitchDefeated && (
+        <section className="rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
+          <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">三层厅堂</h3>
+          <p className="leading-relaxed text-bone-200">骷髅女妖倒在破碎的石柱之间。</p>
+          <p className="mt-1 leading-relaxed text-bone-200">你在厅堂深处搜索时，发现了一条被灰尘覆盖的项链。</p>
+          <p className="mt-1 leading-relaxed text-bone-200">这正是王财所说的夔峒项链。</p>
+          <p className="mt-2 text-gold-300">夔峒项链 ×1 已获得。</p>
+          <p className="mt-1">当前目标：返回天龙城，将夔峒项链交还王财。</p>
         </section>
       )}
 
@@ -912,6 +937,26 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
                 return false
               }
             }
+            // TM-P1-029：三层骷髅女妖可见性窄条件（严格 boolean）——必须在三层 + 全部前序严格 true + floor3_skeleton_witch_defeated 非 true
+            if (threat.id === 'skeleton_witch') {
+              const witchFlag = wangcaiQuest?.flags.floor3_skeleton_witch_defeated
+              const witchOk = witchFlag !== true && (typeof witchFlag === 'undefined' || typeof witchFlag === 'boolean')
+              if (
+                !towerQuestInProgress ||
+                !wangcaiBriefed ||
+                !towerUnlocked ||
+                !towerFloor2Unlocked ||
+                !towerFloor3Unlocked ||
+                floor1SoldierDefeated !== true ||
+                floor1CaptainDefeated !== true ||
+                floor2ZombieDefeated !== true ||
+                floor2BlackMageDefeated !== true ||
+                floor2SkeletonWarriorDefeated !== true ||
+                !witchOk
+              ) {
+                return false
+              }
+            }
             return true
           })
         if (visibleEnemies.length === 0) return null
@@ -1137,6 +1182,16 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
                           <p className="mt-1 text-gold-300">黑石塔二层：入口区域已清理。</p>
                           <p className="mt-1">当前目标：击败骷髅战士。</p>
                         </>
+                      ) : !floor3SkeletonWitchDefeated ? (
+                        <>
+                          <p className="text-gold-300">已向王财了解情况。</p>
+                          <p className="mt-1 text-gold-300">黑石塔路线已确认。</p>
+                          <p className="mt-1 text-gold-300">黑石塔一层：已击败骷髅士兵。</p>
+                          <p className="mt-1 text-gold-300">黑石塔一层：骷髅队长已击败，未发现夔峒项链。</p>
+                          <p className="mt-1 text-gold-300">黑石塔二层：入口区域已清理。</p>
+                          <p className="mt-1 text-gold-300">黑石塔二层深处：骷髅战士已击败，仍未发现夔峒项链。</p>
+                          <p className="mt-1">当前目标：击败骷髅女妖。</p>
+                        </>
                       ) : (
                         <>
                           <p className="text-gold-300">已向王财了解情况。</p>
@@ -1145,8 +1200,9 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
                           <p className="mt-1 text-gold-300">黑石塔一层：骷髅队长已击败，未发现夔峒项链。</p>
                           <p className="mt-1 text-gold-300">黑石塔二层：入口区域已清理。</p>
                           <p className="mt-1 text-gold-300">黑石塔二层深处：骷髅战士已击败，仍未发现夔峒项链。</p>
-                          <p className="mt-1">当前目标：继续调查黑石塔更高处。</p>
-                          <p className="mt-1">黑石塔三层：【待开放】</p>
+                          <p className="mt-1 text-gold-300">黑石塔三层：骷髅女妖已击败。</p>
+                          <p className="mt-1 text-gold-300">黑石塔三层：已找到夔峒项链。</p>
+                          <p className="mt-1">当前目标：返回天龙城，将夔峒项链交还王财。</p>
                         </>
                       )}
                     </div>

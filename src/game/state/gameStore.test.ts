@@ -6149,4 +6149,174 @@ describe('TM-P1-027：黑石塔二层——武馆休整、僵尸与黑法师', (
     expect(wangcaiQuest()?.flags.floor2_skeleton_warrior_defeated).toBe(true)
     expect(useGameStore.getState().hasSave).toBe(false)
   })
+
+  // ---------- unlockBlackStoneTowerFloor3（TM-P1-029） ----------
+
+  /** 走到二层且僵尸+黑法师+骷髅战士均已击败（可解锁三层的完整合法状态） */
+  const seedFloor3UnlockReady = () => {
+    seedWarriorReady()
+    useGameStore.getState().resolveCombatVictory('skeleton_warrior')
+  }
+
+  it('U1. 合法解锁三层 → true 且只写 black_stone_tower_floor3_unlocked=true', () => {
+    seedFloor3UnlockReady()
+    expect(useGameStore.getState().gameState!.world.flags.black_stone_tower_floor3_unlocked).toBeUndefined()
+    expect(useGameStore.getState().unlockBlackStoneTowerFloor3()).toBe(true)
+    expect(useGameStore.getState().gameState!.world.flags.black_stone_tower_floor3_unlocked).toBe(true)
+  })
+
+  it.each([
+    ['错误位置', (s: GameState) => ({ ...s, world: { ...s.world, currentLocationId: 'black_stone_tower_floor1' } })],
+    ['任务不存在', (s: GameState) => ({ ...s, quests: s.quests.filter((q) => q.questId !== 'quest_wangcai_trouble') })],
+    ['任务 available', (s: GameState) => ({ ...s, quests: s.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, status: 'available' as const } : q)) })],
+    ['任务 stage 1', (s: GameState) => ({ ...s, quests: s.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, stage: 1 } : q)) })],
+    ['wangcai_briefed 非 true', (s: GameState) => ({ ...s, quests: s.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, flags: { ...q.flags, wangcai_briefed: false } } : q)) })],
+    ['黑石塔未解锁', (s: GameState) => ({ ...s, world: { ...s.world, flags: { ...s.world.flags, black_stone_tower_unlocked: false } } })],
+    ['二层未解锁', (s: GameState) => ({ ...s, world: { ...s.world, flags: { ...s.world.flags, black_stone_tower_floor2_unlocked: false } } })],
+    ['floor1_soldier_defeated 非 true', (s: GameState) => ({ ...s, quests: s.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, flags: { ...q.flags, floor1_soldier_defeated: false } } : q)) })],
+    ['floor1_captain_defeated 非 true', (s: GameState) => ({ ...s, quests: s.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, flags: { ...q.flags, floor1_captain_defeated: false } } : q)) })],
+    ['zombie 非 true', (s: GameState) => ({ ...s, quests: s.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, flags: { ...q.flags, floor2_zombie_defeated: false } } : q)) })],
+    ['mage 非 true', (s: GameState) => ({ ...s, quests: s.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, flags: { ...q.flags, floor2_black_mage_defeated: false } } : q)) })],
+    ['warrior 非 true', (s: GameState) => ({ ...s, quests: s.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, flags: { ...q.flags, floor2_skeleton_warrior_defeated: false } } : q)) })],
+    ['target flag true', (s: GameState) => ({ ...s, world: { ...s.world, flags: { ...s.world.flags, black_stone_tower_floor3_unlocked: true } } })],
+    ['target flag "yes"', (s: GameState) => ({ ...s, world: { ...s.world, flags: { ...s.world.flags, black_stone_tower_floor3_unlocked: 'yes' as unknown as boolean } } })],
+    ['target flag 1', (s: GameState) => ({ ...s, world: { ...s.world, flags: { ...s.world.flags, black_stone_tower_floor3_unlocked: 1 as unknown as boolean } } })],
+    ['target flag 0.5', (s: GameState) => ({ ...s, world: { ...s.world, flags: { ...s.world.flags, black_stone_tower_floor3_unlocked: 0.5 as unknown as boolean } } })],
+  ])('U2. 解锁三层拒绝：%s（false 且完整 GameState unchanged）', (_label, mutate) => {
+    seedFloor3UnlockReady()
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return { gameState: mutate(s.gameState) }
+    })
+    const before = useGameStore.getState().gameState
+    expect(useGameStore.getState().unlockBlackStoneTowerFloor3()).toBe(false)
+    expect(useGameStore.getState().gameState).toBe(before)
+  })
+
+  it('U3. 骷髅战士未击败 → 解锁三层拒绝（false 且完整 GameState unchanged）', () => {
+    seedWarriorReady()
+    const before = useGameStore.getState().gameState
+    expect(useGameStore.getState().unlockBlackStoneTowerFloor3()).toBe(false)
+    expect(useGameStore.getState().gameState).toBe(before)
+    expect(useGameStore.getState().gameState!.world.flags.black_stone_tower_floor3_unlocked).toBeUndefined()
+  })
+
+  it('U4. 解锁三层不自动保存', () => {
+    seedFloor3UnlockReady()
+    useGameStore.getState().unlockBlackStoneTowerFloor3()
+    expect(useGameStore.getState().gameState!.world.flags.black_stone_tower_floor3_unlocked).toBe(true)
+    expect(useGameStore.getState().hasSave).toBe(false)
+  })
+
+  // ---------- resolveCombatVictory('skeleton_witch')（TM-P1-029） ----------
+
+  /** 走到三层且全部前序成立（可打骷髅女妖的完整合法状态） */
+  const seedWitchReady = () => {
+    seedFloor3UnlockReady()
+    useGameStore.getState().unlockBlackStoneTowerFloor3()
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return { gameState: { ...s.gameState, world: { ...s.gameState.world, currentLocationId: 'black_stone_tower_floor3' } } }
+    })
+  }
+
+  it('V1. 前序未全部击败 → 骷髅女妖胜利拒绝（false 且完整 GameState unchanged）', () => {
+    // 非三层
+    seedFloor3UnlockReady()
+    const before = useGameStore.getState().gameState
+    expect(useGameStore.getState().resolveCombatVictory('skeleton_witch')).toBe(false)
+    expect(useGameStore.getState().gameState).toBe(before)
+    // 三层但三层未解锁
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return { gameState: { ...s.gameState, world: { ...s.gameState.world, currentLocationId: 'black_stone_tower_floor3' } } }
+    })
+    const before2 = useGameStore.getState().gameState
+    expect(useGameStore.getState().resolveCombatVictory('skeleton_witch')).toBe(false)
+    expect(useGameStore.getState().gameState).toBe(before2)
+  })
+
+  it('V2. 合法骷髅女妖胜利 → true 且写 flag + 夔峒项链 ×1', () => {
+    seedWitchReady()
+    expect(wangcaiQuest()?.flags.floor3_skeleton_witch_defeated).toBeUndefined()
+    expect(useGameStore.getState().resolveCombatVictory('skeleton_witch')).toBe(true)
+    expect(wangcaiQuest()?.flags.floor3_skeleton_witch_defeated).toBe(true)
+    const necklaces = useGameStore.getState().gameState!.inventory.filter((i) => i.itemId === 'kuidong_necklace')
+    expect(necklaces).toHaveLength(1)
+    expect(necklaces[0].quantity).toBe(1)
+  })
+
+  it('V3. 骷髅女妖胜利后任务保持 in_progress/stage 0（不设 completable）', () => {
+    seedWitchReady()
+    useGameStore.getState().resolveCombatVictory('skeleton_witch')
+    expect(wangcaiQuest()?.status).toBe('in_progress')
+    expect(wangcaiQuest()?.stage).toBe(0)
+    expect(useGameStore.getState().gameState!.inventory.filter((i) => i.itemId === 'kuidong_necklace')).toHaveLength(1)
+  })
+
+  it('V4. 骷髅女妖胜利无金币/XP/等级/装备奖励（除项链外 player/equipment 全不变）', () => {
+    seedWitchReady()
+    const beforePlayer = useGameStore.getState().gameState!.player
+    const beforeEquipment = useGameStore.getState().gameState!.equipment
+    useGameStore.getState().resolveCombatVictory('skeleton_witch')
+    const after = useGameStore.getState().gameState!
+    expect(after.player).toEqual(beforePlayer)
+    expect(after.equipment).toEqual(beforeEquipment)
+  })
+
+  it('V5. 骷髅女妖重复胜利无额外副作用（第二次 false 且 GameState 同一引用、项链不重复堆叠）', () => {
+    seedWitchReady()
+    useGameStore.getState().resolveCombatVictory('skeleton_witch')
+    const before = useGameStore.getState().gameState
+    expect(useGameStore.getState().resolveCombatVictory('skeleton_witch')).toBe(false)
+    expect(useGameStore.getState().gameState).toBe(before)
+    expect(wangcaiQuest()?.flags.floor3_skeleton_witch_defeated).toBe(true)
+    expect(useGameStore.getState().gameState!.inventory.filter((i) => i.itemId === 'kuidong_necklace')).toHaveLength(1)
+  })
+
+  it.each([
+    ['错误 location', (s: GameState) => ({ ...s, world: { ...s.world, currentLocationId: 'black_stone_tower_floor2' } })],
+    ['任务不存在', (s: GameState) => ({ ...s, quests: s.quests.filter((q) => q.questId !== 'quest_wangcai_trouble') })],
+    ['任务 available', (s: GameState) => ({ ...s, quests: s.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, status: 'available' as const } : q)) })],
+    ['任务 stage 1', (s: GameState) => ({ ...s, quests: s.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, stage: 1 } : q)) })],
+    ['wangcai_briefed 非 true', (s: GameState) => ({ ...s, quests: s.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, flags: { ...q.flags, wangcai_briefed: false } } : q)) })],
+    ['三层未解锁', (s: GameState) => ({ ...s, world: { ...s.world, flags: { ...s.world.flags, black_stone_tower_floor3_unlocked: false } } })],
+    ['floor1_captain_defeated 非 true', (s: GameState) => ({ ...s, quests: s.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, flags: { ...q.flags, floor1_captain_defeated: false } } : q)) })],
+    ['warrior 非 true', (s: GameState) => ({ ...s, quests: s.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, flags: { ...q.flags, floor2_skeleton_warrior_defeated: false } } : q)) })],
+    ['witch flag true', (s: GameState) => ({ ...s, quests: s.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, flags: { ...q.flags, floor3_skeleton_witch_defeated: true } } : q)) })],
+    ['witch flag "yes"', (s: GameState) => ({ ...s, quests: s.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, flags: { ...q.flags, floor3_skeleton_witch_defeated: 'yes' as unknown as boolean } } : q)) })],
+    ['witch flag 1', (s: GameState) => ({ ...s, quests: s.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, flags: { ...q.flags, floor3_skeleton_witch_defeated: 1 as unknown as boolean } } : q)) })],
+    ['witch flag 0.5', (s: GameState) => ({ ...s, quests: s.quests.map((q) => (q.questId === 'quest_wangcai_trouble' ? { ...q, flags: { ...q.flags, floor3_skeleton_witch_defeated: 0.5 as unknown as boolean } } : q)) })],
+  ])('V6. 骷髅女妖胜利拒绝：%s（false 且完整 GameState unchanged）', (_label, mutate) => {
+    seedWitchReady()
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return { gameState: mutate(s.gameState) }
+    })
+    const before = useGameStore.getState().gameState
+    expect(useGameStore.getState().resolveCombatVictory('skeleton_witch')).toBe(false)
+    expect(useGameStore.getState().gameState).toBe(before)
+  })
+
+  it('V7. 黄金兔子 QuestState 整体深比较不变（骷髅女妖胜利后）', () => {
+    seedWitchReady()
+    const beforeGolden = JSON.stringify(goldenQuest())
+    useGameStore.getState().resolveCombatVictory('skeleton_witch')
+    const afterGolden = JSON.stringify(goldenQuest())
+    expect(afterGolden).toBe(beforeGolden)
+    const golden = goldenQuest()
+    expect(golden?.status).toBe('in_progress')
+    expect(golden?.stage).toBe(0)
+    expect(golden?.flags.asked_blacksmith).toBe(true)
+    expect(golden?.flags.asked_apothecary).toBe(true)
+    expect(golden?.flags.village_inquiry_reported).toBe(true)
+    expect(golden?.flags.rabbit_lair_rechecked).toBe(true)
+  })
+
+  it('V8. 骷髅女妖胜利不自动保存', () => {
+    seedWitchReady()
+    useGameStore.getState().resolveCombatVictory('skeleton_witch')
+    expect(wangcaiQuest()?.flags.floor3_skeleton_witch_defeated).toBe(true)
+    expect(useGameStore.getState().hasSave).toBe(false)
+  })
 })

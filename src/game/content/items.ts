@@ -53,6 +53,14 @@ export const ITEMS: Record<string, ItemDefinition> = {
     description: '从废弃矿洞中取得的普通铁矿石，表面带着粗粝的金属光泽。',
     value: 5,
   },
+  // TM-P1-029：夔峒项链（任务物品）——王财在黑石塔附近遭遇魔物袭击时遗失，是妻子留下的重要物件；复用现有 ItemDefinition quest 类型，不新建任务物品系统
+  kuidong_necklace: {
+    id: 'kuidong_necklace',
+    name: '夔峒项链',
+    type: 'quest',
+    description: '王财在黑石塔附近遭遇魔物袭击时遗失的项链，是他妻子留下的重要物件。',
+    value: 0,
+  },
 }
 
 export function getItem(id: string): ItemDefinition | undefined {

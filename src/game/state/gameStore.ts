@@ -103,6 +103,8 @@ interface GameStoreState {
   unlockBlackStoneTowerInvestigation: () => boolean
   /** 解锁黑石塔二层（TM-P1-027）：黑石塔一层 + 第五主线 in_progress/stage 0 + wangcai_briefed 严格 true + black_stone_tower_unlocked 严格 true + floor1_soldier_defeated 严格 true + floor1_captain_defeated 严格 true + 目标 flag black_stone_tower_floor2_unlocked undefined/false → 成功原子写 world.flags.black_stone_tower_floor2_unlocked=true；目标 flag 已 true 或非 boolean（"yes"/1/0.5）整次拒绝且完全不变（不修复）；player/inventory/equipment/quests/其他 world.flags/npcStates/completedEvents 全不变；不自动保存 */
   unlockBlackStoneTowerFloor2: () => boolean
+  /** 解锁黑石塔三层（TM-P1-029）：黑石塔二层 + 第五主线 in_progress/stage 0 + wangcai_briefed 严格 true + black_stone_tower_unlocked 严格 true + black_stone_tower_floor2_unlocked 严格 true + floor1_soldier_defeated/captain_defeated + floor2_zombie_defeated/black_mage_defeated/skeleton_warrior_defeated 全部严格 true + 目标 flag black_stone_tower_floor3_unlocked undefined/false → 成功原子写 world.flags.black_stone_tower_floor3_unlocked=true；目标 flag 已 true 或非 boolean（"yes"/1/0.5）整次拒绝且完全不变（不修复）；不建 DungeonEngine/楼层系统；player/inventory/equipment/quests/其他 world.flags/npcStates/completedEvents 全不变；不自动保存 */
+  unlockBlackStoneTowerFloor3: () => boolean
 }
 
 /** 任务发现：不存在 → 创建 available；undiscovered → available；其余状态不重复创建。非法返回 null（TM-P0-006） */
@@ -503,7 +505,31 @@ export const useGameStore = create<GameStoreState>()((set) => ({
           return {}
         }
       }
+      // TM-P1-029：三层骷髅女妖（三层守卫）完整前置守卫——必须在三层 + 全部前序严格 true（含二层三敌均击败）+ floor3_skeleton_witch_defeated undefined/false；否则拒绝
+      if (enemyId === 'skeleton_witch' && location.id === 'black_stone_tower_floor3') {
+        const quest = s.gameState.quests.find((q) => q.questId === 'quest_wangcai_trouble')
+        const witchFlag = quest?.flags.floor3_skeleton_witch_defeated
+        const witchOk = witchFlag !== true && (typeof witchFlag === 'undefined' || typeof witchFlag === 'boolean')
+        if (
+          !quest ||
+          quest.status !== 'in_progress' ||
+          quest.stage !== 0 ||
+          quest.flags.wangcai_briefed !== true ||
+          s.gameState.world.flags.black_stone_tower_unlocked !== true ||
+          s.gameState.world.flags.black_stone_tower_floor2_unlocked !== true ||
+          s.gameState.world.flags.black_stone_tower_floor3_unlocked !== true ||
+          quest.flags.floor1_soldier_defeated !== true ||
+          quest.flags.floor1_captain_defeated !== true ||
+          quest.flags.floor2_zombie_defeated !== true ||
+          quest.flags.floor2_black_mage_defeated !== true ||
+          quest.flags.floor2_skeleton_warrior_defeated !== true ||
+          !witchOk
+        ) {
+          return {}
+        }
+      }
       ok = true
+      // 《村外异动》任务推进：村外草原击败魔化兔 → completable（复用封板状态机）
       // 《村外异动》任务推进：村外草原击败魔化兔 → completable（复用封板状态机）
       if (enemyId === 'corrupted_rabbit' && location.id === 'village_grassland') {
         const next = applyQuestTransition(s.gameState, 'quest_village_monsters', 'completable')
@@ -612,6 +638,21 @@ export const useGameStore = create<GameStoreState>()((set) => ({
             const nextQuests = [...s.gameState.quests]
             nextQuests[questIndex] = { ...quest, flags: { ...quest.flags, floor2_skeleton_warrior_defeated: true } }
             return { gameState: { ...s.gameState, quests: nextQuests } }
+          }
+        }
+      }
+      // 黑石塔三层骷髅女妖（TM-P1-029）：合法首次胜利原子完成——只写 quest.flags.floor3_skeleton_witch_defeated=true + 获得夔峒项链 ×1（只允许一条 entry 不重复堆叠）；status/stage 保持 in_progress/stage 0 不设 completable；无金币/XP/等级/装备/治疗/关系/npcState/其他 world flag/战后奖励；不自动保存
+      if (enemyId === 'skeleton_witch' && location.id === 'black_stone_tower_floor3') {
+        const questIndex = s.gameState.quests.findIndex((q) => q.questId === 'quest_wangcai_trouble')
+        if (questIndex >= 0) {
+          const quest = s.gameState.quests[questIndex]
+          if (quest) {
+            const nextQuests = [...s.gameState.quests]
+            nextQuests[questIndex] = { ...quest, flags: { ...quest.flags, floor3_skeleton_witch_defeated: true } }
+            // 背包只允许一条 kuidong_necklace entry；已有则不重复堆叠
+            const hasNecklace = s.gameState.inventory.some((i) => i.itemId === 'kuidong_necklace')
+            const nextInventory = hasNecklace ? s.gameState.inventory : [...s.gameState.inventory, { itemId: 'kuidong_necklace', quantity: 1 }]
+            return { gameState: { ...s.gameState, quests: nextQuests, inventory: nextInventory } }
           }
         }
       }
@@ -1343,6 +1384,38 @@ export const useGameStore = create<GameStoreState>()((set) => ({
         gameState: {
           ...s.gameState,
           world: { ...s.gameState.world, flags: { ...s.gameState.world.flags, black_stone_tower_floor2_unlocked: true } },
+        },
+      }
+    })
+    return changed
+  },
+  unlockBlackStoneTowerFloor3: () => {
+    let changed = false
+    set((s) => {
+      if (!s.gameState) return {}
+      // TM-P1-029：必须在二层（从二层「继续向上」）
+      if (s.gameState.world.currentLocationId !== 'black_stone_tower_floor2') return {}
+      const quest = s.gameState.quests.find((q) => q.questId === 'quest_wangcai_trouble')
+      if (!quest || quest.status !== 'in_progress' || quest.stage !== 0) return {}
+      // 全部前序严格 true：briefed / unlocked / floor2_unlocked / 一层两敌 / 二层三敌
+      if (quest.flags.wangcai_briefed !== true) return {}
+      if (s.gameState.world.flags.black_stone_tower_unlocked !== true) return {}
+      if (s.gameState.world.flags.black_stone_tower_floor2_unlocked !== true) return {}
+      if (quest.flags.floor1_soldier_defeated !== true) return {}
+      if (quest.flags.floor1_captain_defeated !== true) return {}
+      if (quest.flags.floor2_zombie_defeated !== true) return {}
+      if (quest.flags.floor2_black_mage_defeated !== true) return {}
+      if (quest.flags.floor2_skeleton_warrior_defeated !== true) return {}
+      // 目标 flag 只允许 undefined/false；非 boolean（"yes"/1/0.5）整次拒绝且完全不变（不修复）；已 true 重复调用拒绝
+      const target = s.gameState.world.flags.black_stone_tower_floor3_unlocked
+      if (typeof target !== 'undefined' && typeof target !== 'boolean') return {}
+      if (target === true) return {}
+      changed = true
+      // 成功只写 world.flags.black_stone_tower_floor3_unlocked=true（不建 DungeonEngine/楼层系统；player/inventory/equipment/quests/其他 world.flags/npcStates/completedEvents 全不变；不自动保存）
+      return {
+        gameState: {
+          ...s.gameState,
+          world: { ...s.gameState.world, flags: { ...s.gameState.world.flags, black_stone_tower_floor3_unlocked: true } },
         },
       }
     })

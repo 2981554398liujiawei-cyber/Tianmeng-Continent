@@ -3584,11 +3584,14 @@ try {
   check('P1-028-D: 小厅中的骷髅战士已经倒下', body.includes('小厅中的骷髅战士已经倒下。'))
   check('P1-028-D: 仍未发现夔峒项链', body.includes('你仔细搜索了周围，依然没有发现王财遗失的夔峒项链。'))
   check('P1-028-D: 石阶通往黑石塔更高处', body.includes('小厅后方，一道向上的石阶通往黑石塔更高处。'))
-  check('P1-028-D: 黑石塔三层：【待开放】', body.includes('黑石塔三层：【待开放】'))
+  // P1-029 到期调整：三层【待开放】改为「继续向上」入口（仅调用 Store 解锁三层）
+  check('P1-028-D: 无黑石塔三层：【待开放】', !body.includes('黑石塔三层：【待开放】'))
+  check('P1-028-D: 继续向上入口存在', body.includes('继续向上'))
   // E. 任务日志最终态 + 不可提交
   check('P1-028-E: 商人王财的麻烦进行中', body.includes('商人王财的麻烦') && body.includes('进行中'))
   check('P1-028-E: 黑石塔二层深处：骷髅战士已击败，仍未发现夔峒项链', body.includes('黑石塔二层深处：骷髅战士已击败，仍未发现夔峒项链。'))
-  check('P1-028-E: 当前目标：继续调查黑石塔更高处', body.includes('当前目标：继续调查黑石塔更高处。'))
+  // P1-029 到期调整：当前目标改为击败骷髅女妖
+  check('P1-028-E: 当前目标：击败骷髅女妖', body.includes('当前目标：击败骷髅女妖。'))
   check('P1-028-E: 无可完成/提交任务', !body.includes('提交任务') && !body.includes('可完成'))
   // F. 无奖励精确比较（Lv/maxHP/maxMP/gold/背包/rabbit_path 全不变）
   const warriorAfterLevel = body.match(/Lv\.(\d+)/)
@@ -3614,9 +3617,114 @@ try {
   await sleep(300)
   body = await bodyText()
   check('P1-028-H: 读档后当前位置 floor2', body.includes('当前位置') && body.includes('black_stone_tower_floor2'))
-  check('P1-028-H: 日志最终态保持', body.includes('黑石塔二层深处：骷髅战士已击败，仍未发现夔峒项链。') && body.includes('当前目标：继续调查黑石塔更高处。') && body.includes('黑石塔三层：【待开放】'))
+  check('P1-028-H: 日志最终态保持', body.includes('黑石塔二层深处：骷髅战士已击败，仍未发现夔峒项链。') && body.includes('当前目标：击败骷髅女妖。') && !body.includes('黑石塔三层：【待开放】'))
   check('P1-028-H: 无附近威胁/迎战', !body.includes('附近威胁') && !body.includes('迎战'))
   check('P1-028-H: 黄金兔子主线仍进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
+  await clickByText('返回主菜单')
+
+  // ================= TM-P1-029：黑石塔三层骷髅女妖与夔峒项链 =================
+  // 起点：P1-028-H 保存的档（二层、warrior 已击败、三层未解锁、HP 满；主菜单）
+  // A. Continue → 二层 + 继续向上入口
+  await clickByText('继续游戏')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-029-A: 当前位置 floor2', body.includes('当前位置') && body.includes('black_stone_tower_floor2'))
+  check('P1-029-A: 骷髅战士已消失', !body.includes('骷髅战士 · Lv.5'))
+  check('P1-029-A: 继续向上入口存在', body.includes('继续向上'))
+  check('P1-029-A: 无附近威胁/迎战', !body.includes('附近威胁') && !body.includes('迎战'))
+  // B. 继续向上 → 解锁三层
+  await clickByText('继续向上')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-029-B: 解锁后继续向上入口消失', !body.includes('继续向上'))
+  const floor2Travel3 = await page.evaluate(() => {
+    const label = [...document.querySelectorAll('p')].find((el) => el.textContent.trim() === '可前往：')
+    if (!label) return []
+    const container = label.parentElement
+    if (!container) return []
+    return [...container.querySelectorAll('button')].map((b) => ({ text: b.textContent.trim(), disabled: b.disabled }))
+  })
+  check('P1-029-B: 二层移动按钮含黑石塔三层（enabled）', floor2Travel3.some((b) => b.text === '黑石塔三层' && !b.disabled))
+  // C. 前往三层 → 骷髅女妖 Lv.5
+  await clickByText('黑石塔三层')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-029-C: 当前位置 floor3', body.includes('当前位置') && body.includes('black_stone_tower_floor3'))
+  check('P1-029-C: 地点黑石塔三层', body.includes('黑石塔三层'))
+  check('P1-029-C: 三层描述', body.includes('越过石阶后，塔内变得更加阴冷'))
+  check('P1-029-C: 只看到骷髅女妖 Lv.5 迎战', body.includes('骷髅女妖 · Lv.5') && body.includes('迎战'))
+  // D. 记录战前状态（HP/MP 允许战斗变化）
+  const witchBeforeLevel = body.match(/Lv\.(\d+)/)
+  const witchBeforeHp = body.match(/生命\s*(\d+)\s*\/\s*(\d+)/)
+  const witchBeforeMp = body.match(/灵力\s*(\d+)\s*\/\s*(\d+)/)
+  const witchBeforeGold = body.match(/金币\s*(\d+)/)
+  const witchBeforeMapCount = body.match(/兔子的路径 ×(\d+)/)
+  // E. 挑战骷髅女妖（Math.random 隔离 0.99）→ 确定性胜利
+  await clickByText('迎战')
+  await sleep(300)
+  await page.evaluate(() => {
+    window.__origRandom = Math.random.bind(Math)
+    Math.random = () => 0.99
+  })
+  for (let i = 0; i < 24; i += 1) {
+    const combatBody = await page.evaluate(() => document.body.innerText)
+    if (combatBody.includes('返回冒险')) break
+    if (combatBody.includes('普通攻击')) {
+      await page.evaluate(() => [...document.querySelectorAll('button')].find((b) => b.textContent.includes('普通攻击'))?.click())
+      await sleep(300)
+    } else {
+      break
+    }
+  }
+  await page.evaluate(() => {
+    Math.random = window.__origRandom
+  })
+  await clickByText('返回冒险')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-029-E: 骷髅女妖战斗胜利返回冒险', body.includes('当前位置'))
+  // F. 女妖消失 + 无附近威胁 + 三层剧情
+  check('P1-029-F: 骷髅女妖消失', !body.includes('骷髅女妖 · Lv.5'))
+  check('P1-029-F: 无附近威胁/迎战', !body.includes('附近威胁') && !body.includes('迎战'))
+  check('P1-029-F: 骷髅女妖倒在破碎的石柱之间', body.includes('骷髅女妖倒在破碎的石柱之间。'))
+  check('P1-029-F: 灰尘覆盖的项链', body.includes('你在厅堂深处搜索时，发现了一条被灰尘覆盖的项链。'))
+  check('P1-029-F: 正是王财所说的夔峒项链', body.includes('这正是王财所说的夔峒项链。'))
+  check('P1-029-F: 夔峒项链 ×1 已获得', body.includes('夔峒项链 ×1 已获得。'))
+  check('P1-029-F: 当前目标：返回天龙城，将夔峒项链交还王财', body.includes('当前目标：返回天龙城，将夔峒项链交还王财。'))
+  // G. 任务日志最终态 + 不可提交
+  check('P1-029-G: 商人王财的麻烦进行中', body.includes('商人王财的麻烦') && body.includes('进行中'))
+  check('P1-029-G: 黑石塔三层：骷髅女妖已击败', body.includes('黑石塔三层：骷髅女妖已击败。'))
+  check('P1-029-G: 黑石塔三层：已找到夔峒项链', body.includes('黑石塔三层：已找到夔峒项链。'))
+  check('P1-029-G: 当前目标：返回天龙城，将夔峒项链交还王财', body.includes('当前目标：返回天龙城，将夔峒项链交还王财。'))
+  check('P1-029-G: 无可完成/提交任务', !body.includes('提交任务') && !body.includes('可完成'))
+  // H. 无奖励精确比较 + 项链 ×1 + 黄金主线不变
+  const witchAfterLevel = body.match(/Lv\.(\d+)/)
+  const witchAfterHp = body.match(/生命\s*(\d+)\s*\/\s*(\d+)/)
+  const witchAfterMp = body.match(/灵力\s*(\d+)\s*\/\s*(\d+)/)
+  const witchAfterGold = body.match(/金币\s*(\d+)/)
+  const witchAfterMapCount = body.match(/兔子的路径 ×(\d+)/)
+  check(
+    'P1-029-H: 战前后 Lv/maxHP/maxMP/gold/rabbit_path 精确全不变',
+    witchBeforeLevel !== null && witchAfterLevel !== null && witchBeforeLevel[1] === witchAfterLevel[1] &&
+      witchBeforeHp !== null && witchAfterHp !== null && witchBeforeHp[2] === witchAfterHp[2] &&
+      witchBeforeMp !== null && witchAfterMp !== null && witchBeforeMp[2] === witchAfterMp[2] &&
+      witchBeforeGold !== null && witchAfterGold !== null && witchBeforeGold[1] === witchAfterGold[1] &&
+      witchBeforeMapCount !== null && witchAfterMapCount !== null && witchBeforeMapCount[1] === witchAfterMapCount[1],
+  )
+  const witchNecklaceCount = (body.match(/夔峒项链 ×(\d+)/) || [])[1]
+  check('P1-029-H: 夔峒项链 ×1', witchNecklaceCount === '1')
+  check('P1-029-H: 黄金兔子主线仍进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
+  // I. Save/Continue 状态保持
+  await clickByText('保存游戏')
+  await clickByText('返回主菜单')
+  await clickByText('继续游戏')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-029-I: 读档后当前位置 floor3', body.includes('当前位置') && body.includes('black_stone_tower_floor3'))
+  check('P1-029-I: 日志最终态保持', body.includes('黑石塔三层：骷髅女妖已击败。') && body.includes('黑石塔三层：已找到夔峒项链。') && body.includes('当前目标：返回天龙城，将夔峒项链交还王财。'))
+  check('P1-029-I: 夔峒项链 ×1 保持', body.includes('夔峒项链 ×1'))
+  check('P1-029-I: 无附近威胁/迎战', !body.includes('附近威胁') && !body.includes('迎战'))
+  check('P1-029-I: 黄金兔子主线仍进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
   await clickByText('返回主菜单')
 
   // TM-P1-015：战斗中使用治疗药水（独立最小段：默认骑士 + 村外草原魔化兔；魔化兔零修改 HP8/DEF11/atk+2/dmg2）

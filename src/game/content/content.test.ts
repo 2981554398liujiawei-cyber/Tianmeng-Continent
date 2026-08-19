@@ -47,8 +47,8 @@ describe('TM-P0-002：内容注册表交叉引用一致性', () => {
 })
 
 describe('TM-P0-002：内容数量与指定条目', () => {
-  it('地点 8 个：青石村/村外草原/废弃矿洞/兔王巢穴/天龙城/武馆/黑石塔一层/黑石塔二层', () => {
-    expect(Object.keys(LOCATIONS)).toHaveLength(8)
+  it('地点 9 个：青石村/村外草原/废弃矿洞/兔王巢穴/天龙城/武馆/黑石塔一层/黑石塔二层/黑石塔三层', () => {
+    expect(Object.keys(LOCATIONS)).toHaveLength(9)
     expect(getLocation('qingshi_village')?.name).toBe('青石村')
     expect(getLocation('village_grassland')?.name).toBe('村外草原')
     expect(getLocation('abandoned_mine')?.name).toBe('废弃矿洞')
@@ -57,6 +57,7 @@ describe('TM-P0-002：内容数量与指定条目', () => {
     expect(getLocation('tianlong_martial_hall')?.name).toBe('武馆')
     expect(getLocation('black_stone_tower_floor1')?.name).toBe('黑石塔一层')
     expect(getLocation('black_stone_tower_floor2')?.name).toBe('黑石塔二层')
+    expect(getLocation('black_stone_tower_floor3')?.name).toBe('黑石塔三层')
   })
 
   // TM-P1-023：天龙城落点锁定——本卡只做区域切换与落点；TM-P1-024 起 connections=['tianlong_martial_hall']（双向武馆）、enemyIds=[]（无假内容）
@@ -99,7 +100,7 @@ describe('TM-P0-002：内容数量与指定条目', () => {
     expect(getLocation('black_stone_tower_outskirts')).toBeUndefined()
   })
 
-  // TM-P1-027：黑石塔二层（入口固定顺序战斗：僵尸→黑法师；二层深处与三层本卡不开放；未解锁时按钮 disabled 复用 requiredFlag）
+  // TM-P1-027/P1-029：黑石塔二层（入口固定顺序战斗：僵尸→黑法师→骷髅战士；连接一层与三层）
   it('TM-P1-027：黑石塔二层注册表定义锁定（id/name/description/requiredFlag/connections/enemyIds）', () => {
     const floor2 = getLocation('black_stone_tower_floor2')
     expect(floor2).toBeDefined()
@@ -107,11 +108,22 @@ describe('TM-P0-002：内容数量与指定条目', () => {
     expect(floor2?.name).toBe('黑石塔二层')
     expect(floor2?.description).toContain('曲折的黑石通道向深处延伸')
     expect(floor2?.requiredFlag).toBe('black_stone_tower_floor2_unlocked')
-    expect(floor2?.connections).toEqual(['black_stone_tower_floor1'])
+    // TM-P1-029：二层连接一层与三层
+    expect(floor2?.connections).toEqual(['black_stone_tower_floor1', 'black_stone_tower_floor3'])
     // TM-P1-028：二层严格固定顺序三敌（僵尸→黑法师→骷髅战士）
     expect(floor2?.enemyIds).toEqual(['tower_zombie', 'black_mage', 'skeleton_warrior'])
-    // 二层连接一层；本卡不建三层
-    expect(getLocation('black_stone_tower_floor3')).toBeUndefined()
+  })
+
+  // TM-P1-029：黑石塔三层（越过石阶后的厅堂；守卫骷髅女妖；击败后找到夔峒项链）
+  it('TM-P1-029：黑石塔三层注册表定义锁定（id/name/description/requiredFlag/connections/enemyIds）', () => {
+    const floor3 = getLocation('black_stone_tower_floor3')
+    expect(floor3).toBeDefined()
+    expect(floor3?.id).toBe('black_stone_tower_floor3')
+    expect(floor3?.name).toBe('黑石塔三层')
+    expect(floor3?.description).toContain('越过石阶后，塔内变得更加阴冷')
+    expect(floor3?.requiredFlag).toBe('black_stone_tower_floor3_unlocked')
+    expect(floor3?.connections).toEqual(['black_stone_tower_floor2'])
+    expect(floor3?.enemyIds).toEqual(['skeleton_witch'])
   })
 
   it('连接关系符合设定', () => {
@@ -133,8 +145,8 @@ describe('TM-P0-002：内容数量与指定条目', () => {
     expect(getNpc('merchant_wangcai')?.locationId).toBe('tianlong_city')
   })
 
-  it('敌人 9 个且等级符合设定', () => {
-    expect(Object.keys(ENEMIES)).toHaveLength(9)
+  it('敌人 10 个且等级符合设定', () => {
+    expect(Object.keys(ENEMIES)).toHaveLength(10)
     expect(getEnemy('corrupted_rabbit')?.level).toBe(1)
     expect(getEnemy('corrupted_rat')?.level).toBe(1)
     expect(getEnemy('corrupted_wolf')?.level).toBe(2)
@@ -144,6 +156,7 @@ describe('TM-P0-002：内容数量与指定条目', () => {
     expect(getEnemy('tower_zombie')?.level).toBe(4)
     expect(getEnemy('black_mage')?.level).toBe(4)
     expect(getEnemy('skeleton_warrior')?.level).toBe(5)
+    expect(getEnemy('skeleton_witch')?.level).toBe(5)
   })
 
   // TM-P1-025：骷髅士兵完整锁定（普通战斗规则，无技能/状态/抗性/掉落）
@@ -217,6 +230,21 @@ describe('TM-P0-002：内容数量与指定条目', () => {
     expect(warrior?.defense).toBe(13)
     expect(warrior?.attackBonus).toBe(4)
     expect(warrior?.damage).toBe(4)
+  })
+
+  // TM-P1-029：骷髅女妖完整锁定（三层守卫——普通 D20 战斗；不因「女妖」增加法术系统；无诅咒/恐惧/吸血/灵魂攻击/暗属性/召唤/特殊 AI）
+  it('TM-P1-029：骷髅女妖注册表定义锁定（id/name/level=5/tags/maxHp/defense/attackBonus/damage）', () => {
+    const witch = getEnemy('skeleton_witch')
+    expect(witch).toBeDefined()
+    expect(witch?.id).toBe('skeleton_witch')
+    expect(witch?.name).toBe('骷髅女妖')
+    expect(witch?.level).toBe(5)
+    expect(witch?.description).toContain('骷髅女妖')
+    expect(witch?.tags).toEqual(['undead'])
+    expect(witch?.maxHp).toBe(18)
+    expect(witch?.defense).toBe(12)
+    expect(witch?.attackBonus).toBe(5)
+    expect(witch?.damage).toBe(5)
   })
 
   it('任务 quest_village_monsters 由村长发布', () => {
@@ -296,15 +324,26 @@ describe('TM-P0-002-R1：关键内容身份锁', () => {
     expect(desc).not.toContain('迁徙')
   })
 
-  it('注册表数量与 ID 未被改动（无新增黄金兔子王条目；TM-P1-005 新增《矿洞清理》、TM-P1-010 新增《草原狼影》、TM-P1-017 新增《追寻黄金兔子王》、TM-P1-021 新增《采药受阻》、TM-P1-022 新增《矿洞余患》、TM-P1-024 新增《商人王财的麻烦》与马科/王财、TM-P1-025 新增骷髅士兵、TM-P1-026 新增骷髅队长、TM-P1-027 新增僵尸/黑法师与黑石塔二层、TM-P1-028 新增骷髅战士）', () => {
-    expect(Object.keys(ENEMIES)).toHaveLength(9)
+  // TM-P1-029：夔峒项链完整锁定（任务物品——复用现有 ItemDefinition quest 类型，不新建任务物品系统；value 0）
+  it('TM-P1-029：夔峒项链注册表定义锁定（id/name/type=quest/description/value=0）', () => {
+    const necklace = getItem('kuidong_necklace')
+    expect(necklace).toBeDefined()
+    expect(necklace?.id).toBe('kuidong_necklace')
+    expect(necklace?.name).toBe('夔峒项链')
+    expect(necklace?.type).toBe('quest')
+    expect(necklace?.description).toContain('王财在黑石塔附近遭遇魔物袭击时遗失的项链')
+    expect(necklace?.value).toBe(0)
+  })
+
+  it('注册表数量与 ID 未被改动（无新增黄金兔子王条目；TM-P1-005 新增《矿洞清理》、TM-P1-010 新增《草原狼影》、TM-P1-017 新增《追寻黄金兔子王》、TM-P1-021 新增《采药受阻》、TM-P1-022 新增《矿洞余患》、TM-P1-024 新增《商人王财的麻烦》与马科/王财、TM-P1-025 新增骷髅士兵、TM-P1-026 新增骷髅队长、TM-P1-027 新增僵尸/黑法师与黑石塔二层、TM-P1-028 新增骷髅战士、TM-P1-029 新增骷髅女妖/黑石塔三层/夔峒项链）', () => {
+    expect(Object.keys(ENEMIES)).toHaveLength(10)
     expect(Object.keys(NPCS)).toHaveLength(5)
     expect(Object.keys(QUESTS)).toHaveLength(7)
-    expect(Object.keys(ITEMS)).toHaveLength(5)
+    expect(Object.keys(ITEMS)).toHaveLength(6)
     expect(getEnemy('golden_rabbit_king')).toBeUndefined()
-    // TM-P1-028：骷髅战士已注册（本卡新增）；仍无骷髅女妖/三层
+    // TM-P1-028/029：骷髅战士、骷髅女妖已注册（本卡新增）
     expect(getEnemy('skeleton_warrior')).toBeDefined()
-    expect(getEnemy('skeleton_witch')).toBeUndefined()
+    expect(getEnemy('skeleton_witch')).toBeDefined()
   })
 
   // TM-P1-024：第五正式主线 + 天龙城 NPC 注册表锁定（无 goldReward、本卡不完成任务；马科/王财无 relationship）
