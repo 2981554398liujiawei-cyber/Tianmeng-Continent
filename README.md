@@ -607,6 +607,7 @@ TM-P1-030（Phase 1 收口：交还夔峒项链 → 向马科复命 → 第五�
 - E2E 新增 P1-030 段（继续 P1-029-I 三层女妖已击败档）：A Continue → 三层+项链 ×1+女妖已击败剧情+无附近威胁/B 移动回天龙城（三层→二层→一层→天龙城）/C 找王财+交还项链按钮存在/D 交还项链→王财剧情五句+按钮消失+背包无项链/E 日志夔峒项链已交还王财+当前目标返回武馆向马科复命/F 去武馆找马科/G 提交任务→马科剧情+第一阶段完成+当前可玩主线内容已完成+黄金兔子后续阶段继续+王财任务已完成/H 黄金兔子仍进行中+兔子的路径 ×1+背包无项链+无交还按钮残留+无提交按钮残留/I Save→主菜单→Continue 后第一阶段完成保持+王财已完成+黄金兔子仍进行中+兔子的路径 ×1+背包无项链
 - E2E 新增 qa/phase1-playthrough.mjs（Phase 1 收口真实玩家路线回归）：从空存档开始，仅走正式 UI/Store 入口（不注入 localStorage 任务状态；可控制随机数/用药水/武馆休整），完整跑通 创建角色→第一主线→矿洞→草原狼→嘟嘟兔/兔子的路径→黄金兔子调查→两条支线→离开青石村→天龙城→马科→王财→黑石塔一二三层→骷髅女妖→项链→返回天龙城→交还王财→返回武馆→向马科复命→第一阶段完成；最终断言 quest_wangcai_trouble=completed、项链不在背包、黄金兔子仍 in_progress/stage 0、rabbit_path ×1、可保存、Save/Continue 后保持、无 dead button、无重复领取/交还
 - 顺手修正 P1-029-R1 隔离：injectFloor3Entry 每条负路径先从 floor3UnlockLegalSave 恢复再注入单一异常（不让 stage=1 残留到下一条 briefed=false），不改业务逻辑
+- TM-P1-030-R1（对齐王财交还项链 UI guard，修复审计发现的 UI/Store 不一致 dead button——GamePage 原 hasKuidongNecklace 只用 some(itemId==='kuidong_necklace') 布尔判断，quantity=2 或两条 entry 的异常存档下交还按钮仍显示但 Store 拒绝）：GamePage 改为 kuidongNecklaceEntries = inventory.filter(itemId==='kuidong_necklace') + hasValidKuidongNecklace = length===1 && [0]?.quantity===1，canReturnNecklaceToWangcai 使用 hasValidKuidongNecklace（其余 guard 不动）；不动 Store（Store 正确）；E2E 补两条独立负路径（P1-030-R1：quantity=2→不显示交还按钮、两条 entry×1→不显示、恢复合法（唯一 entry quantity=1）→按钮重现；每条从合法基线独立恢复再注入单一异常；断言用精确 button 元素匹配而非 body 文本，避免误匹配日志「将夔峒项链交还王财」文案）；phase1-playthrough.mjs 不受影响
 
 ## 目录结构
 

@@ -185,7 +185,9 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
   /** TM-P1-030：将夔峒项链交还王财 窄守卫——与 Store returnKuidongNecklaceToWangcai 前置完全一致（天龙城 + 任务 in_progress/stage 0 + briefed + 一二三层全解锁 + 一层两敌/二层三敌/三层女妖全击败 + 背包唯一持有项链 + flag 非 true/非 malformed）；只读 */
   const kuidongNecklaceReturned = wangcaiQuest?.flags.kuidong_necklace_returned === true
   const kuidongNecklaceReturnPending = wangcaiQuest?.flags.kuidong_necklace_returned === undefined || wangcaiQuest?.flags.kuidong_necklace_returned === false
-  const hasKuidongNecklace = gameState.inventory.some((i) => i.itemId === 'kuidong_necklace')
+  // TM-P1-030-R1：交还资格必须与 Store 一致——背包唯一一条项链且 quantity===1（quantity=2 或两条 entry 均非法，不显示交还按钮，避免 dead button）
+  const kuidongNecklaceEntries = gameState.inventory.filter((i) => i.itemId === 'kuidong_necklace')
+  const hasValidKuidongNecklace = kuidongNecklaceEntries.length === 1 && kuidongNecklaceEntries[0]?.quantity === 1
   const canReturnNecklaceToWangcai =
     world.currentLocationId === 'tianlong_city' &&
     wangcaiQuest?.status === 'in_progress' &&
@@ -200,7 +202,7 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
     floor2BlackMageDefeated === true &&
     floor2SkeletonWarriorDefeated === true &&
     floor3SkeletonWitchDefeated === true &&
-    hasKuidongNecklace &&
+    hasValidKuidongNecklace &&
     kuidongNecklaceReturnPending
   // TM-P0-006：附近委托 = 给予者位于当前地点的注册任务（不写死地点 ID）
   const localQuests = Object.values(QUESTS).filter((quest) => {

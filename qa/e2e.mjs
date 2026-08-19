@@ -3800,6 +3800,38 @@ try {
   await sleep(300)
   body = await bodyText()
   check('P1-030-C: 交还项链按钮存在', (await buttonDisabled('将夔峒项链交还王财')) === false)
+  // P1-030-R1：交还按钮负路径——quantity=2 / 两条 entry 均不显示（与 Store 一致，避免 dead button）；每条从合法基线（唯一 entry、quantity=1、位置天龙城）独立恢复再注入单一异常
+  const necklaceLegalSave = await page.evaluate(() => localStorage.getItem('tianmeng_continent_save'))
+  const injectNecklaceSave = async (mutateBody) => {
+    await page.evaluate((saveStr, body) => {
+      localStorage.setItem('tianmeng_continent_save', saveStr)
+      const raw = localStorage.getItem('tianmeng_continent_save')
+      const save = JSON.parse(raw)
+      save.gameState.world.currentLocationId = 'tianlong_city'
+      // eslint-disable-next-line no-new-func
+      const fn = new Function('gs', body)
+      fn(save.gameState)
+      localStorage.setItem('tianmeng_continent_save', JSON.stringify(save))
+    }, necklaceLegalSave, mutateBody)
+    await page.reload()
+    await sleep(600)
+    await clickByText('继续游戏')
+    await sleep(300)
+    await clickByText('交谈')
+    await sleep(300)
+    return await bodyText()
+  }
+  const wangcaiReturnBtnExists = () =>
+    page.evaluate(() => [...document.querySelectorAll('button')].some((b) => b.textContent.trim() === '将夔峒项链交还王财'))
+  // ① quantity=2 → 不显示
+  let nb = await injectNecklaceSave("const n = gs.inventory.find((i) => i.itemId === 'kuidong_necklace'); if (n) n.quantity = 2")
+  check('P1-030-R1: quantity=2 不显示交还按钮', (await wangcaiReturnBtnExists()) === false)
+  // ② 两条 entry ×1 → 不显示
+  nb = await injectNecklaceSave("gs.inventory.push({ itemId: 'kuidong_necklace', quantity: 1 })")
+  check('P1-030-R1: 两条 entry 不显示交还按钮', (await wangcaiReturnBtnExists()) === false)
+  // ③ 恢复合法（injectNecklaceSave('') 空注入，设位置天龙城、quantity 保持 1）→ 交还按钮重现
+  body = await injectNecklaceSave('')
+  check('P1-030-R1: 恢复合法后交还按钮重现', (await buttonDisabled('将夔峒项链交还王财')) === false)
   // D. 交还项链
   await clickByText('将夔峒项链交还王财')
   await sleep(300)
