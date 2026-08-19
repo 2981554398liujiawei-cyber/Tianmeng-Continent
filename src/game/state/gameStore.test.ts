@@ -6243,7 +6243,7 @@ describe('TM-P1-027：黑石塔二层——武馆休整、僵尸与黑法师', (
     expect(wangcaiQuest()?.flags.floor3_skeleton_witch_defeated).toBe(true)
     const necklaces = useGameStore.getState().gameState!.inventory.filter((i) => i.itemId === 'kuidong_necklace')
     expect(necklaces).toHaveLength(1)
-    expect(necklaces[0].quantity).toBe(1)
+    expect(necklaces[0]?.quantity).toBe(1)
   })
 
   it('V3. 骷髅女妖胜利后任务保持 in_progress/stage 0（不设 completable）', () => {
