@@ -27,6 +27,7 @@ import {
 import type { InitiativeWinner } from '../game/rules/combat'
 import { formatLuckCheckLog } from '../game/rules/luck'
 import { getSkill } from '../game/content/skills'
+import { resolveEnemyCounterWithSupport } from '../game/rules/combatSupport'
 import type { LootGrant } from '../game/types/loot'
 import { RARITY_LABELS } from '../game/types/loot'
 import { SAKURA_SEALED_SKILLS } from '../game/content/companions'
@@ -170,18 +171,17 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
     .reduce((total, entry) => total + entry.quantity, 0)
 
   /** TM-P2-002：敌人反击（V3：敏捷命中 + 护甲减伤）——玩家/伙伴行动共用。
-   *  TM-P2-004 第 48 节：樱花魔法盾在 V3 最终伤害后额外减伤（最低 0）；命中才消耗盾（miss 保留）。 */
-  const applyEnemyCounter = () => {
+   *  TM-P2-004 第 48 节 + R1 A：樱花魔法盾在 V3 最终伤害后额外减伤（最低 0）；命中才消耗盾（miss 保留）。
+   *  R1 A：盾减伤走显式上下文参数（incomingDamageReduction）或当前 shieldRemaining，
+   *  绝不在同一 call stack 里依赖 setShieldRemaining 之后的闭包值（stale state 修复）。 */
+  const applyEnemyCounter = (opts?: { incomingDamageReduction?: number }) => {
     const rawResult = performAttack(enemy.agility, playerAgility, enemy.attackPower, playerArmor)
-    let result = rawResult
-    if (rawResult.hit && shieldRemaining > 0) {
-      const absorbed = Math.min(shieldRemaining, rawResult.damage)
-      result = { ...rawResult, damage: Math.max(0, rawResult.damage - absorbed) }
-      setShieldAbsorbedLast(absorbed)
-      setShieldRemaining(0)
-    } else {
-      setShieldAbsorbedLast(null)
-    }
+    // 施盾同回合：显式传入本次盾量（不依赖刚 set 的 state）；跨回合：读当前 shieldRemaining（miss 保留）
+    const activeShield = opts?.incomingDamageReduction ?? shieldRemaining
+    const { result, absorbed, shieldConsumed } = resolveEnemyCounterWithSupport(rawResult, activeShield)
+    setShieldAbsorbedLast(absorbed)
+    // 仅真实命中消耗盾；miss 保留到下一次真实命中的敌人反击
+    if (shieldConsumed) setShieldRemaining(0)
     setLastEnemyAttack(result)
     if (result.hit && result.damage > 0) {
       damagePlayer(result.damage)
@@ -288,9 +288,10 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
       setAwaitingCompanionAction(false)
       if (support.type === 'reduce_next_enemy_damage') {
         // 樱花魔法盾：下一次敌人反击最终伤害 -amount（最低 0）
+        // R1 A：盾量以显式上下文传给本次反击（不依赖刚 setShieldRemaining 的闭包旧值）
         setShieldRemaining(support.amount)
         setLastCompanionAction('shield')
-        applyEnemyCounter()
+        applyEnemyCounter({ incomingDamageReduction: support.amount })
       } else if (support.type === 'cancel_next_enemy_counter') {
         // 樱花轻舞：本轮敌人不反击
         setCompanionCanceledCounter(true)

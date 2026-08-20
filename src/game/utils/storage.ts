@@ -4,6 +4,8 @@ import { defaultSkillsForProfession } from '../content/skills'
 import { QUEST_STATUSES } from '../types/quest'
 import type { CompanionState, PartyState } from '../types/companion'
 import type { RelationshipState, RelationshipStage } from '../types/relationship'
+// TM-P2-004-R1 C：Party 上限单一来源（rules/companion 纯规则，无循环依赖）
+import { MAX_ACTIVE_COMPANIONS } from '../rules/companion'
 
 /** 旧 V1 单槽存档 key（TM-P2-002 H：迁移源；迁移成功前不删除） */
 export const LEGACY_SAVE_KEY = 'tianmeng_continent_save'
@@ -229,14 +231,21 @@ function isRelationships(value: unknown): boolean {
   return Object.values(value).every(isRelationshipState)
 }
 
+/** V4 Party 结构判定（TM-P2-004-R1 C strictness）：activeCompanionIds 全 string + 无重复 + 不超过 MAX_ACTIVE_COMPANIONS */
 function isParty(value: unknown): value is PartyState {
   if (!isRecord(value)) return false
   const active = value.activeCompanionIds
   if (!Array.isArray(active) || !active.every((id) => typeof id === 'string')) return false
+  // 去重（["sakura_yuko","sakura_yuko"] 拒绝）
+  if (new Set(active).size !== active.length) return false
+  // 上限（active 数量 > MAX_ACTIVE_COMPANIONS 拒绝）
+  if (active.length > MAX_ACTIVE_COMPANIONS) return false
   return true
 }
 
-/** V4 交叉引用校验（TM-P2-004 第 99/100 节）：activeCompanionIds 每个 ID 必须存在于 companions 且 status ∈ {guest, recruited} */
+/** V4 交叉引用校验（TM-P2-004 第 99/100 节 + R1 C strictness）：
+ *  - activeCompanionIds 每个 ID 必须存在于 companions 且 status ∈ {guest, recruited}（met 拒绝）
+ *  - companions Record key 必须与 companion.companionId 一致（推荐项，防键名漂移） */
 function isPartyCrossReferenceValid(
   party: PartyState,
   companions: Record<string, CompanionState>,
@@ -245,6 +254,17 @@ function isPartyCrossReferenceValid(
     const companion = companions[id]
     if (!companion) return false
     if (companion.status !== 'guest' && companion.status !== 'recruited') return false
+  }
+  for (const [key, companion] of Object.entries(companions)) {
+    if (companion.companionId !== key) return false
+  }
+  return true
+}
+
+/** V4 关系 key 一致性（TM-P2-004-R1 C 推荐项）：relationships Record key 必须与 relationship.npcId 一致 */
+function isRelationshipKeyConsistent(relationships: Record<string, RelationshipState>): boolean {
+  for (const [key, rel] of Object.entries(relationships)) {
+    if (rel.npcId !== key) return false
   }
   return true
 }
@@ -275,6 +295,7 @@ export function isCurrentGameState(value: unknown): value is GameState {
   if (!isCompanions(gs.companions) || !isRelationships(gs.relationships) || !isParty(gs.party)) return false
   if (!isNonNegativeInteger(gs.world.restCount)) return false
   if (!isPartyCrossReferenceValid(gs.party, gs.companions)) return false
+  if (!isRelationshipKeyConsistent(gs.relationships)) return false
   return true
 }
 
@@ -458,10 +479,10 @@ function restoreSnapshot(snap: { slotRaws: Record<SlotId, string | null>; indexR
 export function saveSlot(slotId: SlotId, gameState: GameState): boolean {
   const storage = getStorage()
   if (!storage) return false
-  // TM-P2-003-R2 D：新保存只允许当前 v3 格式（learnedSkillIds 必须存在）——
-  // 防止写出 version 3 但自身校验无法读取的槽（宽松 isGameState 只用于旧档/迁移源）
+  // TM-P2-003-R2 D + TM-P2-004-R1 F：新保存只允许当前 v4 格式（完整 V4 字段 + Party/关系 key 交叉引用）——
+  // 防止写出 version 4 但自身校验无法读取的槽（宽松 isGameState 只用于旧档/迁移源）
   if (!isCurrentGameState(gameState)) {
-    console.error('[存档] 拒绝写入非当前格式 GameState（v3 需携带 learnedSkillIds）')
+    console.error('[存档] 拒绝写入非当前格式 GameState（v4 需携带完整 V4 字段与合法 Party/关系交叉引用）')
     return false
   }
   const slot: SaveSlot = { version: SLOT_FORMAT_VERSION, savedAt: new Date().toISOString(), gameState }
@@ -643,7 +664,7 @@ export function migrateLegacySave(): boolean {
  * 当前最小实现：
  *   Step 1: V1 单档 → Slot1（migrateLegacySave，安全分步提交）
  *   Step 2: 无 version 字段的旧 V2 槽位补齐 version 字段
- * 未来升级（V3+）在此链上追加即可，不破坏既有存档。
+ * 未来升级（V4+）在此链上追加即可，不破坏既有存档。
  */
 export function migrateSave(): boolean {
   let changed = false
@@ -769,7 +790,7 @@ export function importSaves(json: string): boolean {
         storage.removeItem(slotKey(slotId))
         continue
       }
-      // TM-P2-003-R1 D：旧导出（version undefined/2）导入时迁移到当前格式（补 learnedSkillIds + version 3）
+      // TM-P2-003-R1 D + TM-P2-004-R1 F：旧导出（version undefined/2/3）导入时迁移到当前格式（v4 字段 + version 4）
       const migrated = migrateSlotEntryToCurrent(entry)
       storage.setItem(slotKey(slotId), JSON.stringify(migrated))
     }

@@ -833,6 +833,102 @@ describe('TM-P2-004：v4 缺 V4 字段判 malformed（TM-P2-003-R1 D2 语义随�
   })
 })
 
+// ================= TM-P2-004-R1 C：Save V4 Party strictness =================
+
+describe('TM-P2-004-R1 C：V4 Party/关系 strictness（重复/上限/交叉引用/key 一致性）', () => {
+  /** 构造合法 V4 档（Sakura recruited + active；gold 50 验证保存穿透） */
+  function validV4State() {
+    const state = createInitialGameState()
+    state.companions = {
+      sakura_yuko: {
+        companionId: 'sakura_yuko',
+        status: 'recruited',
+        level: 3,
+        mp: 6,
+        maxMp: 6,
+        learnedSkillIds: ['sakura_petalslash', 'sakura_magic_shield', 'sakura_light_dance'],
+        flags: {},
+      },
+    }
+    state.relationships = {
+      sakura_yuko: {
+        npcId: 'sakura_yuko',
+        affection: 5,
+        trust: 5,
+        stage: 'acquaintance',
+        personalQuestStage: 1,
+        flags: {},
+      },
+    }
+    state.party = { activeCompanionIds: ['sakura_yuko'] }
+    return state
+  }
+
+  const slotOf = (gameState: unknown) => ({ version: 4, savedAt: '2026-01-01T08:00:00.000Z', gameState })
+
+  it('合法 V4（recruited + active + key 一致）→ isValidSaveSlot true 且 saveSlot 可写', () => {
+    expect(isValidSaveSlot(slotOf(validV4State()))).toBe(true)
+    expect(saveSlot('slot1', validV4State())).toBe(true)
+    expect(loadSlot('slot1')?.version).toBe(SLOT_FORMAT_VERSION)
+  })
+
+  it('activeCompanionIds 含重复 ID（["sakura_yuko","sakura_yuko"]）→ 拒绝', () => {
+    const state = validV4State()
+    state.party = { activeCompanionIds: ['sakura_yuko', 'sakura_yuko'] }
+    expect(isValidSaveSlot(slotOf(state))).toBe(false)
+    expect(saveSlot('slot1', state)).toBe(false)
+  })
+
+  it('activeCompanionIds.length > MAX_ACTIVE_COMPANIONS(3) → 拒绝', () => {
+    const state = validV4State()
+    const extra: Record<string, string> = {}
+    for (let i = 0; i < 4; i += 1) {
+      state.companions[`c${i}`] = {
+        companionId: `c${i}`,
+        status: 'recruited',
+        level: 1,
+        mp: 1,
+        maxMp: 1,
+        learnedSkillIds: [],
+        flags: {},
+      }
+      extra[`c${i}`] = `c${i}`
+    }
+    state.party = { activeCompanionIds: ['sakura_yuko', 'c0', 'c1', 'c2'] }
+    expect(isValidSaveSlot(slotOf(state))).toBe(false)
+    // 恰好 3 个 → 合法
+    state.party = { activeCompanionIds: ['sakura_yuko', 'c0', 'c1'] }
+    expect(isValidSaveSlot(slotOf(state))).toBe(true)
+  })
+
+  it('active ID 不存在于 companions → 拒绝', () => {
+    const state = validV4State()
+    state.party = { activeCompanionIds: ['ghost_companion'] }
+    expect(isValidSaveSlot(slotOf(state))).toBe(false)
+  })
+
+  it('active companion.status === met → 拒绝（未缔约不可同行）', () => {
+    const state = validV4State()
+    state.companions.sakura_yuko!.status = 'met'
+    expect(isValidSaveSlot(slotOf(state))).toBe(false)
+  })
+
+  it('companions Record key 与 companion.companionId 不一致 → 拒绝', () => {
+    const state = validV4State()
+    state.companions['wrong_key'] = state.companions.sakura_yuko!
+    delete state.companions.sakura_yuko
+    state.party = { activeCompanionIds: ['wrong_key'] }
+    expect(isValidSaveSlot(slotOf(state))).toBe(false)
+  })
+
+  it('relationships Record key 与 npcId 不一致 → 拒绝', () => {
+    const state = validV4State()
+    state.relationships['wrong_key'] = state.relationships.sakura_yuko!
+    delete state.relationships.sakura_yuko
+    expect(isValidSaveSlot(slotOf(state))).toBe(false)
+  })
+})
+
 // ================= TM-P2-003-R2 D：V1 真实迁移 / v3 strict saveSlot / V2 multi-slot 导入 =================
 
 describe('TM-P2-003-R2 D1：真正历史 V1 单档（无 learnedSkillIds）自动迁移', () => {
