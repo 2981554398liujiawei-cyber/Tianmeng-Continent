@@ -2,6 +2,8 @@ import type { GameState, Character, Inventory, Equipment, WorldState } from '../
 import { PROFESSION_IDS } from '../types/character'
 import { defaultSkillsForProfession } from '../content/skills'
 import { QUEST_STATUSES } from '../types/quest'
+import type { CompanionState, PartyState } from '../types/companion'
+import type { RelationshipState, RelationshipStage } from '../types/relationship'
 
 /** 旧 V1 单槽存档 key（TM-P2-002 H：迁移源；迁移成功前不删除） */
 export const LEGACY_SAVE_KEY = 'tianmeng_continent_save'
@@ -14,8 +16,9 @@ export const SAVE_VERSION = 2
 export const LEGACY_SAVE_VERSION = 1
 /** TM-P2-002-R1 G：槽位文件自身格式版本（SaveSlot.version）。
  *  3（TM-P2-003 A）：player 增加 learnedSkillIds（技能注册表）。
- *  兼容 514f3e2 无版本 V2 槽与 2.x 版本槽（迁移链补齐 version / learnedSkillIds）。 */
-export const SLOT_FORMAT_VERSION = 3
+ *  4（TM-P2-004）：GameState 增加 companions / relationships / party / world.restCount（Schema V4）。
+ *  兼容 514f3e2 无版本 V2 槽与 2.x/3 版本槽（迁移链补齐 version / learnedSkillIds / V4 字段）。 */
+export const SLOT_FORMAT_VERSION = 4
 
 export const SLOT_IDS = ['slot1', 'slot2', 'slot3', 'slot4', 'slot5'] as const
 export type SlotId = (typeof SLOT_IDS)[number]
@@ -176,10 +179,77 @@ function isWorld(value: unknown): value is WorldState {
   const events = value.completedEvents
   if (!Array.isArray(events) || !events.every((e) => typeof e === 'string')) return false
   if (!isNpcStates(value.npcStates)) return false
+  // V4：restCount 可选（旧档无此字段仍合法；迁移链负责补 0）
+  if (value.restCount !== undefined && !isNonNegativeInteger(value.restCount)) return false
   return true
 }
 
-/** 合法 GameState 判定（新旧存档共用；learnedSkillIds 可选——旧档/迁移源兼容） */
+// ---- TM-P2-004 Schema V4：伙伴/关系/队伍 校验 ----
+
+const COMPANION_STATUSES = ['met', 'guest', 'recruited'] as const
+const RELATIONSHIP_STAGES = ['stranger', 'acquaintance', 'trusted', 'close', 'romance', 'committed'] as const
+
+function isCompanionState(value: unknown): value is CompanionState {
+  if (!isRecord(value)) return false
+  if (typeof value.companionId !== 'string' || value.companionId === '') return false
+  if (typeof value.status !== 'string' || !(COMPANION_STATUSES as readonly string[]).includes(value.status)) {
+    return false
+  }
+  if (!isPositiveInteger(value.level)) return false
+  if (!isNonNegativeInteger(value.mp) || !isNonNegativeInteger(value.maxMp)) return false
+  if (value.mp > value.maxMp) return false
+  const skills = value.learnedSkillIds
+  if (!Array.isArray(skills) || !skills.every((id) => typeof id === 'string')) return false
+  const flags = value.flags
+  if (!isRecord(flags) || !Object.values(flags).every(isFlagValue)) return false
+  return true
+}
+
+function isCompanions(value: unknown): boolean {
+  if (!isRecord(value)) return false
+  return Object.values(value).every(isCompanionState)
+}
+
+function isRelationshipState(value: unknown): value is RelationshipState {
+  if (!isRecord(value)) return false
+  if (typeof value.npcId !== 'string' || value.npcId === '') return false
+  if (!isNonNegativeInteger(value.affection) || value.affection > 100) return false
+  if (!isNonNegativeInteger(value.trust) || value.trust > 100) return false
+  if (typeof value.stage !== 'string' || !(RELATIONSHIP_STAGES as readonly string[]).includes(value.stage)) {
+    return false
+  }
+  if (!isNonNegativeInteger(value.personalQuestStage)) return false
+  const flags = value.flags
+  if (!isRecord(flags) || !Object.values(flags).every(isFlagValue)) return false
+  return true
+}
+
+function isRelationships(value: unknown): boolean {
+  if (!isRecord(value)) return false
+  return Object.values(value).every(isRelationshipState)
+}
+
+function isParty(value: unknown): value is PartyState {
+  if (!isRecord(value)) return false
+  const active = value.activeCompanionIds
+  if (!Array.isArray(active) || !active.every((id) => typeof id === 'string')) return false
+  return true
+}
+
+/** V4 交叉引用校验（TM-P2-004 第 99/100 节）：activeCompanionIds 每个 ID 必须存在于 companions 且 status ∈ {guest, recruited} */
+function isPartyCrossReferenceValid(
+  party: PartyState,
+  companions: Record<string, CompanionState>,
+): boolean {
+  for (const id of party.activeCompanionIds) {
+    const companion = companions[id]
+    if (!companion) return false
+    if (companion.status !== 'guest' && companion.status !== 'recruited') return false
+  }
+  return true
+}
+
+/** 合法 GameState 判定（新旧存档共用；V4 字段可选——旧档/迁移源兼容） */
 export function isGameState(value: unknown): value is GameState {
   if (!isRecord(value)) return false
   return (
@@ -187,27 +257,36 @@ export function isGameState(value: unknown): value is GameState {
     isInventory(value.inventory) &&
     isEquipment(value.equipment) &&
     isQuests(value.quests) &&
-    isWorld(value.world)
+    isWorld(value.world) &&
+    (value.companions === undefined || isCompanions(value.companions)) &&
+    (value.relationships === undefined || isRelationships(value.relationships)) &&
+    (value.party === undefined || isParty(value.party))
   )
 }
 
-/** 当前 v3 格式 GameState 判定（TM-P2-003-R2 D：learnedSkillIds 必须为字符串数组；
- * 新保存只允许此校验通过——防止 saveSlot 写出自身无法读取的 v3） */
+/** 当前 v4 格式 GameState 判定（TM-P2-004 第 96 节：必须带完整 V4 字段 + 交叉引用合法；
+ * 新保存只允许此校验通过——防止 saveSlot 写出自身无法读取的 v4） */
 export function isCurrentGameState(value: unknown): value is GameState {
   if (!isGameState(value)) return false
-  const skills = (value as GameState).player.learnedSkillIds
-  return Array.isArray(skills) && skills.every((id) => typeof id === 'string')
+  const gs = value as GameState
+  const skills = gs.player.learnedSkillIds
+  if (!Array.isArray(skills) || !skills.every((id) => typeof id === 'string')) return false
+  if (gs.companions === undefined || gs.relationships === undefined || gs.party === undefined) return false
+  if (!isCompanions(gs.companions) || !isRelationships(gs.relationships) || !isParty(gs.party)) return false
+  if (!isNonNegativeInteger(gs.world.restCount)) return false
+  if (!isPartyCrossReferenceValid(gs.party, gs.companions)) return false
+  return true
 }
 
-/** 合法槽位存档判定（TM-P2-003-R1 D：版本感知——可迁移格式 version undefined(514f3e2)/2(9ddb5db)/3(当前) 均合法；
- * 其中 version 3 必须携带 learnedSkillIds，缺失判 malformed；旧版本允许缺失（迁移链补全）） */
+/** 合法槽位存档判定（TM-P2-003-R1 D：版本感知——可迁移格式 version undefined(514f3e2)/2(9ddb5db)/3(TM-P2-003)/4(当前) 均合法；
+ * 其中 version 4 必须携带完整 V4 字段（companions/relationships/party/restCount），缺失判 malformed；旧版本允许缺失（迁移链补全）） */
 export function isValidSaveSlot(raw: unknown): raw is SaveSlot {
   if (!isRecord(raw)) return false
   const v = raw.version
-  if (v !== undefined && v !== 2 && v !== SLOT_FORMAT_VERSION) return false
+  if (v !== undefined && v !== 2 && v !== 3 && v !== SLOT_FORMAT_VERSION) return false
   if (typeof raw.savedAt !== 'string') return false
   if (!isGameState(raw.gameState)) return false
-  // v3 严格：必须已带 learnedSkillIds（TM-P2-003-R1 D：v3 缺 learnedSkillIds 判 malformed）
+  // v4 严格：必须已带完整 V4 字段（TM-P2-004 第 96 节）
   if (v === SLOT_FORMAT_VERSION && !isCurrentGameState(raw.gameState)) {
     return false
   }
@@ -223,6 +302,24 @@ export function isValidLegacySave(raw: unknown): raw is LegacySaveFile {
 }
 
 // ---------- 槽位 key 与索引 ----------
+
+/** TM-P2-004 Schema V4 字段补全（幂等）：companions={} relationships={} party={activeCompanionIds:[]} world.restCount=0；
+ * 缺哪个补哪个，已存在的不动。返回新对象（不修改原对象）。 */
+export function withV4Fields(gs: GameState): GameState {
+  const companions = gs.companions ?? {}
+  const relationships = gs.relationships ?? {}
+  const party: PartyState = gs.party
+    ? { activeCompanionIds: Array.isArray(gs.party.activeCompanionIds) ? gs.party.activeCompanionIds : [] }
+    : { activeCompanionIds: [] }
+  const restCount = Number.isInteger(gs.world.restCount) && gs.world.restCount >= 0 ? gs.world.restCount : 0
+  return {
+    ...gs,
+    companions,
+    relationships,
+    party,
+    world: { ...gs.world, restCount },
+  }
+}
 
 function slotKey(slotId: SlotId): string {
   return `${SAVE_SLOT_KEY_PREFIX}${slotId}`
@@ -400,10 +497,12 @@ export function loadSlot(slotId: SlotId): SaveSlot | null {
     }
     const p = parsed as { version?: number; savedAt: string; gameState: GameState }
     // TM-P2-003 A/R1：旧版本（undefined/2）读时补 learnedSkillIds（内存级；不写回——持久迁移由 migrateSave/importSaves 负责）
-    const gs = p.gameState
+    // TM-P2-004 V4：读时补 companions/relationships/party/restCount（内存级；持久迁移同由 migrateSave 负责）
+    let gs = p.gameState
     if (!Array.isArray(gs.player.learnedSkillIds)) {
       gs.player.learnedSkillIds = defaultSkillsForProfession(gs.player.profession)
     }
+    gs = withV4Fields(gs)
     return { version: SLOT_FORMAT_VERSION, savedAt: p.savedAt, gameState: gs }
   } catch (err) {
     console.error(`[存档] 槽位 ${slotId} 读取失败（数据损坏），已安全回退；其余槽位不受影响`, err)
@@ -500,9 +599,10 @@ export function migrateLegacySave(): boolean {
     return false
   }
   const snap = snapshotAll()
-  // TM-P2-003-R2 D：真正历史 V1 存档没有 learnedSkillIds——写 v3 前必须按职业补全，
-  // 否则 loadSlot 的 v3 严格校验会失败导致迁移回滚（旧 V1 自动迁移断裂）。
-  const gs = legacy.gameState
+  // TM-P2-003-R2 D：真正历史 V1 存档没有 learnedSkillIds——写当前格式前必须按职业补全，
+  // 否则 loadSlot 的严格校验会失败导致迁移回滚（旧 V1 自动迁移断裂）。
+  // TM-P2-004 V4：同时补 companions/relationships/party/restCount。
+  const gs = withV4Fields(legacy.gameState)
   if (!Array.isArray(gs.player.learnedSkillIds)) {
     gs.player.learnedSkillIds = defaultSkillsForProfession(gs.player.profession)
   }
@@ -556,12 +656,13 @@ export function migrateSave(): boolean {
         if (!raw) continue
         const parsed: unknown = JSON.parse(raw)
         if (!isRecord(parsed) || typeof parsed.savedAt !== 'string') continue
-        // Step 2（R1 G）：514f3e2 无版本 V2 槽 → 补 version + learnedSkillIds（TM-P2-003 A 一并迁移）
+        // Step 2（R1 G）：514f3e2 无版本 V2 槽 → 补 version + learnedSkillIds（TM-P2-003 A 一并迁移）+ V4 字段（TM-P2-004）
         if (parsed.version === undefined && isGameState(parsed.gameState)) {
-          const gs = parsed.gameState
+          let gs = parsed.gameState
           if (!Array.isArray(gs.player.learnedSkillIds)) {
             gs.player.learnedSkillIds = defaultSkillsForProfession(gs.player.profession)
           }
+          gs = withV4Fields(gs)
           storage.setItem(
             slotKey(id),
             JSON.stringify({ version: SLOT_FORMAT_VERSION, savedAt: parsed.savedAt, gameState: gs }),
@@ -569,12 +670,23 @@ export function migrateSave(): boolean {
           changed = true
           continue
         }
-        // Step 3（TM-P2-003 A）：schema 2 → 3 —— player 补 learnedSkillIds（按职业初始技能）
+        // Step 3（TM-P2-003 A）：schema 2 → 3 —— player 补 learnedSkillIds（按职业初始技能）；同时补 V4 字段（TM-P2-004）
         if (parsed.version === 2 && isGameState(parsed.gameState)) {
-          const gs = parsed.gameState
+          let gs = parsed.gameState
           if (!Array.isArray(gs.player.learnedSkillIds)) {
             gs.player.learnedSkillIds = defaultSkillsForProfession(gs.player.profession)
           }
+          gs = withV4Fields(gs)
+          storage.setItem(
+            slotKey(id),
+            JSON.stringify({ version: SLOT_FORMAT_VERSION, savedAt: parsed.savedAt, gameState: gs }),
+          )
+          changed = true
+          continue
+        }
+        // Step 4（TM-P2-004）：schema 3 → 4 —— 补 companions/relationships/party/restCount（黄金兔冻结档原样迁移）
+        if (parsed.version === 3 && isGameState(parsed.gameState)) {
+          const gs = withV4Fields(parsed.gameState)
           storage.setItem(
             slotKey(id),
             JSON.stringify({ version: SLOT_FORMAT_VERSION, savedAt: parsed.savedAt, gameState: gs }),
@@ -591,12 +703,13 @@ export function migrateSave(): boolean {
 
 // ---------- 导出 / 导入（TM-P2-002 I / TM-P2-003-R1 D） ----------
 
-/** 将单个槽位条目迁移到当前格式（version 3 + learnedSkillIds）；旧版本原地升级，v3 直接返回 */
+/** 将单个槽位条目迁移到当前格式（version 4 + learnedSkillIds + V4 字段）；旧版本原地升级，v4 直接返回 */
 function migrateSlotEntryToCurrent(entry: SaveSlot): SaveSlot {
-  const gs = entry.gameState
+  let gs = entry.gameState
   if (!Array.isArray(gs.player.learnedSkillIds)) {
     gs.player.learnedSkillIds = defaultSkillsForProfession(gs.player.profession)
   }
+  gs = withV4Fields(gs)
   return { version: SLOT_FORMAT_VERSION, savedAt: entry.savedAt, gameState: gs }
 }
 

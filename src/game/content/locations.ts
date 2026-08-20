@@ -98,4 +98,12 @@ export const LOCATIONS: Record<string, LocationDefinition> = {
     connections: ['tianlong_city'],
     enemyIds: ['black_mane_wolf'],
   },
+  // TM-P2-004 第 33/34 节：樱华神域·破碎边界（特殊事件地点；connections=[] 不允许普通 Travel 进入，只能通过 Sakura 特殊事件；完成后返回天龙城）
+  sakura_domain_fragment: {
+    id: 'sakura_domain_fragment',
+    name: '樱华神域·破碎边界',
+    description: '漂浮的石阶、残破神社、倒悬樱树与不断撕裂的天空。这是樱花女神神域崩落的一角，正随着裂隙缓慢坍缩。',
+    connections: [],
+    enemyIds: ['sakura_calamity_fragment'],
+  },
 }

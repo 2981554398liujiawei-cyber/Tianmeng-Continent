@@ -12,6 +12,46 @@ import type { LootGrant } from '../types/loot'
 import { checkSkillUse } from '../rules/skill'
 import { rollLuckCheck, resolveLuckCheck, type LuckCheckResult } from '../rules/luck'
 import { resolveD20Check, rollD20 } from '../rules/d20'
+import {
+  canTriggerSakuraEncounter,
+  canEnterSakuraDomain,
+  canMeetSakura,
+  canMndCheckSakura,
+  canLuckRescueSakura,
+  canOfferGuest,
+  canFightCalamity,
+  canAcceptContract,
+  canReofferContract,
+  isFirstRestTalkReady,
+  canTriggerSakuraBanter,
+  SAKURA_FLAGS,
+  SAKURA_MND_DC,
+  SAKURA_LUCK_DC,
+  SAKURA_DOMAIN_LOCATION,
+  SAKURA_CALAMITY_ENEMY_ID,
+} from '../rules/sakura'
+import {
+  createCompanionState,
+  applyLongRest,
+  activateCompanion,
+  deactivateCompanion,
+  canRejoinParty,
+} from '../rules/companion'
+import {
+  createInitialRelationship,
+  applyRelationshipDelta,
+  canTalkGain,
+  markTalk,
+  hasGiftedThisRest,
+  markGifted,
+  giftAffectionGain,
+} from '../rules/relationship'
+import {
+  getCompanion,
+  sakuraDefaultSkillIds,
+  SAKURA_COMPANION_ID,
+  getRelationshipProfile,
+} from '../content'
 
 /** TM-P1-003：《村外异动》完成后村长一次性回应事件 ID（唯一代码来源，GamePage 亦读取） */
 export const VILLAGE_ELDER_POST_QUEST_EVENT_ID = 'village_elder_post_quest_response'
@@ -150,6 +190,44 @@ interface GameStoreState {
   returnKuidongNecklaceToWangcai: () => boolean
   /** 查看北门巡逻队痕迹（TM-P2-001 D3）：天龙城北门 + 《北门失联》in_progress/stage 0 + north_gate_trail_checked undefined/false 时成功，只写 quest.flags.north_gate_trail_checked=true（status/stage 不变）；非 boolean 异常 flag 整次拒绝且完全不变（不修复）；已 true 重复调用 false 且 GameState 同一引用；无金币/HP/MP/物品/装备/关系/flags/completedEvents 副作用、不自动保存 */
   investigateNorthGateTrail: () => boolean
+
+  // ---- TM-P2-004：Sakura 剧情 / 伙伴 / 关系 / 休整 ----
+  /** 触发反季樱雨（TM-P2-004 第 31 节）：canTriggerSakuraEncounter 纯规则；成功写 sakura_encounter_started=true + 《落樱越界》discover→in_progress */
+  startSakuraEncounter: () => boolean
+  /** 进入樱华神域·破碎边界（TM-P2-004 第 33/34 节）：特殊事件地点，不允许普通 Travel */
+  enterSakuraDomain: () => boolean
+  /** 初见选择（TM-P2-004 第 37 节）：help/ask/pet_joke；创建 companions（met）+ relationships（5/5 acquaintance）+ 关系 delta；一次性 */
+  meetSakura: (choice: SakuraMeetChoice) => SakuraMeetResult
+  /** 职业对话（TM-P2-004 第 24 节）：至少 4 个职业专属回应；一次性（sakura_profession_talked）；战士 trust+2 / 骑士 trust+3+affection+1 / 游侠·法师情报无变化 */
+  sakuraProfessionTalk: () => SakuraTalkResult
+  /** MND 检定（TM-P2-004 第 25 节）：DC 12 观察旧伤与破裂神印；一次性（attempted 后不可重掷）；成功 trust+2 */
+  sakuraMndCheck: (roll?: number) => SakuraSceneCheckResult | null
+  /** LUCK 命运补救（TM-P2-004 第 26 节）：MND 失败后可用，DC 12；一次性；成功 trust+1，大成功额外 affection+1 */
+  sakuraLuckRescue: (roll?: number) => SakuraSceneCheckResult | null
+  /** 提议临时合作（TM-P2-004 第 39 节）：残灾袭击 → status guest + 加入 activeCompanionIds */
+  offerSakuraGuest: () => boolean
+  /** 接受神契（TM-P2-004 第 79/82 节）：affirm/try/joke；自愿、显式；重复调用 no-op */
+  acceptSakuraContract: (choice: SakuraContractChoice) => SakuraContractResult
+  /** 拒绝神契（TM-P2-004 第 80 节）：不 recruited、任务保持 in_progress、未来可再谈 */
+  refuseSakuraContract: () => boolean
+  /** 再次提议神契（TM-P2-004 第 80 节）：Long Rest / 天龙城安全场景可再谈 */
+  reofferSakuraContract: () => boolean
+  /** 常驻交谈（TM-P2-004 第 62/63 节）：每休整周期前 2 次正常收益 affection+1 */
+  talkToSakura: (topic: SakuraTalkTopic) => SakuraTalkResult
+  /** 首次休整谈话《第一夜：神与凡人的距离》（TM-P2-004 第 59-61 节） */
+  sakuraFirstRestTalk: (choice: SakuraFirstRestChoice) => SakuraTalkResult
+  /** 天龙城同行 banter（TM-P2-004 第 88 节）：入队后首次返回天龙城触发一次 */
+  sakuraBanter: (choice: SakuraBanterChoice) => SakuraTalkResult
+  /** 赠礼（TM-P2-004 第 68/69 节）：generic；同一休整周期只收一份（拒绝且不消耗） */
+  giveGift: (npcId: string, itemId: string) => GiftResult
+  /** 购买天龙桂花糕（TM-P2-004 第 67 节）：天龙城 + 8 金币 */
+  buyOsmanthusCake: () => boolean
+  /** 统一 Long Rest（TM-P2-004 第 53-56 节）：满资源也允许；restCount+1 + 玩家满资源 + 伙伴 MP 回满 */
+  longRest: () => boolean
+  /** 暂不同行 / 重新同行（TM-P2-004 第 149-151 节）：recruited 不变、不降关系 */
+  setCompanionActive: (companionId: string, active: boolean) => boolean
+  /** 伙伴技能 MP 消费（TM-P2-004 第 106 节）：伙伴自身 MP；checkSkillUse（profession=undefined）统一校验 */
+  spendCompanionSkillMp: (companionId: string, skillId: string) => boolean
 }
 
 /** 任务发现：不存在 → 创建 available；undiscovered → available；其余状态不重复创建。非法返回 null（TM-P0-006） */
@@ -839,6 +917,10 @@ export const useGameStore = create<GameStoreState>()((set) => ({
           return {}
         }
       }
+      // TM-P2-004 第 42 节：残灾之影守卫——guest 状态 + 神域 + 未击败（sakura.ts 纯规则 canFightCalamity）；否则拒绝
+      if (enemyId === SAKURA_CALAMITY_ENEMY_ID && location.id === SAKURA_DOMAIN_LOCATION) {
+        if (!canFightCalamity(s.gameState)) return {}
+      }
       ok = true
       // 《村外异动》任务推进：村外草原击败魔化兔 → completable（复用封板状态机）
       // 《村外异动》任务推进：村外草原击败魔化兔 → completable（复用封板状态机）
@@ -981,6 +1063,23 @@ export const useGameStore = create<GameStoreState>()((set) => ({
             }
             return { gameState: { ...s.gameState, quests: nextQuests } }
           }
+        }
+      }
+      // TM-P2-004 第 42/43 节：残灾之影胜利——写 sakura_calamity_defeated=true + 位置回天龙城 + 契约提议就绪（神域崩塌 → 契约场景由 UI 消费；只结算一次）
+      if (enemyId === SAKURA_CALAMITY_ENEMY_ID && location.id === SAKURA_DOMAIN_LOCATION) {
+        return {
+          gameState: {
+            ...s.gameState,
+            world: {
+              ...s.gameState.world,
+              currentLocationId: 'tianlong_city',
+              flags: {
+                ...s.gameState.world.flags,
+                [SAKURA_FLAGS.calamityDefeated]: true,
+                [SAKURA_FLAGS.contractOffered]: true,
+              },
+            },
+          },
         }
       }
       // 合法胜利但无持久效果（其他敌人 / 重复嘟嘟兔胜利 / 任务不在推进条件）：其余状态全部不变
@@ -1167,53 +1266,17 @@ export const useGameStore = create<GameStoreState>()((set) => ({
   },
 
   restAtVillage: () => {
-    let rested = false
-    set((s) => {
-      if (!s.gameState) return {}
-      // 地点限制：仅青石村可休整（本卡允许以既有固定地点 ID 校验）
-      if (s.gameState.world.currentLocationId !== 'qingshi_village') return {}
-      const player = s.gameState.player
-      // 数据安全：maxHp 正安全整数 / maxMp 非负安全整数 / hp·mp 安全整数且在 [0, max] 内
-      if (!Number.isSafeInteger(player.maxHp) || player.maxHp <= 0) return {}
-      if (!Number.isSafeInteger(player.maxMp) || player.maxMp < 0) return {}
-      if (!Number.isSafeInteger(player.hp) || !Number.isSafeInteger(player.mp)) return {}
-      if (player.hp < 0 || player.hp > player.maxHp || player.mp < 0 || player.mp > player.maxMp) return {}
-      // 可恢复条件：至少一个资源未满（含 HP 0）；全满则无意义更新
-      if (player.hp >= player.maxHp && player.mp >= player.maxMp) return {}
-      rested = true
-      return {
-        gameState: {
-          ...s.gameState,
-          player: { ...player, hp: player.maxHp, mp: player.maxMp },
-        },
-      }
-    })
-    return rested
+    // TM-P2-004 第 58 节：旧休整入口作为 wrapper 走统一 longRest 纯规则（本入口固定只允许青石村）
+    const s = useGameStore.getState().gameState
+    if (!s || s.world.currentLocationId !== 'qingshi_village') return false
+    return useGameStore.getState().longRest()
   },
 
   restAtTianlongMartialHall: () => {
-    let rested = false
-    set((s) => {
-      if (!s.gameState) return {}
-      // TM-P1-027：地点限制——仅天龙城武馆可休整（离开青石村后的 HP=0 软锁出口）
-      if (s.gameState.world.currentLocationId !== 'tianlong_martial_hall') return {}
-      const player = s.gameState.player
-      // 数据安全：maxHp 正安全整数 / maxMp 非负安全整数 / hp·mp 安全整数且在 [0, max] 内
-      if (!Number.isSafeInteger(player.maxHp) || player.maxHp <= 0) return {}
-      if (!Number.isSafeInteger(player.maxMp) || player.maxMp < 0) return {}
-      if (!Number.isSafeInteger(player.hp) || !Number.isSafeInteger(player.mp)) return {}
-      if (player.hp < 0 || player.hp > player.maxHp || player.mp < 0 || player.mp > player.maxMp) return {}
-      // 可恢复条件：至少一个资源未满（含 HP 0）；全满则无意义更新（false 且完全不变）
-      if (player.hp >= player.maxHp && player.mp >= player.maxMp) return {}
-      rested = true
-      return {
-        gameState: {
-          ...s.gameState,
-          player: { ...player, hp: player.maxHp, mp: player.maxMp },
-        },
-      }
-    })
-    return rested
+    // TM-P2-004 第 58 节：旧休整入口作为 wrapper 走统一 longRest 纯规则（本入口固定只允许武馆）
+    const s = useGameStore.getState().gameState
+    if (!s || s.world.currentLocationId !== 'tianlong_martial_hall') return false
+    return useGameStore.getState().longRest()
   },
 
   spendSkillMp: (skillId) => {
@@ -1866,6 +1929,615 @@ export const useGameStore = create<GameStoreState>()((set) => ({
     })
     return changed
   },
+
+  // ---- TM-P2-004：Sakura 剧情 / 伙伴 / 关系 / 休整 ----
+
+  startSakuraEncounter: () => {
+    const s = useGameStore.getState().gameState
+    if (!s) return false
+    if (!canTriggerSakuraEncounter(s)) return false
+    let ok = false
+    set((st) => {
+      if (!st.gameState) return {}
+      if (!canTriggerSakuraEncounter(st.gameState)) return {}
+      const f = st.gameState.world.flags
+      if (f[SAKURA_FLAGS.encounterStarted] === true) return {}
+      // 原子：写 sakura_encounter_started + 《落樱越界》discover→in_progress（同一次 Store 更新）
+      const flags = { ...f, [SAKURA_FLAGS.encounterStarted]: true }
+      let gs: GameState = { ...st.gameState, world: { ...st.gameState.world, flags } }
+      const discovered = applyQuestDiscovery(gs, 'quest_sakura_boundary')
+      if (discovered) gs = discovered
+      const accepted = applyQuestTransition(gs, 'quest_sakura_boundary', 'in_progress')
+      if (accepted) gs = accepted
+      ok = true
+      return { gameState: gs }
+    })
+    return ok
+  },
+
+  enterSakuraDomain: () => {
+    const s = useGameStore.getState().gameState
+    if (!s) return false
+    if (!canEnterSakuraDomain(s)) return false
+    let ok = false
+    set((st) => {
+      if (!st.gameState) return {}
+      if (!canEnterSakuraDomain(st.gameState)) return {}
+      ok = true
+      return {
+        gameState: {
+          ...st.gameState,
+          world: {
+            ...st.gameState.world,
+            currentLocationId: SAKURA_DOMAIN_LOCATION,
+            flags: { ...st.gameState.world.flags, [SAKURA_FLAGS.domainEntered]: true },
+          },
+        },
+      }
+    })
+    return ok
+  },
+
+  meetSakura: (choice) => {
+    const s = useGameStore.getState().gameState
+    if (!s) return null
+    if (!canMeetSakura(s)) return null
+    let result: SakuraMeetResult = null
+    set((st) => {
+      if (!st.gameState) return {}
+      if (!canMeetSakura(st.gameState)) return {}
+      const def = getCompanion(SAKURA_COMPANION_ID)
+      if (!def) return {}
+      // 角色气质（TM-P2-004 第 35/37 节）：帮助/询问/反差玩笑；玩笑必须被 Sakura 明确拒绝其强制含义，但不永久断线
+      let affectionDelta = 0
+      let trustDelta = 0
+      if (choice === 'help') {
+        affectionDelta = 2
+        trustDelta = 3
+      } else if (choice === 'ask') {
+        trustDelta = 1
+      } else {
+        affectionDelta = -2
+        trustDelta = -4
+      }
+      const companion = createCompanionState(def, st.gameState.player.level, 'met')
+      const rel = createInitialRelationship(SAKURA_COMPANION_ID)
+      const relNext = applyRelationshipDelta(rel, { affection: affectionDelta, trust: trustDelta })
+      result = { outcome: 'met', affectionDelta, trustDelta }
+      return {
+        gameState: {
+          ...st.gameState,
+          companions: { ...st.gameState.companions, [SAKURA_COMPANION_ID]: companion },
+          relationships: { ...st.gameState.relationships, [SAKURA_COMPANION_ID]: relNext },
+          world: {
+            ...st.gameState.world,
+            flags: { ...st.gameState.world.flags, [SAKURA_FLAGS.met]: true },
+          },
+        },
+      }
+    })
+    return result
+  },
+
+  sakuraProfessionTalk: () => {
+    const s = useGameStore.getState().gameState
+    if (!s) return null
+    if (s.world.flags.sakura_profession_talked === true) return null
+    // 职业对话发生在初见之后、临时合作之前（met=true 且 guest 未开始）
+    if (s.world.flags.sakura_met !== true || s.world.flags.sakura_guest === true) return null
+    let result: SakuraTalkResult = null
+    set((st) => {
+      if (!st.gameState) return {}
+      if (st.gameState.world.flags.sakura_profession_talked === true) return {}
+      if (st.gameState.world.flags.sakura_met !== true || st.gameState.world.flags.sakura_guest === true) return {}
+      const rel = st.gameState.relationships[SAKURA_COMPANION_ID]
+      if (!rel) return {}
+      // TM-P2-004 第 24 节：职业对话关系收益（职业选项不是自动最优；游侠/法师是情报向）
+      let affectionDelta = 0
+      let trustDelta = 0
+      if (st.gameState.player.profession === 'warrior') trustDelta = 2
+      else if (st.gameState.player.profession === 'knight') {
+        trustDelta = 3
+        affectionDelta = 1
+      }
+      const relNext = applyRelationshipDelta(rel, { affection: affectionDelta, trust: trustDelta })
+      result = { outcome: 'talked', affectionDelta, trustDelta }
+      return {
+        gameState: {
+          ...st.gameState,
+          relationships: { ...st.gameState.relationships, [SAKURA_COMPANION_ID]: relNext },
+          world: {
+            ...st.gameState.world,
+            flags: { ...st.gameState.world.flags, sakura_profession_talked: true },
+          },
+        },
+      }
+    })
+    return result
+  },
+
+  sakuraMndCheck: (roll) => {
+    const s = useGameStore.getState().gameState
+    if (!s) return null
+    if (!canMndCheckSakura(s)) return null
+    const check = resolveD20Check(
+      { attributeScore: s.player.attributes.mnd, level: s.player.level, dc: SAKURA_MND_DC },
+      roll ?? rollD20(),
+    )
+    let result: SakuraSceneCheckResult | null = null
+    set((st) => {
+      if (!st.gameState) return {}
+      if (!canMndCheckSakura(st.gameState)) return {}
+      const flags = {
+        ...st.gameState.world.flags,
+        [SAKURA_FLAGS.mndAttempted]: true,
+        [SAKURA_FLAGS.mndSucceeded]: check.success,
+      }
+      // 成功：获得更准确的信息 + trust+2（TM-P2-004 第 25 节）；失败不卡剧情（只记录）
+      let relationships = st.gameState.relationships
+      if (check.success) {
+        const rel = relationships[SAKURA_COMPANION_ID]
+        if (rel) {
+          relationships = {
+            ...relationships,
+            [SAKURA_COMPANION_ID]: applyRelationshipDelta(rel, { trust: 2 }),
+          }
+        }
+      }
+      result = {
+        outcome: check.success ? 'success' : 'failed',
+        roll: check.roll,
+        total: check.total,
+        dc: check.dc,
+      }
+      return {
+        gameState: {
+          ...st.gameState,
+          relationships,
+          world: { ...st.gameState.world, flags },
+        },
+      }
+    })
+    return result
+  },
+
+  sakuraLuckRescue: (roll) => {
+    const s = useGameStore.getState().gameState
+    if (!s) return null
+    if (!canLuckRescueSakura(s)) return null
+    const check = resolveLuckCheck(roll ?? rollD20(), s.player.attributes.lck, SAKURA_LUCK_DC)
+    let result: SakuraSceneCheckResult | null = null
+    set((st) => {
+      if (!st.gameState) return {}
+      if (!canLuckRescueSakura(st.gameState)) return {}
+      const flags = { ...st.gameState.world.flags, [SAKURA_FLAGS.luckUsed]: true }
+      // 成功：恢复部分信息 + trust+1；大成功额外 affection+1（TM-P2-004 第 26 节：绝不决定 Sakura 是否加入）
+      let relationships = st.gameState.relationships
+      if (check.success) {
+        const rel = relationships[SAKURA_COMPANION_ID]
+        if (rel) {
+          const delta: { affection?: number; trust?: number } = { trust: 1 }
+          if (check.outcome === 'critical_success') delta.affection = 1
+          relationships = {
+            ...relationships,
+            [SAKURA_COMPANION_ID]: applyRelationshipDelta(rel, delta),
+          }
+        }
+      }
+      result = {
+        outcome: check.success ? 'success' : 'failed',
+        roll: check.roll,
+        total: check.total,
+        dc: check.dc,
+        nat20: check.outcome === 'critical_success',
+      }
+      return {
+        gameState: {
+          ...st.gameState,
+          relationships,
+          world: { ...st.gameState.world, flags },
+        },
+      }
+    })
+    return result
+  },
+
+  offerSakuraGuest: () => {
+    const s = useGameStore.getState().gameState
+    if (!s) return false
+    if (!canOfferGuest(s)) return false
+    let ok = false
+    set((st) => {
+      if (!st.gameState) return {}
+      if (!canOfferGuest(st.gameState)) return {}
+      const def = getCompanion(SAKURA_COMPANION_ID)
+      if (!def) return {}
+      const current = st.gameState.companions[SAKURA_COMPANION_ID]
+      const companion = current
+        ? { ...current, status: 'guest' as const }
+        : createCompanionState(def, st.gameState.player.level, 'guest')
+      const party = activateCompanion(st.gameState.party, SAKURA_COMPANION_ID) ?? st.gameState.party
+      ok = true
+      return {
+        gameState: {
+          ...st.gameState,
+          companions: { ...st.gameState.companions, [SAKURA_COMPANION_ID]: companion },
+          party,
+          world: {
+            ...st.gameState.world,
+            flags: { ...st.gameState.world.flags, [SAKURA_FLAGS.guest]: true },
+          },
+        },
+      }
+    })
+    return ok
+  },
+
+  acceptSakuraContract: (choice) => {
+    const s = useGameStore.getState().gameState
+    if (!s) return null
+    if (!canAcceptContract(s)) return null
+    let result: SakuraContractResult = null
+    set((st) => {
+      if (!st.gameState) return {}
+      if (!canAcceptContract(st.gameState)) return {}
+      const flags = st.gameState.world.flags
+      if (flags[SAKURA_FLAGS.contractAccepted] === true) return {}
+      // 自愿神契（TM-P2-004 第 78/79 节）：Sakura 提出「寄灵神契」，玩家选择；重复调用 no-op（防双入队）
+      let affectionDelta = 0
+      let trustDelta = 0
+      if (choice === 'affirm') {
+        affectionDelta = 2
+        trustDelta = 5
+      } else if (choice === 'try') {
+        trustDelta = 2
+      } else {
+        // joke：她先纠正「神契宠物只是你们天梦大陆的分类，不是所有权」；前期关系尚可则轻微 +1
+        const rel = st.gameState.relationships[SAKURA_COMPANION_ID]
+        if (rel && rel.trust >= 10) affectionDelta = 1
+      }
+      const current = st.gameState.companions[SAKURA_COMPANION_ID]
+      const companion = current
+        ? { ...current, status: 'recruited' as const }
+        : createCompanionState(getCompanion(SAKURA_COMPANION_ID)!, st.gameState.player.level, 'recruited')
+      const party = activateCompanion(st.gameState.party, SAKURA_COMPANION_ID) ?? st.gameState.party
+      // 关系：契约完成最多 acquaintance/trusted，绝不自动 romance（TM-P2-004 第 83 节）
+      let relationships = st.gameState.relationships
+      const rel = relationships[SAKURA_COMPANION_ID]
+      if (rel) {
+        relationships = {
+          ...relationships,
+          [SAKURA_COMPANION_ID]: {
+            ...applyRelationshipDelta(rel, { affection: affectionDelta, trust: trustDelta }),
+            // TM-P2-004 第 84 节：S1《落樱越界》完成 → personalQuestStage = 1（不开始 S2）
+            personalQuestStage: 1,
+          },
+        }
+      }
+      // 《落樱越界》契约接受 → completed（TM-P2-004 第 118 节；状态机不允许 in_progress→completed 直跳，先 completable 再 completed）
+      let gsWithQuest = applyQuestTransition(st.gameState, 'quest_sakura_boundary', 'completable') ?? st.gameState
+      gsWithQuest = applyQuestTransition(gsWithQuest, 'quest_sakura_boundary', 'completed') ?? gsWithQuest
+      result = { outcome: 'recruited', affectionDelta, trustDelta }
+      return {
+        gameState: {
+          ...gsWithQuest,
+          companions: { ...st.gameState.companions, [SAKURA_COMPANION_ID]: companion },
+          relationships,
+          party,
+          world: {
+            ...st.gameState.world,
+            flags: {
+              ...flags,
+              [SAKURA_FLAGS.contractOffered]: true,
+              [SAKURA_FLAGS.contractAccepted]: true,
+            },
+          },
+        },
+      }
+    })
+    return result
+  },
+
+  refuseSakuraContract: () => {
+    const s = useGameStore.getState().gameState
+    if (!s) return false
+    if (!canAcceptContract(s)) return false
+    let ok = false
+    set((st) => {
+      if (!st.gameState) return {}
+      if (!canAcceptContract(st.gameState)) return {}
+      ok = true
+      // 拒绝：不 recruited、任务保持 in_progress、未来可再谈（TM-P2-004 第 80/116 节）
+      return {
+        gameState: {
+          ...st.gameState,
+          world: {
+            ...st.gameState.world,
+            flags: {
+              ...st.gameState.world.flags,
+              [SAKURA_FLAGS.contractOffered]: true,
+              [SAKURA_FLAGS.contractRejected]: true,
+            },
+          },
+        },
+      }
+    })
+    return ok
+  },
+
+  reofferSakuraContract: () => {
+    const s = useGameStore.getState().gameState
+    if (!s) return false
+    if (!canReofferContract(s)) return false
+    let ok = false
+    set((st) => {
+      if (!st.gameState) return {}
+      if (!canReofferContract(st.gameState)) return {}
+      ok = true
+      // 再次提议：contractOffered 重置为 true（rejected 保留供 UI 显示「曾拒绝」；接受仍走 acceptSakuraContract）
+      return {
+        gameState: {
+          ...st.gameState,
+          world: {
+            ...st.gameState.world,
+            flags: { ...st.gameState.world.flags, [SAKURA_FLAGS.contractOffered]: true },
+          },
+        },
+      }
+    })
+    return ok
+  },
+
+  talkToSakura: (topic) => {
+    const s = useGameStore.getState().gameState
+    if (!s) return null
+    const companion = s.companions[SAKURA_COMPANION_ID]
+    if (!companion) return null
+    let result: SakuraTalkResult = null
+    set((st) => {
+      if (!st.gameState) return {}
+      const c = st.gameState.companions[SAKURA_COMPANION_ID]
+      if (!c) return {}
+      const rel = st.gameState.relationships[SAKURA_COMPANION_ID]
+      if (!rel) return {}
+      // 每休整周期前 TALKS_PER_REST_LIMIT 次正常收益（TM-P2-004 第 64 节）；之后仍可聊天但不刷分
+      if (!canTalkGain(rel)) {
+        result = { outcome: 'cycle_limited', affectionDelta: 0, trustDelta: 0 }
+        return {}
+      }
+      // 普通交谈 affection+1（TM-P2-004 第 63 节）；「询问伤势」在 MND 成功获知真相后特别契合 +2
+      let gain = 1
+      if (topic === 'wound' && st.gameState.world.flags[SAKURA_FLAGS.mndSucceeded] === true) gain = 2
+      const relNext = markTalk(applyRelationshipDelta(rel, { affection: gain }))
+      result = { outcome: 'talked', affectionDelta: gain, trustDelta: 0 }
+      return {
+        gameState: {
+          ...st.gameState,
+          relationships: { ...st.gameState.relationships, [SAKURA_COMPANION_ID]: relNext },
+        },
+      }
+    })
+    return result
+  },
+
+  sakuraFirstRestTalk: (choice) => {
+    const s = useGameStore.getState().gameState
+    if (!s) return null
+    if (!isFirstRestTalkReady(s)) return null
+    let result: SakuraTalkResult = null
+    set((st) => {
+      if (!st.gameState) return {}
+      if (!isFirstRestTalkReady(st.gameState)) return {}
+      const rel = st.gameState.relationships[SAKURA_COMPANION_ID]
+      if (!rel) return {}
+      // 《第一夜：神与凡人的距离》（TM-P2-004 第 59-61 节）三选项
+      let affectionDelta = 0
+      let trustDelta = 0
+      if (choice === 'respect') {
+        trustDelta = 4
+        affectionDelta = 2
+      } else if (choice === 'joke') {
+        // trust 足够可冷淡反击但略有好感；太低则 -1（不降信任）
+        affectionDelta = rel.trust >= 15 ? 1 : -1
+      } else {
+        // pragmatic：不涨关系但提供技能信息（UI 据此展示）
+      }
+      const relNext = applyRelationshipDelta(rel, { affection: affectionDelta, trust: trustDelta })
+      result = { outcome: 'talked', affectionDelta, trustDelta }
+      return {
+        gameState: {
+          ...st.gameState,
+          relationships: { ...st.gameState.relationships, [SAKURA_COMPANION_ID]: relNext },
+          world: {
+            ...st.gameState.world,
+            flags: { ...st.gameState.world.flags, [SAKURA_FLAGS.firstRestDone]: true },
+          },
+        },
+      }
+    })
+    return result
+  },
+
+  sakuraBanter: (choice) => {
+    const s = useGameStore.getState().gameState
+    if (!s) return null
+    if (!canTriggerSakuraBanter(s)) return null
+    let result: SakuraTalkResult = null
+    set((st) => {
+      if (!st.gameState) return {}
+      if (!canTriggerSakuraBanter(st.gameState)) return {}
+      const rel = st.gameState.relationships[SAKURA_COMPANION_ID]
+      if (!rel) return {}
+      // 天龙城同行 banter（TM-P2-004 第 88 节）：-1 / 0 / +1 轻量变化
+      let affectionDelta = 0
+      if (choice === 'habit') affectionDelta = -1
+      else if (choice === 'will_like') affectionDelta = 1
+      // 'not_mortal' → 0
+      const relNext = applyRelationshipDelta(rel, { affection: affectionDelta })
+      result = { outcome: 'talked', affectionDelta, trustDelta: 0 }
+      return {
+        gameState: {
+          ...st.gameState,
+          relationships: { ...st.gameState.relationships, [SAKURA_COMPANION_ID]: relNext },
+          world: {
+            ...st.gameState.world,
+            flags: { ...st.gameState.world.flags, [SAKURA_FLAGS.banterSeen]: true },
+          },
+        },
+      }
+    })
+    return result
+  },
+
+  giveGift: (npcId, itemId) => {
+    const s = useGameStore.getState().gameState
+    if (!s) return null
+    const rel = s.relationships[npcId]
+    if (!rel) return { outcome: 'locked', affectionDelta: 0 }
+    const item = getItem(itemId)
+    if (!item) return { outcome: 'unknown_item', affectionDelta: 0 }
+    if (item.type !== 'gift' && !item.giftTags) return { outcome: 'not_gift', affectionDelta: 0 }
+    const owned = s.inventory.some((e) => e.itemId === itemId && e.quantity >= 1)
+    if (!owned) return { outcome: 'not_owned', affectionDelta: 0 }
+    if (hasGiftedThisRest(rel)) return { outcome: 'already_gifted', affectionDelta: 0 }
+    let result: GiftResult = null
+    set((st) => {
+      if (!st.gameState) return {}
+      const r = st.gameState.relationships[npcId]
+      if (!r) return {}
+      const inv = st.gameState.inventory
+      const idx = inv.findIndex((e) => e.itemId === itemId)
+      const entry = idx >= 0 ? inv[idx] : undefined
+      if (!entry || entry.quantity < 1) return {}
+      if (hasGiftedThisRest(r)) return {}
+      // 同一次 Store transaction：inventory -1 + relationship delta（TM-P2-004 第 68 节）
+      const gain = giftAffectionGain(getRelationshipProfile(npcId), { id: itemId, giftTags: item.giftTags })
+      const nextInventory =
+        entry.quantity - 1 > 0
+          ? inv.map((e, i) => (i === idx ? { ...e, quantity: entry.quantity - 1 } : e))
+          : inv.filter((e) => e.itemId !== itemId)
+      const relNext = markGifted(applyRelationshipDelta(r, { affection: gain }))
+      result = { outcome: 'given', affectionDelta: gain }
+      return {
+        gameState: {
+          ...st.gameState,
+          inventory: nextInventory,
+          relationships: { ...st.gameState.relationships, [npcId]: relNext },
+        },
+      }
+    })
+    return result
+  },
+
+  buyOsmanthusCake: () => {
+    let ok = false
+    set((s) => {
+      if (!s.gameState) return {}
+      if (s.gameState.world.currentLocationId !== 'tianlong_city') return {}
+      const gold = s.gameState.player.gold
+      if (!Number.isSafeInteger(gold) || gold < 8) return {}
+      const inv = s.gameState.inventory
+      const idx = inv.findIndex((e) => e.itemId === 'tianlong_osmanthus_cake')
+      const nextInventory =
+        idx >= 0
+          ? inv.map((e, i) => (i === idx ? { ...e, quantity: (e.quantity ?? 0) + 1 } : e))
+          : [...inv, { itemId: 'tianlong_osmanthus_cake', quantity: 1 }]
+      ok = true
+      return {
+        gameState: {
+          ...s.gameState,
+          player: { ...s.gameState.player, gold: gold - 8 },
+          inventory: nextInventory,
+        },
+      }
+    })
+    return ok
+  },
+
+  longRest: () => {
+    const s = useGameStore.getState().gameState
+    if (!s) return false
+    const next = applyLongRest(s)
+    if (!next) return false
+    let ok = false
+    set((st) => {
+      if (!st.gameState) return {}
+      const applied = applyLongRest(st.gameState)
+      if (!applied) return {}
+      // 首次休整谈话就绪（TM-P2-004 第 59 节）：recruited 后第一次 Long Rest 解锁（幂等）
+      let flags = applied.world.flags
+      if (flags[SAKURA_FLAGS.contractAccepted] === true && flags[SAKURA_FLAGS.firstRestDone] !== true) {
+        flags = { ...flags, [SAKURA_FLAGS.firstRestReady]: true }
+      }
+      ok = true
+      return { gameState: { ...applied, world: { ...applied.world, flags } } }
+    })
+    return ok
+  },
+
+  setCompanionActive: (companionId, active) => {
+    const s = useGameStore.getState().gameState
+    if (!s) return false
+    let ok = false
+    set((st) => {
+      if (!st.gameState) return {}
+      const companion = st.gameState.companions[companionId]
+      if (!companion) return {}
+      if (companion.status !== 'guest' && companion.status !== 'recruited') return {}
+      if (active) {
+        // 重新同行（TM-P2-004 第 151 节）：有槽位才可
+        if (!canRejoinParty(st.gameState.companions, st.gameState.party, companionId)) return {}
+        const party = activateCompanion(st.gameState.party, companionId)
+        if (!party) return {}
+        ok = true
+        return { gameState: { ...st.gameState, party } }
+      }
+      // 暂不同行（TM-P2-004 第 149/150 节）：不降关系、recruited 不变
+      const party = deactivateCompanion(st.gameState.party, companionId)
+      ok = true
+      return { gameState: { ...st.gameState, party } }
+    })
+    return ok
+  },
+
+  spendCompanionSkillMp: (companionId, skillId) => {
+    const s = useGameStore.getState().gameState
+    if (!s) return false
+    const companion = s.companions[companionId]
+    if (!companion) return false
+    if (companion.status !== 'guest' && companion.status !== 'recruited') return false
+    const check = checkSkillUse(skillId, {
+      learnedSkillIds: companion.learnedSkillIds,
+      profession: undefined, // 伙伴无职业：通用技能（Sakura 三技能）合法
+      mp: companion.mp,
+      maxMp: companion.maxMp,
+    })
+    if (!check.allowed) return false
+    const cost = check.mpCost ?? 0
+    if (cost === 0) return true
+    let spent = false
+    set((st) => {
+      if (!st.gameState) return {}
+      const c = st.gameState.companions[companionId]
+      if (!c) return {}
+      if (c.status !== 'guest' && c.status !== 'recruited') return {}
+      const recheck = checkSkillUse(skillId, {
+        learnedSkillIds: c.learnedSkillIds,
+        profession: undefined,
+        mp: c.mp,
+        maxMp: c.maxMp,
+      })
+      if (!recheck.allowed) return {}
+      spent = true
+      return {
+        gameState: {
+          ...st.gameState,
+          companions: { ...st.gameState.companions, [companionId]: { ...c, mp: c.mp - cost } },
+        },
+      }
+    })
+    return spent
+  },
 }))
 
 // ---- 五槽位摘要/最近槽位读取（Store 状态同步辅助；TM-P2-002 G）----
@@ -1917,4 +2589,46 @@ export type NorthTowerClaimResult =
       luckCheck: LuckCheckResult
     }
   | { outcome: 'locked' | 'already_claimed' }
+  | null
+
+// ---- TM-P2-004：Sakura 场景类型 ----
+
+/** 初见三分支（TM-P2-004 第 37 节） */
+export type SakuraMeetChoice = 'help' | 'ask' | 'pet_joke'
+export type SakuraMeetResult =
+  | { outcome: 'met'; affectionDelta: number; trustDelta: number }
+  | { outcome: 'locked' }
+  | null
+
+/** MND / LUCK 检定结果（TM-P2-004 第 25/26 节；roll/total/dc 供 UI 展示） */
+export type SakuraSceneCheckResult = {
+  outcome: 'success' | 'failed'
+  roll: number
+  total: number
+  dc: number
+  nat20?: boolean
+} | null
+
+/** 神契三选择（TM-P2-004 第 79 节） */
+export type SakuraContractChoice = 'affirm' | 'try' | 'joke'
+export type SakuraContractResult =
+  | { outcome: 'recruited'; affectionDelta: number; trustDelta: number }
+  | { outcome: 'locked' | 'already' }
+  | null
+
+/** 常驻交谈话题（TM-P2-004 第 62 节） */
+export type SakuraTalkTopic = 'continent' | 'wound' | 'past'
+/** 《第一夜》三选择（TM-P2-004 第 59-61 节） */
+export type SakuraFirstRestChoice = 'respect' | 'joke' | 'pragmatic'
+/** 天龙城 banter 三回答（TM-P2-004 第 88 节） */
+export type SakuraBanterChoice = 'habit' | 'not_mortal' | 'will_like'
+export type SakuraTalkResult =
+  | { outcome: 'talked'; affectionDelta: number; trustDelta: number }
+  | { outcome: 'cycle_limited' }
+  | null
+
+/** 赠礼结果（TM-P2-004 第 68 节；generic） */
+export type GiftResult =
+  | { outcome: 'given'; affectionDelta: number }
+  | { outcome: 'locked' | 'unknown_item' | 'not_gift' | 'not_owned' | 'already_gifted' }
   | null

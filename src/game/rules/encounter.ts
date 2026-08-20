@@ -9,6 +9,7 @@
  */
 import { getEnemy, getLocation } from '../content'
 import type { GameState } from '../types/game'
+import { canFightCalamity, SAKURA_CALAMITY_ENEMY_ID } from './sakura'
 
 export type EncounterBlockReason =
   | 'enemy_not_found'
@@ -218,6 +219,14 @@ export function checkEnemyEncounter(gameState: GameState, enemyId: string): Enco
       }
       if (quest?.status !== 'in_progress' || quest?.stage !== 0 || quest?.flags.north_gate_trail_checked !== true) {
         return { allowed: false, reason: quest?.status !== 'in_progress' ? 'quest_not_active' : 'missing_prerequisite' }
+      }
+      break
+    }
+
+    case SAKURA_CALAMITY_ENEMY_ID: {
+      // TM-P2-004 第 42 节：残灾之影——仅 guest 状态 + 神域 + 未击败可战（sakura.ts 纯规则）
+      if (!canFightCalamity(gameState)) {
+        return { allowed: false, reason: 'missing_prerequisite' }
       }
       break
     }

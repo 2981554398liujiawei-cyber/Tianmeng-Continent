@@ -110,7 +110,7 @@ export function resolveSkillRawDamage(skillId: string, ctx: SkillDamageContext):
  *  - 职业兼容：skill.profession === undefined（通用技能）或 === profession 才保留
  * 供战斗页与场景共用（TM-P2-003-R1 C：Store 也用同款语义校验）。
  */
-export function getUsableSkills(learnedSkillIds: readonly string[] | undefined, profession: ProfessionId): SkillDefinition[] {
+export function getUsableSkills(learnedSkillIds: readonly string[] | undefined, profession?: ProfessionId): SkillDefinition[] {
   const seen = new Set<string>()
   const result: SkillDefinition[] = []
   for (const id of learnedSkillIds ?? []) {
@@ -141,10 +141,12 @@ export type SkillUseBlockReason =
   | 'invalid_cost'
   | 'insufficient_mp'
 
-/** 技能使用校验所需玩家上下文（调用方从 gameState 提取） */
+/** 技能使用校验所需 actor 上下文（调用方从 gameState 提取）。
+ *  TM-P2-004 第 46 节：profession 可选——伙伴无职业（undefined），
+ *  语义：skill 有 profession + actor 无 profession → profession_mismatch；skill 无 profession → 玩家/伙伴均可。 */
 export interface SkillUseContext {
   learnedSkillIds?: readonly string[]
-  profession: ProfessionId
+  profession?: ProfessionId
   mp: number
   maxMp: number
 }

@@ -147,4 +147,16 @@ export const ENEMIES: Record<string, EnemyDefinition> = {
     attackPower: 3,
     agility: 12,
   },
+  // TM-P2-004 第 40 节：残灾之影（樱华神域·破碎边界专属；不是八歧大蛇本体/世界 Boss/九尾妖狐）
+  sakura_calamity_fragment: {
+    id: 'sakura_calamity_fragment',
+    name: '残灾之影',
+    level: 3,
+    description: '从神域裂隙中渗出的灾厄残影，没有固定形态，只是本能地撕扯着身边的一切。',
+    tags: ['calamity', 'shadow'],
+    maxHp: 14,
+    armor: 11,
+    attackPower: 3,
+    agility: 10,
+  },
 }

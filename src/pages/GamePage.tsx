@@ -1,6 +1,9 @@
 import { useState } from 'react'
 import Button from '../components/Button'
 import InventoryPanel from '../components/game/InventoryPanel'
+import SakuraEncounterPanel from '../components/game/SakuraEncounterPanel'
+import CompanionPanel from '../components/game/CompanionPanel'
+import RelationshipPanel from '../components/game/RelationshipPanel'
 import { useGameStore, VILLAGE_ELDER_POST_QUEST_EVENT_ID } from '../game/state/gameStore'
 import { getProfessionName, ATTRIBUTE_KEYS, ATTRIBUTE_LABELS } from '../game/content/professions'
 import { getEnemy, getItem, getLocation, getNpc, getQuest, NPCS, QUESTS } from '../game/content'
@@ -8,12 +11,21 @@ import { CHECK_DC, type D20CheckResult } from '../game/rules/d20'
 import { LEVEL_2_MAX_HP_GAIN, LEVEL_2_MAX_MP_GAIN } from '../game/rules/character'
 import { formatLuckCheckLog, LUCK_OUTCOME_LABELS } from '../game/rules/luck'
 import { getUsableSkills } from '../game/rules/skill'
+import {
+  canTriggerSakuraEncounter,
+  getSakuraSceneStage,
+  isSakuraTriggerLocation,
+  canTriggerSakuraBanter,
+  isFirstRestTalkReady,
+} from '../game/rules/sakura'
 import type {
   NorthTowerClaimResult,
   NorthTowerLuckResult,
   NorthTowerMndResult,
   NorthTowerSkillResult,
   OldTraderResult,
+  SakuraBanterChoice,
+  SakuraFirstRestChoice,
 } from '../game/state/gameStore'
 import type { QuestStatus } from '../game/types'
 
@@ -99,6 +111,15 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
   const restAtTianlongMartialHall = useGameStore((s) => s.restAtTianlongMartialHall)
   // TM-P2-001 D3：北门痕迹调查 action
   const investigateNorthGateTrail = useGameStore((s) => s.investigateNorthGateTrail)
+  // TM-P2-004：Sakura / 伙伴 / 关系 / 休整 actions
+  const startSakuraEncounter = useGameStore((s) => s.startSakuraEncounter)
+  const sakuraBanter = useGameStore((s) => s.sakuraBanter)
+  const sakuraFirstRestTalk = useGameStore((s) => s.sakuraFirstRestTalk)
+  const buyOsmanthusCake = useGameStore((s) => s.buyOsmanthusCake)
+  const [banterDone, setBanterDone] = useState(false)
+  const [banterNote, setBanterNote] = useState<string | null>(null)
+  const [firstRestNote, setFirstRestNote] = useState<string | null>(null)
+  const [firstRestResult, setFirstRestResult] = useState<SakuraFirstRestChoice | null>(null)
   const [travelError, setTravelError] = useState(false)
   // TM-P0-015：活动对话 NPC（仅 UI 本地状态，不进入 GameState / 存档）
   const [activeNpcId, setActiveNpcId] = useState<string | null>(null)
@@ -277,10 +298,16 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
     if (quest.id === 'quest_north_gate_missing_patrol') {
       return gameState.quests.some((q) => q.questId === 'quest_wangcai_trouble' && q.status === 'completed')
     }
+    // TM-P2-004 第 34 节：《落樱越界》不由委托板发放——由反季樱雨事件 discover（排除，避免绕过剧情入口）
+    if (quest.id === 'quest_sakura_boundary') {
+      return false
+    }
     return true
   })
-  // TM-P0-015：附近人物 = 常驻当前地点的注册 NPC（动态过滤，不硬编码列表）
-  const localNpcs = Object.values(NPCS).filter((npc) => npc.locationId === world.currentLocationId)
+  // TM-P0-015：附近人物 = 常驻当前地点的注册 NPC（动态过滤，不硬编码列表）；TM-P2-004：樱花优子不走普通对话系统（专属面板），从列表排除
+  const localNpcs = Object.values(NPCS).filter(
+    (npc) => npc.locationId === world.currentLocationId && npc.id !== 'sakura_yuko',
+  )
 
   // 当前装备武器（左栏手机概览 + 装备区共用）
   const equippedWeaponDef = gameState.equipment.weapon ? getItem(gameState.equipment.weapon) : undefined
@@ -493,6 +520,113 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
           )}
 
           {/* ---- 剧情与行动块（中栏中部；手机在描述之后、移动之前） ---- */}
+
+          {/* TM-P2-004 第 31/32 节：反季樱雨入口 —— 触发条件满足时在天龙城/武馆出现（不点不消失，不永久错过） */}
+          {isSakuraTriggerLocation(world.currentLocationId) &&
+            getSakuraSceneStage(gameState) === 'hidden' &&
+            canTriggerSakuraEncounter(gameState) && (
+              <section className="order-2 rounded border border-sakura-500/50 bg-gradient-to-b from-sakura-500/10 to-ink-900/40 p-5 text-sm text-bone-300">
+                <h3 className="mb-2 text-sm font-bold tracking-wider text-sakura-200">反季樱雨</h3>
+                <p className="leading-relaxed text-bone-200">不合时节的樱花正从天空飘落——你能感到花瓣背后有什么在松动。</p>
+                <Button className="mt-3" variant="primary" onClick={() => startSakuraEncounter()}>
+                  查看异象
+                </Button>
+              </section>
+            )}
+
+          {/* TM-P2-004：Sakura 剧情面板（樱雨→神域→初见→检定→合作→战斗→契约→入队；一次性持久化，刷新/读档不重掷） */}
+          {getSakuraSceneStage(gameState) !== 'hidden' && (
+            <div className="order-2">
+              <SakuraEncounterPanel onEngage={onEngage} />
+            </div>
+          )}
+
+          {/* TM-P2-004 第 88 节：天龙城同行 banter（recruited 后首次返回天龙城触发一次） */}
+          {canTriggerSakuraBanter(gameState) && !banterDone && (
+            <section className="order-2 rounded border border-sakura-500/40 bg-ink-900/50 p-5 text-sm text-bone-300">
+              <p className="leading-relaxed text-bone-200">樱花优子望着街道上往来的人群，轻声说：</p>
+              <p className="mt-1 leading-relaxed text-sakura-200">
+                「这里的灵脉比神域混乱得多……可这些凡人似乎完全感觉不到。」
+              </p>
+              <div className="mt-3 flex flex-col items-start gap-2">
+                {(
+                  [
+                    { choice: 'habit' as SakuraBanterChoice, label: '习惯就好。' },
+                    { choice: 'not_mortal' as SakuraBanterChoice, label: '别把所有人都叫凡人。' },
+                    { choice: 'will_like' as SakuraBanterChoice, label: '你也会慢慢喜欢这里。' },
+                  ]
+                ).map(({ choice, label }) => (
+                  <Button
+                    key={choice}
+                    variant="primary"
+                    onClick={() => {
+                      const result = sakuraBanter(choice)
+                      setBanterDone(true)
+                      if (result && result.outcome === 'talked') {
+                        const parts: string[] = []
+                        if (result.affectionDelta !== 0) parts.push(`好感 ${result.affectionDelta > 0 ? '+' : ''}${result.affectionDelta}`)
+                        if (result.trustDelta !== 0) parts.push(`信任 ${result.trustDelta > 0 ? '+' : ''}${result.trustDelta}`)
+                        setBanterNote(parts.length ? `樱花优子 ${parts.join('  ')}` : '她轻轻笑了笑。')
+                      }
+                    }}
+                  >
+                    {label}
+                  </Button>
+                ))}
+              </div>
+              {banterNote && <p className="mt-2 text-xs text-sakura-300">{banterNote}</p>}
+            </section>
+          )}
+          {/* banter 完成后的关系提示（面板隐藏后仍显示一次） */}
+          {canTriggerSakuraBanter(gameState) === false && banterDone && banterNote && (
+            <p className="order-2 text-xs text-sakura-300">{banterNote}</p>
+          )}
+
+          {/* TM-P2-004 第 59-61 节：首次休整谈话《第一夜：神与凡人的距离》（Long Rest 后就绪；三选项） */}
+          {isFirstRestTalkReady(gameState) && !firstRestResult && (
+            <section className="order-2 rounded border border-sakura-500/40 bg-ink-900/50 p-5 text-sm text-bone-300">
+              <h3 className="mb-2 text-sm font-bold tracking-wider text-sakura-200">第一夜：神与凡人的距离</h3>
+              <p className="leading-relaxed text-bone-200">
+                夜里，樱花优子坐在屋檐下，望着你：「……神契只是让我留在这里。接下来，我们怎么相处？」
+              </p>
+              <div className="mt-3 flex flex-col items-start gap-2">
+                {(
+                  [
+                    { choice: 'respect' as SakuraFirstRestChoice, label: '神契只是让你留在这里，不代表你属于我。' },
+                    { choice: 'joke' as SakuraFirstRestChoice, label: '那我是不是该叫你“我的宠物女神”？' },
+                    { choice: 'pragmatic' as SakuraFirstRestChoice, label: '所以你现在还能发挥多少战力？' },
+                  ]
+                ).map(({ choice, label }) => (
+                  <Button
+                    key={choice}
+                    variant="primary"
+                    onClick={() => {
+                      const result = sakuraFirstRestTalk(choice)
+                      setFirstRestResult(choice)
+                      if (result && result.outcome === 'talked') {
+                        const parts: string[] = []
+                        if (result.affectionDelta !== 0) parts.push(`好感 ${result.affectionDelta > 0 ? '+' : ''}${result.affectionDelta}`)
+                        if (result.trustDelta !== 0) parts.push(`信任 ${result.trustDelta > 0 ? '+' : ''}${result.trustDelta}`)
+                        setFirstRestNote(parts.length ? `樱花优子 ${parts.join('  ')}` : '她认真地回答了你的问题。')
+                      }
+                    }}
+                  >
+                    {label}
+                  </Button>
+                ))}
+              </div>
+            </section>
+          )}
+          {firstRestResult && (
+            <section className="order-2 rounded border border-sakura-500/40 bg-ink-900/50 p-5 text-sm text-bone-300">
+              <p className="leading-relaxed text-bone-200">
+                {firstRestResult === 'respect' && '她沉默了很久，最后轻轻点头：「……谢谢你。这句话，比任何契约都重。」'}
+                {firstRestResult === 'joke' && '她愣了一下，随即别过头去：「……神契宠物只是你们天梦大陆的分类，不代表所有权。」'}
+                {firstRestResult === 'pragmatic' && '她认真地想了想：「樱花飞斩、魔法盾与轻舞还能用。完整封印术……还差很远。」'}
+              </p>
+              {firstRestNote && <p className="mt-2 text-xs text-sakura-300">{firstRestNote}</p>}
+            </section>
+          )}
 
           {/* TM-P2-001 D3：北门调查入口 / 痕迹剧情 —— 天龙城北门 + 北门任务 in_progress + 未调查时显示入口；调查后显示固定剧情（黑鬃魔狼由附近威胁区在正确状态出现） */}
           {world.currentLocationId === 'tianlong_north_gate' && northGateQuestInProgress && (
@@ -1248,6 +1382,33 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
             </section>
           )}
 
+          {/* TM-P2-004 第 66/67 节：天龙城桂花糕铺（第一种真实礼物——樱花优子 liked：sweet/refined） */}
+          {world.currentLocationId === 'tianlong_city' && (() => {
+            const cake = getItem('tianlong_osmanthus_cake')
+            if (!cake) return null
+            const price = cake.value
+            const canAfford = player.gold >= price
+            return (
+              <section className="order-4 rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
+                <h3 className="mb-3 text-sm font-bold tracking-wider text-bone-500">桂花糕铺</h3>
+                <div className="flex items-center justify-between gap-3 rounded border border-ink-600 bg-ink-900/40 p-3">
+                  <div>
+                    <p className="font-bold text-bone-100">{cake.name}</p>
+                    <p className="mt-1 text-xs text-bone-500">
+                      {cake.description} 价格：{price} 金币
+                    </p>
+                  </div>
+                  <div className="flex flex-col items-end gap-1">
+                    <Button variant="primary" disabled={!canAfford} onClick={() => buyOsmanthusCake()}>
+                      购买
+                    </Button>
+                    {!canAfford && <span className="text-xs text-red-300">金币不足</span>}
+                  </div>
+                </div>
+              </section>
+            )
+          })()}
+
           {/* TM-P0-017：附近威胁 —— 仅当前地点配置了敌人时显示（青石村等无敌人地点整个区域隐藏） */}
           {(() => {
             const configuredEnemies = location?.enemyIds ?? []
@@ -1353,6 +1514,12 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
                 // TM-P2-001 D4：黑鬃魔狼可见性窄条件（严格 boolean）——北门 + 北门任务 in_progress/stage 0 + trail_checked===true + wolf_defeated 非 true（未调查/已击败/异常非 boolean 一律不显示）
                 if (threat.id === 'black_mane_wolf') {
                   if (!northGateWolfVisible) return false
+                }
+                // TM-P2-004 第 40 节：残灾之影可见性——仅 guest 状态 + 神域 + 未击败（sakura.ts 规则一致）
+                if (threat.id === 'sakura_calamity_fragment') {
+                  if (world.flags.sakura_guest !== true) return false
+                  if (world.flags.sakura_calamity_defeated === true) return false
+                  if (world.currentLocationId !== 'sakura_domain_fragment') return false
                 }
                 return true
               })
@@ -1553,6 +1720,10 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
               </section>
             )
           })()}
+
+          {/* TM-P2-004 第 74/85 节：红颜录 + 同行伙伴面板（已相识未缔约 → 红颜录存在；缔约后两边都在；与中栏场景面板分离） */}
+          <RelationshipPanel />
+          <CompanionPanel />
 
           {/* 冒险日志（含任务卡与完成剧情；手机第 6 位附近） */}
           <section className="rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">

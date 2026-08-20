@@ -1,5 +1,5 @@
-/** 物品类型：武器/防具/饰品/消耗品/任务物品/材料（TM-P0-020 新增 material） */
-export type ItemType = 'weapon' | 'armor' | 'accessory' | 'consumable' | 'quest' | 'material'
+/** 物品类型：武器/防具/饰品/消耗品/任务物品/材料/礼物（TM-P2-004 第 65 节新增 gift） */
+export type ItemType = 'weapon' | 'armor' | 'accessory' | 'consumable' | 'quest' | 'material' | 'gift'
 
 /** 物品品阶（TM-P2-003 C：最小 rarity；默认 common；本卡不建设装备词条/随机属性） */
 export type ItemRarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary'
@@ -19,6 +19,8 @@ export interface ItemDefinition {
   weaponDamageBonus?: number
   /** 装备后护甲加成（仅 armor 可使用，TM-P2-002 A；当前内容暂无护甲物品，接口预留） */
   armorDefenseBonus?: number
+  /** 礼物标签（仅 gift 类型可使用；TM-P2-004 第 65 节——赠礼按标签匹配关系档案 likedGiftTags） */
+  giftTags?: string[]
 }
 
 /** V1 最小物品目录（仅当前需要的内容） */
@@ -92,6 +94,15 @@ export const ITEMS: Record<string, ItemDefinition> = {
     type: 'quest',
     description: '王财在黑石塔附近遭遇魔物袭击时遗失的项链，是他妻子留下的重要物件。',
     value: 0,
+  },
+  // TM-P2-004 第 66 节：第一种真实礼物——天龙桂花糕（gift 类型 + 礼物标签）
+  tianlong_osmanthus_cake: {
+    id: 'tianlong_osmanthus_cake',
+    name: '天龙桂花糕',
+    type: 'gift',
+    description: '天龙城老字号铺子蒸制的桂花糕，口感细腻，带着桂花的清甜。',
+    value: 8,
+    giftTags: ['sweet', 'refined', 'local'],
   },
 }
 

@@ -16,6 +16,16 @@ export type { EnemyDefinition } from './enemies'
 export { ENEMIES } from './enemies'
 export type { QuestDefinition } from './quests'
 export { QUESTS } from './quests'
+export type { CompanionDefinition } from '../types/companion'
+export {
+  COMPANIONS,
+  SAKURA_COMPANION_ID,
+  getCompanion,
+  sakuraDefaultSkillIds,
+  SAKURA_SEALED_SKILLS,
+} from './companions'
+export type { RelationshipProfile } from '../types/relationship'
+export { RELATIONSHIP_PROFILES, getRelationshipProfile, isRomanceableNpc } from './relationships'
 
 import type { ProfessionId } from '../types'
 import { LOCATIONS, type LocationDefinition } from './locations'

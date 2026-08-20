@@ -61,6 +61,42 @@ export const SKILLS: Record<string, SkillDefinition> = {
       suppressCounterOnFullHit: true,
     },
   },
+  // ---- TM-P2-004 第 44/45 节：樱花优子伙伴技能（profession = undefined 通用技能，复用 R3 语义；
+  //      actor 无职业（伙伴）也可合法使用；不另造页面 if(sakuraSkill) 分支） ----
+  sakura_petalslash: {
+    id: 'sakura_petalslash',
+    name: '樱花飞斩',
+    description: '以神力凝成樱花刃锋，斩向敌人。',
+    // 无 profession = 通用技能（伙伴可学可用；玩家学了也能用，但玩家不会获得该技能）
+    mpCost: 1,
+    tags: ['physical', 'movement', 'divine'],
+    combat: {
+      damageFormula: '以 AGI 为攻击属性的物理伤害 + 1（武器加成 0，等级 = 伙伴等级）',
+      damageResolver: { type: 'agility_power', bonus: 1 },
+    },
+  },
+  sakura_magic_shield: {
+    id: 'sakura_magic_shield',
+    name: '樱花魔法盾',
+    description: '以花瓣编织的神力屏障，下一次敌人反击的最终伤害降低。',
+    mpCost: 2,
+    tags: ['magic', 'divine'],
+    combat: {
+      oncePerCombat: true,
+      supportEffect: { type: 'reduce_next_enemy_damage', amount: 3 },
+    },
+  },
+  sakura_light_dance: {
+    id: 'sakura_light_dance',
+    name: '樱花轻舞',
+    description: '以轻舞般的步伐牵走敌人的攻势，本轮敌人不反击。',
+    mpCost: 2,
+    tags: ['movement', 'divine'],
+    combat: {
+      oncePerCombat: true,
+      supportEffect: { type: 'cancel_next_enemy_counter' },
+    },
+  },
 }
 
 /** 各职业初始技能（新角色自动获得；TM-P2-003 A） */

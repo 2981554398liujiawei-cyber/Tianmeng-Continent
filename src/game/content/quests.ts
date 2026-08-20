@@ -74,4 +74,11 @@ export const QUESTS: Record<string, QuestDefinition> = {
     giverNpcId: 'knight_captain_make',
     goldReward: 30,
   },
+  // TM-P2-004 第 28 节：《落樱越界》（伙伴招募/世界奇遇任务；不是 Sakura 的攻略任务）
+  quest_sakura_boundary: {
+    id: 'quest_sakura_boundary',
+    title: '落樱越界',
+    summary: '天龙城附近出现了不合时节的樱雨。花瓣背后的空间裂隙似乎连接着一个正在崩塌的陌生神域。',
+    giverNpcId: 'sakura_yuko',
+  },
 }

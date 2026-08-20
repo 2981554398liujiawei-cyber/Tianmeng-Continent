@@ -57,4 +57,13 @@ export const NPCS: Record<string, NpcDefinition> = {
     summary: '天龙城中的商人，最近似乎遇上了一件让他十分头疼的事情。',
     greeting: '唉……最近实在诸事不顺。',
   },
+  // TM-P2-004：樱花优子（世界奇遇 NPC 条目；仅用于任务发布引用一致性——她不走普通 NPC 对话/关系系统，交互由伙伴/红颜录面板承载）
+  sakura_yuko: {
+    id: 'sakura_yuko',
+    name: '樱花优子',
+    role: '樱花女神（神契伙伴）',
+    locationId: 'tianlong_city',
+    summary: '来自大日岛樱花神宫的女神，神格受损，以寄灵神契锚定于天梦大陆的生命之上才得以存在。',
+    greeting: '花瓣落在你的肩上。天梦大陆的风，比神域里要温柔一些。',
+  },
 }

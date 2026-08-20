@@ -9,4 +9,6 @@ export interface WorldState {
   completedEvents: string[]
   /** 重要 NPC 状态（npcId -> 状态） */
   npcStates: Record<string, NpcState>
+  /** V4：休整次数（Long Rest MVP；TM-P2-004 第 54 节；新游戏 0；V3→V4 缺失补 0） */
+  restCount: number
 }

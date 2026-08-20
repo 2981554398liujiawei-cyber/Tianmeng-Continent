@@ -17,12 +17,20 @@ export type SkillTag =
   | 'healing'
   | 'illusion'
   | 'summon'
+  | 'divine'
 
 /**
  * 伤害结算 resolver 类型（TM-P2-003-R2 B1：rules/skill 只识别 resolver 类型，
  * 不再按具体 skillId 分发——未来新增技能只需在注册表声明 resolver + bonus）。
  */
 export type DamageResolverType = 'magic_spell' | 'attack_power' | 'agility_power'
+
+/** 非伤害型支持效果（TM-P2-004 第 48/49 节：伙伴技能用；窄实现，不建通用 Effect Engine） */
+export type SupportEffect =
+  /** 下一次敌人实际反击最终伤害 -amount（最低 0；V3 命中/护甲/擦伤/暴击先正常算，这是最终伤害后的额外防护） */
+  | { type: 'reduce_next_enemy_damage'; amount: number }
+  /** 取消下一次敌人反击（本轮敌人不反击） */
+  | { type: 'cancel_next_enemy_counter' }
 
 /** 技能定义（Skill Registry 条目；TM-P2-003 A） */
 export interface SkillDefinition {
@@ -43,9 +51,11 @@ export interface SkillDefinition {
       /** attack_power / agility_power 类 resolver 的固定加成（骑士重击 +2、压制 +1、迅捷 +2） */
       bonus?: number
     }
-    /** 每场战斗仅一次（迅捷突袭；按 skillId 独立追踪） */
+    /** 每场战斗仅一次（迅捷突袭/樱花魔法盾/樱花轻舞；按 skillId 独立追踪） */
     oncePerCombat?: boolean
     /** 正常命中/暴击阻止本次敌人反击（压制猛击；擦伤不阻止） */
     suppressCounterOnFullHit?: boolean
+    /** 非伤害型支持效果（TM-P2-004 第 48/49 节；樱花魔法盾/樱花轻舞） */
+    supportEffect?: SupportEffect
   }
 }

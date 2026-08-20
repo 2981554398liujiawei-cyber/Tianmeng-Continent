@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import Button from '../components/Button'
 import { useGameStore } from '../game/state/gameStore'
-import { getEnemy, getItem } from '../game/content'
+import { getEnemy, getItem, getCompanion, SAKURA_COMPANION_ID } from '../game/content'
 import { ATTRIBUTE_KEYS, ATTRIBUTE_LABELS, getProfessionName } from '../game/content/professions'
 import {
   formatAttackLog,
@@ -29,6 +29,7 @@ import { formatLuckCheckLog } from '../game/rules/luck'
 import { getSkill } from '../game/content/skills'
 import type { LootGrant } from '../game/types/loot'
 import { RARITY_LABELS } from '../game/types/loot'
+import { SAKURA_SEALED_SKILLS } from '../game/content/companions'
 
 interface CombatPageProps {
   enemyId: string
@@ -41,10 +42,14 @@ interface CombatPageProps {
 /** TM-P2-002-R1 A：敌人先手攻击演示延迟（期间玩家操作全封锁；卸载后 timer 被清理不造成伤害） */
 const ENEMY_FIRST_STRIKE_DELAY_MS = 400
 
+/** TM-P2-004 第 48/49 节：樱花魔法盾减伤量（reduce_next_enemy_damage amount=3，来自技能注册表） */
+const SAKURA_SHIELD_AMOUNT = 3
+
 export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu }: CombatPageProps) {
   const gameState = useGameStore((s) => s.gameState)
   const damagePlayer = useGameStore((s) => s.damagePlayer)
   const spendSkillMp = useGameStore((s) => s.spendSkillMp)
+  const spendCompanionSkillMp = useGameStore((s) => s.spendCompanionSkillMp)
   const useHealingPotion = useGameStore((s) => s.useHealingPotion)
   const enemy = getEnemy(enemyId)
 
@@ -56,7 +61,6 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
   const [lastPotionHeal, setLastPotionHeal] = useState<number | null>(null)
   /** TM-P2-003 C：战斗胜利结算的掉落（基础 + 幸运追加；victory 界面展示） */
   const [victoryLoot, setVictoryLoot] = useState<LootGrant | null>(null)
-  /** TM-P1-001/006/007/008：最近一次玩家行动类型（仅页面本地） */
   /** TM-P2-003 A：最近一次玩家行动（'basic' 或技能 id；仅页面本地） */
   const [lastPlayerAction, setLastPlayerAction] = useState<string | null>(null)
   /** TM-P2-003-R2 B2：每场一次技能按 skillId 独立追踪（Set；使用 A 不影响 B） */
@@ -72,6 +76,22 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
   /** TM-P2-002-R1 A：敌人先手攻击进行中 → 所有玩家操作（攻击/技能/药水）封锁、不消耗 MP */
   const [enemyFirstStriking, setEnemyFirstStriking] = useState(false)
   const [enemyFirstStrikeDone, setEnemyFirstStrikeDone] = useState(false)
+
+  // ---- TM-P2-004：伙伴阶段（樱花优子临时/正式并肩作战）----
+  /** 玩家行动后、敌人反击前，等待伙伴行动的标志（MVP：每轮最多一次伙伴行动） */
+  const [awaitingCompanionAction, setAwaitingCompanionAction] = useState(false)
+  /** 樱花魔法盾剩余减伤（reduce_next_enemy_damage；一次实际命中反击消耗） */
+  const [shieldRemaining, setShieldRemaining] = useState(0)
+  /** 最近一次盾实际抵消值（日志显示真实抵消量，不足 3 显示真实值） */
+  const [shieldAbsorbedLast, setShieldAbsorbedLast] = useState<number | null>(null)
+  /** 樱花轻舞：本轮敌人不反击（cancel_next_enemy_counter） */
+  const [companionCanceledCounter, setCompanionCanceledCounter] = useState(false)
+  /** 伙伴每场一次技能独立追踪（与玩家 Set 分开；TM-P2-004 第 107 节） */
+  const [usedOnceCompanionSkillIds, setUsedOnceCompanionSkillIds] = useState<ReadonlySet<string>>(new Set())
+  /** 最近一次伙伴行动（'petalslash' | 'shield' | 'light_dance' | 'skip'；仅页面本地） */
+  const [lastCompanionAction, setLastCompanionAction] = useState<string | null>(null)
+  /** 最近一次伙伴飞斩攻击结果（日志展示） */
+  const [lastCompanionAttack, setLastCompanionAttack] = useState<AttackResult | null>(null)
 
   // ---- 防御性异常出口 ----
   if (!gameState) {
@@ -108,15 +128,24 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
   const playerArmor = getPlayerArmor(player.attributes.con, armorDefenseBonus)
   const playerAgility = getPlayerAgility(player.attributes.agi)
   const levelDamageBonus = getPlayerLevelDamageBonus(player.level)
-  // TM-P2-003-R3 C：已学习技能统一解析入口（learnedSkillIds → getUsableSkills：
-  // 未知 ID / 重复 ID / 通用技能 / 职业不匹配 全部走一个入口，页面不再手工 map/filter）
+  // TM-P2-003-R3 C：已学习技能统一解析入口（learnedSkillIds → getUsableSkills）
   const learnedSkills = getUsableSkills(gameState.player.learnedSkillIds, player.profession)
 
+  // ---- TM-P2-004：当前战斗伙伴（sakura_yuko；guest/recruited 且 active）----
+  const activeCompanionIds = gameState.party?.activeCompanionIds ?? []
+  const companion = activeCompanionIds.includes(SAKURA_COMPANION_ID)
+    ? gameState.companions[SAKURA_COMPANION_ID]
+    : undefined
+  const companionDef = companion ? getCompanion(companion.companionId) : undefined
+  const companionReady =
+    !!companion && (companion.status === 'guest' || companion.status === 'recruited') && !!companionDef
+  /** 伙伴技能走 getUsableSkills（profession=undefined → 仅通用技能，即 Sakura 三技能；不硬编码名字） */
+  const companionSkills = companion ? getUsableSkills(companion.learnedSkillIds, undefined) : []
+  const sakuraAttrs = companionDef?.attributes
+  const sakuraAgility = sakuraAttrs ? getPlayerAgility(sakuraAttrs.agi) : 0
+
   // TM-P2-002 D：敌人先手 → 进入正常回合前先执行一次敌人攻击（仅一次）
-  // TM-P2-002-R1 A：攻击进行期间封锁玩家操作（enemyFirstStriking）；timer 由 cleanup 清理，
-  // 组件卸载/战斗结束/退出后残留 timer 不得继续造成伤害。
-  // StrictMode 双挂载兼容：第一次挂载的 timer 被 cleanup 取消后，第二次挂载会重新创建 timer，
-  // 最终恰好攻击一次、封锁恰好一次（不用 ref 防重，避免 cleanup 后永久锁死）。
+  // TM-P2-002-R1 A：攻击进行期间封锁玩家操作（enemyFirstStriking）；timer 由 cleanup 清理
   useEffect(() => {
     if (initiativeWinner !== 'enemy') return
     setEnemyFirstStriking(true)
@@ -140,19 +169,29 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
     .filter((entry) => entry.itemId === 'healing_potion' && Number.isSafeInteger(entry.quantity) && entry.quantity >= 1)
     .reduce((total, entry) => total + entry.quantity, 0)
 
-  /** TM-P2-002：敌人反击（V3：敏捷命中 + 护甲减伤）——玩家/职业技能/喝药行动共用 */
+  /** TM-P2-002：敌人反击（V3：敏捷命中 + 护甲减伤）——玩家/伙伴行动共用。
+   *  TM-P2-004 第 48 节：樱花魔法盾在 V3 最终伤害后额外减伤（最低 0）；命中才消耗盾（miss 保留）。 */
   const applyEnemyCounter = () => {
-    const enemyResult = performAttack(enemy.agility, playerAgility, enemy.attackPower, playerArmor)
-    setLastEnemyAttack(enemyResult)
-    if (enemyResult.hit) {
-      damagePlayer(enemyResult.damage)
+    const rawResult = performAttack(enemy.agility, playerAgility, enemy.attackPower, playerArmor)
+    let result = rawResult
+    if (rawResult.hit && shieldRemaining > 0) {
+      const absorbed = Math.min(shieldRemaining, rawResult.damage)
+      result = { ...rawResult, damage: Math.max(0, rawResult.damage - absorbed) }
+      setShieldAbsorbedLast(absorbed)
+      setShieldRemaining(0)
+    } else {
+      setShieldAbsorbedLast(null)
+    }
+    setLastEnemyAttack(result)
+    if (result.hit && result.damage > 0) {
+      damagePlayer(result.damage)
     }
     setPhase(getCombatPhaseAfterEnemyAttack(useGameStore.getState().gameState?.player.hp ?? 1))
   }
 
   const handleUseHealingPotion = () => {
     // TM-P2-002-R1 A：敌人先手攻击期间药水不可执行
-    if (phase !== 'active' || enemyFirstStriking) return
+    if (phase !== 'active' || enemyFirstStriking || awaitingCompanionAction) return
     const hpBefore = player.hp
     if (!useHealingPotion()) return
     const hpAfter = useGameStore.getState().gameState?.player.hp ?? hpBefore
@@ -160,29 +199,28 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
     setLastPlayerAction(null)
     setLastPotionHeal(hpAfter - hpBefore)
     setLastEnemyAttack(null)
+    // 药水行动后同样可进入伙伴阶段（MVP 统一流程）
+    if (companionReady) {
+      setAwaitingCompanionAction(true)
+      return
+    }
     applyEnemyCounter()
   }
 
   const handleAttack = () => {
-    // TM-P2-002-R1 A：敌人先手攻击期间普通攻击不可执行
-    if (phase !== 'active' || enemyFirstStriking) return
+    // TM-P2-002-R1 A：敌人先手攻击期间普通攻击不可执行；伙伴行动期间玩家按钮封锁
+    if (phase !== 'active' || enemyFirstStriking || awaitingCompanionAction) return
     const playerResult = performAttack(playerAgility, enemy.agility, playerAttackPower, enemy.armor)
     applyPlayerAttack(playerResult, 'basic')
   }
 
-  /** TM-P2-003-R2 B1/B2：技能统一入口（learnedSkillIds → Skill Registry → rules/skill 执行）。
-   * 伤害 resolver / MP cost / once-per-combat / 压制全部来自注册表与 rules/skill.ts，
-   * 页面不硬编码任何 skillId 分支；once 按 skillId 独立（Set）。
-   * 执行顺序：先纯计算校验 → 再耗 MP → 再标记已用 → 最后结算（MP 失败不吞标记）。 */
+  /** TM-P2-003-R2 B1/B2：技能统一入口（learnedSkillIds → Skill Registry → rules/skill 执行） */
   const handleSkill = (skillId: string) => {
-    if (phase !== 'active' || enemyFirstStriking) return
+    if (phase !== 'active' || enemyFirstStriking || awaitingCompanionAction) return
     const info = getSkillExecutionInfo(skillId)
     if (!info) return
-    // TM-P2-003-R3 C：职业兼容语义——无 profession 的通用技能任何职业可用；有职业必须匹配
     if (info.skill.profession !== undefined && info.skill.profession !== player.profession) return
-    // 每场一次：已使用（本技能）→ 拒绝
     if (info.oncePerCombat && isOncePerCombatUsed(usedOnceSkillIds, skillId)) return
-    // 原始伤害（rules/skill resolver；未知/无 resolver 返回 null → 拒绝）
     const rawDamage = resolveSkillRawDamage(skillId, {
       str: player.attributes.str,
       agi: player.attributes.agi,
@@ -191,9 +229,7 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
       level: player.level,
     })
     if (rawDamage === null) return
-    // MP 消费（注册表 cost；唯一入口；false → 不掷骰、不改 HP、不反击、不标记）
     if (!spendSkillMp(skillId)) return
-    // 标记每场一次（此时才确认真正执行）
     if (info.oncePerCombat) {
       setUsedOnceSkillIds((prev) => markOncePerCombatUsed(prev, skillId))
     }
@@ -201,7 +237,8 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
     applyPlayerAttack(skillResult, skillId)
   }
 
-  /** TM-P1-001/006/007/008：玩家攻击共用最小局部结算（V3 保持）——压制按 Skill Registry 标志判断 */
+  /** TM-P1-001/006/007/008：玩家攻击共用最小局部结算（V3 保持）——压制按 Skill Registry 标志判断。
+   *  TM-P2-004 第 47 节：玩家行动后若伙伴在场且敌人存活 → 进入伙伴行动阶段（敌人反击推迟到伙伴行动后）。 */
   const applyPlayerAttack = (attack: AttackResult, action: string) => {
     setLastPlayerAttack(attack)
     setLastPlayerAction(action)
@@ -212,14 +249,92 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
     setEnemyCurrentHp(strike.enemyHp)
     if (!strike.enemyShouldCounter) {
       setPhase(strike.phase)
-      // TM-P2-003 C：胜利时结算掉落（基础 + 幸运追加；无掉落表返回 null 不展示）
-      setVictoryLoot(useGameStore.getState().grantLoot(enemyId))
+      // TM-P2-003 C：胜利时结算掉落（基础 + 幸运追加；只结算一次）
+      if (strike.phase === 'victory') {
+        setVictoryLoot(useGameStore.getState().grantLoot(enemyId))
+      }
       return
     }
     // TM-P1-008/TM-P2-003-R1：suppressCounterOnFullHit 技能仅「正常命中/暴击」压制本次反击；擦伤不压制
     if (action !== 'basic' && isSuppressOnFullHitSkill(action) && (attack.outcome === 'hit' || attack.outcome === 'critical_hit')) {
+      // 压制已取消本次反击：不进入伙伴阶段（轻舞无意义，绝不白耗 MP）
       return
     }
+    // 有反击：伙伴在场且敌人存活 → 伙伴行动阶段
+    if (companionReady && strike.phase === 'active') {
+      setAwaitingCompanionAction(true)
+      return
+    }
+    applyEnemyCounter()
+  }
+
+  // ---- TM-P2-004 第 47-51 节：伙伴行动（按技能注册表 supportEffect 分派，不硬编码 skillId 分支）----
+
+  const handleCompanionSkill = (skillId: string) => {
+    if (!companion || !companionReady || phase !== 'active' || !awaitingCompanionAction) return
+    const info = getSkillExecutionInfo(skillId)
+    if (!info) return
+    const support = info.skill.combat?.supportEffect
+    // 支持效果：盾 / 轻舞（oncePerCombat 独立追踪；MP 不足不消耗不结束阶段）
+    if (support) {
+      if (info.oncePerCombat && isOncePerCombatUsed(usedOnceCompanionSkillIds, skillId)) return
+      if (!spendCompanionSkillMp(companion.companionId, skillId)) return
+      if (info.oncePerCombat) {
+        setUsedOnceCompanionSkillIds((prev) => markOncePerCombatUsed(prev, skillId))
+      }
+      setLastPlayerAttack(null)
+      setLastEnemyAttack(null)
+      setLastPotionHeal(null)
+      setAwaitingCompanionAction(false)
+      if (support.type === 'reduce_next_enemy_damage') {
+        // 樱花魔法盾：下一次敌人反击最终伤害 -amount（最低 0）
+        setShieldRemaining(support.amount)
+        setLastCompanionAction('shield')
+        applyEnemyCounter()
+      } else if (support.type === 'cancel_next_enemy_counter') {
+        // 樱花轻舞：本轮敌人不反击
+        setCompanionCanceledCounter(true)
+        setLastCompanionAction('light_dance')
+      }
+      return
+    }
+    // 伤害技能：樱花飞斩（agility_power；Sakura 自身 AGI/等级，武器加成 0）
+    const rawDamage = resolveSkillRawDamage(skillId, {
+      str: sakuraAttrs?.str ?? 0,
+      agi: sakuraAttrs?.agi ?? 0,
+      mnd: sakuraAttrs?.mnd ?? 0,
+      weaponDamageBonus: 0,
+      level: companion.level,
+    })
+    if (rawDamage === null) return
+    if (!spendCompanionSkillMp(companion.companionId, skillId)) return
+    const result = performAttack(sakuraAgility, enemy.agility, rawDamage, enemy.armor)
+    setLastPlayerAttack(null)
+    setLastEnemyAttack(null)
+    setLastPotionHeal(null)
+    setLastCompanionAttack(result)
+    setLastCompanionAction('petalslash')
+    setAwaitingCompanionAction(false)
+    const strike = resolvePlayerStrike(enemyCurrentHp, result)
+    setEnemyCurrentHp(strike.enemyHp)
+    if (!strike.enemyShouldCounter) {
+      setPhase(strike.phase)
+      // 伙伴击杀 → 胜利（只结算一次 loot / 一次 victory 提交；无反击）
+      if (strike.phase === 'victory') {
+        setVictoryLoot(useGameStore.getState().grantLoot(enemyId))
+      }
+      return
+    }
+    applyEnemyCounter()
+  }
+
+  const handleCompanionSkip = () => {
+    if (!awaitingCompanionAction) return
+    setLastPlayerAttack(null)
+    setLastEnemyAttack(null)
+    setLastPotionHeal(null)
+    setLastCompanionAction('skip')
+    setAwaitingCompanionAction(false)
     applyEnemyCounter()
   }
 
@@ -227,6 +342,14 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
     lastPlayerAction === null || lastPlayerAction === 'basic'
       ? '你的攻击：'
       : `你的${getSkill(lastPlayerAction)?.name ?? '技能'}：`
+
+  const companionActionLabel = (() => {
+    if (lastCompanionAction === 'petalslash') return '樱花优子的攻击：'
+    if (lastCompanionAction === 'shield') return '樱花优子施展了樱花魔法盾：'
+    if (lastCompanionAction === 'light_dance') return '樱花优子施展了樱花轻舞：'
+    if (lastCompanionAction === 'skip') return '樱花优子按兵不动。'
+    return null
+  })()
 
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-3xl flex-col gap-6 px-4 py-6">
@@ -303,9 +426,45 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
             敏捷 <span className="tabular-nums text-bone-100">{enemy.agility}</span>
           </p>
         </section>
+
+        {/* TM-P2-004 第 47 节：伙伴面板（樱花优子——MP/技能/封印技能展示；敌人只攻击玩家，她不参与受击） */}
+        {companion && companionDef && (
+          <section className="rounded border border-sakura-500/40 bg-ink-800/50 p-4 text-sm text-bone-300 sm:col-span-2">
+            <p className="text-base font-bold text-sakura-200">
+              {companionDef.name}
+              <span className="ml-2 text-xs font-normal text-bone-500">
+                {companion.status === 'recruited' ? '神契宠物' : '临时同行'} · Lv.{companion.level}
+              </span>
+            </p>
+            <p className="mt-1">
+              灵力 <span className="tabular-nums text-bone-100">{companion.mp}</span> / {companion.maxMp}
+            </p>
+            <p className="mt-2 text-xs text-bone-500">可用技能：</p>
+            <div className="mt-1 flex flex-wrap gap-2">
+              {companionSkills.map((skill) => (
+                <span key={skill.id} className="rounded border border-ink-600 bg-ink-900/60 px-2 py-0.5 text-xs text-bone-300">
+                  {skill.name}
+                  {skill.mpCost > 0 ? `（${skill.mpCost} 灵力）` : ''}
+                  {skill.combat?.oncePerCombat === true ? '·每场一次' : ''}
+                </span>
+              ))}
+            </div>
+            <p className="mt-2 text-xs text-bone-500">封印技能（尚未恢复）：</p>
+            <div className="mt-1 flex flex-wrap gap-2">
+              {SAKURA_SEALED_SKILLS.map((sealed) => (
+                <span key={sealed.skillId} className="rounded border border-ink-700 bg-ink-900/40 px-2 py-0.5 text-xs text-bone-600">
+                  {sealed.name}（封印）
+                </span>
+              ))}
+            </div>
+            {shieldRemaining > 0 && (
+              <p className="mt-2 text-xs text-sakura-200">樱花魔法盾已展开（可抵消 {shieldRemaining} 点伤害）。</p>
+            )}
+          </section>
+        )}
       </div>
 
-      {(lastPlayerAttack || lastEnemyAttack || lastPotionHeal !== null) && (
+      {(lastPlayerAttack || lastEnemyAttack || lastPotionHeal !== null || lastCompanionAction !== null) && (
         <section className="rounded border border-ink-600 bg-ink-900/50 p-4 text-sm leading-relaxed text-bone-300">
           {lastPlayerAttack && (
             <div>
@@ -322,6 +481,29 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
               <span className="text-bone-500">你使用了治疗药水：恢复 {lastPotionHeal} 点生命。</span>
             </p>
           )}
+          {/* TM-P2-004：伙伴行动日志 */}
+          {lastCompanionAction === 'petalslash' && lastCompanionAttack && (
+            <div className="mt-2">
+              <p className="text-sakura-200">{companionActionLabel}</p>
+              {formatAttackLog(lastCompanionAttack, enemy.name).map((line, i) => (
+                <p key={i} className="mt-1">
+                  {line}
+                </p>
+              ))}
+            </div>
+          )}
+          {lastCompanionAction === 'shield' && (
+            <p className="mt-2 text-sakura-200">下一次敌人反击的伤害将被削减。</p>
+          )}
+          {shieldAbsorbedLast !== null && (
+            <p className="mt-1 text-sakura-200">樱花魔法盾抵消了 {shieldAbsorbedLast} 点伤害。</p>
+          )}
+          {lastCompanionAction === 'light_dance' && (
+            <p className="mt-2 text-sakura-200">敌人的攻势被轻舞牵走，没有找到反击的机会。</p>
+          )}
+          {lastCompanionAction === 'skip' && (
+            <p className="mt-2 text-bone-500">樱花优子静静守在后方。</p>
+          )}
           {lastEnemyAttack && (
             <div className="mt-2">
               <p className="text-bone-500">{enemy.name}的攻击：</p>
@@ -336,12 +518,12 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
       )}
 
       <footer className="flex flex-col items-center gap-4">
-        {phase === 'active' && (
+        {phase === 'active' && !awaitingCompanionAction && (
           <div className="flex flex-col items-center gap-3">
             <Button variant="primary" disabled={enemyFirstStriking} onClick={handleAttack}>
               普通攻击
             </Button>
-            {/* TM-P2-003 A：技能按钮由 learnedSkillIds → Skill Registry 动态生成（不再按职业四段 if） */}
+            {/* TM-P2-003 A：技能按钮由 learnedSkillIds → Skill Registry 动态生成 */}
             {learnedSkills.map((skill) => {
               const mpNotEnough = skill.mpCost > 0 && player.mp < skill.mpCost
               const onceUsed =
@@ -377,6 +559,37 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
                 )}
               </div>
             )}
+          </div>
+        )}
+        {/* TM-P2-004 第 47/49 节：伙伴行动阶段（玩家行动后、敌人反击前；MVP 每轮一次） */}
+        {phase === 'active' && awaitingCompanionAction && companionReady && (
+          <div className="flex flex-col items-center gap-3">
+            <p className="text-base font-bold text-sakura-200">樱花优子的行动</p>
+            {companionSkills.map((skill) => {
+              const mpNotEnough = skill.mpCost > 0 && (companion?.mp ?? 0) < skill.mpCost
+              const onceUsed =
+                skill.combat?.oncePerCombat === true &&
+                isOncePerCombatUsed(usedOnceCompanionSkillIds, skill.id)
+              const shieldAlreadyUp = skill.combat?.supportEffect?.type === 'reduce_next_enemy_damage' && shieldRemaining > 0
+              return (
+                <div key={skill.id} className="flex flex-col items-center gap-1">
+                  <Button
+                    variant="primary"
+                    disabled={mpNotEnough || onceUsed || shieldAlreadyUp}
+                    onClick={() => handleCompanionSkill(skill.id)}
+                  >
+                    {skill.name}
+                    {skill.mpCost > 0 ? `（${skill.mpCost} 灵力）` : ''}
+                  </Button>
+                  {mpNotEnough && <span className="text-xs text-red-300">灵力不足</span>}
+                  {onceUsed && <span className="text-xs text-bone-500">本场战斗已使用</span>}
+                  {shieldAlreadyUp && <span className="text-xs text-bone-500">盾已展开</span>}
+                </div>
+              )
+            })}
+            <Button variant="secondary" onClick={handleCompanionSkip}>
+              跳过
+            </Button>
           </div>
         )}
         {phase === 'victory' && (

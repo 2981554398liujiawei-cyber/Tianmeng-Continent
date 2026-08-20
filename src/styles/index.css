@@ -17,6 +17,13 @@
   --color-bone-300: #d9cdb4;
   --color-bone-500: #a89b80;
 
+  /* TM-P2-004：樱花主题色（樱华神域 / 樱花优子专属；深色底上的浅樱与淡粉） */
+  --color-sakura-100: #fbeef2;
+  --color-sakura-200: #f3c9d5;
+  --color-sakura-300: #e8a9bc;
+  --color-sakura-400: #d97f9d;
+  --color-sakura-500: #c05f82;
+
   --font-serif-cn: "Noto Serif SC", "Songti SC", "SimSun", "Microsoft YaHei", serif;
 }
 

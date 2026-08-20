@@ -1442,11 +1442,21 @@ describe('TM-P0-022：restAtVillage 青石村休整', () => {
     expect(mp()).toBe(6)
   })
 
-  it('E. 已全满：HP22 MP6 → false，GameState 完全不变', () => {
+  // TM-P2-004 第 55/56 节（产品规则修改）：满资源也允许 Long Rest（休整承担关系互动周期 + restCount 递增）
+  it('E. 已全满：HP22 MP6 → true，仅 restCount+1（满资源允许休整）', () => {
     setVitals(22, 6)
-    const snapshot = JSON.stringify(useGameStore.getState().gameState)
-    expect(useGameStore.getState().restAtVillage()).toBe(false)
-    expect(JSON.stringify(useGameStore.getState().gameState)).toBe(snapshot)
+    const before = JSON.stringify(useGameStore.getState().gameState)
+    expect(useGameStore.getState().restAtVillage()).toBe(true)
+    const after = useGameStore.getState().gameState!
+    expect(after.world.restCount).toBe(1)
+    expect(after.player.hp).toBe(22)
+    expect(after.player.mp).toBe(6)
+    // 除 restCount 外完整 GameState 不变
+    const beforeWithoutRest = JSON.parse(before) as { world: { restCount: number } }
+    beforeWithoutRest.world.restCount = 0
+    const afterWithoutRest = JSON.parse(JSON.stringify(after)) as { world: { restCount: number } }
+    afterWithoutRest.world.restCount = 0
+    expect(JSON.stringify(afterWithoutRest)).toBe(JSON.stringify(beforeWithoutRest))
   })
 
   it('F. 错误地点：abandoned_mine HP10 → false，GameState 完全不变', () => {
@@ -1462,7 +1472,8 @@ describe('TM-P0-022：restAtVillage 青石村休整', () => {
     expect(useGameStore.getState().restAtVillage()).toBe(false)
   })
 
-  it('H. 无额外副作用：成功休整除 player.hp/mp 外 gold/level/profession/attributes/inventory/equipment/quests/world 全不变', () => {
+  // TM-P2-004 第 55/56 节：成功休整除 player.hp/mp 与 world.restCount 外 gold/level/profession/attributes/inventory/equipment/quests 全不变
+  it('H. 无额外副作用：成功休整除 player.hp/mp 与 world.restCount 外 gold/level/profession/attributes/inventory/equipment/quests 全不变', () => {
     setVitals(10, 2)
     const before = useGameStore.getState().gameState!
     useGameStore.getState().restAtVillage()
@@ -1474,7 +1485,12 @@ describe('TM-P0-022：restAtVillage 青石村休整', () => {
     expect(after.inventory).toEqual(before.inventory)
     expect(after.equipment).toEqual(before.equipment)
     expect(after.quests).toEqual(before.quests)
-    expect(after.world).toEqual(before.world)
+    // world 仅 restCount 递增
+    expect(after.world.restCount).toBe((before.world.restCount ?? 0) + 1)
+    expect(after.world.currentLocationId).toBe(before.world.currentLocationId)
+    expect(after.world.flags).toEqual(before.world.flags)
+    expect(after.world.completedEvents).toEqual(before.world.completedEvents)
+    expect(after.world.npcStates).toEqual(before.world.npcStates)
   })
 
   it('I. 不自动保存：成功休整后 hasSave 仍 false', () => {
@@ -5783,15 +5799,23 @@ describe('TM-P1-027：黑石塔二层——武馆休整、僵尸与黑法师', (
     expect(useGameStore.getState().gameState!.player.hp).toBe(maxHp)
   })
 
-  it('R4. 武馆 HP/MP 全满 → false 且完整 GameState unchanged', () => {
+  // TM-P2-004 第 55/56 节（产品规则修改）：满资源也允许 Long Rest（restCount+1）
+  it('R4. 武馆 HP/MP 全满 → true 且仅 restCount+1', () => {
     useGameStore.getState().newGame()
     useGameStore.setState((s) => {
       if (!s.gameState) return {}
       return { gameState: { ...s.gameState, world: { ...s.gameState.world, currentLocationId: 'tianlong_martial_hall' } } }
     })
     const before = snapshot()
-    expect(useGameStore.getState().restAtTianlongMartialHall()).toBe(false)
-    expect(snapshot()).toBe(before)
+    expect(useGameStore.getState().restAtTianlongMartialHall()).toBe(true)
+    const after = useGameStore.getState().gameState!
+    expect(after.world.restCount).toBe(1)
+    // 除 restCount 外完整 GameState 不变
+    const beforeWithoutRest = JSON.parse(before) as { world: { restCount: number } }
+    beforeWithoutRest.world.restCount = 0
+    const afterWithoutRest = JSON.parse(JSON.stringify(after)) as { world: { restCount: number } }
+    afterWithoutRest.world.restCount = 0
+    expect(JSON.stringify(afterWithoutRest)).toBe(JSON.stringify(beforeWithoutRest))
   })
 
   it('R5. 非武馆（青石村）→ false 且完整 GameState unchanged', () => {
@@ -5805,7 +5829,7 @@ describe('TM-P1-027：黑石塔二层——武馆休整、僵尸与黑法师', (
     expect(snapshot()).toBe(before)
   })
 
-  it('R6. 成功仅 hp/mp 改变——Quest/world flags/inventory/金币/level 全不变', () => {
+  it('R6. 成功仅 hp/mp 与 world.restCount 改变——Quest/world flags/inventory/金币/level 全不变', () => {
     useGameStore.getState().newGame()
     useGameStore.setState((s) => {
       if (!s.gameState) return {}
@@ -5820,7 +5844,11 @@ describe('TM-P1-027：黑石塔二层——武馆休整、僵尸与黑法师', (
     useGameStore.getState().restAtTianlongMartialHall()
     const after = useGameStore.getState().gameState!
     expect(JSON.stringify(after.quests)).toBe(beforeQuest)
-    expect(JSON.stringify(after.world)).toBe(beforeWorld)
+    // world 仅 restCount 递增（TM-P2-004 第 56 节）
+    expect(after.world.restCount).toBe(1)
+    expect(JSON.stringify(after.world.flags)).toBe(JSON.stringify(JSON.parse(beforeWorld).flags))
+    expect(JSON.stringify(after.world.completedEvents)).toBe(JSON.stringify(JSON.parse(beforeWorld).completedEvents))
+    expect(JSON.stringify(after.world.npcStates)).toBe(JSON.stringify(JSON.parse(beforeWorld).npcStates))
     expect(JSON.stringify(after.inventory)).toBe(beforeInventory)
     expect(JSON.stringify(after.equipment)).toBe(beforeEquipment)
     expect(after.player.gold).toBe(beforeGold)

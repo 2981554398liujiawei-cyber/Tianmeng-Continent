@@ -685,12 +685,17 @@ describe('TM-P2-003 A：旧 V2 存档迁移 learnedSkillIds', () => {
     localStorage.setItem(`tianmeng_continent_save_slot_${slotId}`, JSON.stringify({ version: 2, savedAt: '2026-01-01T08:00:00.000Z', gameState: state }))
   }
 
-  it('version 2 槽 → migrateSave 补 learnedSkillIds（按职业）并升级 version 3', () => {
+  it('version 2 槽 → migrateSave 补 learnedSkillIds（按职业）并升级当前版本', () => {
     writeV2Slot('slot1', 70)
     expect(migrateSave()).toBe(true)
     const raw = JSON.parse(localStorage.getItem('tianmeng_continent_save_slot_slot1')!)
-    expect(raw.version).toBe(3)
+    expect(raw.version).toBe(SLOT_FORMAT_VERSION)
     expect(raw.gameState.player.learnedSkillIds).toEqual(['knight_power_strike'])
+    // TM-P2-004 V4：迁移同时补全 V4 字段
+    expect(raw.gameState.companions).toEqual({})
+    expect(raw.gameState.relationships).toEqual({})
+    expect(raw.gameState.party).toEqual({ activeCompanionIds: [] })
+    expect(raw.gameState.world.restCount).toBe(0)
   })
 
   it('法师旧档迁移获得法术攻击', () => {
@@ -737,15 +742,16 @@ describe('TM-P2-003 A：旧 V2 存档迁移 learnedSkillIds', () => {
     )
     expect(migrateSave()).toBe(true)
     const raw = JSON.parse(localStorage.getItem('tianmeng_continent_save_slot_slot5')!)
-    expect(raw.version).toBe(3)
+    expect(raw.version).toBe(SLOT_FORMAT_VERSION)
     expect(raw.gameState.player.learnedSkillIds).toEqual(['knight_power_strike'])
+    expect(raw.gameState.world.restCount).toBe(0)
   })
 })
 
 // ================= TM-P2-003-R1 D：旧 V2 导出兼容 / v3 严格 =================
 
 describe('TM-P2-003-R1 D1：9ddb5db V2 export 真正可以导入', () => {
-  it('⑤ 旧 V2 导出（slot version 2、无 learnedSkillIds）→ 导入成功并迁移为 v3', () => {
+  it('⑤ 旧 V2 导出（slot version 2、无 learnedSkillIds）→ 导入成功并迁移为当前版本', () => {
     const v2Slot = () => {
       const state = stateWithGold(70)
       // @ts-expect-error 模拟旧 schema
@@ -760,9 +766,10 @@ describe('TM-P2-003-R1 D1：9ddb5db V2 export 真正可以导入', () => {
     })
     expect(importSaves(json)).toBe(true)
     const raw = JSON.parse(localStorage.getItem('tianmeng_continent_save_slot_slot1')!)
-    expect(raw.version).toBe(3)
+    expect(raw.version).toBe(SLOT_FORMAT_VERSION)
     expect(raw.gameState.player.learnedSkillIds).toEqual(['knight_power_strike'])
     expect(raw.gameState.player.gold).toBe(70)
+    expect(raw.gameState.world.restCount).toBe(0)
   })
 
   it('⑥ V2 导入中途失败 → 完整 rollback（五槽保持原样）', () => {
@@ -801,12 +808,18 @@ describe('TM-P2-003-R1 D1：9ddb5db V2 export 真正可以导入', () => {
   })
 })
 
-describe('TM-P2-003-R1 D2：v3 缺 learnedSkillIds 判 malformed', () => {
-  it('⑦ version 3 但 player 无 learnedSkillIds → isValidSaveSlot false / importSaves 拒绝', () => {
+describe('TM-P2-004：v4 缺 V4 字段判 malformed（TM-P2-003-R1 D2 语义随版本升级）', () => {
+  it('⑧ version 4 但缺 V4 字段（无 companions/party/restCount）→ isValidSaveSlot false / importSaves 拒绝', () => {
     const state = stateWithGold(70)
-    // @ts-expect-error 模拟 v3 缺字段
-    delete state.player.learnedSkillIds
-    const badSlot = { version: 3, savedAt: '2026-01-01T08:00:00.000Z', gameState: state }
+    // @ts-expect-error 模拟 v4 缺 V4 字段
+    delete state.companions
+    // @ts-expect-error 模拟 v4 缺 V4 字段
+    delete state.relationships
+    // @ts-expect-error 模拟 v4 缺 V4 字段
+    delete state.party
+    // @ts-expect-error 模拟 v4 缺 V4 字段
+    delete state.world.restCount
+    const badSlot = { version: 4, savedAt: '2026-01-01T08:00:00.000Z', gameState: state }
     expect(isValidSaveSlot(badSlot)).toBe(false)
     // 通过 importSaves 整体拒绝
     const json = JSON.stringify({
@@ -823,7 +836,7 @@ describe('TM-P2-003-R1 D2：v3 缺 learnedSkillIds 判 malformed', () => {
 // ================= TM-P2-003-R2 D：V1 真实迁移 / v3 strict saveSlot / V2 multi-slot 导入 =================
 
 describe('TM-P2-003-R2 D1：真正历史 V1 单档（无 learnedSkillIds）自动迁移', () => {
-  it('真实 V1 legacy（player 无 learnedSkillIds）→ 迁移成功，slot1 补全职业技能 + version 3 + legacy key 删除', () => {
+  it('真实 V1 legacy（player 无 learnedSkillIds）→ 迁移成功，slot1 补全职业技能 + 当前版本 + legacy key 删除', () => {
     const legacy = createInitialGameState()
     legacy.player.gold = 66
     // @ts-expect-error 模拟真正历史 V1（本就没有 learnedSkillIds 字段）
@@ -834,9 +847,10 @@ describe('TM-P2-003-R2 D1：真正历史 V1 单档（无 learnedSkillIds）自�
     )
     expect(migrateLegacySave()).toBe(true)
     const slot = loadSlot('slot1')
-    expect(slot?.version).toBe(3)
+    expect(slot?.version).toBe(SLOT_FORMAT_VERSION)
     expect(slot?.gameState.player.learnedSkillIds).toEqual(['knight_power_strike'])
     expect(slot?.gameState.player.gold).toBe(66)
+    expect(slot?.gameState.world.restCount).toBe(0)
     expect(localStorage.getItem(LEGACY_SAVE_KEY)).toBeNull()
   })
 
@@ -914,12 +928,13 @@ describe('TM-P2-003-R2 D3：V2 multi-slot 导出导入（含黄金兔冻结）',
       },
     })
 
-  it('slot1/slot3 两槽迁移为 v3；黄金兔四 flags 与 rabbit_path ×1 原封不动；lastSavedSlot=slot3', () => {
+  it('slot1/slot3 两槽迁移为当前版本；黄金兔四 flags 与 rabbit_path ×1 原封不动；lastSavedSlot=slot3', () => {
     expect(importSaves(makeV2Export())).toBe(true)
     const s1 = JSON.parse(localStorage.getItem('tianmeng_continent_save_slot_slot1')!)
-    expect(s1.version).toBe(3)
+    expect(s1.version).toBe(SLOT_FORMAT_VERSION)
     expect(s1.gameState.player.learnedSkillIds).toEqual(['knight_power_strike'])
     expect(s1.gameState.player.gold).toBe(111)
+    expect(s1.gameState.world.restCount).toBe(0)
     expect(s1.gameState.quests[0]).toMatchObject({
       questId: 'quest_golden_rabbit_search',
       status: 'in_progress',
