@@ -16,7 +16,13 @@ import {
   type AttackResult,
   type CombatPhase,
 } from '../game/rules/combat'
-import { getSkillExecutionInfo, isSuppressOnFullHitSkill, resolveSkillRawDamage } from '../game/rules/skill'
+import {
+  getSkillExecutionInfo,
+  isOncePerCombatUsed,
+  isSuppressOnFullHitSkill,
+  markOncePerCombatUsed,
+  resolveSkillRawDamage,
+} from '../game/rules/skill'
 import type { InitiativeWinner } from '../game/rules/combat'
 import { formatLuckCheckLog } from '../game/rules/luck'
 import { getSkill } from '../game/content/skills'
@@ -53,8 +59,8 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
   /** TM-P1-001/006/007/008：最近一次玩家行动类型（仅页面本地） */
   /** TM-P2-003 A：最近一次玩家行动（'basic' 或技能 id；仅页面本地） */
   const [lastPlayerAction, setLastPlayerAction] = useState<string | null>(null)
-  /** TM-P1-007：游侠迅捷突袭本场是否已使用（仅页面本地） */
-  const [rangerSwiftStrikeUsed, setRangerSwiftStrikeUsed] = useState(false)
+  /** TM-P2-003-R2 B2：每场一次技能按 skillId 独立追踪（Set；使用 A 不影响 B） */
+  const [usedOnceSkillIds, setUsedOnceSkillIds] = useState<ReadonlySet<string>>(new Set())
   /** TM-P2-002 D：先手（进入战斗时双方各掷 D20+AGI；高者先，平局 AGI 高者先，仍同则玩家先）。
    * 用 ref 缓存结果：React StrictMode 会双调用组件体/useState initializer，若直接掷骰会消耗两次随机数
    * 导致序列错位；ref 保证同一组件实例只掷一次。 */
@@ -165,21 +171,17 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
     applyPlayerAttack(playerResult, 'basic')
   }
 
-  /** TM-P2-003-R1 B：技能统一入口（learnedSkillIds → Skill Registry → rules/skill 执行）。
+  /** TM-P2-003-R2 B1/B2：技能统一入口（learnedSkillIds → Skill Registry → rules/skill 执行）。
    * 伤害 resolver / MP cost / once-per-combat / 压制全部来自注册表与 rules/skill.ts，
-   * 页面不再硬编码任何 skillId 分支。未知/损坏/未学习/职业不匹配安全忽略。 */
+   * 页面不硬编码任何 skillId 分支；once 按 skillId 独立（Set）。
+   * 执行顺序：先纯计算校验 → 再耗 MP → 再标记已用 → 最后结算（MP 失败不吞标记）。 */
   const handleSkill = (skillId: string) => {
     if (phase !== 'active' || enemyFirstStriking) return
     const info = getSkillExecutionInfo(skillId)
     if (!info || info.skill.profession !== player.profession) return
-    // 每场一次（注册表 oncePerCombat；按 skillId 独立）
-    if (info.oncePerCombat) {
-      if (rangerSwiftStrikeUsed) return
-      setRangerSwiftStrikeUsed(true)
-    }
-    // MP 消费（注册表 cost；唯一入口；false → 不掷骰、不改 HP、不反击）
-    if (!spendSkillMp(skillId)) return
-    // 原始伤害（rules/skill resolver；未知技能返回 null → 拒绝）
+    // 每场一次：已使用（本技能）→ 拒绝
+    if (info.oncePerCombat && isOncePerCombatUsed(usedOnceSkillIds, skillId)) return
+    // 原始伤害（rules/skill resolver；未知/无 resolver 返回 null → 拒绝）
     const rawDamage = resolveSkillRawDamage(skillId, {
       str: player.attributes.str,
       agi: player.attributes.agi,
@@ -188,6 +190,12 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
       level: player.level,
     })
     if (rawDamage === null) return
+    // MP 消费（注册表 cost；唯一入口；false → 不掷骰、不改 HP、不反击、不标记）
+    if (!spendSkillMp(skillId)) return
+    // 标记每场一次（此时才确认真正执行）
+    if (info.oncePerCombat) {
+      setUsedOnceSkillIds((prev) => markOncePerCombatUsed(prev, skillId))
+    }
     const skillResult = performAttack(playerAgility, enemy.agility, rawDamage, enemy.armor)
     applyPlayerAttack(skillResult, skillId)
   }
@@ -335,7 +343,8 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
             {/* TM-P2-003 A：技能按钮由 learnedSkillIds → Skill Registry 动态生成（不再按职业四段 if） */}
             {learnedSkills.map((skill) => {
               const mpNotEnough = skill.mpCost > 0 && player.mp < skill.mpCost
-              const onceUsed = skill.combat?.oncePerCombat === true && rangerSwiftStrikeUsed
+              const onceUsed =
+                skill.combat?.oncePerCombat === true && isOncePerCombatUsed(usedOnceSkillIds, skill.id)
               return (
                 <div key={skill.id} className="flex flex-col items-center gap-1">
                   <Button

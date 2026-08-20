@@ -819,3 +819,143 @@ describe('TM-P2-003-R1 D2：v3 缺 learnedSkillIds 判 malformed', () => {
     expect(loadSlot('slot1')).toBeNull()
   })
 })
+
+// ================= TM-P2-003-R2 D：V1 真实迁移 / v3 strict saveSlot / V2 multi-slot 导入 =================
+
+describe('TM-P2-003-R2 D1：真正历史 V1 单档（无 learnedSkillIds）自动迁移', () => {
+  it('真实 V1 legacy（player 无 learnedSkillIds）→ 迁移成功，slot1 补全职业技能 + version 3 + legacy key 删除', () => {
+    const legacy = createInitialGameState()
+    legacy.player.gold = 66
+    // @ts-expect-error 模拟真正历史 V1（本就没有 learnedSkillIds 字段）
+    delete legacy.player.learnedSkillIds
+    localStorage.setItem(
+      LEGACY_SAVE_KEY,
+      JSON.stringify({ version: LEGACY_SAVE_VERSION, savedAt: '2026-01-01T00:00:00.000Z', gameState: legacy }),
+    )
+    expect(migrateLegacySave()).toBe(true)
+    const slot = loadSlot('slot1')
+    expect(slot?.version).toBe(3)
+    expect(slot?.gameState.player.learnedSkillIds).toEqual(['knight_power_strike'])
+    expect(slot?.gameState.player.gold).toBe(66)
+    expect(localStorage.getItem(LEGACY_SAVE_KEY)).toBeNull()
+  })
+
+  it('migrateSave 链上 V1 迁移同样补全（Step1 走 migrateLegacySave）', () => {
+    const legacy = createInitialGameState()
+    legacy.player.gold = 55
+    legacy.player.profession = 'mage' as never
+    // @ts-expect-error 模拟真正历史 V1
+    delete legacy.player.learnedSkillIds
+    localStorage.setItem(
+      LEGACY_SAVE_KEY,
+      JSON.stringify({ version: LEGACY_SAVE_VERSION, savedAt: '2026-01-01T00:00:00.000Z', gameState: legacy }),
+    )
+    expect(migrateSave()).toBe(true)
+    expect(loadSlot('slot1')?.gameState.player.learnedSkillIds).toEqual(['mage_spell'])
+  })
+})
+
+describe('TM-P2-003-R2 D2：saveSlot 只写当前 v3（防止写出读不回的档）', () => {
+  it('gameState 缺 learnedSkillIds（宽松 isGameState 会放过）→ saveSlot 拒绝且槽位不变', () => {
+    const state = stateWithGold(70)
+    // @ts-expect-error 模拟异常运行态：learnedSkillIds 缺失
+    delete state.player.learnedSkillIds
+    expect(saveSlot('slot1', state)).toBe(false)
+    expect(localStorage.getItem('tianmeng_continent_save_slot_slot1')).toBeNull()
+    expect(loadSlot('slot1')).toBeNull()
+  })
+
+  it('learnedSkillIds 非字符串数组 → saveSlot 拒绝', () => {
+    const state = stateWithGold(70)
+    ;(state.player as { learnedSkillIds: unknown }).learnedSkillIds = [42]
+    expect(saveSlot('slot1', state)).toBe(false)
+    expect(loadSlot('slot1')).toBeNull()
+  })
+
+  it('正常 v3 状态仍可保存（回归）', () => {
+    expect(saveSlot('slot1', stateWithGold(70))).toBe(true)
+    expect(loadSlot('slot1')?.gameState.player.gold).toBe(70)
+  })
+})
+
+describe('TM-P2-003-R2 D3：V2 multi-slot 导出导入（含黄金兔冻结）', () => {
+  const mkV2Slot = (gold: number, profession: string, savedAt = '2026-01-01T08:00:00.000Z') => {
+    const state = stateWithGold(gold)
+    state.player.profession = profession as never
+    state.quests = [
+      {
+        questId: 'quest_golden_rabbit_search',
+        status: 'in_progress',
+        stage: 0,
+        flags: {
+          asked_blacksmith: true,
+          asked_apothecary: true,
+          village_inquiry_reported: true,
+          rabbit_lair_rechecked: true,
+        },
+      },
+    ]
+    state.inventory = [{ itemId: 'rabbit_path', quantity: 1 }]
+    // @ts-expect-error 模拟旧 V2 schema
+    delete state.player.learnedSkillIds
+    return { version: 2, savedAt, gameState: state }
+  }
+  const makeV2Export = () =>
+    JSON.stringify({
+      version: SAVE_VERSION,
+      exportedAt: '2026-01-01T09:00:00.000Z',
+      lastSavedSlot: 'slot3',
+      slots: {
+        slot1: mkV2Slot(111, 'knight'),
+        slot2: null,
+        slot3: mkV2Slot(333, 'mage', '2026-01-01T08:01:00.000Z'), // 更晚 savedAt → 重建索引时 slot3 为最新
+        slot4: null,
+        slot5: null,
+      },
+    })
+
+  it('slot1/slot3 两槽迁移为 v3；黄金兔四 flags 与 rabbit_path ×1 原封不动；lastSavedSlot=slot3', () => {
+    expect(importSaves(makeV2Export())).toBe(true)
+    const s1 = JSON.parse(localStorage.getItem('tianmeng_continent_save_slot_slot1')!)
+    expect(s1.version).toBe(3)
+    expect(s1.gameState.player.learnedSkillIds).toEqual(['knight_power_strike'])
+    expect(s1.gameState.player.gold).toBe(111)
+    expect(s1.gameState.quests[0]).toMatchObject({
+      questId: 'quest_golden_rabbit_search',
+      status: 'in_progress',
+      stage: 0,
+      flags: {
+        asked_blacksmith: true,
+        asked_apothecary: true,
+        village_inquiry_reported: true,
+        rabbit_lair_rechecked: true,
+      },
+    })
+    expect(s1.gameState.inventory).toEqual([{ itemId: 'rabbit_path', quantity: 1 }])
+    const s3 = JSON.parse(localStorage.getItem('tianmeng_continent_save_slot_slot3')!)
+    expect(s3.gameState.player.learnedSkillIds).toEqual(['mage_spell'])
+    expect(loadIndex().lastSavedSlot).toBe('slot3')
+  })
+
+  it('V2 导入 index 写入失败 → 五槽与 index 完整回滚（含已迁移的 slot1/slot3）', () => {
+    expect(saveSlot('slot1', stateWithGold(70))).toBe(true)
+    expect(saveSlot('slot2', stateWithGold(80))).toBe(true)
+    const before = SLOT_IDS.map((id) => localStorage.getItem(`tianmeng_continent_save_slot_${id}`)).join('|') + '||' + localStorage.getItem(SAVES_INDEX_KEY)
+    failSetItemOn(SAVES_INDEX_KEY)
+    expect(importSaves(makeV2Export())).toBe(false)
+    expect(SLOT_IDS.map((id) => localStorage.getItem(`tianmeng_continent_save_slot_${id}`)).join('|') + '||' + localStorage.getItem(SAVES_INDEX_KEY)).toBe(before)
+    expect(loadSlot('slot1')?.gameState.player.gold).toBe(70)
+    expect(loadSlot('slot2')?.gameState.player.gold).toBe(80)
+    expect(loadSlot('slot3')).toBeNull()
+  })
+
+  it('V2 导入第 1 步（slot1）写入失败 → 完整回滚', () => {
+    expect(saveSlot('slot1', stateWithGold(70))).toBe(true)
+    const before = SLOT_IDS.map((id) => localStorage.getItem(`tianmeng_continent_save_slot_${id}`)).join('|') + '||' + localStorage.getItem(SAVES_INDEX_KEY)
+    failSetItemOn('tianmeng_continent_save_slot_slot1')
+    expect(importSaves(makeV2Export())).toBe(false)
+    expect(SLOT_IDS.map((id) => localStorage.getItem(`tianmeng_continent_save_slot_${id}`)).join('|') + '||' + localStorage.getItem(SAVES_INDEX_KEY)).toBe(before)
+    expect(loadSlot('slot1')?.gameState.player.gold).toBe(70)
+    expect(loadSlot('slot3')).toBeNull()
+  })
+})

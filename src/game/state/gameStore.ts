@@ -10,7 +10,7 @@ import { LEVEL_2_MAX_HP_GAIN, LEVEL_2_MAX_MP_GAIN } from '../rules/character'
 import { rollLoot } from '../rules/loot'
 import type { LootGrant } from '../types/loot'
 import { getSkill } from '../content/skills'
-import { hasLearnedSkill, skillMpCost } from '../rules/skill'
+import { hasLearnedSkill } from '../rules/skill'
 import { rollLuckCheck, resolveLuckCheck, type LuckCheckResult } from '../rules/luck'
 import { resolveD20Check, rollD20 } from '../rules/d20'
 
@@ -312,6 +312,8 @@ export const useGameStore = create<GameStoreState>()((set) => ({
     const wolfDefeated = s.quests.find((q) => q.questId === 'quest_north_gate_missing_patrol')?.flags.north_gate_wolf_defeated === true
     if (!atNorthGate || !wolfDefeated) return null
     if (s.world.flags.north_tower_opened === true) return null
+    // TM-P2-003-R2 A：异常状态守卫——已领取（claimed=true）则无论 opened 状态如何都拒绝再次开启
+    if (s.world.flags.north_tower_cache_claimed === true) return null
     // TM-P2-003-R1 A：MND 检定一次性——失败后（north_tower_mnd_failed）不得再掷，只能走命运补救
     if (s.world.flags.north_tower_mnd_failed === true) return null
     const check = resolveD20Check(
@@ -355,6 +357,8 @@ export const useGameStore = create<GameStoreState>()((set) => ({
     const wolfDefeated = s.quests.find((q) => q.questId === 'quest_north_gate_missing_patrol')?.flags.north_gate_wolf_defeated === true
     if (!atNorthGate || !wolfDefeated) return null
     if (s.world.flags.north_tower_opened === true) return null
+    // TM-P2-003-R2 A：异常状态守卫——已领取则拒绝补救（无论 opened 状态如何）
+    if (s.world.flags.north_tower_cache_claimed === true) return null
     // 每节点最多一次：MND 失败后 + 未使用过
     if (s.world.flags.north_tower_mnd_failed !== true) return null
     if (s.world.flags.north_tower_luck_used === true) return null
@@ -1194,13 +1198,28 @@ export const useGameStore = create<GameStoreState>()((set) => ({
   },
 
   spendSkillMp: (skillId) => {
-    const cost = skillMpCost(skillId)
-    if (cost <= 0) return true // 不消耗 MP 的技能直接可用
+    const s = useGameStore.getState().gameState
+    if (!s) return false
+    const player = s.player
+    // TM-P2-003-R2 C：通用技能消费入口自行守规则（不依赖调用方）——
+    // 技能存在 / 已学习 / 职业匹配 / MP 与 maxMp 安全整数 / mp ∈ [0, maxMp] / 灵力充足
+    const skill = getSkill(skillId)
+    if (!skill || skill.profession !== player.profession) return false
+    if (!hasLearnedSkill(player.learnedSkillIds, skillId)) return false
+    if (!Number.isSafeInteger(player.maxMp) || player.maxMp < 0) return false
+    if (!Number.isSafeInteger(player.mp) || player.mp < 0 || player.mp > player.maxMp) return false
+    const cost = skill.mpCost
+    if (!Number.isSafeInteger(cost) || cost < 0) return false
+    if (cost === 0) return true // 不耗 MP，但必须已学习且职业匹配
+    if (player.mp < cost) return false
     let spent = false
-    set((s) => {
-      if (!s.gameState || s.gameState.player.mp < cost) return {}
+    set((st) => {
+      if (!st.gameState) return {}
+      const p = st.gameState.player
+      // 重复校验（防竞态）
+      if (!Number.isSafeInteger(p.mp) || p.mp < cost) return {}
       spent = true
-      return { gameState: { ...s.gameState, player: { ...s.gameState.player, mp: s.gameState.player.mp - cost } } }
+      return { gameState: { ...st.gameState, player: { ...p, mp: p.mp - cost } } }
     })
     return spent
   },

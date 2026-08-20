@@ -3,6 +3,7 @@ import { useGameStore, VILLAGE_ELDER_POST_QUEST_EVENT_ID } from './gameStore'
 import { createInitialGameState } from '../content/initial'
 import { checkTravel } from '../rules/exploration'
 import { getNpc, getQuest } from '../content'
+import { SKILLS } from '../content/skills'
 import type { QuestStatus } from '../types/quest'
 import type { GameState } from '../types/game'
 
@@ -6833,15 +6834,37 @@ describe('TM-P2-003 D：北门旧哨塔（技能 Tag 判断 + MP 消耗）', () 
     expect(useGameStore.getState().openNorthTowerWithSkill('ranger_swift_strike')?.outcome).toBe('opened')
   })
 
-  it('D. 未知/非场景 Tag 技能 → 拒绝', () => {
+  it('D. 未知技能 → no_skill；真正的 synthetic wrong-tag 技能 → wrong_tag 且不耗 MP 不开启', () => {
     seedWolfDefeated()
     expect(useGameStore.getState().openNorthTowerWithSkill('not_a_skill')?.outcome).toBe('no_skill')
-    // 法师法术攻击 tags=['magic'] 属于场景 Tag；构造一个无场景 Tag 的技能（用 healing 类不存在，此处直接测 wrong_tag 用职业不匹配）
+    // 真正合成技能：骑士、已学习、Tag 为 physical（非场景 force/movement/magic）→ 必须 wrong_tag
+    const fake: (typeof SKILLS)[string] = {
+      id: 'test_physical_strike',
+      name: '测试劈砍',
+      description: '测试用：物理 Tag，不应解锁哨塔',
+      profession: 'knight',
+      mpCost: 2,
+      tags: ['physical'],
+    }
+    SKILLS['test_physical_strike'] = fake
+    try {
+      useGameStore.setState((s) => {
+        if (!s.gameState) return {}
+        return { gameState: { ...s.gameState, player: { ...s.gameState.player, learnedSkillIds: ['test_physical_strike'] } } }
+      })
+      const mpBefore = useGameStore.getState().gameState?.player.mp
+      expect(useGameStore.getState().openNorthTowerWithSkill('test_physical_strike')?.outcome).toBe('wrong_tag')
+      // 不扣 MP、不开启
+      expect(useGameStore.getState().gameState?.player.mp).toBe(mpBefore)
+      expect(useGameStore.getState().gameState?.world.flags.north_tower_opened).not.toBe(true)
+    } finally {
+      delete SKILLS['test_physical_strike']
+    }
+    // 对照：mage_spell tags=['magic'] 属场景 Tag → 开启
     useGameStore.setState((s) => {
       if (!s.gameState) return {}
       return { gameState: { ...s.gameState, player: { ...s.gameState.player, profession: 'mage', learnedSkillIds: ['mage_spell'] } } }
     })
-    // mage_spell tags=['magic'] → 应开启
     expect(useGameStore.getState().openNorthTowerWithSkill('mage_spell')?.outcome).toBe('opened')
   })
 
@@ -7117,5 +7140,133 @@ describe('TM-P2-003-R1 C：Store 强制 learnedSkillIds（未学技能不能使�
       return { gameState: { ...s.gameState, player: { ...s.gameState.player, learnedSkillIds: ['knight_power_strike'] } } }
     })
     expect(useGameStore.getState().openNorthTowerWithSkill('knight_power_strike')?.outcome).toBe('opened')
+  })
+})
+
+// ================= TM-P2-003-R2 A：MND 异常状态守卫（claimed=true / opened=false） =================
+
+describe('TM-P2-003-R2 A：异常状态守卫（已领取但未开启标记）', () => {
+  const seedClaimedNoOpened = () => {
+    useGameStore.getState().newGame()
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return {
+        gameState: {
+          ...s.gameState,
+          world: {
+            ...s.gameState.world,
+            currentLocationId: 'tianlong_north_gate',
+            // 异常状态：claimed=true 但 opened 缺失/false
+            flags: { ...s.gameState.world.flags, north_tower_cache_claimed: true },
+          },
+          quests: [
+            {
+              questId: 'quest_north_gate_missing_patrol',
+              status: 'completable',
+              stage: 0,
+              flags: { north_gate_trail_checked: true, north_gate_wolf_defeated: true },
+            },
+          ],
+        },
+      }
+    })
+  }
+
+  it('claimed=true/opened=false → MND 检定拒绝（null），不得再次开启', () => {
+    seedClaimedNoOpened()
+    expect(useGameStore.getState().northTowerMndCheck(20)).toBeNull()
+    expect(useGameStore.getState().gameState?.world.flags.north_tower_opened).not.toBe(true)
+  })
+
+  it('claimed=true/opened=false → 命运补救拒绝（null）', () => {
+    seedClaimedNoOpened()
+    // 即使补上 mnd_failed 前提也不得补救
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return {
+        gameState: {
+          ...s.gameState,
+          world: { ...s.gameState.world, flags: { ...s.gameState.world.flags, north_tower_mnd_failed: true } },
+        },
+      }
+    })
+    expect(useGameStore.getState().northTowerLuckRescue(20)).toBeNull()
+    expect(useGameStore.getState().gameState?.world.flags.north_tower_opened).not.toBe(true)
+  })
+})
+
+// ================= TM-P2-003-R2 C：spendSkillMp 自守规则 =================
+
+describe('TM-P2-003-R2 C：spendSkillMp 自行守规则（不依赖调用方）', () => {
+  it('未知技能 → false（不扣 MP）', () => {
+    useGameStore.getState().newGame()
+    const mp = useGameStore.getState().gameState!.player.mp
+    expect(useGameStore.getState().spendSkillMp('not_a_skill')).toBe(false)
+    expect(useGameStore.getState().gameState!.player.mp).toBe(mp)
+  })
+
+  it('未学习技能 → false（骑士调用法师法术攻击）', () => {
+    useGameStore.getState().newGame()
+    const mp = useGameStore.getState().gameState!.player.mp
+    expect(useGameStore.getState().spendSkillMp('mage_spell')).toBe(false)
+    expect(useGameStore.getState().gameState!.player.mp).toBe(mp)
+  })
+
+  it('职业不匹配（learnedSkillIds 含他职业技能）→ false', () => {
+    useGameStore.getState().newGame()
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return { gameState: { ...s.gameState, player: { ...s.gameState.player, learnedSkillIds: ['ranger_swift_strike'] } } }
+    })
+    expect(useGameStore.getState().spendSkillMp('ranger_swift_strike')).toBe(false)
+  })
+
+  it('已学习 + MP 足够 → true 且按注册表 cost 扣 MP', () => {
+    useGameStore.getState().newGame() // 骑士 mp 6
+    const mp = useGameStore.getState().gameState!.player.mp
+    expect(useGameStore.getState().spendSkillMp('knight_power_strike')).toBe(true)
+    expect(useGameStore.getState().gameState!.player.mp).toBe(mp - 2)
+  })
+
+  it('已学习 + MP 不足 → false 且不扣 MP', () => {
+    useGameStore.getState().newGame()
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return { gameState: { ...s.gameState, player: { ...s.gameState.player, mp: 1 } } }
+    })
+    expect(useGameStore.getState().spendSkillMp('knight_power_strike')).toBe(false)
+    expect(useGameStore.getState().gameState!.player.mp).toBe(1)
+  })
+
+  it('mp/maxMp 非法（非安全整数/超界）→ false', () => {
+    useGameStore.getState().newGame()
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return { gameState: { ...s.gameState, player: { ...s.gameState.player, mp: 999, maxMp: 6 } } }
+    })
+    expect(useGameStore.getState().spendSkillMp('knight_power_strike')).toBe(false)
+    expect(useGameStore.getState().gameState!.player.mp).toBe(999)
+  })
+
+  it('不耗 MP 技能（迅捷突袭）已学 → true 不扣 MP；未学 → false', () => {
+    useGameStore.getState().newGame()
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return {
+        gameState: {
+          ...s.gameState,
+          player: { ...s.gameState.player, profession: 'ranger', learnedSkillIds: ['ranger_swift_strike'] },
+        },
+      }
+    })
+    const mp = useGameStore.getState().gameState!.player.mp
+    expect(useGameStore.getState().spendSkillMp('ranger_swift_strike')).toBe(true)
+    expect(useGameStore.getState().gameState!.player.mp).toBe(mp)
+    // 未学 → false
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return { gameState: { ...s.gameState, player: { ...s.gameState.player, learnedSkillIds: [] } } }
+    })
+    expect(useGameStore.getState().spendSkillMp('ranger_swift_strike')).toBe(false)
   })
 })

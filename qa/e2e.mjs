@@ -4283,6 +4283,12 @@ try {
   await clickByText('新游戏')
   await createQuickKnight()
   await clickByText('村外草原')
+  // TM-P2-002-R1：先手掷骰在战斗页挂载时进行 → 迎战前固定 Math.random（含先手骰面；玩家先手）
+  await page.evaluate(() => {
+    const seq = [0.99, 0.05] // 玩家先手20（30）> 兔2（12）
+    let i = 0
+    Math.random = () => seq[Math.min(i++, seq.length - 1)]
+  })
   await clickByText('迎战')
   await sleep(300)
   body = await bodyText()

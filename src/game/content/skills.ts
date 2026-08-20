@@ -17,6 +17,7 @@ export const SKILLS: Record<string, SkillDefinition> = {
     tags: ['magic'],
     combat: {
       damageFormula: 'max(1, 6 + MND修正) + 等级伤害加成',
+      damageResolver: { type: 'magic_spell' },
     },
   },
   // ---- 骑士（TM-P1-006）----
@@ -29,6 +30,7 @@ export const SKILLS: Record<string, SkillDefinition> = {
     tags: ['force'],
     combat: {
       damageFormula: '玩家攻击力 + 2（吃武器与等级加成）',
+      damageResolver: { type: 'attack_power', bonus: 2 },
     },
   },
   // ---- 游侠（TM-P1-007）----
@@ -41,6 +43,7 @@ export const SKILLS: Record<string, SkillDefinition> = {
     tags: ['movement'],
     combat: {
       damageFormula: 'max(1, 4 + AGI修正 + 武器 + 等级) + 2',
+      damageResolver: { type: 'agility_power', bonus: 2 },
       oncePerCombat: true,
     },
   },
@@ -54,6 +57,7 @@ export const SKILLS: Record<string, SkillDefinition> = {
     tags: ['force'],
     combat: {
       damageFormula: '玩家攻击力 + 1（吃武器与等级加成）',
+      damageResolver: { type: 'attack_power', bonus: 1 },
       suppressCounterOnFullHit: true,
     },
   },

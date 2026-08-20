@@ -1,15 +1,16 @@
 /**
- * 技能执行规则（TM-P2-003-R1 B：把伤害 resolver / MP cost / once-per-combat / 压制
- * 从页面与 Store 剥离，集中在此；CombatPage 只做「学过的技能 → 执行」）。
- * 伤害公式按技能类型分派，但调用方不再硬编码 skillId 分支。
+ * 技能执行规则（TM-P2-003-R1 B / TM-P2-003-R2 B1：把伤害 resolver / MP cost / once-per-combat / 压制
+ * 从页面与 Store 剥离，集中在此）。
+ *
+ * TM-P2-003-R2 B1：伤害结算不再按具体 skillId 分发——rules 只识别
+ * `SkillDefinition.combat.damageResolver.type`（magic_spell / attack_power / agility_power）。
+ * 未来新增技能只需在注册表声明 resolver + bonus，无需修改本文件。
  */
-import { getSkill, getSkill as lookupSkill } from '../content/skills'
+import { getSkill } from '../content/skills'
 import {
-  getKnightPowerStrikeDamage,
   getMageSpellDamage,
   getPlayerAttackPower,
-  getRangerSwiftStrikeDamage,
-  getWarriorSuppressStrikeDamage,
+  getPlayerLevelDamageBonus,
 } from './combat'
 import type { SkillDefinition } from '../types/skill'
 import type { ProfessionId } from '../types'
@@ -61,28 +62,42 @@ export function isSuppressOnFullHitSkill(skillId: string): boolean {
   return getSkill(skillId)?.combat?.suppressCounterOnFullHit === true
 }
 
+// ---- TM-P2-003-R2 B2：每场一次技能按 skillId 独立追踪（Set 语义） ----
+
+/** 该技能本场是否已使用（未知/非 once 技能恒 false） */
+export function isOncePerCombatUsed(used: ReadonlySet<string>, skillId: string): boolean {
+  return used.has(skillId)
+}
+
+/** 标记技能本场已使用（返回新 Set，不修改原 Set） */
+export function markOncePerCombatUsed(used: ReadonlySet<string>, skillId: string): Set<string> {
+  const next = new Set(used)
+  next.add(skillId)
+  return next
+}
+
 /**
  * 技能原始伤害（V3 命中/护甲结算由 combat.ts 负责；本函数只算 rawDamage）。
- * 未知技能 → null（调用方拒绝执行）。
- * 法术：max(1, 6 + MND修正) + 等级加成
- * 骑士重击：玩家攻击力 + 2
- * 迅捷突袭：AGI 物理 + 2
- * 压制猛击：玩家攻击力 + 1
+ * 未知技能 / 无 damageResolver → null（调用方拒绝执行）。
+ *
+ * 分派仅基于 resolver.type（TM-P2-003-R2 B1）：
+ * - magic_spell：max(1, 6 + MND修正) + 等级伤害加成
+ * - attack_power：玩家攻击力（STR）+ bonus（骑士重击 +2 / 压制 +1）
+ * - agility_power：玩家攻击力（AGI）+ bonus（迅捷突袭 +2）
  */
 export function resolveSkillRawDamage(skillId: string, ctx: SkillDamageContext): number | null {
-  const skill = lookupSkill(skillId)
+  const skill = getSkill(skillId)
   if (!skill) return null
-  switch (skillId) {
-    case 'mage_spell':
-      return getMageSpellDamage(ctx.mnd) + Math.floor((ctx.level - 1) / 2)
-    case 'knight_power_strike':
-      return getKnightPowerStrikeDamage(ctx.str, ctx.weaponDamageBonus, ctx.level)
-    case 'ranger_swift_strike':
-      return getRangerSwiftStrikeDamage(ctx.agi, ctx.weaponDamageBonus, ctx.level)
-    case 'warrior_suppress_strike':
-      return getWarriorSuppressStrikeDamage(ctx.str, ctx.weaponDamageBonus, ctx.level)
+  const resolver = skill.combat?.damageResolver
+  if (!resolver) return null
+  switch (resolver.type) {
+    case 'magic_spell':
+      return getMageSpellDamage(ctx.mnd) + getPlayerLevelDamageBonus(ctx.level)
+    case 'attack_power':
+      return getPlayerAttackPower(ctx.str, ctx.weaponDamageBonus, ctx.level) + (resolver.bonus ?? 0)
+    case 'agility_power':
+      return getPlayerAttackPower(ctx.agi, ctx.weaponDamageBonus, ctx.level) + (resolver.bonus ?? 0)
     default:
-      // 未知技能（不在注册表 combat 分派内）→ 拒绝执行
       return null
   }
 }

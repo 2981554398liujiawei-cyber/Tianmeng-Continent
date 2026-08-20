@@ -18,6 +18,12 @@ export type SkillTag =
   | 'illusion'
   | 'summon'
 
+/**
+ * 伤害结算 resolver 类型（TM-P2-003-R2 B1：rules/skill 只识别 resolver 类型，
+ * 不再按具体 skillId 分发——未来新增技能只需在注册表声明 resolver + bonus）。
+ */
+export type DamageResolverType = 'magic_spell' | 'attack_power' | 'agility_power'
+
 /** 技能定义（Skill Registry 条目；TM-P2-003 A） */
 export interface SkillDefinition {
   id: string
@@ -31,7 +37,13 @@ export interface SkillDefinition {
   combat?: {
     /** 伤害公式说明（描述性；实际结算走 combat.ts V3，不在此执行） */
     damageFormula: string
-    /** 每场战斗仅一次（迅捷突袭） */
+    /** 伤害结算元数据（TM-P2-003-R2 B1：rules 按 type 分发；缺省 = 无法结算，拒绝执行） */
+    damageResolver?: {
+      type: DamageResolverType
+      /** attack_power / agility_power 类 resolver 的固定加成（骑士重击 +2、压制 +1、迅捷 +2） */
+      bonus?: number
+    }
+    /** 每场战斗仅一次（迅捷突袭；按 skillId 独立追踪） */
     oncePerCombat?: boolean
     /** 正常命中/暴击阻止本次敌人反击（压制猛击；擦伤不阻止） */
     suppressCounterOnFullHit?: boolean

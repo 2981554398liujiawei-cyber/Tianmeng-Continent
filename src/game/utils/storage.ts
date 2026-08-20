@@ -179,7 +179,7 @@ function isWorld(value: unknown): value is WorldState {
   return true
 }
 
-/** 合法 GameState 判定（新旧存档共用） */
+/** 合法 GameState 判定（新旧存档共用；learnedSkillIds 可选——旧档/迁移源兼容） */
 export function isGameState(value: unknown): value is GameState {
   if (!isRecord(value)) return false
   return (
@@ -191,6 +191,14 @@ export function isGameState(value: unknown): value is GameState {
   )
 }
 
+/** 当前 v3 格式 GameState 判定（TM-P2-003-R2 D：learnedSkillIds 必须为字符串数组；
+ * 新保存只允许此校验通过——防止 saveSlot 写出自身无法读取的 v3） */
+export function isCurrentGameState(value: unknown): value is GameState {
+  if (!isGameState(value)) return false
+  const skills = (value as GameState).player.learnedSkillIds
+  return Array.isArray(skills) && skills.every((id) => typeof id === 'string')
+}
+
 /** 合法槽位存档判定（TM-P2-003-R1 D：版本感知——可迁移格式 version undefined(514f3e2)/2(9ddb5db)/3(当前) 均合法；
  * 其中 version 3 必须携带 learnedSkillIds，缺失判 malformed；旧版本允许缺失（迁移链补全）） */
 export function isValidSaveSlot(raw: unknown): raw is SaveSlot {
@@ -200,7 +208,7 @@ export function isValidSaveSlot(raw: unknown): raw is SaveSlot {
   if (typeof raw.savedAt !== 'string') return false
   if (!isGameState(raw.gameState)) return false
   // v3 严格：必须已带 learnedSkillIds（TM-P2-003-R1 D：v3 缺 learnedSkillIds 判 malformed）
-  if (v === SLOT_FORMAT_VERSION && !Array.isArray((raw.gameState as { player: { learnedSkillIds?: unknown } }).player.learnedSkillIds)) {
+  if (v === SLOT_FORMAT_VERSION && !isCurrentGameState(raw.gameState)) {
     return false
   }
   return true
@@ -353,8 +361,10 @@ function restoreSnapshot(snap: { slotRaws: Record<SlotId, string | null>; indexR
 export function saveSlot(slotId: SlotId, gameState: GameState): boolean {
   const storage = getStorage()
   if (!storage) return false
-  if (!isGameState(gameState)) {
-    console.error('[存档] 拒绝写入非法 GameState（与存档校验不一致）')
+  // TM-P2-003-R2 D：新保存只允许当前 v3 格式（learnedSkillIds 必须存在）——
+  // 防止写出 version 3 但自身校验无法读取的槽（宽松 isGameState 只用于旧档/迁移源）
+  if (!isCurrentGameState(gameState)) {
+    console.error('[存档] 拒绝写入非当前格式 GameState（v3 需携带 learnedSkillIds）')
     return false
   }
   const slot: SaveSlot = { version: SLOT_FORMAT_VERSION, savedAt: new Date().toISOString(), gameState }
@@ -490,7 +500,13 @@ export function migrateLegacySave(): boolean {
     return false
   }
   const snap = snapshotAll()
-  const slot: SaveSlot = { version: SLOT_FORMAT_VERSION, savedAt: legacy.savedAt, gameState: legacy.gameState }
+  // TM-P2-003-R2 D：真正历史 V1 存档没有 learnedSkillIds——写 v3 前必须按职业补全，
+  // 否则 loadSlot 的 v3 严格校验会失败导致迁移回滚（旧 V1 自动迁移断裂）。
+  const gs = legacy.gameState
+  if (!Array.isArray(gs.player.learnedSkillIds)) {
+    gs.player.learnedSkillIds = defaultSkillsForProfession(gs.player.profession)
+  }
+  const slot: SaveSlot = { version: SLOT_FORMAT_VERSION, savedAt: legacy.savedAt, gameState: gs }
   try {
     storage.setItem(slotKey('slot1'), JSON.stringify(slot))
   } catch (err) {
