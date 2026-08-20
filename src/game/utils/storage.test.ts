@@ -76,9 +76,9 @@ describe('TM-P2-002 G：五槽位相互独立', () => {
     expect(loadSlot('slot1')?.gameState.player.gold).toBe(90)
   })
 
-  it('五个槽位摘要正确（空槽 null）', () => {
-    saveSlot('slot1', stateWithGold(70))
-    saveSlot('slot3', stateWithGold(80))
+  it('五个槽位摘要正确（空槽 null；lastSavedSlot 按 savedAt 最新）', () => {
+    writeSlotRawAt('slot1', '2026-01-01T08:00:00.000Z', 70)
+    writeSlotRawAt('slot3', '2026-01-01T12:00:00.000Z', 80)
     const index = loadIndex()
     expect(index.slots.slot1?.playerName).toBe('石头城')
     expect(index.slots.slot1?.level).toBe(1)
@@ -160,9 +160,9 @@ describe('TM-P2-002 H：损坏单槽隔离', () => {
     expect(loadMostRecentSave()?.gameState.player.gold).toBe(80)
   })
 
-  it('删除最近槽后最近存档回退到其他有效槽', () => {
-    saveSlot('slot1', stateWithGold(70))
-    saveSlot('slot2', stateWithGold(80))
+  it('删除最近槽后最近存档回退到其他有效槽（按 savedAt 最新）', () => {
+    writeSlotRawAt('slot1', '2026-01-01T08:00:00.000Z', 70)
+    writeSlotRawAt('slot2', '2026-01-01T12:00:00.000Z', 80)
     expect(loadIndex().lastSavedSlot).toBe('slot2')
     deleteSlot('slot2')
     expect(loadIndex().lastSavedSlot).toBe('slot1')
@@ -181,8 +181,8 @@ describe('TM-P2-002 H：损坏单槽隔离', () => {
 
 describe('TM-P2-002 I：导出 / 导入', () => {
   it('导出五槽位 JSON → 删除 → 导入 → 恢复', () => {
-    saveSlot('slot1', stateWithGold(70))
-    saveSlot('slot3', stateWithGold(80))
+    writeSlotRawAt('slot1', '2026-01-01T08:00:00.000Z', 70)
+    writeSlotRawAt('slot3', '2026-01-01T12:00:00.000Z', 80)
     const json = exportSaves()
     expect(json).toContain('slot1')
     expect(json).toContain('slot3')
@@ -529,5 +529,130 @@ describe('TM-P2-002-R1 G：兼容 514f3e2 已产生的无版本 V2 存档', () =
     writeSlotRawAt('slot1', '2026-01-01T08:00:00.000Z', 70, true)
     expect(migrateSave()).toBe(false)
     expect(loadSlot('slot1')?.gameState.player.gold).toBe(70)
+  })
+})
+
+// ================= TM-P2-002-R2：索引一致性 / 真正最近档 / 迁移 raw 边界 =================
+
+/** 写一个合法外壳但内容可控的 index raw（模拟部分污染的缓存） */
+function writeIndexRaw(lastSavedSlot: SlotId | null, slotSummaries: Record<string, unknown>) {
+  localStorage.setItem(
+    SAVES_INDEX_KEY,
+    JSON.stringify({ version: SAVE_VERSION, lastSavedSlot, slots: slotSummaries }),
+  )
+}
+
+describe('TM-P2-002-R2 A：loadIndex 以真实槽为准（index 只是 cache）', () => {
+  it('① index 合法但 summary.slot2=null；真实 slot2 合法 → loadIndex 恢复 slot2', () => {
+    writeSlotRawAt('slot2', '2026-01-01T10:00:00.000Z', 82)
+    // 合法外壳 index：slot2 被误标为空
+    writeIndexRaw('slot2', { slot1: null, slot2: null, slot3: null, slot4: null, slot5: null })
+    const index = loadIndex()
+    expect(index.slots.slot2?.playerName).toBe('石头城')
+    expect(index.slots.slot2?.level).toBe(1)
+  })
+
+  it('② index 声称 slot3 有存档；真实 slot3 不存在 → loadIndex 显示 slot3 为空', () => {
+    writeSlotRawAt('slot1', '2026-01-01T08:00:00.000Z', 81)
+    // index 声称 slot3 有档（幽灵摘要）
+    writeIndexRaw('slot3', {
+      slot1: { playerName: 'a', profession: 'knight', level: 1, locationId: 'x', savedAt: '2026-01-01T08:00:00.000Z' },
+      slot2: null,
+      slot3: { playerName: 'ghost', profession: 'knight', level: 9, locationId: 'y', savedAt: '2026-01-01T12:00:00.000Z' },
+      slot4: null,
+      slot5: null,
+    })
+    const index = loadIndex()
+    expect(index.slots.slot3).toBeNull() // 真实不存在 → 空
+    expect(index.slots.slot1?.playerName).toBe('石头城') // 真实存在 → 恢复
+  })
+
+  it('③ index 的 slot4 summary 结构损坏；真实 slot4 合法 → 恢复真实 summary', () => {
+    writeSlotRawAt('slot4', '2026-01-01T11:00:00.000Z', 84)
+    writeIndexRaw('slot4', {
+      slot1: null,
+      slot2: null,
+      slot3: null,
+      slot4: { playerName: 123, profession: {}, level: 'x', locationId: null, savedAt: 42 }, // 结构损坏
+      slot5: null,
+    })
+    const index = loadIndex()
+    expect(index.slots.slot4?.playerName).toBe('石头城')
+    expect(index.slots.slot4?.level).toBe(1)
+  })
+})
+
+describe('TM-P2-002-R2 B：Continue 每次扫描选真正最新（不信任 index.lastSavedSlot）', () => {
+  it('④ slot1=08:00、slot3=12:00、index.lastSavedSlot=slot1 → Continue 读 slot3', () => {
+    writeSlotRawAt('slot1', '2026-01-01T08:00:00.000Z', 1)
+    writeSlotRawAt('slot3', '2026-01-01T12:00:00.000Z', 3)
+    writeIndexRaw('slot1', {
+      slot1: { playerName: 'a', profession: 'knight', level: 1, locationId: 'x', savedAt: '2026-01-01T08:00:00.000Z' },
+      slot2: null,
+      slot3: { playerName: 'b', profession: 'knight', level: 1, locationId: 'x', savedAt: '2026-01-01T12:00:00.000Z' },
+      slot4: null,
+      slot5: null,
+    })
+    const save = loadMostRecentSave()
+    expect(save?.gameState.player.gold).toBe(3) // 不是过时的 slot1
+  })
+
+  it('⑤ slot1=08:00、slot3=12:00、slot5 损坏、index.lastSavedSlot=slot1 → Continue 读 slot3', () => {
+    writeSlotRawAt('slot1', '2026-01-01T08:00:00.000Z', 1)
+    writeSlotRawAt('slot3', '2026-01-01T12:00:00.000Z', 3)
+    localStorage.setItem('tianmeng_continent_save_slot_slot5', '{ broken')
+    writeIndexRaw('slot1', {
+      slot1: { playerName: 'a', profession: 'knight', level: 1, locationId: 'x', savedAt: '2026-01-01T08:00:00.000Z' },
+      slot2: null,
+      slot3: { playerName: 'b', profession: 'knight', level: 1, locationId: 'x', savedAt: '2026-01-01T12:00:00.000Z' },
+      slot4: null,
+      slot5: { playerName: 'c', profession: 'knight', level: 1, locationId: 'x', savedAt: '2026-01-01T15:00:00.000Z' },
+    })
+    const save = loadMostRecentSave()
+    expect(save?.gameState.player.gold).toBe(3)
+  })
+
+  it('⑥ 删除最新槽 → Continue 读次新槽（无论 index 残留指向谁）', () => {
+    writeSlotRawAt('slot1', '2026-01-01T08:00:00.000Z', 1)
+    writeSlotRawAt('slot3', '2026-01-01T12:00:00.000Z', 3)
+    writeIndexRaw('slot3', {
+      slot1: { playerName: 'a', profession: 'knight', level: 1, locationId: 'x', savedAt: '2026-01-01T08:00:00.000Z' },
+      slot2: null,
+      slot3: { playerName: 'b', profession: 'knight', level: 1, locationId: 'x', savedAt: '2026-01-01T12:00:00.000Z' },
+      slot4: null,
+      slot5: null,
+    })
+    expect(deleteSlot('slot3')).toBe(true)
+    expect(loadMostRecentSave()?.gameState.player.gold).toBe(1)
+  })
+})
+
+describe('TM-P2-002-R2 C：迁移按 raw key 判断 Slot1 占用（禁止覆盖任何已有数据）', () => {
+  const writeLegacyRaw = (gold: number) => {
+    const legacy = createInitialGameState()
+    legacy.player.gold = gold
+    localStorage.setItem(
+      LEGACY_SAVE_KEY,
+      JSON.stringify({ version: LEGACY_SAVE_VERSION, savedAt: '2026-01-01T00:00:00.000Z', gameState: legacy }),
+    )
+  }
+
+  it('⑦ Slot1 raw="{ broken" + 合法 legacy → 不迁移、损坏 raw 原样保留、legacy 保留', () => {
+    localStorage.setItem('tianmeng_continent_save_slot_slot1', '{ broken')
+    writeLegacyRaw(66)
+    expect(migrateLegacySave()).toBe(false)
+    expect(localStorage.getItem('tianmeng_continent_save_slot_slot1')).toBe('{ broken')
+    expect(localStorage.getItem(LEGACY_SAVE_KEY)).not.toBeNull()
+    expect(loadSlot('slot1')).toBeNull() // 损坏 raw 仍不可读，但不被覆盖
+  })
+
+  it('⑧ Slot1 可解析但结构非法 + 合法 legacy → 同样不得覆盖', () => {
+    localStorage.setItem('tianmeng_continent_save_slot_slot1', JSON.stringify({ version: 999, savedAt: 'x', gameState: null }))
+    writeLegacyRaw(66)
+    expect(migrateLegacySave()).toBe(false)
+    const raw = localStorage.getItem('tianmeng_continent_save_slot_slot1')
+    expect(raw).not.toBeNull()
+    expect(JSON.parse(raw!).version).toBe(999) // 原样保留
+    expect(localStorage.getItem(LEGACY_SAVE_KEY)).not.toBeNull()
   })
 })

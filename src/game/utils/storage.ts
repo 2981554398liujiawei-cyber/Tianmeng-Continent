@@ -275,34 +275,16 @@ function rebuildIndexFromSlots(): SavesIndex {
   return index
 }
 
-/** 读取索引；缺失/损坏/版本不符 → 扫描真实槽位重建并写回缓存（TM-P2-002-R1 E：index 是缓存，不能让它掩盖真实存档）。 */
+/**
+ * TM-P2-002-R1 E / R2 A：读取索引。
+ * index 只是 cache/摘要，不是唯一事实源——R2 明确：合法外壳的 index 也可能与真实槽不一致
+ * （summary 被部分污染 / 声称存在的槽实际缺失 / summary 结构损坏但真实槽合法）。
+ * 因此 loadIndex 始终直接扫描 slot1~slot5 的真实数据重建 summary（仅 5 个 key，不值得做缓存优化），
+ * lastSavedSlot 按 savedAt 最新；坏槽原始数据保留不删除。空状态不写缓存（prod smoke 零写入）。
+ */
 export function loadIndex(): SavesIndex {
   const storage = getStorage()
   if (!storage) return emptyIndex()
-  try {
-    const raw = storage.getItem(SAVES_INDEX_KEY)
-    if (!raw) return rebuildIndexAndPersist()
-    const parsed: unknown = JSON.parse(raw)
-    if (!isRecord(parsed)) return rebuildIndexAndPersist()
-    if (parsed.version !== SAVE_VERSION) return rebuildIndexAndPersist()
-    const index = emptyIndex()
-    index.lastSavedSlot = isValidSlotId(parsed.lastSavedSlot) ? parsed.lastSavedSlot : null
-    const slots = parsed.slots
-    if (isRecord(slots)) {
-      for (const slotId of SLOT_IDS) {
-        const entry = slots[slotId]
-        index.slots[slotId] = isSlotSummary(entry) ? entry : null
-      }
-    }
-    return index
-  } catch {
-    return rebuildIndexAndPersist()
-  }
-}
-
-/** 重建索引并写回缓存（自动恢复损坏/缺失索引；坏槽原始数据保留不删）。
- * 仅在确实存在真实槽位时才写回——空状态不写，避免访问页面就污染存储（prod smoke 断言零写入）。 */
-function rebuildIndexAndPersist(): SavesIndex {
   const index = rebuildIndexFromSlots()
   const hasAny = SLOT_IDS.some((id) => index.slots[id] !== null)
   if (hasAny) writeIndex(index)
@@ -426,16 +408,11 @@ export function hasAnySave(): boolean {
 }
 
 /**
- * 读取最近一次有效存档（TM-P2-002-R1 F：优先索引 lastSavedSlot；无效时按 savedAt 选择真正最新的合法槽，
- * 不按槽位编号顺序）。
+ * 读取最近一次有效存档（TM-P2-002-R2 B：不允许优先 return index.lastSavedSlot——
+ * index 可能指向合法但过时的槽。每次扫描全部合法槽，按 Date.parse(savedAt) 选择真正最新，
+ * 绝不因编号小就读 slot1）。
  */
 export function loadMostRecentSave(): SaveSlot | null {
-  const index = loadIndex()
-  if (index.lastSavedSlot !== null) {
-    const slot = loadSlot(index.lastSavedSlot)
-    if (slot) return slot
-  }
-  // 按 savedAt 找最新合法槽（绝不因编号小就读 slot1）
   let best: SaveSlot | null = null
   let bestTime = -1
   for (const id of SLOT_IDS) {
@@ -478,9 +455,16 @@ export function migrateLegacySave(): boolean {
     return false
   }
   if (!legacy) return false
-  // D：检查真实 Slot1（不是只看 index 摘要）
-  if (loadSlot('slot1') !== null) {
-    // Slot1 已有真实数据：绝对禁止覆盖；legacy key 保留
+  // R2 C：判断 Slot1 是否占用必须检查 raw key 是否存在——只要 slot1 raw 存在，
+  // 无论数据正常、损坏（JSON 坏）、还是可解析但结构非法，都绝对禁止自动覆盖；
+  // 损坏 raw 可能仍值得保留恢复/调试，legacy key 一并保留。
+  let slot1RawExists = false
+  try {
+    slot1RawExists = storage.getItem(slotKey('slot1')) !== null
+  } catch {
+    slot1RawExists = true // 读不到也视为已占用，宁可保守不覆盖
+  }
+  if (slot1RawExists) {
     return false
   }
   const snap = snapshotAll()
