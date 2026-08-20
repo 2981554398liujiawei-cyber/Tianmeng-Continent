@@ -280,7 +280,7 @@ function applyQuestTransition(gameState: GameState, questId: string, to: QuestSt
   return { ...gameState, quests: nextQuests }
 }
 
-export const useGameStore = create<GameStoreState>()((set) => ({
+export const useGameStore = create<GameStoreState>()((set, get) => ({
   gameState: null,
   // TM-P2-002 H：初始化即尝试自动迁移旧 V1 单档（Slot 1 为空时迁入）
   hasSave: (migrateSave(), hasAnySave()),
@@ -350,7 +350,7 @@ export const useGameStore = create<GameStoreState>()((set) => ({
 
   // ---- TM-P2-003 D/E/F：北门旧哨塔补给匣实现 ----
   openNorthTowerWithSkill: (skillId) => {
-    const s = useGameStore.getState().gameState
+    const s = get().gameState
     if (!s) return null
     // 场景前置：当前位置北门 + 黑鬃魔狼已击败 + 旧哨塔尚未开启 + 补给匣尚未领取
     const atNorthGate = s.world.currentLocationId === 'tianlong_north_gate'
@@ -403,7 +403,7 @@ export const useGameStore = create<GameStoreState>()((set) => ({
   },
 
   northTowerMndCheck: (roll) => {
-    const s = useGameStore.getState().gameState
+    const s = get().gameState
     if (!s) return null
     const atNorthGate = s.world.currentLocationId === 'tianlong_north_gate'
     const wolfDefeated = s.quests.find((q) => q.questId === 'quest_north_gate_missing_patrol')?.flags.north_gate_wolf_defeated === true
@@ -448,7 +448,7 @@ export const useGameStore = create<GameStoreState>()((set) => ({
   },
 
   northTowerLuckRescue: (roll) => {
-    const s = useGameStore.getState().gameState
+    const s = get().gameState
     if (!s) return null
     const atNorthGate = s.world.currentLocationId === 'tianlong_north_gate'
     const wolfDefeated = s.quests.find((q) => q.questId === 'quest_north_gate_missing_patrol')?.flags.north_gate_wolf_defeated === true
@@ -494,7 +494,7 @@ export const useGameStore = create<GameStoreState>()((set) => ({
   },
 
   claimNorthTowerCache: (roll) => {
-    const s = useGameStore.getState().gameState
+    const s = get().gameState
     if (!s) return null
     if (s.world.flags.north_tower_opened !== true) return { outcome: 'locked' }
     if (s.world.flags.north_tower_cache_claimed === true) return { outcome: 'already_claimed' }
@@ -529,7 +529,7 @@ export const useGameStore = create<GameStoreState>()((set) => ({
   },
 
   oldTraderTalk: (roll) => {
-    const s = useGameStore.getState().gameState
+    const s = get().gameState
     if (!s) return null
     if (s.world.currentLocationId !== 'tianlong_city') return null
     // 一次性：结果进存档，刷新/反复交谈不重刷
@@ -1267,20 +1267,20 @@ export const useGameStore = create<GameStoreState>()((set) => ({
 
   restAtVillage: () => {
     // TM-P2-004 第 58 节：旧休整入口作为 wrapper 走统一 longRest 纯规则（本入口固定只允许青石村）
-    const s = useGameStore.getState().gameState
+    const s = get().gameState
     if (!s || s.world.currentLocationId !== 'qingshi_village') return false
-    return useGameStore.getState().longRest()
+    return get().longRest()
   },
 
   restAtTianlongMartialHall: () => {
     // TM-P2-004 第 58 节：旧休整入口作为 wrapper 走统一 longRest 纯规则（本入口固定只允许武馆）
-    const s = useGameStore.getState().gameState
+    const s = get().gameState
     if (!s || s.world.currentLocationId !== 'tianlong_martial_hall') return false
-    return useGameStore.getState().longRest()
+    return get().longRest()
   },
 
   spendSkillMp: (skillId) => {
-    const s = useGameStore.getState().gameState
+    const s = get().gameState
     if (!s) return false
     const player = s.player
     // TM-P2-003-R3 C：统一校验（与北门场景共用同一 pure rule，不再复制一套业务判断）
@@ -1466,7 +1466,7 @@ export const useGameStore = create<GameStoreState>()((set) => ({
   },
 
   grantLoot: (enemyId) => {
-    const player = useGameStore.getState().gameState?.player
+    const player = get().gameState?.player
     if (!player) return null
     const grant = rollLoot(enemyId, player.attributes.lck)
     if (!grant) return null
@@ -1933,7 +1933,7 @@ export const useGameStore = create<GameStoreState>()((set) => ({
   // ---- TM-P2-004：Sakura 剧情 / 伙伴 / 关系 / 休整 ----
 
   startSakuraEncounter: () => {
-    const s = useGameStore.getState().gameState
+    const s = get().gameState
     if (!s) return false
     if (!canTriggerSakuraEncounter(s)) return false
     let ok = false
@@ -1956,7 +1956,7 @@ export const useGameStore = create<GameStoreState>()((set) => ({
   },
 
   enterSakuraDomain: () => {
-    const s = useGameStore.getState().gameState
+    const s = get().gameState
     if (!s) return false
     if (!canEnterSakuraDomain(s)) return false
     let ok = false
@@ -1979,7 +1979,7 @@ export const useGameStore = create<GameStoreState>()((set) => ({
   },
 
   meetSakura: (choice) => {
-    const s = useGameStore.getState().gameState
+    const s = get().gameState
     if (!s) return null
     if (!canMeetSakura(s)) return null
     let result: SakuraMeetResult = null
@@ -2020,7 +2020,7 @@ export const useGameStore = create<GameStoreState>()((set) => ({
   },
 
   sakuraProfessionTalk: () => {
-    const s = useGameStore.getState().gameState
+    const s = get().gameState
     if (!s) return null
     if (s.world.flags.sakura_profession_talked === true) return null
     // 职业对话发生在初见之后、临时合作之前（met=true 且 guest 未开始）
@@ -2057,7 +2057,7 @@ export const useGameStore = create<GameStoreState>()((set) => ({
   },
 
   sakuraMndCheck: (roll) => {
-    const s = useGameStore.getState().gameState
+    const s = get().gameState
     if (!s) return null
     if (!canMndCheckSakura(s)) return null
     const check = resolveD20Check(
@@ -2102,7 +2102,7 @@ export const useGameStore = create<GameStoreState>()((set) => ({
   },
 
   sakuraLuckRescue: (roll) => {
-    const s = useGameStore.getState().gameState
+    const s = get().gameState
     if (!s) return null
     if (!canLuckRescueSakura(s)) return null
     const check = resolveLuckCheck(roll ?? rollD20(), s.player.attributes.lck, SAKURA_LUCK_DC)
@@ -2143,7 +2143,7 @@ export const useGameStore = create<GameStoreState>()((set) => ({
   },
 
   offerSakuraGuest: () => {
-    const s = useGameStore.getState().gameState
+    const s = get().gameState
     if (!s) return false
     if (!canOfferGuest(s)) return false
     let ok = false
@@ -2174,7 +2174,7 @@ export const useGameStore = create<GameStoreState>()((set) => ({
   },
 
   acceptSakuraContract: (choice) => {
-    const s = useGameStore.getState().gameState
+    const s = get().gameState
     if (!s) return null
     if (!canAcceptContract(s)) return null
     let result: SakuraContractResult = null
@@ -2239,7 +2239,7 @@ export const useGameStore = create<GameStoreState>()((set) => ({
   },
 
   refuseSakuraContract: () => {
-    const s = useGameStore.getState().gameState
+    const s = get().gameState
     if (!s) return false
     if (!canAcceptContract(s)) return false
     let ok = false
@@ -2266,7 +2266,7 @@ export const useGameStore = create<GameStoreState>()((set) => ({
   },
 
   reofferSakuraContract: () => {
-    const s = useGameStore.getState().gameState
+    const s = get().gameState
     if (!s) return false
     if (!canReofferContract(s)) return false
     let ok = false
@@ -2289,7 +2289,7 @@ export const useGameStore = create<GameStoreState>()((set) => ({
   },
 
   talkToSakura: (topic) => {
-    const s = useGameStore.getState().gameState
+    const s = get().gameState
     if (!s) return null
     const companion = s.companions[SAKURA_COMPANION_ID]
     if (!companion) return null
@@ -2302,7 +2302,7 @@ export const useGameStore = create<GameStoreState>()((set) => ({
       if (!rel) return {}
       // 每休整周期前 TALKS_PER_REST_LIMIT 次正常收益（TM-P2-004 第 64 节）；之后仍可聊天但不刷分
       if (!canTalkGain(rel)) {
-        result = { outcome: 'cycle_limited', affectionDelta: 0, trustDelta: 0 }
+        result = { outcome: 'cycle_limited' }
         return {}
       }
       // 普通交谈 affection+1（TM-P2-004 第 63 节）；「询问伤势」在 MND 成功获知真相后特别契合 +2
@@ -2321,7 +2321,7 @@ export const useGameStore = create<GameStoreState>()((set) => ({
   },
 
   sakuraFirstRestTalk: (choice) => {
-    const s = useGameStore.getState().gameState
+    const s = get().gameState
     if (!s) return null
     if (!isFirstRestTalkReady(s)) return null
     let result: SakuraTalkResult = null
@@ -2359,7 +2359,7 @@ export const useGameStore = create<GameStoreState>()((set) => ({
   },
 
   sakuraBanter: (choice) => {
-    const s = useGameStore.getState().gameState
+    const s = get().gameState
     if (!s) return null
     if (!canTriggerSakuraBanter(s)) return null
     let result: SakuraTalkResult = null
@@ -2390,7 +2390,7 @@ export const useGameStore = create<GameStoreState>()((set) => ({
   },
 
   giveGift: (npcId, itemId) => {
-    const s = useGameStore.getState().gameState
+    const s = get().gameState
     if (!s) return null
     const rel = s.relationships[npcId]
     if (!rel) return { outcome: 'locked', affectionDelta: 0 }
@@ -2455,7 +2455,7 @@ export const useGameStore = create<GameStoreState>()((set) => ({
   },
 
   longRest: () => {
-    const s = useGameStore.getState().gameState
+    const s = get().gameState
     if (!s) return false
     const next = applyLongRest(s)
     if (!next) return false
@@ -2476,7 +2476,7 @@ export const useGameStore = create<GameStoreState>()((set) => ({
   },
 
   setCompanionActive: (companionId, active) => {
-    const s = useGameStore.getState().gameState
+    const s = get().gameState
     if (!s) return false
     let ok = false
     set((st) => {
@@ -2501,7 +2501,7 @@ export const useGameStore = create<GameStoreState>()((set) => ({
   },
 
   spendCompanionSkillMp: (companionId, skillId) => {
-    const s = useGameStore.getState().gameState
+    const s = get().gameState
     if (!s) return false
     const companion = s.companions[companionId]
     if (!companion) return false

@@ -88,7 +88,7 @@ describe('TM-P2-004：Long Rest（第 53-57 节）', () => {
     gs.player.mp = 2
     gs.world.currentLocationId = locationId
     gs.companions = { sakura_yuko: makeSakuraState('recruited') }
-    gs.companions.sakura_yuko.mp = mp
+    gs.companions.sakura_yuko!.mp = mp
     gs.party = { activeCompanionIds: [SAKURA] }
     gs.relationships = { sakura_yuko: { ...createInitialRelationship(SAKURA), flags: { talksThisRest: 2, giftedThisRest: true } } }
     return gs
@@ -100,10 +100,10 @@ describe('TM-P2-004：Long Rest（第 53-57 节）', () => {
     const next = applyLongRest(gs)!
     expect(next.player.hp).toBe(next.player.maxHp)
     expect(next.player.mp).toBe(next.player.maxMp)
-    expect(next.companions.sakura_yuko.mp).toBe(6)
+    expect(next.companions.sakura_yuko!.mp).toBe(6)
     expect(next.world.restCount).toBe(1)
-    expect(next.relationships.sakura_yuko.flags.talksThisRest).toBe(0)
-    expect(next.relationships.sakura_yuko.flags.giftedThisRest).toBe(false)
+    expect(next.relationships.sakura_yuko!.flags.talksThisRest).toBe(0)
+    expect(next.relationships.sakura_yuko!.flags.giftedThisRest).toBe(false)
   })
 
   it('满资源也允许（产品规则修改）：全满时成功且 restCount+1', () => {
@@ -131,15 +131,15 @@ describe('TM-P2-004：Long Rest（第 53-57 节）', () => {
       met_one: { ...makeSakuraState('met'), mp: 2 },
     }
     const next = restoreCompanionMp(companions)
-    expect(next.sakura_yuko.mp).toBe(6)
-    expect(next.met_one.mp).toBe(2)
+    expect(next.sakura_yuko!.mp).toBe(6)
+    expect(next.met_one!.mp).toBe(2)
   })
 
   it('resetRelationshipRestCycle 重置全部关系周期（无关系时不报错）', () => {
     const next = resetRelationshipRestCycle({})
     expect(next).toEqual({})
     const rel = createInitialRelationship('x')
-    expect(resetRelationshipRestCycle({ x: { ...rel, flags: { talksThisRest: 3, giftedThisRest: true } } }).x.flags).toMatchObject({
+    expect(resetRelationshipRestCycle({ x: { ...rel, flags: { talksThisRest: 3, giftedThisRest: true } } }).x!.flags).toMatchObject({
       talksThisRest: 0,
       giftedThisRest: false,
     })

@@ -65,7 +65,7 @@ export default function CompanionPanel() {
               )}
               <div className="mt-2 flex flex-col items-start gap-2">
                 {isActive ? (
-                  <Button variant="secondary" onClick={() => setCompanionActive(companion.companionId, false)}>
+                  <Button variant="ghost" onClick={() => setCompanionActive(companion.companionId, false)}>
                     暂不同行
                   </Button>
                 ) : (

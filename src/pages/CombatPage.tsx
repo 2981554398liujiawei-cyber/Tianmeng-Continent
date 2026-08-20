@@ -587,7 +587,7 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
                 </div>
               )
             })}
-            <Button variant="secondary" onClick={handleCompanionSkip}>
+            <Button variant="ghost" onClick={handleCompanionSkip}>
               跳过
             </Button>
           </div>

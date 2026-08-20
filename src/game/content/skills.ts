@@ -82,6 +82,7 @@ export const SKILLS: Record<string, SkillDefinition> = {
     mpCost: 2,
     tags: ['magic', 'divine'],
     combat: {
+      damageFormula: '不造成伤害：为下一次敌人反击附加 reduce_next_enemy_damage(3)（本场一次）',
       oncePerCombat: true,
       supportEffect: { type: 'reduce_next_enemy_damage', amount: 3 },
     },
@@ -93,6 +94,7 @@ export const SKILLS: Record<string, SkillDefinition> = {
     mpCost: 2,
     tags: ['movement', 'divine'],
     combat: {
+      damageFormula: '不造成伤害：本轮敌人反击被取消（cancel_next_enemy_counter，本场一次）',
       oncePerCombat: true,
       supportEffect: { type: 'cancel_next_enemy_counter' },
     },

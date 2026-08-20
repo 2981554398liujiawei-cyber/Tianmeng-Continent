@@ -37,7 +37,8 @@ export function getCompanion(id: string): CompanionDefinition | undefined {
 
 /** 樱花优子入 guest/recruited 时使用的初始技能（来自注册表；不写死名字） */
 export function sakuraDefaultSkillIds(): string[] {
-  return [...COMPANIONS.sakura_yuko.skillIds]
+  const sakura = COMPANIONS.sakura_yuko
+  return sakura ? [...sakura.skillIds] : []
 }
 
 /** 樱花优子封印技能展示（TM-P2-004 第 87 节：只展示不进 learnedSkillIds） */

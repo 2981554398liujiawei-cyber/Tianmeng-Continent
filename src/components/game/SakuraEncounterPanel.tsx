@@ -166,7 +166,7 @@ export default function SakuraEncounterPanel({ onEngage }: SakuraEncounterPanelP
           <Button variant="primary" onClick={() => enterSakuraDomain()}>
             踏入裂隙
           </Button>
-          <Button variant="secondary" onClick={() => setDismissedRain(true)}>
+          <Button variant="ghost" onClick={() => setDismissedRain(true)}>
             暂时不管
           </Button>
           <p className="text-xs text-bone-500">裂隙不会就此消失。你可以稍后再回来。</p>
@@ -307,7 +307,7 @@ export default function SakuraEncounterPanel({ onEngage }: SakuraEncounterPanelP
               {label}
             </Button>
           ))}
-          <Button variant="secondary" onClick={() => refuseSakuraContract()}>
+          <Button variant="ghost" onClick={() => refuseSakuraContract()}>
             我现在不能答应。
           </Button>
         </div>

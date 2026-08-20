@@ -125,7 +125,7 @@ export default function RelationshipPanel() {
                     {giftItems.map(({ entry, def }) => (
                       <Button
                         key={entry.itemId}
-                        variant="secondary"
+                        variant="ghost"
                         onClick={() => handleGift(rel.npcId, entry.itemId)}
                       >
                         {def?.name} ×{entry.quantity}
