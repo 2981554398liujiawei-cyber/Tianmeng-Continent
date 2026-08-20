@@ -31,7 +31,7 @@
 > 技能使用统一 pure 校验（`rules/skill.ts checkSkillUse`，spendSkillMp 与北门场景共用，MP+场景 flag 原子提交，profession-less 通用技能可用，learnedSkillIds 去重）、
 > 战斗入口规则抽取（`rules/encounter.ts`，App.tsx 移除全部敌人业务 if）、
 > `InventoryPanel` 组件抽取（GamePage 不再 hardcode 铁剑）、CI 增加 Production browser smoke 门禁。
-> 当前自测基线：单测 1073、Dev E2E 954、phase1-playthrough 195、phase2-e2e 58、phase3-e2e 28、responsive-e2e 20、R3 focused 17、prod smoke 6、build PASS、GitHub Actions CI（含浏览器 smoke）success。
+> 当前自测基线：单测 1073、Dev E2E 953、phase1-playthrough 195、phase2-e2e 58、phase3-e2e 28、responsive-e2e 20、R3 focused 17、prod smoke 6、build PASS、GitHub Actions CI（含浏览器 smoke）success。
 
 ## 战斗系统（V3）
 
