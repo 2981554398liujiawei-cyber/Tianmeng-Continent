@@ -11,6 +11,8 @@ export const SAVE_SLOT_KEY_PREFIX = 'tianmeng_continent_save_slot_'
 
 export const SAVE_VERSION = 2
 export const LEGACY_SAVE_VERSION = 1
+/** TM-P2-002-R1 G：槽位文件自身格式版本（SaveSlot.version；当前 2）。兼容 514f3e2 已产生的无版本 V2 槽（version 缺失视为 1，读时补全）。 */
+export const SLOT_FORMAT_VERSION = 2
 
 export const SLOT_IDS = ['slot1', 'slot2', 'slot3', 'slot4', 'slot5'] as const
 export type SlotId = (typeof SLOT_IDS)[number]
@@ -24,8 +26,9 @@ export interface SlotSummary {
   savedAt: string
 }
 
-/** 槽位存储（含完整 gameState；逐槽独立 key） */
+/** 槽位存储（含完整 gameState；逐槽独立 key）。version 为槽位文件格式版本（TM-P2-002-R1 G）。 */
 export interface SaveSlot {
+  version: number
   savedAt: string
   gameState: GameState
 }
@@ -178,9 +181,10 @@ export function isGameState(value: unknown): value is GameState {
   )
 }
 
-/** 合法槽位存档判定（V2 单槽） */
+/** 合法槽位存档判定（TM-P2-002-R1 G：version 允许缺失——兼容 514f3e2 无槽版本 V2；缺失/===2 合法，其他版本非法） */
 export function isValidSaveSlot(raw: unknown): raw is SaveSlot {
   if (!isRecord(raw)) return false
+  if (raw.version !== undefined && raw.version !== SLOT_FORMAT_VERSION) return false
   if (typeof raw.savedAt !== 'string') return false
   return isGameState(raw.gameState)
 }
@@ -223,30 +227,7 @@ function emptyIndex(): SavesIndex {
   }
 }
 
-/** 读取索引；损坏/缺失 → 空索引（不抛出）。调用方应先执行 migrateLegacySave() 保证迁移。 */
-export function loadIndex(): SavesIndex {
-  const storage = getStorage()
-  if (!storage) return emptyIndex()
-  try {
-    const raw = storage.getItem(SAVES_INDEX_KEY)
-    if (!raw) return emptyIndex()
-    const parsed: unknown = JSON.parse(raw)
-    if (!isRecord(parsed)) return emptyIndex()
-    const index = emptyIndex()
-    if (parsed.version !== SAVE_VERSION) return emptyIndex()
-    index.lastSavedSlot = isValidSlotId(parsed.lastSavedSlot) ? parsed.lastSavedSlot : null
-    const slots = parsed.slots
-    if (isRecord(slots)) {
-      for (const slotId of SLOT_IDS) {
-        const entry = slots[slotId]
-        index.slots[slotId] = isSlotSummary(entry) ? entry : null
-      }
-    }
-    return index
-  } catch {
-    return emptyIndex()
-  }
-}
+/** 读取索引；缺失/损坏/版本不符 → 扫描真实槽位重建并写回缓存（TM-P2-002-R1 E）。实现在下方（rebuildIndexFromSlots 之后）。 */
 
 function isSlotSummary(value: unknown): value is SlotSummary {
   if (!isRecord(value)) return false
@@ -270,9 +251,106 @@ function writeIndex(index: SavesIndex): boolean {
   }
 }
 
+/**
+ * TM-P2-002-R1 E：扫描五个真实槽位重建索引。
+ * index 只是缓存/摘要，不是唯一事实源：这里直接读 slot1~slot5 的真实数据，
+ * lastSavedSlot 按 savedAt 最新（TM-P2-002-R1 F）。坏槽保留原始数据不删除。
+ */
+function rebuildIndexFromSlots(): SavesIndex {
+  const index = emptyIndex()
+  let bestId: SlotId | null = null
+  let bestTime = -1
+  for (const id of SLOT_IDS) {
+    const slot = loadSlot(id)
+    index.slots[id] = slot ? summaryOf(slot.gameState, slot.savedAt) : null
+    if (slot) {
+      const t = Date.parse(slot.savedAt)
+      if (Number.isFinite(t) && t > bestTime) {
+        bestTime = t
+        bestId = id
+      }
+    }
+  }
+  index.lastSavedSlot = bestId
+  return index
+}
+
+/** 读取索引；缺失/损坏/版本不符 → 扫描真实槽位重建并写回缓存（TM-P2-002-R1 E：index 是缓存，不能让它掩盖真实存档）。 */
+export function loadIndex(): SavesIndex {
+  const storage = getStorage()
+  if (!storage) return emptyIndex()
+  try {
+    const raw = storage.getItem(SAVES_INDEX_KEY)
+    if (!raw) return rebuildIndexAndPersist()
+    const parsed: unknown = JSON.parse(raw)
+    if (!isRecord(parsed)) return rebuildIndexAndPersist()
+    if (parsed.version !== SAVE_VERSION) return rebuildIndexAndPersist()
+    const index = emptyIndex()
+    index.lastSavedSlot = isValidSlotId(parsed.lastSavedSlot) ? parsed.lastSavedSlot : null
+    const slots = parsed.slots
+    if (isRecord(slots)) {
+      for (const slotId of SLOT_IDS) {
+        const entry = slots[slotId]
+        index.slots[slotId] = isSlotSummary(entry) ? entry : null
+      }
+    }
+    return index
+  } catch {
+    return rebuildIndexAndPersist()
+  }
+}
+
+/** 重建索引并写回缓存（自动恢复损坏/缺失索引；坏槽原始数据保留不删）。
+ * 仅在确实存在真实槽位时才写回——空状态不写，避免访问页面就污染存储（prod smoke 断言零写入）。 */
+function rebuildIndexAndPersist(): SavesIndex {
+  const index = rebuildIndexFromSlots()
+  const hasAny = SLOT_IDS.some((id) => index.slots[id] !== null)
+  if (hasAny) writeIndex(index)
+  return index
+}
+
 // ---------- 槽位操作 ----------
 
-/** 写入指定槽位（含索引更新）；返回是否成功 */
+/** 快照五槽 + 索引（事务回滚用；TM-P2-002-R1 C） */
+function snapshotAll(): { slotRaws: Record<SlotId, string | null>; indexRaw: string | null } {
+  const storage = getStorage()
+  const slotRaws = { slot1: null as string | null, slot2: null as string | null, slot3: null as string | null, slot4: null as string | null, slot5: null as string | null }
+  if (!storage) return { slotRaws, indexRaw: null }
+  for (const id of SLOT_IDS) {
+    try {
+      slotRaws[id] = storage.getItem(slotKey(id))
+    } catch {
+      slotRaws[id] = null
+    }
+  }
+  try {
+    return { slotRaws, indexRaw: storage.getItem(SAVES_INDEX_KEY) }
+  } catch {
+    return { slotRaws, indexRaw: null }
+  }
+}
+
+/** 恢复快照（事务回滚；失败静默） */
+function restoreSnapshot(snap: { slotRaws: Record<SlotId, string | null>; indexRaw: string | null }): void {
+  const storage = getStorage()
+  if (!storage) return
+  try {
+    for (const id of SLOT_IDS) {
+      const raw = snap.slotRaws[id]
+      if (raw === null) storage.removeItem(slotKey(id))
+      else storage.setItem(slotKey(id), raw)
+    }
+    if (snap.indexRaw === null) storage.removeItem(SAVES_INDEX_KEY)
+    else storage.setItem(SAVES_INDEX_KEY, snap.indexRaw)
+  } catch {
+    // 回滚失败无法再处理；保持日志
+  }
+}
+
+/**
+ * 写入指定槽位（含索引更新；TM-P2-002-R1 C：槽位写入 + 索引写入视为一个事务，
+ * 任一步失败恢复原状态返回 false）。
+ */
 export function saveSlot(slotId: SlotId, gameState: GameState): boolean {
   const storage = getStorage()
   if (!storage) return false
@@ -280,7 +358,8 @@ export function saveSlot(slotId: SlotId, gameState: GameState): boolean {
     console.error('[存档] 拒绝写入非法 GameState（与存档校验不一致）')
     return false
   }
-  const slot: SaveSlot = { savedAt: new Date().toISOString(), gameState }
+  const slot: SaveSlot = { version: SLOT_FORMAT_VERSION, savedAt: new Date().toISOString(), gameState }
+  const snap = snapshotAll()
   try {
     storage.setItem(slotKey(slotId), JSON.stringify(slot))
   } catch (err) {
@@ -290,11 +369,15 @@ export function saveSlot(slotId: SlotId, gameState: GameState): boolean {
   const index = loadIndex()
   index.slots[slotId] = summaryOf(gameState, slot.savedAt)
   index.lastSavedSlot = slotId
-  writeIndex(index)
+  if (!writeIndex(index)) {
+    console.error('[存档] 索引写入失败，回滚槽位写入')
+    restoreSnapshot(snap)
+    return false
+  }
   return true
 }
 
-/** 读取指定槽位；无存档/损坏 → null（该槽损坏不影响其他槽；不修复、不删除） */
+/** 读取指定槽位；无存档/损坏 → null（该槽损坏不影响其他槽；不修复、不删除；TM-P2-002-R1 G：无版本旧槽读时补全 version） */
 export function loadSlot(slotId: SlotId): SaveSlot | null {
   const storage = getStorage()
   if (!storage) return null
@@ -306,63 +389,76 @@ export function loadSlot(slotId: SlotId): SaveSlot | null {
       console.error(`[存档] 槽位 ${slotId} 无效（损坏/结构不合法），已拒绝加载；其余槽位不受影响`)
       return null
     }
-    return parsed
+    const p = parsed as { version?: number; savedAt: string; gameState: GameState }
+    return { version: SLOT_FORMAT_VERSION, savedAt: p.savedAt, gameState: p.gameState }
   } catch (err) {
     console.error(`[存档] 槽位 ${slotId} 读取失败（数据损坏），已安全回退；其余槽位不受影响`, err)
     return null
   }
 }
 
-/** 删除指定槽位（同步更新索引）；返回是否删除成功 */
+/**
+ * 删除指定槽位（TM-P2-002-R1 C：删除 + 索引更新视为一个事务；index 更新失败 →
+ * 恢复被删除槽位 + 恢复旧 index → false）。
+ */
 export function deleteSlot(slotId: SlotId): boolean {
   const storage = getStorage()
   if (!storage) return false
+  const snap = snapshotAll()
   try {
     storage.removeItem(slotKey(slotId))
   } catch (err) {
     console.error('[存档] 槽位删除失败', err)
     return false
   }
-  const index = loadIndex()
-  index.slots[slotId] = null
-  if (index.lastSavedSlot === slotId) {
-    // 最近槽位被删 → 回退到仍有存档的槽（按槽位顺序）
-    const fallback = SLOT_IDS.find((id) => index.slots[id] !== null)
-    index.lastSavedSlot = fallback ?? null
+  // TM-P2-002-R1 F：索引基于真实槽位重建 → lastSavedSlot 自动选择剩余槽中 savedAt 最新者
+  if (!writeIndex(rebuildIndexFromSlots())) {
+    console.error('[存档] 索引写入失败，回滚槽位删除')
+    restoreSnapshot(snap)
+    return false
   }
-  writeIndex(index)
   return true
 }
 
-/** 是否存在「任一有效」存档（索引摘要非空但实际槽位数据损坏/非法时不算有效；坏槽隔离，不影响其他槽） */
+/** 是否存在「任一有效」存档（TM-P2-002-R1 E：直接扫描真实槽位，不依赖 index 摘要；坏槽隔离） */
 export function hasAnySave(): boolean {
-  const index = loadIndex()
-  return SLOT_IDS.some((id) => index.slots[id] !== null && loadSlot(id) !== null)
+  return SLOT_IDS.some((id) => loadSlot(id) !== null)
 }
 
-/** 读取最近一次有效存档（Continue 语义：索引 lastSavedSlot，其次任意有效槽） */
+/**
+ * 读取最近一次有效存档（TM-P2-002-R1 F：优先索引 lastSavedSlot；无效时按 savedAt 选择真正最新的合法槽，
+ * 不按槽位编号顺序）。
+ */
 export function loadMostRecentSave(): SaveSlot | null {
   const index = loadIndex()
   if (index.lastSavedSlot !== null) {
     const slot = loadSlot(index.lastSavedSlot)
     if (slot) return slot
   }
+  // 按 savedAt 找最新合法槽（绝不因编号小就读 slot1）
+  let best: SaveSlot | null = null
+  let bestTime = -1
   for (const id of SLOT_IDS) {
-    if (index.slots[id] !== null) {
-      const slot = loadSlot(id)
-      if (slot) return slot
+    const slot = loadSlot(id)
+    if (slot) {
+      const t = Date.parse(slot.savedAt)
+      if (Number.isFinite(t) && t > bestTime) {
+        bestTime = t
+        best = slot
+      }
     }
   }
-  return null
+  return best
 }
 
-// ---------- V1 → V2 迁移（TM-P2-002 H） ----------
+// ---------- V1 → V2 迁移（TM-P2-002 H / TM-P2-002-R1 D） ----------
 
 /**
- * 自动迁移旧 V1 单槽存档：
- * 若旧 key 存在且为合法 V1 存档，且 Slot 1 为空 → 迁移到 Slot 1 并标记为最近存档。
- * 迁移成功前不得删除旧 key；成功后删除旧 key（避免重复迁移）。
- * 任何读取路径（loadIndex/hasAnySave/loadMostRecentSave 之前）都应先调用本函数。
+ * 自动迁移旧 V1 单槽存档（TM-P2-002-R1 D 安全化）：
+ * 1) 判断 Slot1 是否已有数据：检查真实 Slot1（loadSlot 验证），绝不只看 index。
+ * 2) 已有 Slot1 → 绝对禁止覆盖，legacy key 保留。
+ * 3) 迁移流程：验证旧档 → 写新 Slot1 → 写/重建 index → 再验证新档可读取 → 最后才删除旧 key。
+ * 4) 任何前一步失败 → 新写入回滚，旧 tianmeng_continent_save 必须保留。
  */
 export function migrateLegacySave(): boolean {
   const storage = getStorage()
@@ -382,28 +478,80 @@ export function migrateLegacySave(): boolean {
     return false
   }
   if (!legacy) return false
-  const index = loadIndex()
-  if (index.slots.slot1 !== null) {
-    // Slot 1 已有存档：不覆盖；旧 key 保留（不迁移）
+  // D：检查真实 Slot1（不是只看 index 摘要）
+  if (loadSlot('slot1') !== null) {
+    // Slot1 已有真实数据：绝对禁止覆盖；legacy key 保留
     return false
   }
-  const slot: SaveSlot = { savedAt: legacy.savedAt, gameState: legacy.gameState }
+  const snap = snapshotAll()
+  const slot: SaveSlot = { version: SLOT_FORMAT_VERSION, savedAt: legacy.savedAt, gameState: legacy.gameState }
   try {
     storage.setItem(slotKey('slot1'), JSON.stringify(slot))
   } catch (err) {
     console.error('[存档] V1 迁移写入失败', err)
     return false
   }
+  // 写/重建 index（写失败 → 回滚新写入，legacy 保留）
+  const index = loadIndex()
   index.slots.slot1 = summaryOf(legacy.gameState, legacy.savedAt)
   index.lastSavedSlot = 'slot1'
-  writeIndex(index)
-  // 迁移成功后才删除旧 key
+  if (!writeIndex(index)) {
+    console.error('[存档] V1 迁移索引写入失败，回滚')
+    restoreSnapshot(snap)
+    return false
+  }
+  // 再验证新档可读取（验证失败 → 回滚，legacy 保留）
+  if (!loadSlot('slot1')) {
+    console.error('[存档] V1 迁移后新档不可读，回滚')
+    restoreSnapshot(snap)
+    return false
+  }
+  // 最后才允许删除旧 key（删除失败不阻断迁移：下次检测旧 key 存在但 slot1 已占用 → 不重复迁移）
   try {
     storage.removeItem(LEGACY_SAVE_KEY)
   } catch {
-    // 删除失败不阻断迁移（下次调用会检测旧 key 存在但 slot1 已占用 → 不重复迁移）
+    // 忽略
   }
   return true
+}
+
+/**
+ * TM-P2-002-R1 G：存档迁移单一入口（可扩展 migration chain）。
+ * 兼容：旧 V1 单档 / 514f3e2 已在线产生的无 slot-version V2 存档 / 修复后的当前格式。
+ * 当前最小实现：
+ *   Step 1: V1 单档 → Slot1（migrateLegacySave，安全分步提交）
+ *   Step 2: 无 version 字段的旧 V2 槽位补齐 version 字段
+ * 未来升级（V3+）在此链上追加即可，不破坏既有存档。
+ */
+export function migrateSave(): boolean {
+  let changed = false
+  if (migrateLegacySave()) changed = true
+  const storage = getStorage()
+  if (storage) {
+    for (const id of SLOT_IDS) {
+      try {
+        const raw = storage.getItem(slotKey(id))
+        if (!raw) continue
+        const parsed: unknown = JSON.parse(raw)
+        if (
+          isRecord(parsed) &&
+          parsed.version === undefined &&
+          typeof parsed.savedAt === 'string' &&
+          isGameState(parsed.gameState)
+        ) {
+          // 514f3e2 产生的无版本 V2 槽 → 补 version 字段（原地升级）
+          storage.setItem(
+            slotKey(id),
+            JSON.stringify({ version: SLOT_FORMAT_VERSION, savedAt: parsed.savedAt, gameState: parsed.gameState }),
+          )
+          changed = true
+        }
+      } catch {
+        // 损坏槽保留原样，不阻断
+      }
+    }
+  }
+  return changed
 }
 
 // ---------- 导出 / 导入（TM-P2-002 I） ----------
@@ -439,8 +587,8 @@ function isValidExport(raw: unknown): raw is SavesExport {
 }
 
 /**
- * 导入五槽位 JSON：完整校验版本与结构；任一槽非法 → 整体拒绝且不覆盖现有存档。
- * 全部合法才逐槽写入（含索引与最近槽位）。
+ * 导入五槽位 JSON（TM-P2-002-R1 C：完整校验后先快照全部槽位与索引，再写入；
+ * 任意一步失败 → 全部恢复原样返回 false。禁止部分导入）。
  */
 export function importSaves(json: string): boolean {
   const storage = getStorage()
@@ -456,6 +604,7 @@ export function importSaves(json: string): boolean {
     console.error('[存档] 导入失败：版本或结构不合法，未覆盖现有存档')
     return false
   }
+  const snap = snapshotAll()
   try {
     for (const slotId of SLOT_IDS) {
       const entry = parsed.slots[slotId]
@@ -466,7 +615,8 @@ export function importSaves(json: string): boolean {
       }
     }
   } catch (err) {
-    console.error('[存档] 导入写入失败（保持原样，未破坏）', err)
+    console.error('[存档] 导入写入失败，全部回滚', err)
+    restoreSnapshot(snap)
     return false
   }
   const index = emptyIndex()
@@ -480,7 +630,11 @@ export function importSaves(json: string): boolean {
   } else {
     index.lastSavedSlot = SLOT_IDS.find((id) => index.slots[id] !== null) ?? null
   }
-  writeIndex(index)
+  if (!writeIndex(index)) {
+    console.error('[存档] 导入索引写入失败，全部回滚')
+    restoreSnapshot(snap)
+    return false
+  }
   return true
 }
 

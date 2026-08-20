@@ -133,7 +133,11 @@ export interface AttackResult {
   attackerAgility: number
   /** 防守者敏捷（命中判定输入） */
   defenderAgility: number
-  /** 原始伤害（倍率应用前） */
+  /** 攻击力（面板值 = rawDamage 输入；TM-P2-002-R1 B 日志字段） */
+  attackPower: number
+  /** 命中值 (攻击者敏捷 + roll)/2；天然 1/20 不参与阈值比较时为 null（TM-P2-002-R1 B） */
+  hitValue: number | null
+  /** 原始伤害（倍率应用前，= attackPower） */
   rawDamage: number
   /** 防守者护甲 */
   armor: number
@@ -200,11 +204,14 @@ export function resolveAttack(
   armor: number,
 ): AttackResult {
   const outcome = resolveHit(roll, attackerAgility, defenderAgility)
+  const hitValue = outcome === 'critical_miss' || outcome === 'critical_hit' ? null : (attackerAgility + roll) / 2
   if (outcome === 'critical_miss') {
     return {
       roll,
       attackerAgility,
       defenderAgility,
+      attackPower: rawDamage,
+      hitValue,
       rawDamage,
       armor,
       damageTakenRate: 0,
@@ -230,6 +237,8 @@ export function resolveAttack(
     roll,
     attackerAgility,
     defenderAgility,
+    attackPower: rawDamage,
+    hitValue,
     rawDamage,
     armor,
     damageTakenRate: roll / (armor + roll),
@@ -313,4 +322,52 @@ export function resolvePlayerStrike(enemyCurrentHp: number, attack: AttackResult
 /** 敌人反击后玩家战斗阶段：HP 归零 → defeat */
 export function getCombatPhaseAfterEnemyAttack(playerHp: number): 'active' | 'defeat' {
   return playerHp === 0 ? 'defeat' : 'active'
+}
+
+// ---- 战斗日志格式化（TM-P2-002-R1 B）----
+
+const ATTACK_OUTCOME_ZH: Record<AttackOutcome, string> = {
+  critical_hit: '暴击',
+  hit: '命中',
+  glancing_hit: '擦伤',
+  critical_miss: '大失败',
+}
+
+/** 倍率后的原始伤害（与 resolveAttack 内部一致；供日志展示） */
+function rawAfterMultiplier(result: AttackResult): number {
+  if (result.outcome === 'critical_hit') return result.rawDamage * 2
+  if (result.outcome === 'glancing_hit') return Math.max(1, Math.ceil(result.rawDamage * 0.5))
+  return result.rawDamage
+}
+
+/**
+ * 战斗日志行（TM-P2-002-R1 B：不再让玩家误认为 D20+数值=攻击力）。
+ * 明确区分：攻击力 / 命中值 / 原始伤害 / 护甲 / 承伤率 / 最终伤害。
+ * 天然 1：`天然1：大失败，不进行普通命中阈值比较`；天然 20 同理。
+ * 2–19：`命中值 = (D20 9 + 敏捷 12) / 2 = 10.5；对方敏捷 = 10；结果：命中`。
+ */
+export function formatAttackLog(result: AttackResult, defenderName: string): string[] {
+  if (result.outcome === 'critical_miss') {
+    return ['天然1：大失败，不进行普通命中阈值比较。', '未造成伤害。']
+  }
+  if (result.outcome === 'critical_hit') {
+    const rawAfter = rawAfterMultiplier(result)
+    const pct = Math.round(result.damageTakenRate * 100)
+    return [
+      '天然20：暴击，不进行普通命中阈值比较。',
+      `攻击力 ${result.attackPower} × 2 = ${rawAfter}；${defenderName}护甲 ${result.armor}；承伤率 ${result.roll} / (${result.armor} + ${result.roll}) = ${pct}%；最终造成 ${result.damage} 点伤害。`,
+    ]
+  }
+  // 命中 / 擦伤：展示命中值公式
+  const hitValue = result.hitValue
+  const hitText = hitValue === null ? '?' : String(hitValue)
+  const outcome = ATTACK_OUTCOME_ZH[result.outcome]
+  const rawAfter = rawAfterMultiplier(result)
+  const pct = Math.round(result.damageTakenRate * 100)
+  const multiplierText = result.outcome === 'glancing_hit' ? ' × 50%' : ''
+  return [
+    `命中值 = (D20 ${result.roll} + 敏捷 ${result.attackerAgility}) / 2 = ${hitText}`,
+    `对方敏捷 = ${result.defenderAgility}；结果：${outcome}`,
+    `攻击力 ${result.attackPower}${multiplierText} = ${rawAfter}；原始伤害 ${rawAfter}；${defenderName}护甲 ${result.armor}；承伤率 ${result.roll} / (${result.armor} + ${result.roll}) = ${pct}%；最终造成 ${result.damage} 点伤害。`,
+  ]
 }

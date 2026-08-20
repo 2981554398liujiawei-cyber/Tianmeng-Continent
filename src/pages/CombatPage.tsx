@@ -4,6 +4,7 @@ import { useGameStore } from '../game/state/gameStore'
 import { getEnemy, getItem } from '../game/content'
 import { ATTRIBUTE_KEYS, ATTRIBUTE_LABELS, getProfessionName } from '../game/content/professions'
 import {
+  formatAttackLog,
   getKnightPowerStrikeDamage,
   getMageSpellDamage,
   getPlayerAgility,
@@ -31,34 +32,8 @@ interface CombatPageProps {
   onExitToMenu: () => void
 }
 
-const ATTACK_OUTCOME_LABELS: Record<AttackResult['outcome'], string> = {
-  critical_hit: '暴击',
-  hit: '命中',
-  glancing_hit: '擦伤',
-  critical_miss: '大失败',
-}
-
-/** V3 攻击日志行（TM-P2-002 E：不再让玩家误认为 D20+数值=攻击力） */
-function attackLine(result: AttackResult, defenderName: string): string[] {
-  const outcome = ATTACK_OUTCOME_LABELS[result.outcome]
-  const initTotal = result.roll + result.attackerAgility
-  if (result.outcome === 'critical_miss') {
-    return [`D20 ${result.roll} + 敏捷 ${result.attackerAgility} = ${initTotal}；对方敏捷 ${result.defenderAgility}；${outcome}，未造成伤害。`]
-  }
-  const multiplier =
-    result.outcome === 'critical_hit' ? ` × 2` : result.outcome === 'glancing_hit' ? ` × 50%` : ''
-  const rawAfter =
-    result.outcome === 'critical_hit'
-      ? result.rawDamage * 2
-      : result.outcome === 'glancing_hit'
-        ? Math.max(1, Math.ceil(result.rawDamage * 0.5))
-        : result.rawDamage
-  const pct = Math.round(result.damageTakenRate * 100)
-  return [
-    `D20 ${result.roll} + 敏捷 ${result.attackerAgility} = ${initTotal}；对方敏捷 ${result.defenderAgility}；${outcome}。`,
-    `原始伤害 ${result.rawDamage}${multiplier} = ${rawAfter}；${defenderName}护甲 ${result.armor}；承伤率 ${result.roll} / (${result.armor} + ${result.roll}) = ${pct}%；最终造成 ${result.damage} 点伤害。`,
-  ]
-}
+/** TM-P2-002-R1 A：敌人先手攻击演示延迟（期间玩家操作全封锁；卸载后 timer 被清理不造成伤害） */
+const ENEMY_FIRST_STRIKE_DELAY_MS = 400
 
 export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu }: CombatPageProps) {
   const gameState = useGameStore((s) => s.gameState)
@@ -86,12 +61,17 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
   >(null)
   /** TM-P1-007：游侠迅捷突袭本场是否已使用（仅页面本地） */
   const [rangerSwiftStrikeUsed, setRangerSwiftStrikeUsed] = useState(false)
-  /** TM-P2-002 D：先手（进入战斗时双方各掷 D20+AGI；高者先，平局 AGI 高者先，仍同则玩家先） */
-  const [initiativeWinner] = useState<InitiativeWinner | null>(() =>
-    gameState && enemy ? rollInitiative(playerAgilityOf(gameState), enemy.agility) : null,
-  )
+  /** TM-P2-002 D：先手（进入战斗时双方各掷 D20+AGI；高者先，平局 AGI 高者先，仍同则玩家先）。
+   * 用 ref 缓存结果：React StrictMode 会双调用组件体/useState initializer，若直接掷骰会消耗两次随机数
+   * 导致序列错位；ref 保证同一组件实例只掷一次。 */
+  const initiativeWinnerRef = useRef<InitiativeWinner | null>(null)
+  if (initiativeWinnerRef.current === null) {
+    initiativeWinnerRef.current = gameState && enemy ? rollInitiative(playerAgilityOf(gameState), enemy.agility) : null
+  }
+  const initiativeWinner = initiativeWinnerRef.current
+  /** TM-P2-002-R1 A：敌人先手攻击进行中 → 所有玩家操作（攻击/技能/药水）封锁、不消耗 MP */
+  const [enemyFirstStriking, setEnemyFirstStriking] = useState(false)
   const [enemyFirstStrikeDone, setEnemyFirstStrikeDone] = useState(false)
-  const enemyFirstStrikeRef = useRef(false)
 
   // ---- 防御性异常出口 ----
   if (!gameState) {
@@ -130,14 +110,24 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
   const levelDamageBonus = getPlayerLevelDamageBonus(player.level)
 
   // TM-P2-002 D：敌人先手 → 进入正常回合前先执行一次敌人攻击（仅一次）
+  // TM-P2-002-R1 A：攻击进行期间封锁玩家操作（enemyFirstStriking）；timer 由 cleanup 清理，
+  // 组件卸载/战斗结束/退出后残留 timer 不得继续造成伤害。
+  // StrictMode 双挂载兼容：第一次挂载的 timer 被 cleanup 取消后，第二次挂载会重新创建 timer，
+  // 最终恰好攻击一次、封锁恰好一次（不用 ref 防重，避免 cleanup 后永久锁死）。
   useEffect(() => {
-    if (initiativeWinner !== 'enemy' || enemyFirstStrikeRef.current) return
-    enemyFirstStrikeRef.current = true
+    if (initiativeWinner !== 'enemy') return
+    setEnemyFirstStriking(true)
+    let cancelled = false
     const timer = window.setTimeout(() => {
-      setEnemyFirstStrikeDone(true)
+      if (cancelled) return
       applyEnemyCounter()
-    }, 400)
-    return () => window.clearTimeout(timer)
+      setEnemyFirstStrikeDone(true)
+      setEnemyFirstStriking(false)
+    }, ENEMY_FIRST_STRIKE_DELAY_MS)
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initiativeWinner])
 
@@ -158,7 +148,8 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
   }
 
   const handleUseHealingPotion = () => {
-    if (phase !== 'active') return
+    // TM-P2-002-R1 A：敌人先手攻击期间药水不可执行
+    if (phase !== 'active' || enemyFirstStriking) return
     const hpBefore = player.hp
     if (!useHealingPotion()) return
     const hpAfter = useGameStore.getState().gameState?.player.hp ?? hpBefore
@@ -170,20 +161,21 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
   }
 
   const handleAttack = () => {
-    if (phase !== 'active') return
+    // TM-P2-002-R1 A：敌人先手攻击期间普通攻击不可执行
+    if (phase !== 'active' || enemyFirstStriking) return
     const playerResult = performAttack(playerAgility, enemy.agility, playerAttackPower, enemy.armor)
     applyPlayerAttack(playerResult, 'basic')
   }
 
   const handleMageSpell = () => {
-    if (phase !== 'active') return
+    if (phase !== 'active' || enemyFirstStriking) return
     if (!spendMageSpellMp()) return
     const spellResult = performAttack(playerAgility, enemy.agility, getMageSpellDamage(player.attributes.mnd) + levelDamageBonus, enemy.armor)
     applyPlayerAttack(spellResult, 'mage_spell')
   }
 
   const handleKnightPowerStrike = () => {
-    if (phase !== 'active') return
+    if (phase !== 'active' || enemyFirstStriking) return
     if (!spendKnightPowerStrikeMp()) return
     const strikeResult = performAttack(
       playerAgility,
@@ -195,7 +187,7 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
   }
 
   const handleRangerSwiftStrike = () => {
-    if (phase !== 'active' || rangerSwiftStrikeUsed) return
+    if (phase !== 'active' || enemyFirstStriking || rangerSwiftStrikeUsed) return
     setRangerSwiftStrikeUsed(true)
     const strikeResult = performAttack(
       playerAgility,
@@ -207,7 +199,7 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
   }
 
   const handleWarriorSuppressStrike = () => {
-    if (phase !== 'active') return
+    if (phase !== 'active' || enemyFirstStriking) return
     if (!spendWarriorSuppressStrikeMp()) return
     const strikeResult = performAttack(playerAgility, enemy.agility, playerAttackPower, enemy.armor)
     applyPlayerAttack(strikeResult, 'warrior_suppress_strike')
@@ -253,9 +245,12 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
         <h2 className="text-xl font-bold tracking-widest text-gold-300">战斗</h2>
       </header>
 
-      {/* TM-P2-002 D：先手提示 */}
-      {enemyFirstStrikeDone && phase === 'active' && (
-        <p className="text-center text-sm text-gold-300">{enemy.name}先手！</p>
+      {/* TM-P2-002 D：先手提示（TM-P2-002-R1 A：攻击进行期间显示「抢得先手」并封锁操作） */}
+      {enemyFirstStriking && phase === 'active' && (
+        <p className="text-center text-sm text-gold-300">{enemy.name}抢得先手……</p>
+      )}
+      {enemyFirstStrikeDone && !enemyFirstStriking && phase === 'active' && (
+        <p className="text-center text-sm text-bone-500">{enemy.name}先手。</p>
       )}
 
       <div className="grid gap-4 sm:grid-cols-2">
@@ -326,7 +321,7 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
           {lastPlayerAttack && (
             <div>
               <p className="text-bone-500">{actionLabel}</p>
-              {attackLine(lastPlayerAttack, enemy.name).map((line, i) => (
+              {formatAttackLog(lastPlayerAttack, enemy.name).map((line, i) => (
                 <p key={i} className="mt-1">
                   {line}
                 </p>
@@ -341,7 +336,7 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
           {lastEnemyAttack && (
             <div className="mt-2">
               <p className="text-bone-500">{enemy.name}的攻击：</p>
-              {attackLine(lastEnemyAttack, player.name).map((line, i) => (
+              {formatAttackLog(lastEnemyAttack, player.name).map((line, i) => (
                 <p key={i} className="mt-1">
                   {line}
                 </p>
@@ -354,12 +349,16 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
       <footer className="flex flex-col items-center gap-4">
         {phase === 'active' && (
           <div className="flex flex-col items-center gap-3">
-            <Button variant="primary" onClick={handleAttack}>
+            <Button variant="primary" disabled={enemyFirstStriking} onClick={handleAttack}>
               普通攻击
             </Button>
             {player.profession === 'mage' && (
               <div className="flex flex-col items-center gap-1">
-                <Button variant="primary" disabled={player.mp < MAGE_SPELL_MP_COST} onClick={handleMageSpell}>
+                <Button
+                  variant="primary"
+                  disabled={enemyFirstStriking || player.mp < MAGE_SPELL_MP_COST}
+                  onClick={handleMageSpell}
+                >
                   法术攻击（{MAGE_SPELL_MP_COST} 灵力）
                 </Button>
                 {player.mp < MAGE_SPELL_MP_COST && <span className="text-xs text-red-300">灵力不足</span>}
@@ -369,7 +368,7 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
               <div className="flex flex-col items-center gap-1">
                 <Button
                   variant="primary"
-                  disabled={player.mp < KNIGHT_POWER_STRIKE_MP_COST}
+                  disabled={enemyFirstStriking || player.mp < KNIGHT_POWER_STRIKE_MP_COST}
                   onClick={handleKnightPowerStrike}
                 >
                   骑士重击（{KNIGHT_POWER_STRIKE_MP_COST} 灵力）
@@ -379,7 +378,7 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
             )}
             {player.profession === 'ranger' && (
               <div className="flex flex-col items-center gap-1">
-                <Button variant="primary" disabled={rangerSwiftStrikeUsed} onClick={handleRangerSwiftStrike}>
+                <Button variant="primary" disabled={enemyFirstStriking || rangerSwiftStrikeUsed} onClick={handleRangerSwiftStrike}>
                   迅捷突袭
                 </Button>
                 {rangerSwiftStrikeUsed && <span className="text-xs text-bone-500">本场战斗已使用</span>}
@@ -389,7 +388,7 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
               <div className="flex flex-col items-center gap-1">
                 <Button
                   variant="primary"
-                  disabled={player.mp < WARRIOR_SUPPRESS_STRIKE_MP_COST}
+                  disabled={enemyFirstStriking || player.mp < WARRIOR_SUPPRESS_STRIKE_MP_COST}
                   onClick={handleWarriorSuppressStrike}
                 >
                   压制猛击（{WARRIOR_SUPPRESS_STRIKE_MP_COST} 灵力）
@@ -401,7 +400,7 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
               <div className="flex flex-col items-center gap-1">
                 <Button
                   variant="primary"
-                  disabled={player.hp >= player.maxHp || healingPotionCount <= 0}
+                  disabled={enemyFirstStriking || player.hp >= player.maxHp || healingPotionCount <= 0}
                   onClick={handleUseHealingPotion}
                 >
                   使用治疗药水（+{healingPotionAmount} 生命）

@@ -18,7 +18,7 @@ import {
   loadMostRecentSave,
   loadSlot as storageLoadSlot,
   loadIndex,
-  migrateLegacySave,
+  migrateSave,
   saveSlot as persistSlot,
   type SavesIndex,
   type SlotId,
@@ -185,7 +185,7 @@ function applyQuestTransition(gameState: GameState, questId: string, to: QuestSt
 export const useGameStore = create<GameStoreState>()((set) => ({
   gameState: null,
   // TM-P2-002 H：初始化即尝试自动迁移旧 V1 单档（Slot 1 为空时迁入）
-  hasSave: (migrateLegacySave(), hasAnySave()),
+  hasSave: (migrateSave(), hasAnySave()),
   slots: loadIndexSummary(),
   lastSavedSlot: loadIndexLast(),
 
@@ -194,7 +194,7 @@ export const useGameStore = create<GameStoreState>()((set) => ({
   },
 
   loadGame: () => {
-    migrateLegacySave()
+    migrateSave()
     const save = loadMostRecentSave()
     if (save) {
       set({ gameState: save.gameState, hasSave: true, slots: loadIndexSummary(), lastSavedSlot: loadIndexLast() })
@@ -215,7 +215,7 @@ export const useGameStore = create<GameStoreState>()((set) => ({
   },
 
   loadSlot: (slotId) => {
-    migrateLegacySave()
+    migrateSave()
     const save = storageLoadSlot(slotId)
     if (save) {
       set({ gameState: save.gameState, hasSave: true, slots: loadIndexSummary(), lastSavedSlot: loadIndexLast() })
@@ -239,7 +239,7 @@ export const useGameStore = create<GameStoreState>()((set) => ({
   },
 
   exportSaves: () => {
-    migrateLegacySave()
+    migrateSave()
     return storageExportSaves()
   },
 

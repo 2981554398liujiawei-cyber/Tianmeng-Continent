@@ -19,7 +19,7 @@
 > 命中：(敏捷+roll)/2 vs 对方敏捷，天然1 大失败、天然20 200% 暴击、其余命中/擦伤；
 > 护甲减伤：最终 = max(1, ceil(raw × roll/(armor+roll)))；先手 D20+AGI，平局 AGI 高者先，再平玩家先），
 > **五槽位存档**（slot1–slot5 逐槽独立存储，坏槽隔离；旧 V1 单档自动迁移至 Slot1；最近存档 Continue；导出/导入 JSON 完整校验）。
-> 当前自测基线：单测 889、Dev E2E 940、phase1-playthrough 195、phase2-e2e 46、responsive-e2e 17、prod smoke 6、build PASS、GitHub Actions CI success。
+> 当前自测基线：单测 909、Dev E2E 956、phase1-playthrough 195、phase2-e2e 58、responsive-e2e 20、prod smoke 6、build PASS、GitHub Actions CI success。
 
 ## 战斗系统（V3）
 

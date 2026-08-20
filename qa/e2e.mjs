@@ -380,16 +380,20 @@ try {
   }
   await clickByText('青石村')
 
-  // P008-R1：固定 Math.random 让第一击天然 20（法师 MND16 法术伤害 9，暴击 150% = ceil(9*1.5)=14 > 魔化兔 HP 8）→ 一击胜利且玩家 HP 完全不变（无反击）
+  // P008-R1：固定 Math.random 让先手（玩家先：平局 AGI 相同玩家先）与第一击天然 20
+  // （法师 MND16 法术暴击 200% > 魔化兔 HP 8）→ 一击胜利且玩家 HP 完全不变（无反击）
   await clickByText('村外草原')
+  // TM-P2-002-R1：先手掷骰在战斗页挂载时进行 → 必须在点击迎战前固定 Math.random
+  await page.evaluate(() => {
+    window.__origRandom = Math.random.bind(Math)
+    const seq = [0.99, 0.85, 0.99] // 玩家 D20=20（28）> 敌人 D20=17（27）→ 玩家先；玩家攻击 D20=20 暴击
+    let i = 0
+    Math.random = () => seq[Math.min(i++, seq.length - 1)]
+  })
   await clickByText('迎战')
   await sleep(300)
   body = await bodyText()
   const hpBeforeDeterministic = readHps(body)
-  await page.evaluate(() => {
-    window.__origRandom = Math.random.bind(Math)
-    Math.random = () => 0.999 // floor(0.999 * 20) + 1 = 20
-  })
   await clickByText('法术攻击')
   await sleep(300)
   body = await bodyText()
@@ -756,17 +760,18 @@ try {
   check('P010: 满血时使用按钮禁用', (await buttonDisabled('使用')) === true)
   check('P010: 满血提示生命已满', body.includes('生命已满'))
 
-  // V3 确定性受伤：序列 [2, 8, 20] → 玩家擦伤1（兔8→7）、敌擦伤1（玩家22→21）、第二击暴击8击杀
+  // V3 确定性受伤：先手（玩家先）+ 序列 [2, 8, 20] → 玩家擦伤1（兔8→7）、敌擦伤1（玩家22→21）、第二击暴击8击杀
   await clickByText('村外草原')
-  await clickByText('迎战')
-  await sleep(300)
-  body = await bodyText()
+  // TM-P2-002-R1：先手掷骰在战斗页挂载时进行 → 迎战前固定 Math.random（含先手骰面）
   await page.evaluate(() => {
     window.__origRandom = Math.random.bind(Math)
-    const seq = [0.05, 0.35, 0.95] // floor(x*20)+1 → 2 / 8 / 20
+    const seq = [0.99, 0.5, 0.05, 0.35, 0.95] // 玩家先手20（30）> 敌10（20）；攻击 2 / 反击 8 / 攻击 20
     let i = 0
     Math.random = () => seq[Math.min(i++, seq.length - 1)]
   })
+  await clickByText('迎战')
+  await sleep(300)
+  body = await bodyText()
   await clickByText('普通攻击') // 玩家擦伤 1 伤，魔化兔反击擦伤 1 伤 → HP 22→21
   await sleep(200)
   await clickByText('普通攻击') // 玩家天然 20 暴击：16×20/31=ceil(10.3)=11 → 兔 7-11=0 击杀 → 胜利
@@ -873,14 +878,15 @@ try {
 
   // V3 确定性受伤（HP 22→21：玩家擦伤1、敌擦伤1）后购买不治疗，再使用药水恢复
   await clickByText('村外草原')
-  await clickByText('迎战')
-  await sleep(300)
+  // TM-P2-002-R1：先手掷骰在战斗页挂载时进行 → 迎战前固定 Math.random（含先手骰面）
   await page.evaluate(() => {
     window.__origRandom = Math.random.bind(Math)
-    const seq = [0.05, 0.35, 0.95] // 玩家2擦伤1 / 敌8擦伤1 / 玩家20暴击8击杀
+    const seq = [0.99, 0.05, 0.05, 0.35, 0.95] // 玩家先手20（30）> 兔1（11）；攻击2擦伤1 / 反击8擦伤1 / 攻击20暴击击杀
     let i = 0
     Math.random = () => seq[Math.min(i++, seq.length - 1)]
   })
+  await clickByText('迎战')
+  await sleep(300)
   await clickByText('普通攻击')
   await sleep(200)
   await clickByText('普通攻击')
@@ -2085,19 +2091,24 @@ try {
   body = await bodyText()
   check('P1-010-D: 魔化兔仍存在且魔化狼出现', body.includes('魔化兔') && body.includes('魔化狼'))
 
-  // E. 精准进入魔化狼战斗：Lv.2 / HP 12/12 / 护甲 12；骑士重击 STR14 攻击力8+2=10 天然20 暴击20 → 护甲12承伤率20/32 → 13 伤一次击杀
+  // E. 精准进入魔化狼战斗：Lv.2 / HP 12/12 / 护甲 12
+  // TM-P2-002-R1：先手掷骰在战斗页挂载时进行 → engageEnemy（点击迎战）前固定 Math.random（含先手骰面）
+  await page.evaluate(() => {
+    window.__origRandom = Math.random.bind(Math)
+    const seq = [0.99, 0.84, 0.99, 0.99, 0.99] // 玩家先手20（30）> 狼18（30 平局 AGI 狼高→需玩家更高：0.84→D20=17，17+12=29 < 30）；重击暴击10 / 狼暴击反击4 / 重击暴击10 击杀
+    let i = 0
+    Math.random = () => seq[Math.min(i++, seq.length - 1)]
+  })
   await engageEnemy('魔化狼')
   body = await bodyText()
   check(
     'P1-010-E: 战斗页魔化狼 Lv.2 HP 12 / 12 护甲等级 12',
     body.includes('魔化狼') && body.includes('Lv.2') && body.includes('12 / 12') && body.includes('护甲等级 12'),
   )
-  await page.evaluate(() => {
-    Math.random = () => 0.99
-  })
   // V3：骑士重击 STR14 攻击力 6+2=8 暴击 200% = 16 → 护甲 12 承伤率 20/32 → ceil(10)=10 伤 → 狼 HP 12 需两击（第一击后狼暴击反击 4 伤）
   await clickByText('骑士重击')
   await sleep(250)
+  const mid = await bodyText()
   await clickByText('骑士重击')
   await sleep(300)
   body = await bodyText()
@@ -4396,6 +4407,117 @@ try {
   body = await bodyText()
   check('损坏 JSON 刷新不白屏（主菜单可见）', body.includes('天梦大陆'))
   check('损坏 JSON 时「继续游戏」禁用', (await continueDisabled()) === true)
+
+  // ================= TM-P2-002-R1 A：敌人先手竞态 =================
+  // R1-10/11：敌人赢先手 → 玩家立即疯狂点击攻击/技能/药水 → 均不生效（不耗 MP、敌人 HP 不变）
+  // R1-12：敌人先手一击致死 → 直接 defeat，玩家无行动机会
+  // （上一段结束时已在主菜单）
+  await clearAllSaves()
+  await page.reload({ waitUntil: 'networkidle0' })
+  await sleep(500)
+  await clickByText('新游戏')
+  await createQuickKnight()
+  // 保存角色档（R1-12 注入用）
+  await saveToSlot1()
+  await sleep(300)
+  await clickByText('村外草原')
+  await sleep(300)
+  // 敌人先手：玩家 D20=2（12）、兔 D20=20（30）→ 兔先手；先手攻击 roll=0.99 → 暴击
+  await page.evaluate(() => {
+    window.__origRandom = Math.random.bind(Math)
+    const seq = [0.05, 0.99, 0.99, 0.99, 0.99]
+    let i = 0
+    Math.random = () => seq[Math.min(i++, seq.length - 1)]
+  })
+  // 快路径进战（不用 clickByText 的 250ms sleep，确保先手窗口内操作）
+  await page.evaluate(() => {
+    const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.includes('迎战'))
+    if (!btn) throw new Error('未找到迎战按钮')
+    btn.click()
+  })
+  await sleep(80)
+  body = await bodyText()
+  check('R1-10: 敌人先手期间显示「抢得先手」', body.includes('抢得先手'))
+  // 疯狂点击：普通攻击 / 骑士重击 / 治疗药水（各 5 次；窗口内全封锁）
+  await page.evaluate(() => {
+    const btns = [...document.querySelectorAll('button')]
+    const attack = btns.find((b) => b.textContent.includes('普通攻击'))
+    const skill = btns.find((b) => b.textContent.includes('骑士重击'))
+    const potion = btns.find((b) => b.textContent.includes('使用治疗药水'))
+    for (const b of [attack, skill, potion]) {
+      if (b) {
+        for (let k = 0; k < 5; k += 1) b.click()
+      }
+    }
+  })
+  await sleep(100)
+  body = await bodyText()
+  check('R1-10: 疯狂点击后敌人 HP 仍 8 / 8（攻击未生效）', body.includes('8 / 8'))
+  check('R1-10: 疯狂点击后灵力仍 6 / 6（未耗 MP）', body.includes('6 / 6'))
+  // 等敌人先手攻击完成（唯一一次）
+  await sleep(600)
+  body = await bodyText()
+  const hpAfterFirst = body.match(/生命\s*(\d+)\s*\/\s*(\d+)/)
+  check('R1-11: 敌人先手只攻击一次（玩家仍存活且已受伤）', hpAfterFirst !== null && Number(hpAfterFirst[1]) > 0 && Number(hpAfterFirst[1]) < 22, hpAfterFirst ? hpAfterFirst[0] : '?')
+  // 先手攻击后玩家操作恢复 → 普通攻击（固定 0.99 暴击 8 伤击杀魔化兔）
+  await page.evaluate(() => {
+    const seq = [0.99]
+    let i = 0
+    Math.random = () => seq[Math.min(i++, seq.length - 1)]
+  })
+  await clickByText('普通攻击')
+  await sleep(300)
+  body = await bodyText()
+  check('R1-11: 敌人先手后玩家可正常攻击并胜利', body.includes('战斗胜利'))
+  await page.evaluate(() => {
+    Math.random = window.__origRandom
+  })
+  await clickByText('返回冒险')
+  await sleep(300)
+  await clickByText('返回主菜单')
+  await sleep(300)
+
+  // R1-12：敌人先手一击致死 → defeat，玩家无行动机会
+  await page.evaluate(() => {
+    const raw = localStorage.getItem('tianmeng_continent_save_slot_slot1')
+    if (!raw) return
+    const sv = JSON.parse(raw)
+    sv.gameState.player.hp = 2
+    sv.gameState.player.mp = 6
+    sv.gameState.world.currentLocationId = 'village_grassland'
+    localStorage.setItem('tianmeng_continent_save_slot_slot1', JSON.stringify({ version: 2, savedAt: sv.savedAt, gameState: sv.gameState }))
+  })
+  await page.reload({ waitUntil: 'networkidle0' })
+  await sleep(500)
+  await clickByText('继续游戏')
+  await sleep(300)
+  body = await bodyText()
+  check('R1-12: 注入后进入村外草原', body.includes('村外草原') && body.includes('迎战'))
+  await page.evaluate(() => {
+    const seq = [0.05, 0.99, 0.99] // 玩家 D20=2（12）、兔 D20=20（30）→ 兔先手；先手攻击暴击 3 伤 → 玩家 2-3=0
+    let i = 0
+    Math.random = () => seq[Math.min(i++, seq.length - 1)]
+  })
+  await page.evaluate(() => {
+    const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.includes('迎战'))
+    if (!btn) throw new Error('未找到迎战按钮')
+    btn.click()
+  })
+  await sleep(600) // 等先手攻击完成 → 一击致死
+  await page.evaluate(() => {
+    Math.random = window.__origRandom
+  })
+  body = await bodyText()
+  check('R1-12: 敌人先手一击致死 → 战斗失败', body.includes('战斗失败'))
+  check('R1-12: 战败后无玩家操作按钮', !body.includes('普通攻击') && !body.includes('使用治疗药水'))
+  await clickByText('返回冒险')
+  await sleep(300)
+  await clickByText('返回主菜单')
+  await sleep(300)
+  await clearAllSaves()
+  await page.reload({ waitUntil: 'networkidle0' })
+  await sleep(500)
+
 } catch (err) {
   check('脚本执行无异常', false, err.message)
 } finally {

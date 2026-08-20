@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   applyArmor,
+  formatAttackLog,
   getCombatPhaseAfterEnemyAttack,
   getEnemyAgility,
   getEnemyArmor,
@@ -357,5 +358,63 @@ describe('TM-P2-002 平衡抽样（枚举骰面，确定性）', () => {
         (r) => r.outcome === 'glancing_hit' || r.outcome === 'critical_miss',
       ).length
     expect(countMissish(14, 8)).toBeLessThan(countMissish(8, 14))
+  })
+})
+
+// ================= TM-P2-002-R1 B：战斗日志格式 =================
+
+describe('TM-P2-002-R1 B：formatAttackLog 命中值公式与字段区分', () => {
+  it('2–19 普通骰面：命中值 = (D20 + 敏捷) / 2，明确区分字段', () => {
+    // roll 9、攻方敏捷 12、守方敏捷 10、攻击力 8、护甲 11 → (12+9)/2=10.5 >= 10 → 命中
+    const r = resolveAttack(9, 12, 10, 8, 11)
+    expect(r.outcome).toBe('hit')
+    expect(r.hitValue).toBe(10.5)
+    const lines = formatAttackLog(r, '魔化兔')
+    expect(lines[0]).toBe('命中值 = (D20 9 + 敏捷 12) / 2 = 10.5')
+    expect(lines[1]).toBe('对方敏捷 = 10；结果：命中')
+    // 字段区分：攻击力 / 原始伤害 / 护甲 / 承伤率 / 最终伤害
+    expect(lines[2]).toContain('攻击力 8')
+    expect(lines[2]).toContain('原始伤害 8')
+    expect(lines[2]).toContain('魔化兔护甲 11')
+    expect(lines[2]).toContain('承伤率 9 / (11 + 9)')
+    expect(lines[2]).toMatch(/最终造成 \d+ 点伤害/)
+  })
+
+  it('擦伤：命中值公式 + ×50% + 字段区分', () => {
+    // roll 2、攻方敏捷 8、守方敏捷 10 → (8+2)/2=5 < 10 → 擦伤
+    const r = resolveAttack(2, 8, 10, 7, 12)
+    expect(r.outcome).toBe('glancing_hit')
+    const lines = formatAttackLog(r, '魔化兔')
+    expect(lines[0]).toBe('命中值 = (D20 2 + 敏捷 8) / 2 = 5')
+    expect(lines[1]).toBe('对方敏捷 = 10；结果：擦伤')
+    expect(lines[2]).toContain('攻击力 7 × 50%')
+    expect(lines[2]).toContain('原始伤害')
+  })
+
+  it('天然 1：大失败，不进行普通命中阈值比较', () => {
+    const r = resolveAttack(1, 12, 10, 8, 11)
+    expect(r.outcome).toBe('critical_miss')
+    expect(r.hitValue).toBeNull()
+    const lines = formatAttackLog(r, '魔化兔')
+    expect(lines[0]).toBe('天然1：大失败，不进行普通命中阈值比较。')
+    expect(lines[1]).toBe('未造成伤害。')
+  })
+
+  it('天然 20：暴击，不进行普通命中阈值比较；攻击力 ×2', () => {
+    const r = resolveAttack(20, 12, 10, 8, 11)
+    expect(r.outcome).toBe('critical_hit')
+    expect(r.hitValue).toBeNull()
+    const lines = formatAttackLog(r, '魔化兔')
+    expect(lines[0]).toBe('天然20：暴击，不进行普通命中阈值比较。')
+    expect(lines[1]).toContain('攻击力 8 × 2 = 16')
+    expect(lines[1]).toContain('最终造成')
+  })
+
+  it('日志不含「D20 8 + 攻击加值 4 = 12」式误导（D20 不被当成攻击力）', () => {
+    const r = resolveAttack(9, 12, 10, 8, 11)
+    const lines = formatAttackLog(r, '魔化兔')
+    const joined = lines.join('')
+    expect(joined).not.toContain('攻击加值')
+    expect(joined).toContain('命中值')
   })
 })
