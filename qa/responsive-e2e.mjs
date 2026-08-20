@@ -107,11 +107,26 @@ try {
   check('390: 角色概览显示当前武器', body390.includes('当前武器'))
   check('390: 查看角色详情按钮存在', body390.includes('查看角色详情'))
   check('390: 主要玩法按钮不溢出（保存游戏/主菜单按钮存在）', body390.includes('保存游戏') && body390.includes('主菜单'))
+  // TM-P2-002：完整角色详情容器用 data-testid + getComputedStyle 断言（不用 textContent，display:none 元素仍存在于 textContent）
+  const mobileDetailsDisplay = () =>
+    page.evaluate(() => {
+      const el = document.querySelector('[data-testid="mobile-character-details"]')
+      if (!el) return null
+      return window.getComputedStyle(el).display
+    })
+  check('390: 折叠时 mobile-character-details display === none', (await mobileDetailsDisplay()) === 'none')
   // 展开角色详情
   await clickByText('查看角色详情')
   await sleep(300)
-  const body390b = await page.evaluate(() => document.body.textContent)
-  check('390: 展开后显示装备区', body390b.includes('装备') && body390b.includes('背包'))
+  check('390: 展开后 mobile-character-details display !== none', (await mobileDetailsDisplay()) !== 'none')
+  // 收起后再验证恢复 none
+  await clickByText('收起角色详情')
+  await sleep(300)
+  check('390: 收起后 mobile-character-details display === none', (await mobileDetailsDisplay()) === 'none')
+  // 再次展开（保持展开态进入后续截图）
+  await clickByText('查看角色详情')
+  await sleep(300)
+  check('390: 再展开后 display !== none', (await mobileDetailsDisplay()) !== 'none')
   await page.screenshot({ path: 'qa/responsive-390.png' })
 
   // ============ 1024×768：两栏 ============

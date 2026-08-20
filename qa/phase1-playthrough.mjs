@@ -686,8 +686,8 @@ try {
   // TM-P1-031-R1：提交后马科 greeting = 完成台词
   check('马科完成后 greeting', body.includes('黑石塔的情况我已经记下了。你先休整一下。'))
   check('显示「第一阶段完成」', body.includes('第一阶段完成'))
-  check('显示「当前可玩主线内容已完成。」', body.includes('当前可玩主线内容已完成。'))
-  check('显示「《追寻黄金兔子王》将在后续阶段继续。」', body.includes('《追寻黄金兔子王》将在后续阶段继续。'))
+  check('显示「第一阶段主线已经告一段落。」', body.includes('第一阶段主线已经告一段落。'))
+  check('显示「《追寻黄金兔子王》仍需等待新的线索。」', body.includes('《追寻黄金兔子王》仍需等待新的线索。'))
   check('quest_wangcai_trouble 已完成（任务卡显示已完成）', body.includes('商人王财的麻烦') && body.includes('已完成'))
   check('《追寻黄金兔子王》仍进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
   check('兔子的路径 ×1 仍在背包', body.includes('兔子的路径 ×1'))
@@ -701,7 +701,7 @@ try {
   body = await bodyText()
 
   // ---- 保存 → 读存档校验（只读，不修改任何状态）→ 主菜单 → Continue ----
-  check('提交后冒险页仍显示第一阶段完成', body.includes('第一阶段完成') && body.includes('当前可玩主线内容已完成。'))
+  check('提交后冒险页仍显示第一阶段完成', body.includes('第一阶段完成') && body.includes('第一阶段主线已经告一段落。'))
   await clickByText('保存游戏')
   await sleep(300)
   body = await bodyText()
@@ -736,7 +736,7 @@ try {
   await clickByText('继续游戏')
   await sleep(300)
   body = await bodyText()
-  check('Continue 后仍显示「第一阶段完成」', body.includes('第一阶段完成') && body.includes('当前可玩主线内容已完成。') && body.includes('《追寻黄金兔子王》将在后续阶段继续。'))
+  check('Continue 后仍显示「第一阶段完成」', body.includes('第一阶段完成') && body.includes('第一阶段主线已经告一段落。') && body.includes('《追寻黄金兔子王》仍需等待新的线索。'))
   check('Continue 后王财任务已完成', body.includes('商人王财的麻烦') && body.includes('已完成'))
   check('Continue 后黄金兔子王仍进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
   check('Continue 后兔子的路径 ×1 保持', body.includes('兔子的路径 ×1'))

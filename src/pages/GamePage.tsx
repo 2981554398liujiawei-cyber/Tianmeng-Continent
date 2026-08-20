@@ -374,8 +374,11 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
             </Button>
           </section>
 
-          {/* 完整角色区：手机由「查看角色详情」展开；md+ 始终显示 */}
-          <div className={`flex flex-col gap-6 ${showCharacterDetails ? 'flex' : 'hidden'} md:flex`}>
+          {/* 完整角色区：手机由「查看角色详情」展开（TM-P2-002：data-testid 供 display 断言，不用 textContent 判定）；md+ 始终显示 */}
+          <div
+            data-testid="mobile-character-details"
+            className={`flex flex-col gap-6 ${showCharacterDetails ? 'flex' : 'hidden'} md:flex`}
+          >
             <section className="rounded border border-ink-600 bg-ink-800/50 p-5">
               <h3 className="mb-4 text-lg font-bold text-bone-100">
                 {player.name}
@@ -542,7 +545,7 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
             </section>
           )}
 
-          {/* TM-P2-001 D5：北门胜利剧情 —— 黑鬃魔狼击败后固定文案 + 新目标 */}
+          {/* TM-P2-001 D5：北门胜利剧情 —— 黑鬃魔狼击败后固定文案；「当前目标」行仅在任务 completable 时显示（TM-P2-002：completed 后保留剧情、清除旧目标，不清 wolf flag、狼不复活） */}
           {world.currentLocationId === 'tianlong_north_gate' && northGateWolfDefeated && (
             <section className="order-3 rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
               <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">荒草之间</h3>
@@ -550,7 +553,9 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
               <p className="mt-1 leading-relaxed text-bone-200">你在附近找到了一块刻着骑士团纹章的断裂铜牌。</p>
               <p className="mt-1 leading-relaxed text-bone-200">马蹄印和拖拽痕迹仍然继续向北延伸。</p>
               <p className="mt-1 leading-relaxed text-bone-200">失联巡逻队显然没有停在这里。</p>
-              <p className="mt-2 text-gold-300">当前目标：返回武馆，将发现告诉马科。</p>
+              {northGateQuest?.status === 'completable' && (
+                <p className="mt-2 text-gold-300">当前目标：返回武馆，将发现告诉马科。</p>
+              )}
             </section>
           )}
 
@@ -1472,8 +1477,9 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
                           <p className="mt-1 text-bone-300">黑石塔的调查暂时告一段落。</p>
                           <div className="mt-2 rounded border border-gold-500/40 bg-ink-900/40 p-2">
                             <p className="text-gold-300">第一阶段完成</p>
-                            <p className="mt-1">当前可玩主线内容已完成。</p>
-                            <p>《追寻黄金兔子王》将在后续阶段继续。</p>
+                            {/* TM-P2-002：稳定文案，不随后续阶段内容过期 */}
+                            <p className="mt-1">第一阶段主线已经告一段落。</p>
+                            <p>《追寻黄金兔子王》仍需等待新的线索。</p>
                           </div>
                         </div>
                       )}

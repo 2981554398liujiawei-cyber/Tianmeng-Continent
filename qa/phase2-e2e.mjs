@@ -214,7 +214,7 @@ try {
   const goldAfter = await readGold()
   check('提交《北门失联》金币 +30', goldBefore !== null && goldAfter === goldBefore + 30, `金币 ${goldBefore}→${goldAfter}`)
 
-  // 8. 不能重复奖励；任务完成后旧调查按钮消失
+  // 8. 不能重复奖励；任务完成后旧目标/旧按钮/旧文案全部清除（TM-P2-002 关键回归）
   check('提交后无提交任务按钮残留', !body.includes('提交任务'))
   await clickByText('天龙城')
   await sleep(300)
@@ -229,6 +229,15 @@ try {
     return section ? section.textContent : ''
   })
   check('任务完成后黑鬃魔狼不复活（威胁区无黑鬃魔狼）', threatsAfterComplete === null || !threatsAfterComplete.includes('黑鬃魔狼'))
+  // TM-P2-002：completed 后北门不得残留「当前目标：返回武馆，将发现告诉马科。」
+  check('完成后北门无旧目标「返回武馆，将发现告诉马科。」', !body.includes('当前目标：返回武馆，将发现告诉马科。'))
+  // TM-P2-002：completed 后胜利剧情仍保留（狼倒下/铜牌/痕迹继续向北）
+  check('完成后北门胜利剧情保留（黑鬃魔狼倒下）', body.includes('黑鬃魔狼倒在荒草之间。'))
+  check('完成后北门胜利剧情保留（断裂铜牌）', body.includes('你在附近找到了一块刻着骑士团纹章的断裂铜牌。'))
+  check('完成后北门胜利剧情保留（痕迹继续向北）', body.includes('马蹄印和拖拽痕迹仍然继续向北延伸。'))
+  // TM-P2-002：北门任务仍 completed；无 Phase 1 过时文案
+  check('完成后《北门失联》仍 completed', body.includes('北门失联') && body.includes('已完成'))
+  check('完成后不存在「当前可玩主线内容已完成。」', !body.includes('当前可玩主线内容已完成。'))
   await clickByText('天龙城')
   await sleep(300)
   await clickByText('武馆')
@@ -262,6 +271,24 @@ try {
   const deadButtons = await page.evaluate(() => [...document.querySelectorAll('button')].map((b) => b.textContent.trim()))
   check('无「查看巡逻队留下的痕迹」残留按钮', !deadButtons.some((t) => t.includes('查看巡逻队留下的痕迹')))
   check('无「提交任务」残留按钮', !deadButtons.some((t) => t === '提交任务'))
+  // TM-P2-002：Save → Main Menu → Continue 后再次回北门验证（旧目标/旧按钮/旧文案/狼不复活/任务 completed）
+  await clickByText('天龙城')
+  await sleep(300)
+  await clickByText('天龙城北门')
+  await sleep(300)
+  body = await bodyText()
+  check('Continue 后北门无旧目标「返回武馆，将发现告诉马科。」', !body.includes('当前目标：返回武馆，将发现告诉马科。'))
+  check('Continue 后北门无旧调查按钮', !body.includes('查看巡逻队留下的痕迹'))
+  const threatsAfterContinue = await page.evaluate(() => {
+    const heading = [...document.querySelectorAll('h3')].find((h) => h.textContent.includes('附近威胁'))
+    if (!heading) return null
+    const section = heading.closest('section')
+    return section ? section.textContent : ''
+  })
+  check('Continue 后黑鬃魔狼不重新出现', threatsAfterContinue === null || !threatsAfterContinue.includes('黑鬃魔狼'))
+  check('Continue 后《北门失联》仍 completed', body.includes('北门失联') && body.includes('已完成'))
+  check('Continue 后不存在「当前可玩主线内容已完成。」', !body.includes('当前可玩主线内容已完成。'))
+  check('Continue 后胜利剧情仍保留', body.includes('黑鬃魔狼倒在荒草之间。') && body.includes('你在附近找到了一块刻着骑士团纹章的断裂铜牌。'))
 } catch (err) {
   check('脚本执行无异常', false, err && err.message ? err.message : String(err))
 } finally {

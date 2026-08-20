@@ -174,12 +174,13 @@ try {
   await page.screenshot({ path: 'qa/creation-page.png' })
 
   // P2A3：属性点预算交互（初始全 8 无法再降 → 加 1 点 → 13/14 → 减回 → 14/14）
-  await page.evaluate(() => {
+  // TM-P2-002：必须使用 evaluate 返回值断言（不得丢弃返回值后 check(..., true)）
+  const strDownDisabled = await page.evaluate(() => {
     const btn = [...document.querySelectorAll('button')].find((b) => b.getAttribute('aria-label') === '降低力量')
     if (!btn) throw new Error('未找到降低力量按钮')
     return btn.disabled
   })
-  check('P2A3: 初始 STR 8 无法再降（降低按钮禁用）', true)
+  check('P2A3: 初始 STR 8 无法再降（降低按钮禁用）', strDownDisabled === true)
   await page.evaluate(() => {
     const btn = [...document.querySelectorAll('button')].find((b) => b.getAttribute('aria-label') === '提高力量')
     if (!btn) throw new Error('未找到提高力量按钮')
@@ -4005,8 +4006,8 @@ try {
   check('P1-030-G: 向上面汇报你先休息', body.includes('“这件事我会向上面汇报。你先休息一下。”'))
   check('P1-030-G: 黑石塔调查告一段落', body.includes('黑石塔的调查暂时告一段落。'))
   check('P1-030-G: 第一阶段完成', body.includes('第一阶段完成'))
-  check('P1-030-G: 当前可玩主线内容已完成', body.includes('当前可玩主线内容已完成。'))
-  check('P1-030-G: 黄金兔子后续阶段继续', body.includes('《追寻黄金兔子王》将在后续阶段继续。'))
+  check('P1-030-G: 第一阶段主线已经告一段落', body.includes('第一阶段主线已经告一段落。'))
+  check('P1-030-G: 黄金兔子仍需等待新线索', body.includes('《追寻黄金兔子王》仍需等待新的线索。'))
   check('P1-030-G: 王财任务已完成', body.includes('商人王财的麻烦') && body.includes('已完成'))
   // H. 黄金兔子仍冻结 + 项链不在背包 + 无 dead button
   check('P1-030-H: 黄金兔子主线仍进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
