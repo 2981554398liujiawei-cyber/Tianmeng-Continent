@@ -6777,3 +6777,266 @@ describe('TM-P2-001 D6：完成《北门失联》（generic 提交，金币 +30�
     expect(useGameStore.getState().gameState?.player.level).toBe(1) // 不升级、不建经验系统
   })
 })
+
+// ================= TM-P2-003 D/E/F/G：北门旧哨塔 + 机缘型社交 =================
+
+describe('TM-P2-003 D：北门旧哨塔（技能 Tag 判断 + MP 消耗）', () => {
+  /** 北门 + 北门任务 in_progress + 狼已击败（可触发哨塔） */
+  const seedWolfDefeated = () => {
+    useGameStore.getState().newGame()
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return {
+        gameState: {
+          ...s.gameState,
+          world: { ...s.gameState.world, currentLocationId: 'tianlong_north_gate' },
+          quests: [
+            {
+              questId: 'quest_north_gate_missing_patrol',
+              status: 'completable',
+              stage: 0,
+              flags: { north_gate_trail_checked: true, north_gate_wolf_defeated: true },
+            },
+          ],
+        },
+      }
+    })
+  }
+
+  it('A. 狼未击败 → null（哨塔不触发）', () => {
+    useGameStore.getState().newGame()
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return { gameState: { ...s.gameState, world: { ...s.gameState.world, currentLocationId: 'tianlong_north_gate' } } }
+    })
+    expect(useGameStore.getState().openNorthTowerWithSkill('knight_power_strike')).toBeNull()
+  })
+
+  it('B. 按 Tag 判断解法：force 技能开启并消耗 MP（不是按技能 ID）', () => {
+    seedWolfDefeated()
+    const mpBefore = useGameStore.getState().gameState?.player.mp
+    const r = useGameStore.getState().openNorthTowerWithSkill('knight_power_strike')
+    expect(r?.outcome).toBe('opened')
+    if (r?.outcome === 'opened') {
+      expect(r.mpCost).toBe(2)
+    }
+    expect(useGameStore.getState().gameState?.player.mp).toBe((mpBefore ?? 0) - 2)
+    expect(useGameStore.getState().gameState?.world.flags.north_tower_opened).toBe(true)
+  })
+
+  it('C. movement / magic 标签同样可开启', () => {
+    seedWolfDefeated()
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return { gameState: { ...s.gameState, player: { ...s.gameState.player, profession: 'ranger', learnedSkillIds: ['ranger_swift_strike'] } } }
+    })
+    expect(useGameStore.getState().openNorthTowerWithSkill('ranger_swift_strike')?.outcome).toBe('opened')
+  })
+
+  it('D. 未知/非场景 Tag 技能 → 拒绝', () => {
+    seedWolfDefeated()
+    expect(useGameStore.getState().openNorthTowerWithSkill('not_a_skill')?.outcome).toBe('no_skill')
+    // 法师法术攻击 tags=['magic'] 属于场景 Tag；构造一个无场景 Tag 的技能（用 healing 类不存在，此处直接测 wrong_tag 用职业不匹配）
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return { gameState: { ...s.gameState, player: { ...s.gameState.player, profession: 'mage', learnedSkillIds: ['mage_spell'] } } }
+    })
+    // mage_spell tags=['magic'] → 应开启
+    expect(useGameStore.getState().openNorthTowerWithSkill('mage_spell')?.outcome).toBe('opened')
+  })
+
+  it('E. 已开启后不可重复开启', () => {
+    seedWolfDefeated()
+    useGameStore.getState().openNorthTowerWithSkill('knight_power_strike')
+    expect(useGameStore.getState().openNorthTowerWithSkill('knight_power_strike')?.outcome).toBe('already_opened')
+  })
+})
+
+describe('TM-P2-003 E：命运补救（MND 失败后一次 Luck；结果进存档）', () => {
+  const seedWolfDefeated = () => {
+    useGameStore.getState().newGame()
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return {
+        gameState: {
+          ...s.gameState,
+          world: { ...s.gameState.world, currentLocationId: 'tianlong_north_gate' },
+          quests: [
+            {
+              questId: 'quest_north_gate_missing_patrol',
+              status: 'completable',
+              stage: 0,
+              flags: { north_gate_trail_checked: true, north_gate_wolf_defeated: true },
+            },
+          ],
+        },
+      }
+    })
+  }
+
+  it('A. MND 检定成功 → 直接开启（north_tower_opened）', () => {
+    seedWolfDefeated()
+    const r = useGameStore.getState().northTowerMndCheck(20)
+    expect(r?.outcome).toBe('success')
+    expect(useGameStore.getState().gameState?.world.flags.north_tower_opened).toBe(true)
+  })
+
+  it('B. MND 检定失败 → 写 north_tower_mnd_failed（触发补救入口）', () => {
+    seedWolfDefeated()
+    const r = useGameStore.getState().northTowerMndCheck(1)
+    expect(r?.outcome).toBe('failed')
+    expect(useGameStore.getState().gameState?.world.flags.north_tower_mnd_failed).toBe(true)
+    expect(useGameStore.getState().gameState?.world.flags.north_tower_opened).not.toBe(true)
+  })
+
+  it('C. 未失败过 → 补救 locked', () => {
+    seedWolfDefeated()
+    expect(useGameStore.getState().northTowerLuckRescue(20)).toBeNull()
+  })
+
+  it('D. 补救成功 → 开启（新巧合叙事由 UI 负责）；结果进存档不可重刷', () => {
+    seedWolfDefeated()
+    useGameStore.getState().northTowerMndCheck(1)
+    const r = useGameStore.getState().northTowerLuckRescue(20)
+    expect(r?.outcome).toBe('rescued')
+    expect(useGameStore.getState().gameState?.world.flags.north_tower_opened).toBe(true)
+    expect(useGameStore.getState().gameState?.world.flags.north_tower_luck_used).toBe(true)
+    // 已开启 → 再补救 locked
+    expect(useGameStore.getState().northTowerLuckRescue(20)).toBeNull()
+  })
+
+  it('E. 补救失败 → 机会耗尽（luck_used）且不能重刷', () => {
+    seedWolfDefeated()
+    useGameStore.getState().northTowerMndCheck(1)
+    const r = useGameStore.getState().northTowerLuckRescue(1)
+    expect(r?.outcome).toBe('failed')
+    expect(useGameStore.getState().gameState?.world.flags.north_tower_luck_used).toBe(true)
+    expect(useGameStore.getState().gameState?.world.flags.north_tower_opened).not.toBe(true)
+    // 已使用 → 不能再补救
+    expect(useGameStore.getState().northTowerLuckRescue(20)).toBeNull()
+  })
+
+  it('F. 补救是 Luck 检定（D20 + 幸运修正 vs DC）', () => {
+    seedWolfDefeated()
+    useGameStore.getState().northTowerMndCheck(1)
+    const r = useGameStore.getState().northTowerLuckRescue(14)
+    expect(r?.check.modifier).toBe(useGameStore.getState().gameState ? 0 : 0)
+    expect(r?.check.dc).toBe(12)
+    expect(r?.check.total).toBe(14)
+  })
+})
+
+describe('TM-P2-003 F：补给匣宝箱（基础必给 + Luck 追加；一次性）', () => {
+  const seedOpened = () => {
+    useGameStore.getState().newGame()
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return {
+        gameState: {
+          ...s.gameState,
+          world: {
+            ...s.gameState.world,
+            currentLocationId: 'tianlong_north_gate',
+            flags: { ...s.gameState.world.flags, north_tower_opened: true },
+          },
+          quests: [
+            {
+              questId: 'quest_north_gate_missing_patrol',
+              status: 'completable',
+              stage: 0,
+              flags: { north_gate_trail_checked: true, north_gate_wolf_defeated: true },
+            },
+          ],
+        },
+      }
+    })
+  }
+
+  it('A. 基础奖励与 Luck 解耦：幸运失败也必给治疗药水 ×1 + 金币 20', () => {
+    seedOpened()
+    const goldBefore = useGameStore.getState().gameState?.player.gold
+    const r = useGameStore.getState().claimNorthTowerCache(1) // 天然1 大失败
+    expect(r?.outcome).toBe('claimed')
+    if (r?.outcome === 'claimed') {
+      expect(r.items.some((i) => i.itemId === 'healing_potion' && i.quantity === 1)).toBe(true)
+      expect(r.gold).toBe(20)
+    }
+    expect(useGameStore.getState().gameState?.player.gold).toBe((goldBefore ?? 0) + 20)
+    expect(useGameStore.getState().gameState?.inventory.some((e) => e.itemId === 'healing_potion')).toBe(true)
+  })
+
+  it('B. Luck 成功 → 额外金币 30', () => {
+    seedOpened()
+    const r = useGameStore.getState().claimNorthTowerCache(14) // 14+0 >= 12 成功
+    if (r?.outcome === 'claimed') {
+      expect(r.gold).toBe(50)
+    }
+  })
+
+  it('C. Luck 大成功 → 精制铁剑（weaponDamageBonus 比铁剑高 1）', () => {
+    seedOpened()
+    const r = useGameStore.getState().claimNorthTowerCache(20)
+    if (r?.outcome === 'claimed') {
+      expect(r.items.some((i) => i.itemId === 'refined_iron_sword')).toBe(true)
+    }
+    expect(useGameStore.getState().gameState?.inventory.some((e) => e.itemId === 'refined_iron_sword')).toBe(true)
+  })
+
+  it('D. 一次性：已领取不可重复领（不能刷骰）', () => {
+    seedOpened()
+    useGameStore.getState().claimNorthTowerCache(1)
+    const invBefore = JSON.stringify(useGameStore.getState().gameState?.inventory)
+    const goldBefore = useGameStore.getState().gameState?.player.gold
+    expect(useGameStore.getState().claimNorthTowerCache(20)?.outcome).toBe('already_claimed')
+    expect(JSON.stringify(useGameStore.getState().gameState?.inventory)).toBe(invBefore)
+    expect(useGameStore.getState().gameState?.player.gold).toBe(goldBefore)
+  })
+})
+
+describe('TM-P2-003 G：机缘型社交（路边旧货商；首次交流自动 Luck 检定；不可反复刷）', () => {
+  const seedCity = () => {
+    useGameStore.getState().newGame()
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return { gameState: { ...s.gameState, world: { ...s.gameState.world, currentLocationId: 'tianlong_city' } } }
+    })
+  }
+
+  it('A. 不在天龙城 → null', () => {
+    useGameStore.getState().newGame()
+    expect(useGameStore.getState().oldTraderTalk(14)).toBeNull()
+  })
+
+  it('B. 首次交流自动 Luck 检定；失败正常说话（结果进存档）', () => {
+    seedCity()
+    const r = useGameStore.getState().oldTraderTalk(1)
+    expect(r?.outcome).toBe('failure')
+    expect(r?.goldBonus).toBe(0)
+    expect(useGameStore.getState().gameState?.world.flags.old_trader_talked).toBe(true)
+    expect(useGameStore.getState().gameState?.world.flags.old_trader_outcome).toBe('failure')
+  })
+
+  it('C. 成功 → 多一句北门传闻（flag 记录）', () => {
+    seedCity()
+    const r = useGameStore.getState().oldTraderTalk(14)
+    expect(r?.outcome).toBe('success')
+    expect(useGameStore.getState().gameState?.world.flags.old_trader_outcome).toBe('success')
+  })
+
+  it('D. 大成功 → 小礼物（金币 +15）', () => {
+    seedCity()
+    const goldBefore = useGameStore.getState().gameState?.player.gold
+    const r = useGameStore.getState().oldTraderTalk(20)
+    expect(r?.outcome).toBe('critical_success')
+    expect(r?.goldBonus).toBe(15)
+    expect(useGameStore.getState().gameState?.player.gold).toBe((goldBefore ?? 0) + 15)
+  })
+
+  it('E. 一次性：交谈后不可反复刷', () => {
+    seedCity()
+    useGameStore.getState().oldTraderTalk(1)
+    const goldBefore = useGameStore.getState().gameState?.player.gold
+    expect(useGameStore.getState().oldTraderTalk(20)).toBeNull()
+    expect(useGameStore.getState().gameState?.player.gold).toBe(goldBefore)
+  })
+})

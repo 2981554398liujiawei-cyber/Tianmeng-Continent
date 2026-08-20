@@ -374,7 +374,8 @@ describe('TM-P0-002-R1：关键内容身份锁', () => {
     expect(Object.keys(ENEMIES)).toHaveLength(11)
     expect(Object.keys(NPCS)).toHaveLength(5)
     expect(Object.keys(QUESTS)).toHaveLength(8)
-    expect(Object.keys(ITEMS)).toHaveLength(6)
+    // TM-P2-003 C：新增黑鬃狼牙（common）/黑鬃狼皮（uncommon）/精制铁剑（uncommon，+3）
+    expect(Object.keys(ITEMS)).toHaveLength(9)
     expect(getEnemy('golden_rabbit_king')).toBeUndefined()
     // TM-P1-028/029：骷髅战士、骷髅女妖已注册（本卡新增）
     expect(getEnemy('skeleton_warrior')).toBeDefined()

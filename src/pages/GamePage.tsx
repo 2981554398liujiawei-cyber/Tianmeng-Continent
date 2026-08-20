@@ -5,6 +5,16 @@ import { getProfessionName, ATTRIBUTE_KEYS, ATTRIBUTE_LABELS } from '../game/con
 import { getEnemy, getItem, getLocation, getNpc, getQuest, NPCS, QUESTS } from '../game/content'
 import { CHECK_DC, type D20CheckResult } from '../game/rules/d20'
 import { LEVEL_2_MAX_HP_GAIN, LEVEL_2_MAX_MP_GAIN } from '../game/rules/character'
+import { formatLuckCheckLog, LUCK_OUTCOME_LABELS } from '../game/rules/luck'
+import { getSkill } from '../game/content/skills'
+import type { SkillDefinition } from '../game/types/skill'
+import type {
+  NorthTowerClaimResult,
+  NorthTowerLuckResult,
+  NorthTowerMndResult,
+  NorthTowerSkillResult,
+  OldTraderResult,
+} from '../game/state/gameStore'
 import type { QuestStatus } from '../game/types'
 
 /** D20 检定结果中文（TM-P0-016） */
@@ -58,6 +68,17 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
   const useHealingPotion = useGameStore((s) => s.useHealingPotion)
   const equipWeapon = useGameStore((s) => s.equipWeapon)
   const unequipWeapon = useGameStore((s) => s.unequipWeapon)
+  // TM-P2-003 D/E/F：北门旧哨塔
+  const openNorthTowerWithSkill = useGameStore((s) => s.openNorthTowerWithSkill)
+  const northTowerMndCheck = useGameStore((s) => s.northTowerMndCheck)
+  const northTowerLuckRescue = useGameStore((s) => s.northTowerLuckRescue)
+  const claimNorthTowerCache = useGameStore((s) => s.claimNorthTowerCache)
+  const oldTraderTalk = useGameStore((s) => s.oldTraderTalk)
+  const [towerSkillResult, setTowerSkillResult] = useState<NorthTowerSkillResult>(null)
+  const [towerMndResult, setTowerMndResult] = useState<NorthTowerMndResult>(null)
+  const [towerLuckResult, setTowerLuckResult] = useState<NorthTowerLuckResult>(null)
+  const [towerClaimResult, setTowerClaimResult] = useState<NorthTowerClaimResult>(null)
+  const [traderResult, setTraderResult] = useState<OldTraderResult>(null)
   const buyHealingPotion = useGameStore((s) => s.buyHealingPotion)
   const sellIronOre = useGameStore((s) => s.sellIronOre)
   const restAtVillage = useGameStore((s) => s.restAtVillage)
@@ -552,6 +573,217 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
             </section>
           )}
 
+
+          {/* TM-P2-003 D/E/F：北门旧哨塔补给匣（黑鬃魔狼击败后可选的完全独立小场景；不推进北门主线/不解锁北方地图） */}
+          {world.currentLocationId === 'tianlong_north_gate' && northGateWolfDefeated && (() => {
+            const towerOpened = world.flags.north_tower_opened === true
+            const towerClaimed = world.flags.north_tower_cache_claimed === true
+            const towerMndFailed = world.flags.north_tower_mnd_failed === true
+            const towerLuckUsed = world.flags.north_tower_luck_used === true
+            // 场景技能路线：learnedSkillIds → Registry → 按 Tag 过滤（force/movement/magic）
+            const towerSkills = (gameState.player.learnedSkillIds ?? [])
+              .map((id) => getSkill(id))
+              .filter(
+                (s): s is SkillDefinition =>
+                  s !== undefined &&
+                  s.profession === gameState.player.profession &&
+                  s.tags.some((t) => t === 'force' || t === 'movement' || t === 'magic'),
+              )
+            if (towerClaimed) {
+              return (
+                <section className="order-3 rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
+                  <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">北门旧哨塔</h3>
+                  <p className="leading-relaxed text-bone-200">
+                    补给匣已经打开，里面的东西被你在荒草间逐一收起。倒塌的哨塔结构重新归于沉寂。
+                  </p>
+                  {towerClaimResult?.outcome === 'claimed' && (
+                    <div className="mt-3 rounded bg-ink-950/60 p-3">
+                      <p className="text-bone-200">你当时获得了：</p>
+                      {towerClaimResult.items.map((it) => {
+                        const def = getItem(it.itemId)
+                        return (
+                          <p key={it.itemId} className="mt-1">
+                            {def?.name ?? it.itemId} ×{it.quantity}
+                          </p>
+                        )
+                      })}
+                      {towerClaimResult.gold > 0 && <p className="mt-1">金币 +{towerClaimResult.gold}</p>}
+                      {towerClaimResult.luckCheck && (
+                        <div className="mt-2 text-xs text-bone-400">
+                          {formatLuckCheckLog(towerClaimResult.luckCheck).map((line) => (
+                            <p key={line}>{line}</p>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </section>
+              )
+            }
+            if (towerOpened) {
+              return (
+                <section className="order-3 rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
+                  <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">北门旧哨塔的巡逻补给匣</h3>
+                  {/* 开启方式（结果进存档后仍保留可见，刷新后通过 flags 复原，不再重掷） */}
+                  {towerSkillResult?.outcome === 'opened' && (
+                    <p className="leading-relaxed text-bone-200">你用{towerSkillResult.skillName}移开了阻碍（消耗 {towerSkillResult.mpCost} 灵力）。</p>
+                  )}
+                  {towerMndResult?.outcome === 'success' && (
+                    <div>
+                      <p className="leading-relaxed text-bone-200">你发现了备用机关，沉重的阻碍缓缓移开。</p>
+                      <div className="mt-2 rounded bg-ink-950/60 p-2 text-xs text-bone-400">
+                        <p>D20 {towerMndResult.check.roll} + 冥想修正 {towerMndResult.check.attributeModifier} = {towerMndResult.check.total}</p>
+                        <p>DC {towerMndResult.check.dc}</p>
+                        <p>检定：{CHECK_OUTCOME_LABELS[towerMndResult.check.outcome]}</p>
+                      </div>
+                    </div>
+                  )}
+                  {towerLuckResult?.outcome === 'rescued' && (
+                    <div>
+                      <p className="leading-relaxed text-bone-200">
+                        你无意碰到一块松动石片，石片后的旧拉索竟然还连着补给匣的备用锁舌。阻碍松动了。
+                      </p>
+                      <div className="mt-2 rounded bg-ink-950/60 p-2 text-xs text-bone-400">
+                        {formatLuckCheckLog(towerLuckResult.check).map((line) => (
+                          <p key={line}>{line}</p>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <p className="leading-relaxed text-bone-200">阻碍被移开后，一只斑驳的铁匣出现在你面前。你伸手打开了它。</p>
+                  {towerClaimResult?.outcome === 'claimed' ? (
+                    <div className="mt-3">
+                      <p className="text-bone-200">你获得了：</p>
+                      {towerClaimResult.items.map((it) => {
+                        const def = getItem(it.itemId)
+                        return (
+                          <p key={it.itemId} className="mt-1">
+                            {def?.name ?? it.itemId} ×{it.quantity}
+                          </p>
+                        )
+                      })}
+                      {towerClaimResult.gold > 0 && <p className="mt-1">金币 +{towerClaimResult.gold}</p>}
+                      {towerClaimResult.luckCheck && (
+                        <div className="mt-2 rounded bg-ink-950/60 p-2 text-xs text-bone-400">
+                          {formatLuckCheckLog(towerClaimResult.luckCheck).map((line) => (
+                            <p key={line}>{line}</p>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <Button variant="primary" className="mt-3" onClick={() => setTowerClaimResult(claimNorthTowerCache())}>
+                      打开补给匣
+                    </Button>
+                  )}
+                </section>
+              )
+            }
+            // 未开启：倒塌结构 + 路线选择
+            return (
+              <section className="order-3 rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
+                <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">北门旧哨塔的巡逻补给匣</h3>
+                <p className="leading-relaxed text-bone-200">
+                  倒塌的哨塔结构压住了一只巡逻补给匣。你可以试着用不同的方式移开阻碍。
+                </p>
+                {/* 技能路线（按 Tag） */}
+                {towerSkills.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {towerSkills.map((skill) => (
+                      <Button
+                        key={skill.id}
+                        variant="ghost"
+                        disabled={gameState.player.mp < skill.mpCost}
+                        onClick={() => {
+                          setTowerSkillResult(openNorthTowerWithSkill(skill.id))
+                          setTowerMndResult(null)
+                          setTowerLuckResult(null)
+                        }}
+                      >
+                        {skill.name}
+                        {skill.mpCost > 0 ? `（${skill.mpCost} 灵力）` : ''}
+                      </Button>
+                    ))}
+                  </div>
+                )}
+                {/* 普通属性路线 */}
+                <Button
+                  variant="ghost"
+                  className="mt-2"
+                  onClick={() => {
+                    setTowerMndResult(northTowerMndCheck())
+                    setTowerSkillResult(null)
+                  }}
+                >
+                  [MND 检定] 寻找备用机关
+                </Button>
+                {/* 检定结果展示 */}
+                {towerSkillResult?.outcome === 'opened' && (
+                  <p className="mt-3 text-gold-300">你用{towerSkillResult.skillName}移开了阻碍（消耗 {towerSkillResult.mpCost} 灵力）。</p>
+                )}
+                {towerSkillResult?.outcome === 'no_mp' && <p className="mt-3 text-red-300">灵力不足。</p>}
+                {towerMndResult?.outcome === 'success' && (
+                  <div className="mt-3">
+                    <p className="text-gold-300">你发现了备用机关，沉重的阻碍缓缓移开。</p>
+                    <div className="mt-2 rounded bg-ink-950/60 p-2 text-xs text-bone-400">
+                      <p>D20 {towerMndResult.check.roll} + 冥想修正 {towerMndResult.check.attributeModifier} = {towerMndResult.check.total}</p>
+                      <p>DC {towerMndResult.check.dc}</p>
+                      <p>检定：{CHECK_OUTCOME_LABELS[towerMndResult.check.outcome]}</p>
+                    </div>
+                  </div>
+                )}
+                {towerMndResult?.outcome === 'failed' && (
+                  <div className="mt-3">
+                    <p className="text-bone-200">你在砖石间摸索良久，没能找到任何机关。</p>
+                    <div className="mt-2 rounded bg-ink-950/60 p-2 text-xs text-bone-400">
+                      <p>D20 {towerMndResult.check.roll} + 冥想修正 {towerMndResult.check.attributeModifier} = {towerMndResult.check.total}</p>
+                      <p>DC {towerMndResult.check.dc}</p>
+                      <p>检定：{CHECK_OUTCOME_LABELS[towerMndResult.check.outcome]}</p>
+                    </div>
+                  </div>
+                )}
+                {/* 命运补救（每节点最多一次） */}
+                {towerMndFailed && !towerLuckUsed && !towerOpened && (
+                  <div className="mt-3 rounded border border-gold-500/40 bg-gold-900/20 p-3">
+                    <p className="text-bone-200">命运似乎还没有放弃你……</p>
+                    <Button
+                      variant="primary"
+                      className="mt-2"
+                      onClick={() => {
+                        setTowerLuckResult(northTowerLuckRescue())
+                        setTowerMndResult(null)
+                      }}
+                    >
+                      [幸运检定] 寻求一线转机
+                    </Button>
+                  </div>
+                )}
+                {towerLuckResult?.outcome === 'rescued' && (
+                  <div className="mt-3">
+                    <p className="text-gold-300">
+                      你无意碰到一块松动石片，石片后的旧拉索竟然还连着补给匣的备用锁舌。阻碍松动了。
+                    </p>
+                    <div className="mt-2 rounded bg-ink-950/60 p-2 text-xs text-bone-400">
+                      {formatLuckCheckLog(towerLuckResult.check).map((line) => (
+                        <p key={line}>{line}</p>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {towerLuckResult?.outcome === 'failed' && (
+                  <div className="mt-3">
+                    <p className="text-bone-200">拉索在最后一刻崩断了，命运这一次没有站在你这边。</p>
+                    <div className="mt-2 rounded bg-ink-950/60 p-2 text-xs text-bone-400">
+                      {formatLuckCheckLog(towerLuckResult.check).map((line) => (
+                        <p key={line}>{line}</p>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </section>
+            )
+          })()}
+
           {/* TM-P1-016：青石村阶段完成 —— 只读 world.flags.rabbit_path_reported===true（Store action 已保证该 flag 只能在正确前提下产生，不重算任务链）；持久剧情状态展示，非弹窗/toast；【待补充】为剧情边界，无新地点按钮 */}
           {world.flags.rabbit_path_reported === true && (
             <section className="order-3 rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
@@ -759,6 +991,58 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
               <p className="mt-1">当前目标：返回天龙城，将夔峒项链交还王财。</p>
             </section>
           )}
+
+          {/* TM-P2-003 G：机缘型社交 —— 路边旧货商（天龙城；首次交流自动幸运检定；结果进存档，刷新/反复交谈不重刷） */}
+          {world.currentLocationId === 'tianlong_city' && (() => {
+            const talked = world.flags.old_trader_talked === true
+            const outcome = world.flags.old_trader_outcome
+            return (
+              <section className="order-4 rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
+                <h3 className="mb-3 text-sm font-bold tracking-wider text-bone-500">路边旧货商</h3>
+                {!talked ? (
+                  <div>
+                    <p className="leading-relaxed text-bone-200">
+                      一个胡子花白的旧货商蹲在城墙根下，摊前堆着些看不出年代的杂物。见你走近，他眯起眼睛打量了你一番。
+                    </p>
+                    <Button
+                      variant="ghost"
+                      className="mt-3"
+                      onClick={() => setTraderResult(oldTraderTalk())}
+                    >
+                      上前搭话
+                    </Button>
+                  </div>
+                ) : (
+                  <div>
+                    {outcome === 'critical_success' ? (
+                      <>
+                        <p className="leading-relaxed text-bone-200">
+                          旧货商越看你越觉得面善，咧嘴一笑：“小兄弟，咱爷俩有缘。这北门老哨塔前些日子夜里总是有动静，你要是有胆子，去那儿翻翻，兴许能翻出点好东西。”
+                        </p>
+                        <p className="mt-2 text-gold-300">他摸出几枚铜钱塞进你手里。</p>
+                      </>
+                    ) : outcome === 'success' ? (
+                      <p className="leading-relaxed text-bone-200">
+                        旧货商絮絮叨叨说了几句北门的传闻：“北门外那座旧哨塔啊，荒了有些年头了。听说以前巡逻的骑士会在那儿歇脚。”
+                      </p>
+                    ) : (
+                      <p className="leading-relaxed text-bone-200">
+                        旧货商上下打量你一番，不咸不淡地说了句“随便看看”，便继续摆弄他的杂物去了。
+                      </p>
+                    )}
+                  </div>
+                )}
+                {traderResult && (
+                  <div className="mt-3 rounded bg-ink-950/60 p-2 text-xs text-bone-400">
+                    {formatLuckCheckLog(traderResult.luckCheck).map((line) => (
+                      <p key={line}>{line}</p>
+                    ))}
+                    {traderResult.goldBonus > 0 && <p className="mt-1 text-gold-300">金币 +{traderResult.goldBonus}</p>}
+                  </div>
+                )}
+              </section>
+            )
+          })()}
 
           {/* TM-P0-015：附近人物 —— 仅当前地点存在注册 NPC 时显示 */}
           {localNpcs.length > 0 && (

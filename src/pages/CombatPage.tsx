@@ -12,9 +12,7 @@ import {
   getPlayerAttackPower,
   getPlayerLevelDamageBonus,
   getRangerSwiftStrikeDamage,
-  KNIGHT_POWER_STRIKE_MP_COST,
-  MAGE_SPELL_MP_COST,
-  WARRIOR_SUPPRESS_STRIKE_MP_COST,
+  getWarriorSuppressStrikeDamage,
   performAttack,
   rollInitiative,
   getCombatPhaseAfterEnemyAttack,
@@ -23,6 +21,10 @@ import {
   type CombatPhase,
 } from '../game/rules/combat'
 import type { InitiativeWinner } from '../game/rules/combat'
+import { getSkill } from '../game/content/skills'
+import type { SkillDefinition } from '../game/types/skill'
+import type { LootGrant } from '../game/types/loot'
+import { RARITY_LABELS } from '../game/types/loot'
 
 interface CombatPageProps {
   enemyId: string
@@ -50,15 +52,11 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
   const [lastEnemyAttack, setLastEnemyAttack] = useState<AttackResult | null>(null)
   /** TM-P1-015：最近一次成功药水行动的实际恢复量（仅战斗 UI 即时日志） */
   const [lastPotionHeal, setLastPotionHeal] = useState<number | null>(null)
+  /** TM-P2-003 C：战斗胜利结算的掉落（基础 + 幸运追加；victory 界面展示） */
+  const [victoryLoot, setVictoryLoot] = useState<LootGrant | null>(null)
   /** TM-P1-001/006/007/008：最近一次玩家行动类型（仅页面本地） */
-  const [lastPlayerAction, setLastPlayerAction] = useState<
-    | 'basic'
-    | 'mage_spell'
-    | 'knight_power_strike'
-    | 'ranger_swift_strike'
-    | 'warrior_suppress_strike'
-    | null
-  >(null)
+  /** TM-P2-003 A：最近一次玩家行动（'basic' 或技能 id；仅页面本地） */
+  const [lastPlayerAction, setLastPlayerAction] = useState<string | null>(null)
   /** TM-P1-007：游侠迅捷突袭本场是否已使用（仅页面本地） */
   const [rangerSwiftStrikeUsed, setRangerSwiftStrikeUsed] = useState(false)
   /** TM-P2-002 D：先手（进入战斗时双方各掷 D20+AGI；高者先，平局 AGI 高者先，仍同则玩家先）。
@@ -108,6 +106,10 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
   const playerArmor = getPlayerArmor(player.attributes.con, armorDefenseBonus)
   const playerAgility = getPlayerAgility(player.attributes.agi)
   const levelDamageBonus = getPlayerLevelDamageBonus(player.level)
+  // TM-P2-003 A：已学习技能 = learnedSkillIds → Skill Registry 动态解析（未知/损坏/职业不匹配安全忽略）
+  const learnedSkills = (gameState.player.learnedSkillIds ?? [])
+    .map((id) => getSkill(id))
+    .filter((s): s is SkillDefinition => s !== undefined && s.profession === player.profession)
 
   // TM-P2-002 D：敌人先手 → 进入正常回合前先执行一次敌人攻击（仅一次）
   // TM-P2-002-R1 A：攻击进行期间封锁玩家操作（enemyFirstStriking）；timer 由 cleanup 清理，
@@ -167,49 +169,44 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
     applyPlayerAttack(playerResult, 'basic')
   }
 
-  const handleMageSpell = () => {
+  /** TM-P2-003 A：技能统一入口（learnedSkillIds → Skill Registry → 动态执行）。
+   * 未知/损坏 skillId 安全忽略；职业不匹配的已学习项忽略；V3 命中/护甲结算不变。 */
+  const handleSkill = (skillId: string) => {
     if (phase !== 'active' || enemyFirstStriking) return
-    if (!spendMageSpellMp()) return
-    const spellResult = performAttack(playerAgility, enemy.agility, getMageSpellDamage(player.attributes.mnd) + levelDamageBonus, enemy.armor)
-    applyPlayerAttack(spellResult, 'mage_spell')
+    const skill = getSkill(skillId)
+    if (!skill || skill.profession !== player.profession) return
+    // 每场一次（迅捷突袭）
+    if (skill.combat?.oncePerCombat) {
+      if (rangerSwiftStrikeUsed) return
+      setRangerSwiftStrikeUsed(true)
+    }
+    // MP 消费（唯一入口；false → 不掷骰、不改 HP、不反击）
+    if (skill.mpCost > 0) {
+      let ok = false
+      if (skillId === 'mage_spell') ok = spendMageSpellMp()
+      else if (skillId === 'knight_power_strike') ok = spendKnightPowerStrikeMp()
+      else if (skillId === 'warrior_suppress_strike') ok = spendWarriorSuppressStrikeMp()
+      if (!ok) return
+    }
+    // 伤害公式按 skillId 分发（V3 命中/护甲不变）
+    let rawDamage = playerAttackPower
+    if (skillId === 'mage_spell') {
+      rawDamage = getMageSpellDamage(player.attributes.mnd) + levelDamageBonus
+    } else if (skillId === 'knight_power_strike') {
+      rawDamage = getKnightPowerStrikeDamage(player.attributes.str, weaponDamageBonus, player.level)
+    } else if (skillId === 'ranger_swift_strike') {
+      rawDamage = getRangerSwiftStrikeDamage(player.attributes.agi, weaponDamageBonus, player.level)
+    } else if (skillId === 'warrior_suppress_strike') {
+      rawDamage = getWarriorSuppressStrikeDamage(player.attributes.str, weaponDamageBonus, player.level)
+    } else {
+      return
+    }
+    const skillResult = performAttack(playerAgility, enemy.agility, rawDamage, enemy.armor)
+    applyPlayerAttack(skillResult, skillId)
   }
 
-  const handleKnightPowerStrike = () => {
-    if (phase !== 'active' || enemyFirstStriking) return
-    if (!spendKnightPowerStrikeMp()) return
-    const strikeResult = performAttack(
-      playerAgility,
-      enemy.agility,
-      getKnightPowerStrikeDamage(player.attributes.str, weaponDamageBonus, player.level),
-      enemy.armor,
-    )
-    applyPlayerAttack(strikeResult, 'knight_power_strike')
-  }
-
-  const handleRangerSwiftStrike = () => {
-    if (phase !== 'active' || enemyFirstStriking || rangerSwiftStrikeUsed) return
-    setRangerSwiftStrikeUsed(true)
-    const strikeResult = performAttack(
-      playerAgility,
-      enemy.agility,
-      getRangerSwiftStrikeDamage(player.attributes.agi, weaponDamageBonus, player.level),
-      enemy.armor,
-    )
-    applyPlayerAttack(strikeResult, 'ranger_swift_strike')
-  }
-
-  const handleWarriorSuppressStrike = () => {
-    if (phase !== 'active' || enemyFirstStriking) return
-    if (!spendWarriorSuppressStrikeMp()) return
-    const strikeResult = performAttack(playerAgility, enemy.agility, playerAttackPower, enemy.armor)
-    applyPlayerAttack(strikeResult, 'warrior_suppress_strike')
-  }
-
-  /** TM-P1-001/006/007/008：玩家攻击共用最小局部结算（V3 保持；压制仅正常命中/暴击压制） */
-  const applyPlayerAttack = (
-    attack: AttackResult,
-    action: 'basic' | 'mage_spell' | 'knight_power_strike' | 'ranger_swift_strike' | 'warrior_suppress_strike',
-  ) => {
+  /** TM-P1-001/006/007/008：玩家攻击共用最小局部结算（V3 保持）——压制按 Skill Registry 标志判断 */
+  const applyPlayerAttack = (attack: AttackResult, action: string) => {
     setLastPlayerAttack(attack)
     setLastPlayerAction(action)
     setLastPotionHeal(null)
@@ -219,25 +216,22 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
     setEnemyCurrentHp(strike.enemyHp)
     if (!strike.enemyShouldCounter) {
       setPhase(strike.phase)
+      // TM-P2-003 C：胜利时结算掉落（基础 + 幸运追加；无掉落表返回 null 不展示）
+      setVictoryLoot(useGameStore.getState().grantLoot(enemyId))
       return
     }
-    // TM-P2-001 C3：压制猛击仅「正常命中/暴击」压制本次反击；擦伤只半伤不压制
-    if (action === 'warrior_suppress_strike' && (attack.outcome === 'hit' || attack.outcome === 'critical_hit')) {
+    // TM-P1-008/TM-P2-003 A：suppressCounterOnFullHit 技能仅「正常命中/暴击」压制本次反击；擦伤不压制
+    const skill = action === 'basic' ? undefined : getSkill(action)
+    if (skill?.combat?.suppressCounterOnFullHit && (attack.outcome === 'hit' || attack.outcome === 'critical_hit')) {
       return
     }
     applyEnemyCounter()
   }
 
   const actionLabel =
-    lastPlayerAction === 'mage_spell'
-      ? '你的法术攻击：'
-      : lastPlayerAction === 'knight_power_strike'
-        ? '你的骑士重击：'
-        : lastPlayerAction === 'ranger_swift_strike'
-          ? '你的迅捷突袭：'
-          : lastPlayerAction === 'warrior_suppress_strike'
-            ? '你的压制猛击：'
-            : '你的攻击：'
+    lastPlayerAction === null || lastPlayerAction === 'basic'
+      ? '你的攻击：'
+      : `你的${getSkill(lastPlayerAction)?.name ?? '技能'}：`
 
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-3xl flex-col gap-6 px-4 py-6">
@@ -352,50 +346,25 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
             <Button variant="primary" disabled={enemyFirstStriking} onClick={handleAttack}>
               普通攻击
             </Button>
-            {player.profession === 'mage' && (
-              <div className="flex flex-col items-center gap-1">
-                <Button
-                  variant="primary"
-                  disabled={enemyFirstStriking || player.mp < MAGE_SPELL_MP_COST}
-                  onClick={handleMageSpell}
-                >
-                  法术攻击（{MAGE_SPELL_MP_COST} 灵力）
-                </Button>
-                {player.mp < MAGE_SPELL_MP_COST && <span className="text-xs text-red-300">灵力不足</span>}
-              </div>
-            )}
-            {player.profession === 'knight' && (
-              <div className="flex flex-col items-center gap-1">
-                <Button
-                  variant="primary"
-                  disabled={enemyFirstStriking || player.mp < KNIGHT_POWER_STRIKE_MP_COST}
-                  onClick={handleKnightPowerStrike}
-                >
-                  骑士重击（{KNIGHT_POWER_STRIKE_MP_COST} 灵力）
-                </Button>
-                {player.mp < KNIGHT_POWER_STRIKE_MP_COST && <span className="text-xs text-red-300">灵力不足</span>}
-              </div>
-            )}
-            {player.profession === 'ranger' && (
-              <div className="flex flex-col items-center gap-1">
-                <Button variant="primary" disabled={enemyFirstStriking || rangerSwiftStrikeUsed} onClick={handleRangerSwiftStrike}>
-                  迅捷突袭
-                </Button>
-                {rangerSwiftStrikeUsed && <span className="text-xs text-bone-500">本场战斗已使用</span>}
-              </div>
-            )}
-            {player.profession === 'warrior' && (
-              <div className="flex flex-col items-center gap-1">
-                <Button
-                  variant="primary"
-                  disabled={enemyFirstStriking || player.mp < WARRIOR_SUPPRESS_STRIKE_MP_COST}
-                  onClick={handleWarriorSuppressStrike}
-                >
-                  压制猛击（{WARRIOR_SUPPRESS_STRIKE_MP_COST} 灵力）
-                </Button>
-                {player.mp < WARRIOR_SUPPRESS_STRIKE_MP_COST && <span className="text-xs text-red-300">灵力不足</span>}
-              </div>
-            )}
+            {/* TM-P2-003 A：技能按钮由 learnedSkillIds → Skill Registry 动态生成（不再按职业四段 if） */}
+            {learnedSkills.map((skill) => {
+              const mpNotEnough = skill.mpCost > 0 && player.mp < skill.mpCost
+              const onceUsed = skill.combat?.oncePerCombat === true && rangerSwiftStrikeUsed
+              return (
+                <div key={skill.id} className="flex flex-col items-center gap-1">
+                  <Button
+                    variant="primary"
+                    disabled={enemyFirstStriking || mpNotEnough || onceUsed}
+                    onClick={() => handleSkill(skill.id)}
+                  >
+                    {skill.name}
+                    {skill.mpCost > 0 ? `（${skill.mpCost} 灵力）` : ''}
+                  </Button>
+                  {mpNotEnough && <span className="text-xs text-red-300">灵力不足</span>}
+                  {onceUsed && <span className="text-xs text-bone-500">本场战斗已使用</span>}
+                </div>
+              )
+            })}
             {healingPotionAmount !== undefined && (
               <div className="flex flex-col items-center gap-1">
                 <Button
@@ -417,6 +386,28 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
         {phase === 'victory' && (
           <>
             <p className="text-lg font-bold text-gold-300">战斗胜利</p>
+            {victoryLoot && (
+              <div className="rounded border border-gold-500/40 bg-ink-900/40 p-4 text-left text-sm text-bone-300">
+                <p className="text-bone-500">掉落：</p>
+                {victoryLoot.items.map((it) => {
+                  const def = getItem(it.itemId)
+                  const rarity = def?.rarity ? `（${RARITY_LABELS[def.rarity]}）` : ''
+                  return (
+                    <p key={it.itemId} className="mt-1">
+                      {def?.name ?? it.itemId} ×{it.quantity}
+                      {rarity}
+                    </p>
+                  )
+                })}
+                {victoryLoot.gold > 0 && <p className="mt-1">金币 +{victoryLoot.gold}</p>}
+                {victoryLoot.luckCheck && (
+                  <p className="mt-2 text-xs text-bone-500">
+                    幸运检定：D20 {victoryLoot.luckCheck.total - victoryLoot.luckCheck.dc >= 0 ? victoryLoot.luckCheck.total : victoryLoot.luckCheck.total} / DC {victoryLoot.luckCheck.dc}{' '}
+                    {victoryLoot.luckCheck.success ? '（成功）' : '（失败）'}
+                  </p>
+                )}
+              </div>
+            )}
             <Button variant="primary" onClick={onVictory}>
               返回冒险
             </Button>

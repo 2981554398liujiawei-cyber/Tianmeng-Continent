@@ -1,6 +1,9 @@
 /** 物品类型：武器/防具/饰品/消耗品/任务物品/材料（TM-P0-020 新增 material） */
 export type ItemType = 'weapon' | 'armor' | 'accessory' | 'consumable' | 'quest' | 'material'
 
+/** 物品品阶（TM-P2-003 C：最小 rarity；默认 common；本卡不建设装备词条/随机属性） */
+export type ItemRarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary'
+
 export interface ItemDefinition {
   id: string
   name: string
@@ -8,6 +11,8 @@ export interface ItemDefinition {
   description: string
   /** 基础价值（金币） */
   value: number
+  /** 品阶（TM-P2-003 C；缺省视为 common） */
+  rarity?: ItemRarity
   /** 使用后恢复的生命值（仅 consumable 可使用，TM-P0-010） */
   healAmount?: number
   /** 装备后普通攻击伤害加成（仅 weapon 可使用，TM-P0-013） */
@@ -33,6 +38,31 @@ export const ITEMS: Record<string, ItemDefinition> = {
     description: '装在小陶瓶中的淡红药水，饮下可恢复少量生命。',
     value: 10,
     healAmount: 8,
+  },
+  black_fang: {
+    id: 'black_fang',
+    name: '黑鬃狼牙',
+    type: 'material',
+    description: '从黑鬃魔狼口中取下的锐利狼牙，边缘泛着不祥的暗光。',
+    value: 5,
+    rarity: 'common',
+  },
+  black_mane_pelt: {
+    id: 'black_mane_pelt',
+    name: '黑鬃狼皮',
+    type: 'material',
+    description: '罕见的完整黑鬃狼皮，毛色如墨，触感温润，是上好的制甲材料。',
+    value: 40,
+    rarity: 'uncommon',
+  },
+  refined_iron_sword: {
+    id: 'refined_iron_sword',
+    name: '精制铁剑',
+    type: 'weapon',
+    description: '淬火精锻的铁剑，比寻常铁剑更为锋锐。',
+    value: 60,
+    rarity: 'uncommon',
+    weaponDamageBonus: 3,
   },
   test_artifact: {
     id: 'test_artifact',

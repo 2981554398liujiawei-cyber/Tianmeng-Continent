@@ -1924,7 +1924,7 @@ try {
   check('P1-008-A: 压制猛击按钮启用', (await buttonDisabled('压制猛击')) === false)
   check('P1-008-A: 战士不显示法术攻击/骑士重击/迅捷突袭', !body.includes('法术攻击') && !body.includes('骑士重击') && !body.includes('迅捷突袭'))
 
-  // B. V3 命中压制成功：D20 10（0.5）→ (10+10)/2=10 >= 兔敏捷10 命中；攻击力6 → 护甲11 承伤率10/21 → 3 伤 → 兔 HP 8→5，本次敌人不反击
+  // B. V3 命中压制成功：D20 10（0.5）→ (10+10)/2=10 >= 兔敏捷10 命中；TM-P2-003 压制猛击攻击力 6+1=7 → 护甲11 承伤率10/21 → ceil(3.33)=4 伤 → 兔 HP 8→4，本次敌人不反击
   const warriorInitialHp = readHps(await bodyText()).player
   await page.evaluate(() => {
     Math.random = () => 0.5 // D20 = floor(0.5*20)+1 = 10
@@ -1933,9 +1933,9 @@ try {
   await sleep(300)
   body = await bodyText()
   check('P1-008-B: 显示你的压制猛击', body.includes('你的压制猛击'))
-  check('P1-008-B: 命中并造成 3 点伤害', body.includes('命中') && body.includes('造成 3 点伤害'))
+  check('P1-008-B: 命中并造成 4 点伤害', body.includes('命中') && body.includes('造成 4 点伤害'))
   check('P1-008-B: MP 6→4', body.includes('4 / 6'))
-  check('P1-008-B: 魔化兔 HP 8→5', body.includes('5 / 8'))
+  check('P1-008-B: 魔化兔 HP 8→4', body.includes('4 / 8'))
   check('P1-008-B: 玩家 HP 不变（压制反击未发生）', readHps(body).player === warriorInitialHp)
   check('P1-008-B: 无魔化兔的攻击（敌人未行动）', !body.includes('魔化兔的攻击：'))
   check('P1-008-B: 战斗仍在进行（phase active）', body.includes('普通攻击') && (await buttonDisabled('普通攻击')) === false)
@@ -1952,7 +1952,7 @@ try {
   body = await bodyText()
   check('P1-008-C: 显示你的压制猛击：大失败', body.includes('你的压制猛击') && body.includes('大失败'))
   check('P1-008-C: MP 4→2', body.includes('2 / 6'))
-  check('P1-008-C: 魔化兔仍 HP 5 / 8（大失败不造成伤害）', body.includes('5 / 8'))
+  check('P1-008-C: 魔化兔仍 HP 4 / 8（大失败不造成伤害）', body.includes('4 / 8'))
   check('P1-008-C: 出现魔化兔的攻击（未命中正常反击）', body.includes('魔化兔的攻击：'))
   check('P1-008-C: 玩家 HP 明确下降（敌人天然20 暴击反击）', readHps(body).player < warriorInitialHp)
 

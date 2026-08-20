@@ -110,6 +110,15 @@ export function getKnightPowerStrikeDamage(str: number, weaponDamageBonus = 0, l
   return damage
 }
 
+/** 战士压制猛击原始伤害 = 玩家攻击力 + 1（TM-P2-003 A 修正：原为等同普攻，现 +1 提升价值；仍低于骑士重击的 +2） */
+export function getWarriorSuppressStrikeDamage(str: number, weaponDamageBonus = 0, level = 1): number {
+  const damage = getPlayerAttackPower(str, weaponDamageBonus, level) + 1
+  if (!Number.isFinite(damage)) {
+    throw new RangeError('压制猛击伤害溢出')
+  }
+  return damage
+}
+
 /** 游侠迅捷突袭原始伤害 = 以 AGI 为攻击属性的物理伤害 + 2 */
 export function getRangerSwiftStrikeDamage(agi: number, weaponDamageBonus = 0, level = 1): number {
   // 迅捷突袭沿用「AGI 视为力量」的封板语义：4 + AGI修正 + 武器 + 等级，再 +2

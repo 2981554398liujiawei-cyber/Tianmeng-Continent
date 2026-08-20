@@ -1,5 +1,6 @@
 import type { GameState, Character, Inventory, Equipment, WorldState } from '../types'
 import { PROFESSION_IDS } from '../types/character'
+import { defaultSkillsForProfession } from '../content/skills'
 import { QUEST_STATUSES } from '../types/quest'
 
 /** 旧 V1 单槽存档 key（TM-P2-002 H：迁移源；迁移成功前不删除） */
@@ -11,8 +12,10 @@ export const SAVE_SLOT_KEY_PREFIX = 'tianmeng_continent_save_slot_'
 
 export const SAVE_VERSION = 2
 export const LEGACY_SAVE_VERSION = 1
-/** TM-P2-002-R1 G：槽位文件自身格式版本（SaveSlot.version；当前 2）。兼容 514f3e2 已产生的无版本 V2 槽（version 缺失视为 1，读时补全）。 */
-export const SLOT_FORMAT_VERSION = 2
+/** TM-P2-002-R1 G：槽位文件自身格式版本（SaveSlot.version）。
+ *  3（TM-P2-003 A）：player 增加 learnedSkillIds（技能注册表）。
+ *  兼容 514f3e2 无版本 V2 槽与 2.x 版本槽（迁移链补齐 version / learnedSkillIds）。 */
+export const SLOT_FORMAT_VERSION = 3
 
 export const SLOT_IDS = ['slot1', 'slot2', 'slot3', 'slot4', 'slot5'] as const
 export type SlotId = (typeof SLOT_IDS)[number]
@@ -98,6 +101,13 @@ function isCharacter(value: unknown): value is Character {
   if (!isNonNegativeInteger(value.hp) || !isNonNegativeInteger(value.maxHp)) return false
   if (!isNonNegativeInteger(value.mp) || !isNonNegativeInteger(value.maxMp)) return false
   if (!isNonNegativeInteger(value.gold)) return false
+  // TM-P2-003 A：learnedSkillIds 可选（旧 schema 无此字段仍合法；迁移链负责补全）
+  if (
+    value.learnedSkillIds !== undefined &&
+    (!Array.isArray(value.learnedSkillIds) || !value.learnedSkillIds.every((id) => typeof id === 'string'))
+  ) {
+    return false
+  }
   return true
 }
 
@@ -517,16 +527,29 @@ export function migrateSave(): boolean {
         const raw = storage.getItem(slotKey(id))
         if (!raw) continue
         const parsed: unknown = JSON.parse(raw)
-        if (
-          isRecord(parsed) &&
-          parsed.version === undefined &&
-          typeof parsed.savedAt === 'string' &&
-          isGameState(parsed.gameState)
-        ) {
-          // 514f3e2 产生的无版本 V2 槽 → 补 version 字段（原地升级）
+        if (!isRecord(parsed) || typeof parsed.savedAt !== 'string') continue
+        // Step 2（R1 G）：514f3e2 无版本 V2 槽 → 补 version + learnedSkillIds（TM-P2-003 A 一并迁移）
+        if (parsed.version === undefined && isGameState(parsed.gameState)) {
+          const gs = parsed.gameState
+          if (!Array.isArray(gs.player.learnedSkillIds)) {
+            gs.player.learnedSkillIds = defaultSkillsForProfession(gs.player.profession)
+          }
           storage.setItem(
             slotKey(id),
-            JSON.stringify({ version: SLOT_FORMAT_VERSION, savedAt: parsed.savedAt, gameState: parsed.gameState }),
+            JSON.stringify({ version: SLOT_FORMAT_VERSION, savedAt: parsed.savedAt, gameState: gs }),
+          )
+          changed = true
+          continue
+        }
+        // Step 3（TM-P2-003 A）：schema 2 → 3 —— player 补 learnedSkillIds（按职业初始技能）
+        if (parsed.version === 2 && isGameState(parsed.gameState)) {
+          const gs = parsed.gameState
+          if (!Array.isArray(gs.player.learnedSkillIds)) {
+            gs.player.learnedSkillIds = defaultSkillsForProfession(gs.player.profession)
+          }
+          storage.setItem(
+            slotKey(id),
+            JSON.stringify({ version: SLOT_FORMAT_VERSION, savedAt: parsed.savedAt, gameState: gs }),
           )
           changed = true
         }

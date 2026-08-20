@@ -656,3 +656,87 @@ describe('TM-P2-002-R2 C：迁移按 raw key 判断 Slot1 占用（禁止覆盖�
     expect(localStorage.getItem(LEGACY_SAVE_KEY)).not.toBeNull()
   })
 })
+
+// ================= TM-P2-003 A：schema 2 → 3 迁移（learnedSkillIds） =================
+
+describe('TM-P2-003 A：旧 V2 存档迁移 learnedSkillIds', () => {
+  /** 构造 version 2 槽（player 无 learnedSkillIds；模拟 2407f78 时代存档） */
+  const writeV2Slot = (slotId: SlotId, gold: number, profession = 'knight') => {
+    const state = stateWithGold(gold)
+    state.player.profession = profession as never
+    // 关键旧状态（黄金兔冻结 + 兔子的路径）——验证迁移前后原封不动
+    state.quests = [
+      {
+        questId: 'quest_golden_rabbit_search',
+        status: 'in_progress',
+        stage: 0,
+        flags: {
+          asked_blacksmith: true,
+          asked_apothecary: true,
+          village_inquiry_reported: true,
+          rabbit_lair_rechecked: true,
+        },
+      },
+    ]
+    state.inventory = [{ itemId: 'rabbit_path', quantity: 1 }]
+    // @ts-expect-error 模拟旧 schema（无 learnedSkillIds 字段）
+    delete state.player.learnedSkillIds
+    localStorage.setItem(`tianmeng_continent_save_slot_${slotId}`, JSON.stringify({ version: 2, savedAt: '2026-01-01T08:00:00.000Z', gameState: state }))
+  }
+
+  it('version 2 槽 → migrateSave 补 learnedSkillIds（按职业）并升级 version 3', () => {
+    writeV2Slot('slot1', 70)
+    expect(migrateSave()).toBe(true)
+    const raw = JSON.parse(localStorage.getItem('tianmeng_continent_save_slot_slot1')!)
+    expect(raw.version).toBe(3)
+    expect(raw.gameState.player.learnedSkillIds).toEqual(['knight_power_strike'])
+  })
+
+  it('法师旧档迁移获得法术攻击', () => {
+    writeV2Slot('slot2', 70, 'mage')
+    migrateSave()
+    const raw = JSON.parse(localStorage.getItem('tianmeng_continent_save_slot_slot2')!)
+    expect(raw.gameState.player.learnedSkillIds).toEqual(['mage_spell'])
+  })
+
+  it('迁移前后黄金兔四 flags / rabbit_path ×1 原封不动', () => {
+    writeV2Slot('slot3', 70)
+    migrateSave()
+    const raw = JSON.parse(localStorage.getItem('tianmeng_continent_save_slot_slot3')!)
+    const gs = raw.gameState
+    expect(gs.quests[0]).toMatchObject({
+      questId: 'quest_golden_rabbit_search',
+      status: 'in_progress',
+      stage: 0,
+      flags: {
+        asked_blacksmith: true,
+        asked_apothecary: true,
+        village_inquiry_reported: true,
+        rabbit_lair_rechecked: true,
+      },
+    })
+    expect(gs.inventory).toEqual([{ itemId: 'rabbit_path', quantity: 1 }])
+  })
+
+  it('migrateSave 幂等：已带 learnedSkillIds 的 v3 槽不重复改写', () => {
+    writeV2Slot('slot4', 70)
+    migrateSave()
+    const before = localStorage.getItem('tianmeng_continent_save_slot_slot4')
+    expect(migrateSave()).toBe(false)
+    expect(localStorage.getItem('tianmeng_continent_save_slot_slot4')).toBe(before)
+  })
+
+  it('无版本旧 V2 槽（514f3e2 时代）迁移后同时获得 version 与 learnedSkillIds', () => {
+    const state = stateWithGold(70)
+    // @ts-expect-error 模拟无版本旧槽
+    delete state.player.learnedSkillIds
+    localStorage.setItem(
+      'tianmeng_continent_save_slot_slot5',
+      JSON.stringify({ savedAt: '2026-01-01T08:00:00.000Z', gameState: state }),
+    )
+    expect(migrateSave()).toBe(true)
+    const raw = JSON.parse(localStorage.getItem('tianmeng_continent_save_slot_slot5')!)
+    expect(raw.version).toBe(3)
+    expect(raw.gameState.player.learnedSkillIds).toEqual(['knight_power_strike'])
+  })
+})

@@ -22,6 +22,8 @@ export interface Character {
   mp: number
   maxMp: number
   gold: number
+  /** 已学习技能 ID 列表（TM-P2-003 A：新角色按职业自动获得；存档 schema 2→3 迁移字段） */
+  learnedSkillIds: string[]
 }
 
 /** 角色创建输入（TM-P0-004） */

@@ -7,6 +7,11 @@ import { getEnemy, getItem, getLocation, getNpc, getQuest } from '../content'
 import { performD20Check, CHECK_DC, type D20CheckResult } from '../rules/d20'
 import { KNIGHT_POWER_STRIKE_MP_COST, MAGE_SPELL_MP_COST, WARRIOR_SUPPRESS_STRIKE_MP_COST } from '../rules/combat'
 import { LEVEL_2_MAX_HP_GAIN, LEVEL_2_MAX_MP_GAIN } from '../rules/character'
+import { rollLoot } from '../rules/loot'
+import type { LootGrant } from '../types/loot'
+import { getSkill } from '../content/skills'
+import { rollLuckCheck, resolveLuckCheck, type LuckCheckResult } from '../rules/luck'
+import { resolveD20Check, rollD20 } from '../rules/d20'
 
 /** TM-P1-003：《村外异动》完成后村长一次性回应事件 ID（唯一代码来源，GamePage 亦读取） */
 export const VILLAGE_ELDER_POST_QUEST_EVENT_ID = 'village_elder_post_quest_response'
@@ -102,6 +107,19 @@ interface GameStoreState {
   addGold: (amount: number) => void
   removeGold: (amount: number) => void
   addItem: (itemId: string, quantity?: number) => void
+  /** TM-P2-003 C：结算敌人掉落（基础 + 幸运追加）；返回掉落结果（组件展示）；无掉落表返回 null */
+  grantLoot: (enemyId: string) => LootGrant | null
+  // ---- TM-P2-003 D/E/F：北门旧哨塔补给匣 ----
+  /** 技能路线开启（按 Tag：force/movement/magic）；正常消耗 MP；返回结果供 UI 展示 */
+  openNorthTowerWithSkill: (skillId: string) => NorthTowerSkillResult
+  /** MND 检定寻找备用机关（确定性：roll 可选）；失败写 north_tower_mnd_failed（可触发命运补救） */
+  northTowerMndCheck: (roll?: number) => NorthTowerMndResult
+  /** 命运补救（每节点最多一次）：MND 失败后的一次幸运检定；结果进存档不可重刷 */
+  northTowerLuckRescue: (roll?: number) => NorthTowerLuckResult
+  /** 领取补给匣宝箱（基础必给 + Luck 追加；一次性，不可重复领） */
+  claimNorthTowerCache: (roll?: number) => NorthTowerClaimResult
+  // ---- TM-P2-003 G：机缘型社交（路边旧货商；首次交流自动幸运检定，结果进存档不可反复刷） ----
+  oldTraderTalk: (roll?: number) => OldTraderResult
   removeItem: (itemId: string, quantity?: number) => void
   setFlag: (key: string, value: boolean | number | string) => void
   /** 正式查看《兔子的路径》（TM-P1-013）：仅背包合法持有 rabbit_path（quantity 安全整数 >=1）且 rabbit_path_examined 为 undefined/false 时成功，只写 world.flags.rabbit_path_examined=true；重复/非法 quantity/非 boolean 旧 flag → false 且完全不变；不消耗地图、不自动保存 */
@@ -247,6 +265,194 @@ export const useGameStore = create<GameStoreState>()((set) => ({
     const ok = storageImportSaves(json)
     set({ hasSave: hasAnySave(), slots: loadIndexSummary(), lastSavedSlot: loadIndexLast() })
     return ok
+  },
+
+
+  // ---- TM-P2-003 D/E/F：北门旧哨塔补给匣实现 ----
+  openNorthTowerWithSkill: (skillId) => {
+    const s = useGameStore.getState().gameState
+    if (!s) return null
+    const atNorthGate = s.world.currentLocationId === 'tianlong_north_gate'
+    const wolfDefeated = s.quests.find((q) => q.questId === 'quest_north_gate_missing_patrol')?.flags.north_gate_wolf_defeated === true
+    if (!atNorthGate || !wolfDefeated) return null
+    const opened = s.world.flags.north_tower_opened === true
+    const claimed = s.world.flags.north_tower_cache_claimed === true
+    if (opened || claimed) return { outcome: 'already_opened' }
+    const skill = getSkill(skillId)
+    if (!skill || skill.profession !== s.player.profession) return { outcome: 'no_skill' }
+    // TM-P2-003 D：按 Tag 判断解法（不是按技能 ID）
+    const hasTag = skill.tags.some((t) => t === 'force' || t === 'movement' || t === 'magic')
+    if (!hasTag) return { outcome: 'wrong_tag' }
+    if (s.player.mp < skill.mpCost) return { outcome: 'no_mp' }
+    set((st) => {
+      if (!st.gameState) return {}
+      return {
+        gameState: {
+          ...st.gameState,
+          player: { ...st.gameState.player, mp: st.gameState.player.mp - skill.mpCost },
+          world: {
+            ...st.gameState.world,
+            flags: { ...st.gameState.world.flags, north_tower_opened: true },
+          },
+        },
+      }
+    })
+    return { outcome: 'opened', skillName: skill.name, mpCost: skill.mpCost }
+  },
+
+  northTowerMndCheck: (roll) => {
+    const s = useGameStore.getState().gameState
+    if (!s) return null
+    const atNorthGate = s.world.currentLocationId === 'tianlong_north_gate'
+    const wolfDefeated = s.quests.find((q) => q.questId === 'quest_north_gate_missing_patrol')?.flags.north_gate_wolf_defeated === true
+    if (!atNorthGate || !wolfDefeated) return null
+    if (s.world.flags.north_tower_opened === true) return null
+    const check = resolveD20Check(
+      { attributeScore: s.player.attributes.mnd, level: s.player.level, dc: NORTH_TOWER_MND_DC },
+      roll ?? rollD20(),
+    )
+    if (check.success) {
+      set((st) =>
+        st.gameState
+          ? {
+              gameState: {
+                ...st.gameState,
+                world: { ...st.gameState.world, flags: { ...st.gameState.world.flags, north_tower_opened: true } },
+              },
+            }
+          : {},
+      )
+      return { outcome: 'success', check }
+    }
+    // 失败：写 north_tower_mnd_failed（幂等；触发命运补救入口）
+    set((st) =>
+      st.gameState
+        ? {
+            gameState: {
+              ...st.gameState,
+              world: {
+                ...st.gameState.world,
+                flags: { ...st.gameState.world.flags, north_tower_mnd_failed: true },
+              },
+            },
+          }
+        : {},
+    )
+    return { outcome: 'failed', check }
+  },
+
+  northTowerLuckRescue: (roll) => {
+    const s = useGameStore.getState().gameState
+    if (!s) return null
+    const atNorthGate = s.world.currentLocationId === 'tianlong_north_gate'
+    const wolfDefeated = s.quests.find((q) => q.questId === 'quest_north_gate_missing_patrol')?.flags.north_gate_wolf_defeated === true
+    if (!atNorthGate || !wolfDefeated) return null
+    if (s.world.flags.north_tower_opened === true) return null
+    // 每节点最多一次：MND 失败后 + 未使用过
+    if (s.world.flags.north_tower_mnd_failed !== true) return null
+    if (s.world.flags.north_tower_luck_used === true) return null
+    const check = resolveLuckCheck(roll ?? rollD20(), s.player.attributes.lck, NORTH_TOWER_LUCK_DC)
+    if (check.success) {
+      set((st) =>
+        st.gameState
+          ? {
+              gameState: {
+                ...st.gameState,
+                world: {
+                  ...st.gameState.world,
+                  flags: {
+                    ...st.gameState.world.flags,
+                    north_tower_opened: true,
+                    north_tower_luck_used: true,
+                  },
+                },
+              },
+            }
+          : {},
+      )
+      return { outcome: 'rescued', check }
+    }
+    set((st) =>
+      st.gameState
+        ? {
+            gameState: {
+              ...st.gameState,
+              world: { ...st.gameState.world, flags: { ...st.gameState.world.flags, north_tower_luck_used: true } },
+            },
+          }
+        : {},
+    )
+    return { outcome: 'failed', check }
+  },
+
+  claimNorthTowerCache: (roll) => {
+    const s = useGameStore.getState().gameState
+    if (!s) return null
+    if (s.world.flags.north_tower_opened !== true) return { outcome: 'locked' }
+    if (s.world.flags.north_tower_cache_claimed === true) return { outcome: 'already_claimed' }
+    const check = resolveLuckCheck(roll ?? rollD20(), s.player.attributes.lck, NORTH_TOWER_LUCK_DC)
+    const items: { itemId: string; quantity: number }[] = [{ itemId: 'healing_potion', quantity: 1 }]
+    let gold = NORTH_TOWER_CACHE_BASE_GOLD
+    if (check.success) gold += NORTH_TOWER_CACHE_LUCK_GOLD
+    if (check.outcome === 'critical_success') items.push({ itemId: 'refined_iron_sword', quantity: 1 })
+    set((st) => {
+      if (!st.gameState) return {}
+      let inventory = [...st.gameState.inventory]
+      for (const it of items) {
+        const idx = inventory.findIndex((e) => e.itemId === it.itemId)
+        inventory =
+          idx >= 0
+            ? inventory.map((e, i) => (i === idx ? { ...e, quantity: e.quantity + it.quantity } : e))
+            : [...inventory, { itemId: it.itemId, quantity: it.quantity }]
+      }
+      return {
+        gameState: {
+          ...st.gameState,
+          inventory,
+          player: { ...st.gameState.player, gold: st.gameState.player.gold + gold },
+          world: {
+            ...st.gameState.world,
+            flags: { ...st.gameState.world.flags, north_tower_cache_claimed: true },
+          },
+        },
+      }
+    })
+    return { outcome: 'claimed', items, gold, luckCheck: check }
+  },
+
+  oldTraderTalk: (roll) => {
+    const s = useGameStore.getState().gameState
+    if (!s) return null
+    if (s.world.currentLocationId !== 'tianlong_city') return null
+    // 一次性：结果进存档，刷新/反复交谈不重刷
+    if (s.world.flags.old_trader_talked === true) return null
+    const check = resolveLuckCheck(roll ?? rollD20(), s.player.attributes.lck, OLD_TRADER_LUCK_DC)
+    // 归一化：大失败视为失败（叙事只有 失败/成功/大成功 三档）
+    const outcome = check.outcome === 'critical_success' ? 'critical_success' : check.success ? 'success' : 'failure'
+    let goldBonus = 0
+    if (outcome === 'critical_success') goldBonus = OLD_TRADER_CRITICAL_GOLD
+    set((st) => {
+      if (!st.gameState) return {}
+      return {
+        gameState: {
+          ...st.gameState,
+          player: { ...st.gameState.player, gold: st.gameState.player.gold + goldBonus },
+          world: {
+            ...st.gameState.world,
+            flags: {
+              ...st.gameState.world.flags,
+              old_trader_talked: true,
+              old_trader_outcome: outcome,
+            },
+          },
+        },
+      }
+    })
+    return {
+      outcome,
+      luckCheck: check,
+      goldBonus,
+    }
   },
 
   setCurrentLocation: (locationId) => {
@@ -1134,6 +1340,32 @@ export const useGameStore = create<GameStoreState>()((set) => ({
     })
   },
 
+  grantLoot: (enemyId) => {
+    const player = useGameStore.getState().gameState?.player
+    if (!player) return null
+    const grant = rollLoot(enemyId, player.attributes.lck)
+    if (!grant) return null
+    set((s) => {
+      if (!s.gameState) return {}
+      let inventory = [...s.gameState.inventory]
+      for (const it of grant.items) {
+        const idx = inventory.findIndex((e) => e.itemId === it.itemId)
+        inventory =
+          idx >= 0
+            ? inventory.map((e, i) => (i === idx ? { ...e, quantity: e.quantity + it.quantity } : e))
+            : [...inventory, { itemId: it.itemId, quantity: it.quantity }]
+      }
+      return {
+        gameState: {
+          ...s.gameState,
+          inventory,
+          player: { ...s.gameState.player, gold: s.gameState.player.gold + grant.gold },
+        },
+      }
+    })
+    return grant
+  },
+
   removeItem: (itemId, quantity = 1) => {
     if (!itemId || !Number.isInteger(quantity) || quantity <= 0) return
     set((s) => {
@@ -1583,3 +1815,44 @@ function loadIndexSummary(): SavesIndex['slots'] {
 function loadIndexLast(): SlotId | null {
   return loadIndex().lastSavedSlot
 }
+
+// ---- TM-P2-003 D/E/F：北门旧哨塔类型与常量 ----
+
+/** MND 检定 DC（寻找备用机关） */
+export const NORTH_TOWER_MND_DC = 12
+/** 命运补救 / 宝箱追加 Luck 检定 DC */
+export const NORTH_TOWER_LUCK_DC = 12
+/** 宝箱基础金币（Luck 无关，必给） */
+export const NORTH_TOWER_CACHE_BASE_GOLD = 20
+/** 宝箱 Luck 成功追加金币 */
+export const NORTH_TOWER_CACHE_LUCK_GOLD = 30
+
+export type NorthTowerSkillResult =
+  | { outcome: 'opened'; skillName: string; mpCost: number }
+  | { outcome: 'no_skill' | 'no_mp' | 'wrong_tag' | 'already_opened' }
+  | null
+
+export type NorthTowerMndResult = { outcome: 'success' | 'failed' | 'locked'; check: D20CheckResult } | null
+
+export type NorthTowerLuckResult = { outcome: 'rescued' | 'failed' | 'locked'; check: LuckCheckResult } | null
+
+/** 旧货商机缘检定 DC */
+export const OLD_TRADER_LUCK_DC = 12
+/** 旧货商大成功小礼物（金币） */
+export const OLD_TRADER_CRITICAL_GOLD = 15
+
+export type OldTraderResult = {
+  outcome: 'success' | 'failure' | 'critical_success'
+  luckCheck: LuckCheckResult
+  goldBonus: number
+} | null
+
+export type NorthTowerClaimResult =
+  | {
+      outcome: 'claimed'
+      items: { itemId: string; quantity: number }[]
+      gold: number
+      luckCheck: LuckCheckResult
+    }
+  | { outcome: 'locked' | 'already_claimed' }
+  | null

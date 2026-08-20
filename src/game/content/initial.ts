@@ -1,6 +1,7 @@
 import type { AttributeKey, Character, CharacterCreationInput, GameState } from '../types'
 import { PROFESSION_IDS } from '../types/character'
 import { getStartingMaxHp, getStartingMaxMp } from '../rules/character'
+import { defaultSkillsForProfession } from './skills'
 
 /** 初始地点（V1 开发用） */
 export const START_LOCATION_ID = 'qingshi_village'
@@ -58,6 +59,7 @@ const DEFAULT_PLAYER: Character = {
   mp: 6,
   maxMp: 6,
   gold: 50,
+  learnedSkillIds: ['knight_power_strike'],
 }
 
 function buildPlayer(input?: CharacterCreationInput): Character {
@@ -80,6 +82,7 @@ function buildPlayer(input?: CharacterCreationInput): Character {
     mp: maxMp,
     maxMp,
     gold: 50,
+    learnedSkillIds: defaultSkillsForProfession(input.profession),
   }
 }
 
