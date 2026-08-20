@@ -45,7 +45,8 @@ const clickByText = async (text) => {
     if (!btn) throw new Error('未找到按钮: ' + t)
     btn.click()
   }, text)
-  await sleep(250)
+  // TM-P2-003-R3：持久 profile 下 React 渲染稍慢，点击后留足时序余量
+  await sleep(400)
 }
 
 const bodyText = () => page.evaluate(() => document.body.textContent)

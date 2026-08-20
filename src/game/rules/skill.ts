@@ -103,16 +103,93 @@ export function resolveSkillRawDamage(skillId: string, ctx: SkillDamageContext):
 }
 
 /**
- * 已学习技能（learnedSkillIds → Registry 动态解析；未知/损坏/职业不匹配安全忽略）。
+ * 已学习技能（learnedSkillIds → Registry 动态解析）。
+ * R3 统一语义：
+ *  - 未知/损坏 ID 安全忽略
+ *  - 重复 ID 去重（保留首次出现顺序，避免重复技能按钮 / React duplicate key）
+ *  - 职业兼容：skill.profession === undefined（通用技能）或 === profession 才保留
  * 供战斗页与场景共用（TM-P2-003-R1 C：Store 也用同款语义校验）。
  */
 export function getUsableSkills(learnedSkillIds: readonly string[] | undefined, profession: ProfessionId): SkillDefinition[] {
-  return (learnedSkillIds ?? [])
-    .map((id) => getSkill(id))
-    .filter((s): s is SkillDefinition => s !== undefined && s.profession === profession)
+  const seen = new Set<string>()
+  const result: SkillDefinition[] = []
+  for (const id of learnedSkillIds ?? []) {
+    if (seen.has(id)) continue
+    seen.add(id)
+    const skill = getSkill(id)
+    if (!skill) continue
+    if (skill.profession !== undefined && skill.profession !== profession) continue
+    result.push(skill)
+  }
+  return result
 }
 
 /** 是否已学习某技能（Store/UI 共用；TM-P2-003-R1 C） */
 export function hasLearnedSkill(learnedSkillIds: readonly string[] | undefined, skillId: string): boolean {
   return (learnedSkillIds ?? []).includes(skillId)
+}
+
+// ---- TM-P2-003-R3 C：统一技能「可使用性」纯校验（战斗 / 场景共用唯一规则） ----
+
+/** 技能使用被阻断的原因（R3 统一；纯函数返回，不读 Store、不写 Store） */
+export type SkillUseBlockReason =
+  | 'unknown_skill'
+  | 'not_learned'
+  | 'profession_mismatch'
+  | 'invalid_max_mp'
+  | 'invalid_mp'
+  | 'invalid_cost'
+  | 'insufficient_mp'
+
+/** 技能使用校验所需玩家上下文（调用方从 gameState 提取） */
+export interface SkillUseContext {
+  learnedSkillIds?: readonly string[]
+  profession: ProfessionId
+  mp: number
+  maxMp: number
+}
+
+/** 技能使用校验结果：allowed 时附带 skill 与 mpCost，调用方直接使用 */
+export interface SkillUseCheck {
+  allowed: boolean
+  reason?: SkillUseBlockReason
+  skill?: SkillDefinition
+  mpCost?: number
+}
+
+/**
+ * 统一技能使用校验（TM-P2-003-R3 C2/C3）。
+ * 纯函数：不读 Store、不写 Store、不 roll、不写 world.flags。
+ * 检查顺序（任一失败即返回，允许时附 skill/mpCost）：
+ *  1. 技能 ID 是否存在（unknown_skill）
+ *  2. 是否已学习（not_learned）
+ *  3. 职业是否兼容（profession_mismatch；profession === undefined 为通用技能，人人可用）
+ *  4. maxMp 是否安全整数且 >= 0（invalid_max_mp）
+ *  5. mp 是否安全整数且 ∈ [0, maxMp]（invalid_mp）
+ *  6. mpCost 是否安全整数且 >= 0（invalid_cost）
+ *  7. mp 是否足够（insufficient_mp）
+ */
+export function checkSkillUse(skillId: string, ctx: SkillUseContext): SkillUseCheck {
+  const skill = getSkill(skillId)
+  if (!skill) return { allowed: false, reason: 'unknown_skill' }
+  if (!hasLearnedSkill(ctx.learnedSkillIds, skillId)) {
+    return { allowed: false, reason: 'not_learned', skill, mpCost: skill.mpCost }
+  }
+  if (skill.profession !== undefined && skill.profession !== ctx.profession) {
+    return { allowed: false, reason: 'profession_mismatch', skill, mpCost: skill.mpCost }
+  }
+  if (!Number.isSafeInteger(ctx.maxMp) || ctx.maxMp < 0) {
+    return { allowed: false, reason: 'invalid_max_mp', skill, mpCost: skill.mpCost }
+  }
+  if (!Number.isSafeInteger(ctx.mp) || ctx.mp < 0 || ctx.mp > ctx.maxMp) {
+    return { allowed: false, reason: 'invalid_mp', skill, mpCost: skill.mpCost }
+  }
+  const cost = skill.mpCost
+  if (!Number.isSafeInteger(cost) || cost < 0) {
+    return { allowed: false, reason: 'invalid_cost', skill, mpCost: cost }
+  }
+  if (ctx.mp < cost) {
+    return { allowed: false, reason: 'insufficient_mp', skill, mpCost: cost }
+  }
+  return { allowed: true, skill, mpCost: cost }
 }

@@ -2,14 +2,18 @@
 
 单人、浏览器运行、文字叙事驱动的 D20 奇幻 CRPG。场景节点式探索、回合制战斗、角色成长与装备、NPC 对话与关系变化、分支剧情与世界状态变化。
 
-> 当前阶段：Phase 2 — 技能系统 MVP、Luck 世界检定、掉落/宝箱与场景技能互动（任务卡 TM-P2-003）。
+> 当前阶段：Phase 2 — 技能系统 MVP、Luck 世界检定、掉落/宝箱与场景技能互动（任务卡 TM-P2-003，R3 封板返修已收束）。
 > 已上线：角色自由创建、响应式三栏/两栏/单栏、战斗规则 V3（攻击力/护甲/敏捷 + 敏捷命中 + 护甲减伤 + 先手）、
 > 五槽位存档（自动迁移旧单档、导出/导入、按 savedAt 选真正最新）、新主线《北门失联》、
-> **技能注册表**（四职业技能 → Skill Registry + learnedSkillIds，存档 schema 2→3 自动迁移）、
+> **技能注册表**（四职业技能 → Skill Registry + learnedSkillIds，存档 schema 2→3 自动迁移；
+> R3 起战斗/场景共用统一 `checkSkillUse` 纯校验：职业兼容（无 profession = 通用技能）、learnedSkillIds 去重）、
 > **Luck 世界检定**（幸运修正 + D20 检定，正式影响怪物掉落/宝箱/命运补救/机缘社交）、
 > **掉落系统**（基础掉落与剧情必掉解耦 + 幸运追加；黑鬃魔狼狼牙/狼皮）、
 > **北门旧哨塔**（技能 Tag 解法 force/movement/magic + MND 检定 + 命运补救 + 补给匣宝箱）、
-> **机缘型社交**（天龙城旧货商首次交流自动幸运检定）。
+> **机缘型社交**（天龙城旧货商首次交流自动幸运检定）、
+> **精制铁剑装备闭环**（补给匣大成功奖励 → 数据驱动武器入口 → 装备/卸下/切换 → 攻击力 +3 生效）、
+> **战斗入口纯规则**（`rules/encounter.ts` 统一 authoritative gate，App.tsx 不再承载敌人业务 if）、
+> **背包面板组件化**（`InventoryPanel` 从 GamePage 抽出）。
 
 ## 阶段状态
 
@@ -17,13 +21,17 @@
 > 已完成 Phase 1 全部正式主线/支线内容并收口：第一主线《村外异动》→ 矿洞清理 → 草原狼影 → 嘟嘟兔 /《兔子的路径》→ 黄金兔子调查（展开地图/村长/铁匠/药师/巢穴复查）→ 两条支线《采药受阻》《矿洞余患》→ 离开青石村 → 天龙城 → 《商人王财的麻烦》（马科 → 王财 → 黑石塔一层/二层/三层 → 夔峒项链 → 交还王财 → 回武馆复命）→ 第一阶段完成；黄金兔子长期线《追寻黄金兔子王》在后续阶段继续（冻结保留）。
 > 开发者自测基线：单测 879、Dev E2E 932、phase1-playthrough 189、prod smoke 6、build PASS、GitHub Actions CI success。
 
-> **PHASE 2 — 开发中 🚧**（TM-P2-001 `feat: start phase two foundation and north gate story`；TM-P2-002 战斗 V3 + 五槽位存档）。
+> **PHASE 2 — 开发中 🚧**（TM-P2-001 `feat: start phase two foundation and north gate story`；TM-P2-002 战斗 V3 + 五槽位存档；TM-P2-003 技能注册表/Luck/掉落/哨塔场景 + R3 封板返修）。
 > 已完成：角色创建自由化、响应式三栏/两栏/单栏、新主线《北门失联》（30 金）、
 > **战斗规则 V3**（玩家派生 攻击力 = max(1, 4+STR修正+武器+等级) / 护甲 = max(0, 10+CON修正+装备护甲) / 敏捷 = AGI；
 > 命中：(敏捷+roll)/2 vs 对方敏捷，天然1 大失败、天然20 200% 暴击、其余命中/擦伤；
 > 护甲减伤：最终 = max(1, ceil(raw × roll/(armor+roll)))；先手 D20+AGI，平局 AGI 高者先，再平玩家先），
 > **五槽位存档**（slot1–slot5 逐槽独立存储，坏槽隔离；旧 V1 单档自动迁移至 Slot1；最近存档 Continue；导出/导入 JSON 完整校验）。
-> 当前自测基线：单测 998、Dev E2E 954、phase1-playthrough 195、phase2-e2e 58、phase3-e2e 28、responsive-e2e 20、prod smoke 6、build PASS、GitHub Actions CI success。
+> R3 封板：精制铁剑玩家闭环（Luck 大成功 → 补给匣 → 数据驱动装备 → 攻击力 +3 生效）、
+> 技能使用统一 pure 校验（`rules/skill.ts checkSkillUse`，spendSkillMp 与北门场景共用，MP+场景 flag 原子提交，profession-less 通用技能可用，learnedSkillIds 去重）、
+> 战斗入口规则抽取（`rules/encounter.ts`，App.tsx 移除全部敌人业务 if）、
+> `InventoryPanel` 组件抽取（GamePage 不再 hardcode 铁剑）、CI 增加 Production browser smoke 门禁。
+> 当前自测基线：单测 1073、Dev E2E 954、phase1-playthrough 195、phase2-e2e 58、phase3-e2e 28、responsive-e2e 20、R3 focused 17、prod smoke 6、build PASS、GitHub Actions CI（含浏览器 smoke）success。
 
 ## 战斗系统（V3）
 

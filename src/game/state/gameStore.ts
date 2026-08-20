@@ -9,8 +9,7 @@ import { KNIGHT_POWER_STRIKE_MP_COST, MAGE_SPELL_MP_COST, WARRIOR_SUPPRESS_STRIK
 import { LEVEL_2_MAX_HP_GAIN, LEVEL_2_MAX_MP_GAIN } from '../rules/character'
 import { rollLoot } from '../rules/loot'
 import type { LootGrant } from '../types/loot'
-import { getSkill } from '../content/skills'
-import { hasLearnedSkill } from '../rules/skill'
+import { checkSkillUse } from '../rules/skill'
 import { rollLuckCheck, resolveLuckCheck, type LuckCheckResult } from '../rules/luck'
 import { resolveD20Check, rollD20 } from '../rules/d20'
 
@@ -275,26 +274,46 @@ export const useGameStore = create<GameStoreState>()((set) => ({
   openNorthTowerWithSkill: (skillId) => {
     const s = useGameStore.getState().gameState
     if (!s) return null
+    // 场景前置：当前位置北门 + 黑鬃魔狼已击败 + 旧哨塔尚未开启 + 补给匣尚未领取
     const atNorthGate = s.world.currentLocationId === 'tianlong_north_gate'
     const wolfDefeated = s.quests.find((q) => q.questId === 'quest_north_gate_missing_patrol')?.flags.north_gate_wolf_defeated === true
     if (!atNorthGate || !wolfDefeated) return null
     const opened = s.world.flags.north_tower_opened === true
     const claimed = s.world.flags.north_tower_cache_claimed === true
     if (opened || claimed) return { outcome: 'already_opened' }
-    const skill = getSkill(skillId)
-    if (!skill || skill.profession !== s.player.profession) return { outcome: 'no_skill' }
-    // TM-P2-003-R1 C：必须真正学过（learnedSkillIds 显式包含）；同职业但未学习不能使用
-    if (!hasLearnedSkill(s.player.learnedSkillIds, skillId)) return { outcome: 'no_skill' }
+    // TM-P2-003-R3 C：统一技能校验（与战斗 spendSkillMp 同一 pure rule，不再复制一套业务判断）；
+    // 外部 API 语义保持：unknown_skill / not_learned / profession_mismatch / invalid_* 统一映射为 no_skill，
+    // insufficient_mp 保持 no_mp（UI 已有灵力不足提示分支）
+    const check = checkSkillUse(skillId, {
+      learnedSkillIds: s.player.learnedSkillIds,
+      profession: s.player.profession,
+      mp: s.player.mp,
+      maxMp: s.player.maxMp,
+    })
+    if (!check.allowed || !check.skill) {
+      if (check.reason === 'insufficient_mp') return { outcome: 'no_mp' }
+      return { outcome: 'no_skill' }
+    }
+    const skill = check.skill
     // TM-P2-003 D：按 Tag 判断解法（不是按技能 ID）
     const hasTag = skill.tags.some((t) => t === 'force' || t === 'movement' || t === 'magic')
     if (!hasTag) return { outcome: 'wrong_tag' }
-    if (s.player.mp < skill.mpCost) return { outcome: 'no_mp' }
+    // 原子：MP 扣减 + north_tower_opened 同一次 Store 更新（set 内按最新 state 重新校验防竞态）
     set((st) => {
       if (!st.gameState) return {}
+      const recheck = checkSkillUse(skillId, {
+        learnedSkillIds: st.gameState.player.learnedSkillIds,
+        profession: st.gameState.player.profession,
+        mp: st.gameState.player.mp,
+        maxMp: st.gameState.player.maxMp,
+      })
+      if (!recheck.allowed || !recheck.skill) return {}
+      const reSkill = recheck.skill
+      if (!reSkill.tags.some((t) => t === 'force' || t === 'movement' || t === 'magic')) return {}
       return {
         gameState: {
           ...st.gameState,
-          player: { ...st.gameState.player, mp: st.gameState.player.mp - skill.mpCost },
+          player: { ...st.gameState.player, mp: st.gameState.player.mp - reSkill.mpCost },
           world: {
             ...st.gameState.world,
             flags: { ...st.gameState.world.flags, north_tower_opened: true },
@@ -1201,23 +1220,28 @@ export const useGameStore = create<GameStoreState>()((set) => ({
     const s = useGameStore.getState().gameState
     if (!s) return false
     const player = s.player
-    // TM-P2-003-R2 C：通用技能消费入口自行守规则（不依赖调用方）——
-    // 技能存在 / 已学习 / 职业匹配 / MP 与 maxMp 安全整数 / mp ∈ [0, maxMp] / 灵力充足
-    const skill = getSkill(skillId)
-    if (!skill || skill.profession !== player.profession) return false
-    if (!hasLearnedSkill(player.learnedSkillIds, skillId)) return false
-    if (!Number.isSafeInteger(player.maxMp) || player.maxMp < 0) return false
-    if (!Number.isSafeInteger(player.mp) || player.mp < 0 || player.mp > player.maxMp) return false
-    const cost = skill.mpCost
-    if (!Number.isSafeInteger(cost) || cost < 0) return false
-    if (cost === 0) return true // 不耗 MP，但必须已学习且职业匹配
-    if (player.mp < cost) return false
+    // TM-P2-003-R3 C：统一校验（与北门场景共用同一 pure rule，不再复制一套业务判断）
+    const check = checkSkillUse(skillId, {
+      learnedSkillIds: player.learnedSkillIds,
+      profession: player.profession,
+      mp: player.mp,
+      maxMp: player.maxMp,
+    })
+    if (!check.allowed) return false
+    const cost = check.mpCost ?? 0
+    if (cost === 0) return true // 不耗 MP，但必须已学习且职业兼容（上面已统一校验）
     let spent = false
     set((st) => {
       if (!st.gameState) return {}
       const p = st.gameState.player
-      // 重复校验（防竞态）
-      if (!Number.isSafeInteger(p.mp) || p.mp < cost) return {}
+      // 防竞态：set 内按最新 Character 重新走同一 pure 校验（不能只信旧 snapshot）
+      const recheck = checkSkillUse(skillId, {
+        learnedSkillIds: p.learnedSkillIds,
+        profession: p.profession,
+        mp: p.mp,
+        maxMp: p.maxMp,
+      })
+      if (!recheck.allowed) return {}
       spent = true
       return { gameState: { ...st.gameState, player: { ...p, mp: p.mp - cost } } }
     })

@@ -6,7 +6,7 @@ import CharacterCreationPage from '../pages/CharacterCreationPage'
 import CombatPage from '../pages/CombatPage'
 import SaveSlotsPage from '../pages/SaveSlotsPage'
 import { useGameStore } from '../game/state/gameStore'
-import { getEnemy, getLocation } from '../game/content'
+import { checkEnemyEncounter } from '../game/rules/encounter'
 import type { CharacterCreationInput } from '../game/types'
 
 type Screen = 'main' | 'create' | 'game' | 'dev' | 'combat' | 'saves'
@@ -33,156 +33,14 @@ export default function App() {
   }
 
   const handleEngage = (enemyId: string) => {
-    // TM-P0-008：正式战斗入口校验——敌人必须存在且属于当前地点 enemyIds
+    // TM-P2-003-R3 D：正式战斗入口唯一 authoritative gate 收敛在 rules/encounter.ts
+    // （敌人存在 / 属于当前地点 / 各特殊敌人剧情前置），App 不再承载任何敌人业务规则
     const state = useGameStore.getState().gameState
     if (!state) return
-    const enemy = getEnemy(enemyId)
-    if (!enemy) return
-    const location = getLocation(state.world.currentLocationId)
-    if (!location?.enemyIds?.includes(enemyId)) return
-    // TM-P1-010：魔化狼必须《草原狼影》进行中才可进入战斗（不只靠 UI 隐藏；非 in_progress 一律拒绝）
-    if (enemyId === 'corrupted_wolf') {
-      const wolfQuest = state.quests.find((q) => q.questId === 'quest_grassland_wolf')
-      if (wolfQuest?.status !== 'in_progress') return
-    }
-    // TM-P1-014：嘟嘟兔一次性 Boss——已有《兔子的路径》时正式入口拒绝再开 Boss 战（即使 UI 出错也不进 CombatPage）
-    if (enemyId === 'dudu_rabbit') {
-      const hasPath = state.inventory.some((e) => e.itemId === 'rabbit_path')
-      if (hasPath) return
-    }
-    // TM-P1-025：骷髅士兵正式战斗入口硬守（不只靠 UI）——当前位置黑石塔一层 + 第五主线 in_progress/stage 0 + wangcai_briefed===true + black_stone_tower_unlocked===true + floor1_soldier_defeated !== true（非 boolean 异常 flag 同样拒绝）
-    if (enemyId === 'skeleton_soldier') {
-      const towerQuest = state.quests.find((q) => q.questId === 'quest_wangcai_trouble')
-      const defeated = towerQuest?.flags.floor1_soldier_defeated
-      const defeatedOk =
-        typeof defeated === 'undefined' || (typeof defeated === 'boolean' && defeated !== true)
-      if (
-        state.world.currentLocationId !== 'black_stone_tower_floor1' ||
-        towerQuest?.status !== 'in_progress' ||
-        towerQuest?.stage !== 0 ||
-        towerQuest?.flags.wangcai_briefed !== true ||
-        state.world.flags.black_stone_tower_unlocked !== true ||
-        !defeatedOk
-      ) {
-        return
-      }
-    }
-    // TM-P1-026：骷髅队长正式战斗入口硬守（不只靠 UI）——当前位置黑石塔一层 + 第五主线 in_progress/stage 0 + wangcai_briefed===true + black_stone_tower_unlocked===true + floor1_soldier_defeated===true + floor1_captain_defeated undefined/false（true/非 boolean 异常 flag 一律拒绝）
-    if (enemyId === 'skeleton_captain') {
-      const towerQuest = state.quests.find((q) => q.questId === 'quest_wangcai_trouble')
-      const captainFlag = towerQuest?.flags.floor1_captain_defeated
-      const captainOk =
-        captainFlag !== true && (typeof captainFlag === 'undefined' || typeof captainFlag === 'boolean')
-      if (
-        state.world.currentLocationId !== 'black_stone_tower_floor1' ||
-        towerQuest?.status !== 'in_progress' ||
-        towerQuest?.stage !== 0 ||
-        towerQuest?.flags.wangcai_briefed !== true ||
-        state.world.flags.black_stone_tower_unlocked !== true ||
-        towerQuest?.flags.floor1_soldier_defeated !== true ||
-        !captainOk
-      ) {
-        return
-      }
-    }
-    // TM-P1-027：二层僵尸正式战斗入口硬守——黑石塔二层 + 第五主线 in_progress/stage 0 + briefed===true + unlocked===true + floor2_unlocked===true + soldier===true + captain===true + floor2_zombie_defeated 非 true（true/非 boolean 拒绝）
-    if (enemyId === 'tower_zombie') {
-      const towerQuest = state.quests.find((q) => q.questId === 'quest_wangcai_trouble')
-      const zombieFlag = towerQuest?.flags.floor2_zombie_defeated
-      const zombieOk = zombieFlag !== true && (typeof zombieFlag === 'undefined' || typeof zombieFlag === 'boolean')
-      if (
-        state.world.currentLocationId !== 'black_stone_tower_floor2' ||
-        towerQuest?.status !== 'in_progress' ||
-        towerQuest?.stage !== 0 ||
-        towerQuest?.flags.wangcai_briefed !== true ||
-        state.world.flags.black_stone_tower_unlocked !== true ||
-        state.world.flags.black_stone_tower_floor2_unlocked !== true ||
-        towerQuest?.flags.floor1_soldier_defeated !== true ||
-        towerQuest?.flags.floor1_captain_defeated !== true ||
-        !zombieOk
-      ) {
-        return
-      }
-    }
-    // TM-P1-027：二层黑法师正式战斗入口硬守——额外要求 floor2_zombie_defeated===true（僵尸未击败不得提前 engage 黑法师）+ floor2_black_mage_defeated 非 true
-    if (enemyId === 'black_mage') {
-      const towerQuest = state.quests.find((q) => q.questId === 'quest_wangcai_trouble')
-      const mageFlag = towerQuest?.flags.floor2_black_mage_defeated
-      const mageOk = mageFlag !== true && (typeof mageFlag === 'undefined' || typeof mageFlag === 'boolean')
-      if (
-        state.world.currentLocationId !== 'black_stone_tower_floor2' ||
-        towerQuest?.status !== 'in_progress' ||
-        towerQuest?.stage !== 0 ||
-        towerQuest?.flags.wangcai_briefed !== true ||
-        state.world.flags.black_stone_tower_unlocked !== true ||
-        state.world.flags.black_stone_tower_floor2_unlocked !== true ||
-        towerQuest?.flags.floor1_soldier_defeated !== true ||
-        towerQuest?.flags.floor1_captain_defeated !== true ||
-        towerQuest?.flags.floor2_zombie_defeated !== true ||
-        !mageOk
-      ) {
-        return
-      }
-    }
-    // TM-P1-028：二层骷髅战士正式战斗入口硬守——额外要求 floor2_zombie_defeated===true 且 floor2_black_mage_defeated===true（入口区两敌未全部击败不得提前 engage 骷髅战士）+ floor2_skeleton_warrior_defeated 非 true
-    if (enemyId === 'skeleton_warrior') {
-      const towerQuest = state.quests.find((q) => q.questId === 'quest_wangcai_trouble')
-      const warriorFlag = towerQuest?.flags.floor2_skeleton_warrior_defeated
-      const warriorOk = warriorFlag !== true && (typeof warriorFlag === 'undefined' || typeof warriorFlag === 'boolean')
-      if (
-        state.world.currentLocationId !== 'black_stone_tower_floor2' ||
-        towerQuest?.status !== 'in_progress' ||
-        towerQuest?.stage !== 0 ||
-        towerQuest?.flags.wangcai_briefed !== true ||
-        state.world.flags.black_stone_tower_unlocked !== true ||
-        state.world.flags.black_stone_tower_floor2_unlocked !== true ||
-        towerQuest?.flags.floor1_soldier_defeated !== true ||
-        towerQuest?.flags.floor1_captain_defeated !== true ||
-        towerQuest?.flags.floor2_zombie_defeated !== true ||
-        towerQuest?.flags.floor2_black_mage_defeated !== true ||
-        !warriorOk
-      ) {
-        return
-      }
-    }
-    // TM-P1-029：三层骷髅女妖正式战斗入口硬守——必须三层 + 全部前序严格 true（含二层三敌均击败）+ floor3_skeleton_witch_defeated 非 true
-    if (enemyId === 'skeleton_witch') {
-      const towerQuest = state.quests.find((q) => q.questId === 'quest_wangcai_trouble')
-      const witchFlag = towerQuest?.flags.floor3_skeleton_witch_defeated
-      const witchOk = witchFlag !== true && (typeof witchFlag === 'undefined' || typeof witchFlag === 'boolean')
-      if (
-        state.world.currentLocationId !== 'black_stone_tower_floor3' ||
-        towerQuest?.status !== 'in_progress' ||
-        towerQuest?.stage !== 0 ||
-        towerQuest?.flags.wangcai_briefed !== true ||
-        state.world.flags.black_stone_tower_unlocked !== true ||
-        state.world.flags.black_stone_tower_floor2_unlocked !== true ||
-        state.world.flags.black_stone_tower_floor3_unlocked !== true ||
-        towerQuest?.flags.floor1_soldier_defeated !== true ||
-        towerQuest?.flags.floor1_captain_defeated !== true ||
-        towerQuest?.flags.floor2_zombie_defeated !== true ||
-        towerQuest?.flags.floor2_black_mage_defeated !== true ||
-        towerQuest?.flags.floor2_skeleton_warrior_defeated !== true ||
-        !witchOk
-      ) {
-        return
-      }
-    }
-    // TM-P2-001 D4：黑鬃魔狼正式战斗入口硬守（不只靠 UI）——当前位置天龙城北门 + 《北门失联》in_progress/stage 0 + north_gate_trail_checked===true（未调查痕迹不得提前刷狼）+ north_gate_wolf_defeated 非 true（true/非 boolean 拒绝）
-    if (enemyId === 'black_mane_wolf') {
-      const northQuest = state.quests.find((q) => q.questId === 'quest_north_gate_missing_patrol')
-      const wolfFlag = northQuest?.flags.north_gate_wolf_defeated
-      const wolfOk = wolfFlag !== true && (typeof wolfFlag === 'undefined' || typeof wolfFlag === 'boolean')
-      if (
-        state.world.currentLocationId !== 'tianlong_north_gate' ||
-        northQuest?.status !== 'in_progress' ||
-        northQuest?.stage !== 0 ||
-        northQuest?.flags.north_gate_trail_checked !== true ||
-        !wolfOk
-      ) {
-        return
-      }
-    }
+
+    const result = checkEnemyEncounter(state, enemyId)
+    if (!result.allowed) return
+
     setCombatEnemyId(enemyId)
     setScreen('combat')
   }

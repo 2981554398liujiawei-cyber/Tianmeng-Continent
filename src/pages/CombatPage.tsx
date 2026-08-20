@@ -18,6 +18,7 @@ import {
 } from '../game/rules/combat'
 import {
   getSkillExecutionInfo,
+  getUsableSkills,
   isOncePerCombatUsed,
   isSuppressOnFullHitSkill,
   markOncePerCombatUsed,
@@ -26,7 +27,6 @@ import {
 import type { InitiativeWinner } from '../game/rules/combat'
 import { formatLuckCheckLog } from '../game/rules/luck'
 import { getSkill } from '../game/content/skills'
-import type { SkillDefinition } from '../game/types/skill'
 import type { LootGrant } from '../game/types/loot'
 import { RARITY_LABELS } from '../game/types/loot'
 
@@ -108,10 +108,9 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
   const playerArmor = getPlayerArmor(player.attributes.con, armorDefenseBonus)
   const playerAgility = getPlayerAgility(player.attributes.agi)
   const levelDamageBonus = getPlayerLevelDamageBonus(player.level)
-  // TM-P2-003 A：已学习技能 = learnedSkillIds → Skill Registry 动态解析（未知/损坏/职业不匹配安全忽略）
-  const learnedSkills = (gameState.player.learnedSkillIds ?? [])
-    .map((id) => getSkill(id))
-    .filter((s): s is SkillDefinition => s !== undefined && s.profession === player.profession)
+  // TM-P2-003-R3 C：已学习技能统一解析入口（learnedSkillIds → getUsableSkills：
+  // 未知 ID / 重复 ID / 通用技能 / 职业不匹配 全部走一个入口，页面不再手工 map/filter）
+  const learnedSkills = getUsableSkills(gameState.player.learnedSkillIds, player.profession)
 
   // TM-P2-002 D：敌人先手 → 进入正常回合前先执行一次敌人攻击（仅一次）
   // TM-P2-002-R1 A：攻击进行期间封锁玩家操作（enemyFirstStriking）；timer 由 cleanup 清理，
@@ -178,7 +177,9 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
   const handleSkill = (skillId: string) => {
     if (phase !== 'active' || enemyFirstStriking) return
     const info = getSkillExecutionInfo(skillId)
-    if (!info || info.skill.profession !== player.profession) return
+    if (!info) return
+    // TM-P2-003-R3 C：职业兼容语义——无 profession 的通用技能任何职业可用；有职业必须匹配
+    if (info.skill.profession !== undefined && info.skill.profession !== player.profession) return
     // 每场一次：已使用（本技能）→ 拒绝
     if (info.oncePerCombat && isOncePerCombatUsed(usedOnceSkillIds, skillId)) return
     // 原始伤害（rules/skill resolver；未知/无 resolver 返回 null → 拒绝）

@@ -1,13 +1,13 @@
 import { useState } from 'react'
 import Button from '../components/Button'
+import InventoryPanel from '../components/game/InventoryPanel'
 import { useGameStore, VILLAGE_ELDER_POST_QUEST_EVENT_ID } from '../game/state/gameStore'
 import { getProfessionName, ATTRIBUTE_KEYS, ATTRIBUTE_LABELS } from '../game/content/professions'
 import { getEnemy, getItem, getLocation, getNpc, getQuest, NPCS, QUESTS } from '../game/content'
 import { CHECK_DC, type D20CheckResult } from '../game/rules/d20'
 import { LEVEL_2_MAX_HP_GAIN, LEVEL_2_MAX_MP_GAIN } from '../game/rules/character'
 import { formatLuckCheckLog, LUCK_OUTCOME_LABELS } from '../game/rules/luck'
-import { getSkill } from '../game/content/skills'
-import type { SkillDefinition } from '../game/types/skill'
+import { getUsableSkills } from '../game/rules/skill'
 import type {
   NorthTowerClaimResult,
   NorthTowerLuckResult,
@@ -434,58 +434,16 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
               </p>
             </section>
 
-            <section className="rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
-              <h3 className="mb-3 text-sm font-bold tracking-wider text-bone-500">背包</h3>
-              {gameState.inventory.length === 0 ? (
-                <p className="text-bone-500">背包空空如也。</p>
-              ) : (
-                <div className="flex flex-col gap-2">
-                  {gameState.inventory.map((entry) => {
-                    const def = getItem(entry.itemId)
-                    // TM-P0-010：只有治疗药水提供使用入口；满血 / HP 0 时禁用
-                    const isPotion = def?.id === 'healing_potion'
-                    const canUse = isPotion && player.hp > 0 && player.hp < player.maxHp
-                    // TM-P0-013：铁剑提供装备/卸下入口（装备不消耗 inventory）
-                    const isWeapon = def?.id === 'iron_sword'
-                    const isEquipped = gameState.equipment.weapon === 'iron_sword'
-                    return (
-                      <div
-                        key={entry.itemId}
-                        className="flex items-center justify-between gap-3 rounded border border-ink-600 bg-ink-900/40 p-3"
-                      >
-                        <div>
-                          <p className="font-bold text-bone-100">
-                            {def?.name ?? '未知物品'} <span className="text-xs font-normal text-bone-500">×{entry.quantity}</span>
-                          </p>
-                          <p className="mt-1 text-xs text-bone-500">
-                            {def ? def.description : `（缺失物品定义：${entry.itemId}）`}
-                          </p>
-                        </div>
-                        <div className="flex flex-col items-end gap-1">
-                          {isWeapon && (
-                            <Button
-                              variant="primary"
-                              onClick={() => (isEquipped ? unequipWeapon() : equipWeapon(entry.itemId))}
-                            >
-                              {isEquipped ? '卸下' : '装备'}
-                            </Button>
-                          )}
-                          {isPotion && (
-                            <>
-                              <Button variant="primary" disabled={!canUse} onClick={() => useHealingPotion()}>
-                                使用
-                              </Button>
-                              {player.hp >= player.maxHp && <span className="text-xs text-bone-500">生命已满</span>}
-                              {player.hp <= 0 && <span className="text-xs text-red-300">当前无法使用</span>}
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-            </section>
+            {/* TM-P2-003-R3 B：背包从 GamePage 抽到 InventoryPanel（数据驱动武器入口，不再 hardcode iron_sword） */}
+            <InventoryPanel
+              inventory={gameState.inventory}
+              equippedWeaponId={gameState.equipment.weapon}
+              playerHp={player.hp}
+              playerMaxHp={player.maxHp}
+              onEquipWeapon={(itemId) => equipWeapon(itemId)}
+              onUnequipWeapon={() => unequipWeapon()}
+              onUseHealingPotion={() => useHealingPotion()}
+            />
           </div>
         </section>
 
@@ -580,15 +538,11 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
             const towerClaimed = world.flags.north_tower_cache_claimed === true
             const towerMndFailed = world.flags.north_tower_mnd_failed === true
             const towerLuckUsed = world.flags.north_tower_luck_used === true
-            // 场景技能路线：learnedSkillIds → Registry → 按 Tag 过滤（force/movement/magic）
-            const towerSkills = (gameState.player.learnedSkillIds ?? [])
-              .map((id) => getSkill(id))
-              .filter(
-                (s): s is SkillDefinition =>
-                  s !== undefined &&
-                  s.profession === gameState.player.profession &&
-                  s.tags.some((t) => t === 'force' || t === 'movement' || t === 'magic'),
-              )
+            // 场景技能路线：统一解析（learnedSkillIds → getUsableSkills：未知忽略/重复去重/通用技能可用）→ 按 Tag 过滤（force/movement/magic）
+            const towerSkills = getUsableSkills(
+              gameState.player.learnedSkillIds,
+              gameState.player.profession,
+            ).filter((s) => s.tags.some((t) => t === 'force' || t === 'movement' || t === 'magic'))
             if (towerClaimed) {
               return (
                 <section className="order-3 rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">

@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
+    "qa:r3": "node qa/r3-e2e.mjs",
     "qa:prod": "node qa/prod-smoke.mjs"
   },
   "dependencies": {

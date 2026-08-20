@@ -10,6 +10,7 @@ import {
   getUsableSkills,
   hasLearnedSkill,
   skillMpCost,
+  checkSkillUse,
 } from './skill'
 import { SKILLS } from '../content/skills'
 
@@ -120,5 +121,200 @@ describe('TM-P2-003-R2 B2：oncePerCombat 按 skillId 独立（两项 once 互�
     used = markOncePerCombatUsed(used, 'future_once_skill')
     expect(isOncePerCombatUsed(used, 'ranger_swift_strike')).toBe(true)
     expect(isOncePerCombatUsed(used, 'future_once_skill')).toBe(true)
+  })
+})
+
+// ================= TM-P2-003-R3 C：checkSkillUse 统一纯校验（K2） =================
+
+describe('TM-P2-003-R3 C：checkSkillUse 统一技能使用校验', () => {
+  const knightCtx = {
+    learnedSkillIds: ['knight_power_strike'],
+    profession: 'knight' as const,
+    mp: 6,
+    maxMp: 6,
+  }
+
+  it('11: 未知技能 → unknown_skill / blocked', () => {
+    const r = checkSkillUse('not_a_skill', knightCtx)
+    expect(r.allowed).toBe(false)
+    expect(r.reason).toBe('unknown_skill')
+  })
+
+  it('12: 未学习技能 → blocked (not_learned)', () => {
+    const r = checkSkillUse('mage_spell', knightCtx)
+    expect(r.allowed).toBe(false)
+    expect(r.reason).toBe('not_learned')
+  })
+
+  it('13: 职业不匹配（已学习但职业不同）→ blocked (profession_mismatch)', () => {
+    const r = checkSkillUse('mage_spell', { ...knightCtx, learnedSkillIds: ['mage_spell'] })
+    expect(r.allowed).toBe(false)
+    expect(r.reason).toBe('profession_mismatch')
+  })
+
+  it('14: profession undefined 通用技能 + 已学习 → 玩家允许使用', () => {
+    const original = SKILLS['test_general_skill']
+    SKILLS['test_general_skill'] = {
+      id: 'test_general_skill',
+      name: '通用测试技能',
+      description: '',
+      mpCost: 1,
+      tags: ['physical'],
+    }
+    try {
+      const r = checkSkillUse('test_general_skill', { ...knightCtx, learnedSkillIds: ['test_general_skill'] })
+      expect(r.allowed).toBe(true)
+      expect(r.mpCost).toBe(1)
+      // 任意职业均可使用
+      const mage = checkSkillUse('test_general_skill', {
+        learnedSkillIds: ['test_general_skill'],
+        profession: 'mage',
+        mp: 6,
+        maxMp: 6,
+      })
+      expect(mage.allowed).toBe(true)
+    } finally {
+      if (original) SKILLS['test_general_skill'] = original
+      else delete SKILLS['test_general_skill']
+    }
+  })
+
+  it('15: maxMp < 0 → blocked (invalid_max_mp)', () => {
+    const r = checkSkillUse('knight_power_strike', { ...knightCtx, maxMp: -1 })
+    expect(r.allowed).toBe(false)
+    expect(r.reason).toBe('invalid_max_mp')
+  })
+
+  it('16: maxMp 非 safe integer → blocked (invalid_max_mp)', () => {
+    const r = checkSkillUse('knight_power_strike', { ...knightCtx, maxMp: Number.MAX_SAFE_INTEGER + 1 })
+    expect(r.allowed).toBe(false)
+    expect(r.reason).toBe('invalid_max_mp')
+  })
+
+  it('17: mp < 0 → blocked (invalid_mp)', () => {
+    const r = checkSkillUse('knight_power_strike', { ...knightCtx, mp: -1 })
+    expect(r.allowed).toBe(false)
+    expect(r.reason).toBe('invalid_mp')
+  })
+
+  it('18: mp > maxMp → blocked (invalid_mp)', () => {
+    const r = checkSkillUse('knight_power_strike', { ...knightCtx, mp: 7, maxMp: 6 })
+    expect(r.allowed).toBe(false)
+    expect(r.reason).toBe('invalid_mp')
+  })
+
+  it('19: mp NaN / Infinity / unsafe → blocked (invalid_mp)', () => {
+    expect(checkSkillUse('knight_power_strike', { ...knightCtx, mp: NaN }).reason).toBe('invalid_mp')
+    expect(checkSkillUse('knight_power_strike', { ...knightCtx, mp: Infinity }).reason).toBe('invalid_mp')
+    expect(
+      checkSkillUse('knight_power_strike', { ...knightCtx, mp: Number.MAX_SAFE_INTEGER + 1 }).reason,
+    ).toBe('invalid_mp')
+  })
+
+  it('20: mpCost 非法（负数 / 非整数）→ blocked (invalid_cost)', () => {
+    const originalBadCost = SKILLS['test_bad_cost']
+    SKILLS['test_bad_cost'] = {
+      id: 'test_bad_cost',
+      name: '坏消耗测试技能',
+      description: '',
+      mpCost: -1,
+      tags: ['physical'],
+    }
+    const originalFracCost = SKILLS['test_frac_cost']
+    SKILLS['test_frac_cost'] = {
+      id: 'test_frac_cost',
+      name: '小数消耗测试技能',
+      description: '',
+      mpCost: 1.5,
+      tags: ['physical'],
+    }
+    try {
+      const neg = checkSkillUse('test_bad_cost', { ...knightCtx, learnedSkillIds: ['test_bad_cost'] })
+      expect(neg.allowed).toBe(false)
+      expect(neg.reason).toBe('invalid_cost')
+      const frac = checkSkillUse('test_frac_cost', { ...knightCtx, learnedSkillIds: ['test_frac_cost'] })
+      expect(frac.allowed).toBe(false)
+      expect(frac.reason).toBe('invalid_cost')
+    } finally {
+      if (originalBadCost) SKILLS['test_bad_cost'] = originalBadCost
+      else delete SKILLS['test_bad_cost']
+      if (originalFracCost) SKILLS['test_frac_cost'] = originalFracCost
+      else delete SKILLS['test_frac_cost']
+    }
+  })
+
+  it('21: MP 不足 → blocked (insufficient_mp)', () => {
+    const r = checkSkillUse('knight_power_strike', { ...knightCtx, mp: 1 })
+    expect(r.allowed).toBe(false)
+    expect(r.reason).toBe('insufficient_mp')
+  })
+
+  it('22: MP 刚好足够 → allowed', () => {
+    const r = checkSkillUse('knight_power_strike', { ...knightCtx, mp: 2 })
+    expect(r.allowed).toBe(true)
+    expect(r.mpCost).toBe(2)
+  })
+
+  it('23: 0 MP 技能 → allowed（但仍要求存在 + 已学习 + 职业兼容）', () => {
+    const r = checkSkillUse('ranger_swift_strike', {
+      learnedSkillIds: ['ranger_swift_strike'],
+      profession: 'ranger',
+      mp: 0,
+      maxMp: 6,
+    })
+    expect(r.allowed).toBe(true)
+    expect(r.mpCost).toBe(0)
+    // 未学习 → blocked
+    const notLearned = checkSkillUse('ranger_swift_strike', { ...knightCtx, profession: 'ranger', learnedSkillIds: [] })
+    expect(notLearned.allowed).toBe(false)
+    expect(notLearned.reason).toBe('not_learned')
+  })
+})
+
+// ================= TM-P2-003-R3 C：getUsableSkills 去重与通用技能（K3） =================
+
+describe('TM-P2-003-R3 C：getUsableSkills 重复/未知/通用技能解析', () => {
+  it('24: 未知 ID 安全忽略', () => {
+    const skills = getUsableSkills(['bogus_skill', 'knight_power_strike'], 'knight')
+    expect(skills.map((s) => s.id)).toEqual(['knight_power_strike'])
+  })
+
+  it('25: 重复 ID 去重（mage_spell, mage_spell → 只一个）', () => {
+    const skills = getUsableSkills(['mage_spell', 'mage_spell'], 'mage')
+    expect(skills.map((s) => s.id)).toEqual(['mage_spell'])
+  })
+
+  it('26: 去重保持首次出现顺序稳定', () => {
+    const skills = getUsableSkills(
+      ['mage_spell', 'bogus', 'mage_spell', 'knight_power_strike', 'mage_spell'],
+      'mage',
+    )
+    // bogus 未知忽略、knight 职业不匹配忽略、mage_spell 重复保留首次
+    expect(skills.map((s) => s.id)).toEqual(['mage_spell'])
+  })
+
+  it('27: 职业不匹配忽略', () => {
+    const skills = getUsableSkills(['mage_spell', 'knight_power_strike'], 'knight')
+    expect(skills.map((s) => s.id)).toEqual(['knight_power_strike'])
+  })
+
+  it('28: professionless 通用技能保留（任意职业）', () => {
+    const original = SKILLS['test_general_skill']
+    SKILLS['test_general_skill'] = {
+      id: 'test_general_skill',
+      name: '通用测试技能',
+      description: '',
+      mpCost: 1,
+      tags: ['physical'],
+    }
+    try {
+      const knight = getUsableSkills(['test_general_skill'], 'knight')
+      expect(knight.map((s) => s.id)).toEqual(['test_general_skill'])
+      const mage = getUsableSkills(['test_general_skill'], 'mage')
+      expect(mage.map((s) => s.id)).toEqual(['test_general_skill'])
+    } finally {
+      if (original) SKILLS['test_general_skill'] = original
+      else delete SKILLS['test_general_skill']
+    }
   })
 })
