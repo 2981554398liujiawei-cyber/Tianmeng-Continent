@@ -1,27 +1,27 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Button from '../components/Button'
 import { useGameStore } from '../game/state/gameStore'
 import { getEnemy, getItem } from '../game/content'
-import { getProfessionName } from '../game/content/professions'
+import { ATTRIBUTE_KEYS, ATTRIBUTE_LABELS, getProfessionName } from '../game/content/professions'
 import {
   getKnightPowerStrikeDamage,
-  getMageSpellAttackBonus,
   getMageSpellDamage,
-  getRangerSwiftStrikeAttackBonus,
+  getPlayerAgility,
+  getPlayerArmor,
+  getPlayerAttackPower,
+  getPlayerLevelDamageBonus,
   getRangerSwiftStrikeDamage,
   KNIGHT_POWER_STRIKE_MP_COST,
   MAGE_SPELL_MP_COST,
   WARRIOR_SUPPRESS_STRIKE_MP_COST,
-  getPlayerAttackBonus,
-  getPlayerAttackDamage,
-  getPlayerDefense,
-  getPlayerLevelDamageBonus,
   performAttack,
+  rollInitiative,
   getCombatPhaseAfterEnemyAttack,
   resolvePlayerStrike,
   type AttackResult,
   type CombatPhase,
 } from '../game/rules/combat'
+import type { InitiativeWinner } from '../game/rules/combat'
 
 interface CombatPageProps {
   enemyId: string
@@ -34,17 +34,30 @@ interface CombatPageProps {
 const ATTACK_OUTCOME_LABELS: Record<AttackResult['outcome'], string> = {
   critical_hit: '暴击',
   hit: '命中',
-  glancing_hit: '擦中',
-  miss: '未命中',
+  glancing_hit: '擦伤',
   critical_miss: '大失败',
 }
 
-function attackLine(result: AttackResult, defenderName: string): string {
+/** V3 攻击日志行（TM-P2-002 E：不再让玩家误认为 D20+数值=攻击力） */
+function attackLine(result: AttackResult, defenderName: string): string[] {
   const outcome = ATTACK_OUTCOME_LABELS[result.outcome]
-  if (result.hit) {
-    return `D20 ${result.roll} + 攻击加值 ${result.attackBonus} = ${result.total}；${defenderName}防御 ${result.defense}；${outcome}，造成 ${result.damage} 点伤害`
+  const initTotal = result.roll + result.attackerAgility
+  if (result.outcome === 'critical_miss') {
+    return [`D20 ${result.roll} + 敏捷 ${result.attackerAgility} = ${initTotal}；对方敏捷 ${result.defenderAgility}；${outcome}，未造成伤害。`]
   }
-  return `D20 ${result.roll} + 攻击加值 ${result.attackBonus} = ${result.total}；${defenderName}防御 ${result.defense}；${outcome}，未造成伤害`
+  const multiplier =
+    result.outcome === 'critical_hit' ? ` × 2` : result.outcome === 'glancing_hit' ? ` × 50%` : ''
+  const rawAfter =
+    result.outcome === 'critical_hit'
+      ? result.rawDamage * 2
+      : result.outcome === 'glancing_hit'
+        ? Math.max(1, Math.ceil(result.rawDamage * 0.5))
+        : result.rawDamage
+  const pct = Math.round(result.damageTakenRate * 100)
+  return [
+    `D20 ${result.roll} + 敏捷 ${result.attackerAgility} = ${initTotal}；对方敏捷 ${result.defenderAgility}；${outcome}。`,
+    `原始伤害 ${result.rawDamage}${multiplier} = ${rawAfter}；${defenderName}护甲 ${result.armor}；承伤率 ${result.roll} / (${result.armor} + ${result.roll}) = ${pct}%；最终造成 ${result.damage} 点伤害。`,
+  ]
 }
 
 export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu }: CombatPageProps) {
@@ -60,9 +73,9 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
   const [phase, setPhase] = useState<CombatPhase>('active')
   const [lastPlayerAttack, setLastPlayerAttack] = useState<AttackResult | null>(null)
   const [lastEnemyAttack, setLastEnemyAttack] = useState<AttackResult | null>(null)
-  /** TM-P1-015：最近一次成功药水行动的实际恢复量（仅战斗 UI 即时日志，不进入 GameState/存档） */
+  /** TM-P1-015：最近一次成功药水行动的实际恢复量（仅战斗 UI 即时日志） */
   const [lastPotionHeal, setLastPotionHeal] = useState<number | null>(null)
-  /** TM-P1-001/006/007/008：最近一次玩家行动类型（仅页面本地，不进入 GameState）——区分「你的攻击/你的法术攻击/你的骑士重击/你的迅捷突袭/你的压制猛击」 */
+  /** TM-P1-001/006/007/008：最近一次玩家行动类型（仅页面本地） */
   const [lastPlayerAction, setLastPlayerAction] = useState<
     | 'basic'
     | 'mage_spell'
@@ -71,9 +84,16 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
     | 'warrior_suppress_strike'
     | null
   >(null)
-  /** TM-P1-007：游侠迅捷突袭本场战斗是否已使用（仅页面本地；新 CombatPage 天然重置，不进入 GameState） */
+  /** TM-P1-007：游侠迅捷突袭本场是否已使用（仅页面本地） */
   const [rangerSwiftStrikeUsed, setRangerSwiftStrikeUsed] = useState(false)
+  /** TM-P2-002 D：先手（进入战斗时双方各掷 D20+AGI；高者先，平局 AGI 高者先，仍同则玩家先） */
+  const [initiativeWinner] = useState<InitiativeWinner | null>(() =>
+    gameState && enemy ? rollInitiative(playerAgilityOf(gameState), enemy.agility) : null,
+  )
+  const [enemyFirstStrikeDone, setEnemyFirstStrikeDone] = useState(false)
+  const enemyFirstStrikeRef = useRef(false)
 
+  // ---- 防御性异常出口 ----
   if (!gameState) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-6">
@@ -84,7 +104,6 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
   }
 
   if (!enemy) {
-    // 未知 enemyId：不得进入战斗、不得崩溃（防御性异常出口，真正返回主菜单）
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-6">
         <p className="text-bone-300">未知敌人（{enemyId}），无法进入战斗。</p>
@@ -94,143 +113,139 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
   }
 
   const player = gameState.player
-  const playerDefense = getPlayerDefense(player.attributes.agi)
-  // TM-P0-013：读取当前装备武器伤害加成；无装备/未知/非武器安全按 0 处理
+  // TM-P2-002 A：V3 玩家派生属性
   const equippedWeapon = gameState.equipment.weapon ? getItem(gameState.equipment.weapon) : undefined
   const weaponDamageBonus =
     equippedWeapon?.type === 'weapon' && Number.isInteger(equippedWeapon.weaponDamageBonus)
       ? (equippedWeapon.weaponDamageBonus ?? 0)
       : 0
+  const equippedArmor = gameState.equipment.armor ? getItem(gameState.equipment.armor) : undefined
+  const armorDefenseBonus =
+    equippedArmor?.type === 'armor' && Number.isInteger(equippedArmor.armorDefenseBonus)
+      ? (equippedArmor.armorDefenseBonus ?? 0)
+      : 0
+  const playerAttackPower = getPlayerAttackPower(player.attributes.str, weaponDamageBonus, player.level)
+  const playerArmor = getPlayerArmor(player.attributes.con, armorDefenseBonus)
+  const playerAgility = getPlayerAgility(player.attributes.agi)
+  const levelDamageBonus = getPlayerLevelDamageBonus(player.level)
+
+  // TM-P2-002 D：敌人先手 → 进入正常回合前先执行一次敌人攻击（仅一次）
+  useEffect(() => {
+    if (initiativeWinner !== 'enemy' || enemyFirstStrikeRef.current) return
+    enemyFirstStrikeRef.current = true
+    const timer = window.setTimeout(() => {
+      setEnemyFirstStrikeDone(true)
+      applyEnemyCounter()
+    }, 400)
+    return () => window.clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initiativeWinner])
 
   const healingPotion = getItem('healing_potion')
   const healingPotionAmount = healingPotion?.healAmount
-  // 库存直接读 Store（不维护 CombatPage 本地副本）；仅合法正整数数量计入可用药水
   const healingPotionCount = gameState.inventory
     .filter((entry) => entry.itemId === 'healing_potion' && Number.isSafeInteger(entry.quantity) && entry.quantity >= 1)
     .reduce((total, entry) => total + entry.quantity, 0)
 
-  /** TM-P2-001 C4：基础等级伤害成长（Lv1–2 +0 / Lv3–4 +1 ...）——适用于所有玩家直接伤害 */
-  const levelDamageBonus = getPlayerLevelDamageBonus(player.level)
-
-  /** TM-P1-015：最小敌方反击 helper——复用既有 D20/伤害/失败阶段逻辑；敌人使用 mode='enemy'（无擦中，TM-P2-001 C2） */
+  /** TM-P2-002：敌人反击（V3：敏捷命中 + 护甲减伤）——玩家/职业技能/喝药行动共用 */
   const applyEnemyCounter = () => {
-    const enemyResult = performAttack(enemy.attackBonus, playerDefense, enemy.damage, 'enemy')
+    const enemyResult = performAttack(enemy.agility, playerAgility, enemy.attackPower, playerArmor)
     setLastEnemyAttack(enemyResult)
     if (enemyResult.hit) {
       damagePlayer(enemyResult.damage)
     }
-    // 玩家 HP 归零 → 失败（不出现负 HP，damagePlayer 已保证）
     setPhase(getCombatPhaseAfterEnemyAttack(useGameStore.getState().gameState?.player.hp ?? 1))
   }
 
-  /** TM-P1-015：治疗药水是一次完整玩家行动——Store 成功后记录实际恢复量、清除旧攻击日志，再让敌人立即正常反击 */
   const handleUseHealingPotion = () => {
     if (phase !== 'active') return
     const hpBefore = player.hp
-    // Store 是最终权威：false 时不反击、不改敌 HP/日志/phase
     if (!useHealingPotion()) return
     const hpAfter = useGameStore.getState().gameState?.player.hp ?? hpBefore
     setLastPlayerAttack(null)
     setLastPlayerAction(null)
     setLastPotionHeal(hpAfter - hpBefore)
     setLastEnemyAttack(null)
-    // 成功喝药一定给仍存活的敌人一次正常 D20 反击（可命中/未命中/暴击/大失败/导致 defeat）
     applyEnemyCounter()
   }
 
   const handleAttack = () => {
     if (phase !== 'active') return
-    // 玩家先行动（复用封板战斗规则；阶段结算使用确定性纯函数 TM-P0-008-R1）
-    const playerResult = performAttack(
-      getPlayerAttackBonus(player.attributes.str, player.level),
-      enemy.defense,
-      getPlayerAttackDamage(player.attributes.str, weaponDamageBonus) + levelDamageBonus,
-    )
+    const playerResult = performAttack(playerAgility, enemy.agility, playerAttackPower, enemy.armor)
     applyPlayerAttack(playerResult, 'basic')
   }
 
-  /** TM-P1-001：法师法术攻击——先消费灵力，成功才施法掷骰 */
   const handleMageSpell = () => {
     if (phase !== 'active') return
-    // 唯一灵力消费入口：false → 不掷骰、不改敌人 HP、不触发反击、不改最后一次攻击结果
     if (!spendMageSpellMp()) return
-    const spellResult = performAttack(
-      getMageSpellAttackBonus(player.attributes.mnd, player.level),
-      enemy.defense,
-      getMageSpellDamage(player.attributes.mnd) + levelDamageBonus,
-    )
+    const spellResult = performAttack(playerAgility, enemy.agility, getMageSpellDamage(player.attributes.mnd) + levelDamageBonus, enemy.armor)
     applyPlayerAttack(spellResult, 'mage_spell')
   }
 
-  /** TM-P1-006：骑士重击——先消费灵力，成功才掷骰；伤害=普通攻击伤害+2（吃武器加成） */
   const handleKnightPowerStrike = () => {
     if (phase !== 'active') return
-    // 唯一灵力消费入口：false → 不掷骰、不改敌人 HP、不触发反击、不改最后一次攻击结果
     if (!spendKnightPowerStrikeMp()) return
     const strikeResult = performAttack(
-      getPlayerAttackBonus(player.attributes.str, player.level),
-      enemy.defense,
-      getKnightPowerStrikeDamage(player.attributes.str, weaponDamageBonus) + levelDamageBonus,
+      playerAgility,
+      enemy.agility,
+      getKnightPowerStrikeDamage(player.attributes.str, weaponDamageBonus, player.level),
+      enemy.armor,
     )
     applyPlayerAttack(strikeResult, 'knight_power_strike')
   }
 
-  /** TM-P1-007：游侠迅捷突袭——每场战斗一次，不消费 MP，AGI 攻击；点击即消耗本场次数（命中/未命中/暴击/大失败都是已使用） */
   const handleRangerSwiftStrike = () => {
     if (phase !== 'active' || rangerSwiftStrikeUsed) return
-    // 先标记本场已使用，再执行攻击（未命中/大失败也消耗本场次数）
     setRangerSwiftStrikeUsed(true)
     const strikeResult = performAttack(
-      getRangerSwiftStrikeAttackBonus(player.attributes.agi, player.level),
-      enemy.defense,
-      getRangerSwiftStrikeDamage(player.attributes.agi, weaponDamageBonus) + levelDamageBonus,
+      playerAgility,
+      enemy.agility,
+      getRangerSwiftStrikeDamage(player.attributes.agi, weaponDamageBonus, player.level),
+      enemy.armor,
     )
     applyPlayerAttack(strikeResult, 'ranger_swift_strike')
   }
 
-  /** TM-P1-008：战士压制猛击——先消费灵力，成功才掷骰；攻击公式完全等同普通攻击，命中后本次敌人不反击 */
   const handleWarriorSuppressStrike = () => {
     if (phase !== 'active') return
-    // 唯一灵力消费入口：false → 不掷骰、不改敌人 HP、不触发敌人行动、不改最近攻击记录
     if (!spendWarriorSuppressStrikeMp()) return
-    const strikeResult = performAttack(
-      getPlayerAttackBonus(player.attributes.str, player.level),
-      enemy.defense,
-      getPlayerAttackDamage(player.attributes.str, weaponDamageBonus) + levelDamageBonus,
-    )
+    const strikeResult = performAttack(playerAgility, enemy.agility, playerAttackPower, enemy.armor)
     applyPlayerAttack(strikeResult, 'warrior_suppress_strike')
   }
 
-  /** TM-P1-001/006/007/008：普通攻击/法术攻击/骑士重击/迅捷突袭/压制猛击共用的最小局部结算（不建 ActionSystem/TurnManager） */
+  /** TM-P1-001/006/007/008：玩家攻击共用最小局部结算（V3 保持；压制仅正常命中/暴击压制） */
   const applyPlayerAttack = (
     attack: AttackResult,
     action: 'basic' | 'mage_spell' | 'knight_power_strike' | 'ranger_swift_strike' | 'warrior_suppress_strike',
   ) => {
     setLastPlayerAttack(attack)
     setLastPlayerAction(action)
-    setLastPotionHeal(null) // TM-P1-015：玩家下一次攻击/技能清除上一次药水日志（日志反映最近一次行动）
+    setLastPotionHeal(null)
     setLastEnemyAttack(null)
 
     const strike = resolvePlayerStrike(enemyCurrentHp, attack)
     setEnemyCurrentHp(strike.enemyHp)
     if (!strike.enemyShouldCounter) {
-      // 致死攻击 → 胜利，且敌人不得反击
       setPhase(strike.phase)
       return
     }
-
-    // TM-P2-001 C3：压制猛击仅在「正常命中」或「暴击」时压制本次反击（擦中只造成半伤害，不能触发压制效果）
-    // 未命中（miss/天然1）不压制 → 敌人正常反击；普通攻击反击规则完全不变（只作用于 warrior_suppress_strike 行动）
-    if (
-      action === 'warrior_suppress_strike' &&
-      (attack.outcome === 'hit' || attack.outcome === 'critical_hit')
-    ) {
+    // TM-P2-001 C3：压制猛击仅「正常命中/暴击」压制本次反击；擦伤只半伤不压制
+    if (action === 'warrior_suppress_strike' && (attack.outcome === 'hit' || attack.outcome === 'critical_hit')) {
       return
     }
-
-    // 敌人存活则立即反击（同一套 performAttack）
     applyEnemyCounter()
   }
+
+  const actionLabel =
+    lastPlayerAction === 'mage_spell'
+      ? '你的法术攻击：'
+      : lastPlayerAction === 'knight_power_strike'
+        ? '你的骑士重击：'
+        : lastPlayerAction === 'ranger_swift_strike'
+          ? '你的迅捷突袭：'
+          : lastPlayerAction === 'warrior_suppress_strike'
+            ? '你的压制猛击：'
+            : '你的攻击：'
 
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-3xl flex-col gap-6 px-4 py-6">
@@ -238,7 +253,13 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
         <h2 className="text-xl font-bold tracking-widest text-gold-300">战斗</h2>
       </header>
 
+      {/* TM-P2-002 D：先手提示 */}
+      {enemyFirstStrikeDone && phase === 'active' && (
+        <p className="text-center text-sm text-gold-300">{enemy.name}先手！</p>
+      )}
+
       <div className="grid gap-4 sm:grid-cols-2">
+        {/* TM-P2-002 E：玩家面板（攻击力/护甲/敏捷/五属性/武器） */}
         <section className="rounded border border-ink-600 bg-ink-800/50 p-4 text-sm text-bone-300">
           <p className="text-base font-bold text-bone-100">{player.name}</p>
           <p className="mt-1 text-xs text-bone-500">
@@ -250,11 +271,25 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
           <p>
             灵力 <span className="tabular-nums text-bone-100">{player.mp}</span> / {player.maxMp}
           </p>
-          <p>
-            防御 <span className="tabular-nums text-bone-100">{playerDefense}</span>
+          <p className="mt-2">
+            攻击力 <span className="tabular-nums text-bone-100">{playerAttackPower}</span>
           </p>
           <p>
-            武器：{' '}
+            护甲等级 <span className="tabular-nums text-bone-100">{playerArmor}</span>
+          </p>
+          <p>
+            敏捷 <span className="tabular-nums text-bone-100">{playerAgility}</span>
+          </p>
+          <div className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1">
+            {ATTRIBUTE_KEYS.map((key) => (
+              <div key={key} className="flex justify-between">
+                <span className="text-bone-500">{ATTRIBUTE_LABELS[key]}</span>
+                <span className="tabular-nums text-bone-300">{player.attributes[key]}</span>
+              </div>
+            ))}
+          </div>
+          <p className="mt-2">
+            当前武器：{' '}
             {equippedWeapon ? (
               <span className="text-bone-100">{equippedWeapon.name}</span>
             ) : gameState.equipment.weapon ? (
@@ -267,14 +302,21 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
           </p>
         </section>
 
+        {/* TM-P2-002 E：敌人面板（名称/等级/HP/攻击力/护甲/敏捷） */}
         <section className="rounded border border-ink-600 bg-ink-800/50 p-4 text-sm text-bone-300">
           <p className="text-base font-bold text-bone-100">{enemy.name}</p>
           <p className="mt-1 text-xs text-bone-500">Lv.{enemy.level}</p>
           <p className="mt-2">
             HP <span className="tabular-nums text-bone-100">{enemyCurrentHp}</span> / {enemy.maxHp}
           </p>
+          <p className="mt-2">
+            攻击力 <span className="tabular-nums text-bone-100">{enemy.attackPower}</span>
+          </p>
           <p>
-            防御 <span className="tabular-nums text-bone-100">{enemy.defense}</span>
+            护甲等级 <span className="tabular-nums text-bone-100">{enemy.armor}</span>
+          </p>
+          <p>
+            敏捷 <span className="tabular-nums text-bone-100">{enemy.agility}</span>
           </p>
         </section>
       </div>
@@ -282,31 +324,29 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
       {(lastPlayerAttack || lastEnemyAttack || lastPotionHeal !== null) && (
         <section className="rounded border border-ink-600 bg-ink-900/50 p-4 text-sm leading-relaxed text-bone-300">
           {lastPlayerAttack && (
-            <p>
-              <span className="text-bone-500">
-                {lastPlayerAction === 'mage_spell'
-                  ? '你的法术攻击：'
-                  : lastPlayerAction === 'knight_power_strike'
-                    ? '你的骑士重击：'
-                    : lastPlayerAction === 'ranger_swift_strike'
-                      ? '你的迅捷突袭：'
-                      : lastPlayerAction === 'warrior_suppress_strike'
-                        ? '你的压制猛击：'
-                        : '你的攻击：'}
-              </span>
-              {attackLine(lastPlayerAttack, enemy.name)}
-            </p>
+            <div>
+              <p className="text-bone-500">{actionLabel}</p>
+              {attackLine(lastPlayerAttack, enemy.name).map((line, i) => (
+                <p key={i} className="mt-1">
+                  {line}
+                </p>
+              ))}
+            </div>
           )}
           {lastPotionHeal !== null && (
-            <p>
+            <p className="mt-2">
               <span className="text-bone-500">你使用了治疗药水：恢复 {lastPotionHeal} 点生命。</span>
             </p>
           )}
           {lastEnemyAttack && (
-            <p>
-              <span className="text-bone-500">{enemy.name}的攻击：</span>
-              {attackLine(lastEnemyAttack, player.name)}
-            </p>
+            <div className="mt-2">
+              <p className="text-bone-500">{enemy.name}的攻击：</p>
+              {attackLine(lastEnemyAttack, player.name).map((line, i) => (
+                <p key={i} className="mt-1">
+                  {line}
+                </p>
+              ))}
+            </div>
           )}
         </section>
       )}
@@ -317,7 +357,6 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
             <Button variant="primary" onClick={handleAttack}>
               普通攻击
             </Button>
-            {/* TM-P1-001：仅法师显示法术攻击；灵力不足时禁用但普通攻击不受影响 */}
             {player.profession === 'mage' && (
               <div className="flex flex-col items-center gap-1">
                 <Button variant="primary" disabled={player.mp < MAGE_SPELL_MP_COST} onClick={handleMageSpell}>
@@ -326,7 +365,6 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
                 {player.mp < MAGE_SPELL_MP_COST && <span className="text-xs text-red-300">灵力不足</span>}
               </div>
             )}
-            {/* TM-P1-006：仅骑士显示骑士重击；灵力不足时禁用但普通攻击不受影响 */}
             {player.profession === 'knight' && (
               <div className="flex flex-col items-center gap-1">
                 <Button
@@ -339,20 +377,14 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
                 {player.mp < KNIGHT_POWER_STRIKE_MP_COST && <span className="text-xs text-red-300">灵力不足</span>}
               </div>
             )}
-            {/* TM-P1-007：仅游侠显示迅捷突袭（不消费 MP、每场一次；使用后禁用+本场战斗已使用，普通攻击不受影响） */}
             {player.profession === 'ranger' && (
               <div className="flex flex-col items-center gap-1">
-                <Button
-                  variant="primary"
-                  disabled={rangerSwiftStrikeUsed}
-                  onClick={handleRangerSwiftStrike}
-                >
+                <Button variant="primary" disabled={rangerSwiftStrikeUsed} onClick={handleRangerSwiftStrike}>
                   迅捷突袭
                 </Button>
                 {rangerSwiftStrikeUsed && <span className="text-xs text-bone-500">本场战斗已使用</span>}
               </div>
             )}
-            {/* TM-P1-008：仅战士显示压制猛击；灵力不足时禁用但普通攻击不受影响（无本场次数限制，MP 足够即可再用） */}
             {player.profession === 'warrior' && (
               <div className="flex flex-col items-center gap-1">
                 <Button
@@ -365,7 +397,6 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
                 {player.mp < WARRIOR_SUPPRESS_STRIKE_MP_COST && <span className="text-xs text-red-300">灵力不足</span>}
               </div>
             )}
-            {/* TM-P1-015：治疗药水——所有职业通用（不是职业技能，无 profession 条件）；healAmount 读注册表；满血/无药水禁用但普通攻击不受影响 */}
             {healingPotionAmount !== undefined && (
               <div className="flex flex-col items-center gap-1">
                 <Button
@@ -403,4 +434,9 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
       </footer>
     </div>
   )
+}
+
+/** 读取玩家敏捷（在 gameState 可能为 null 的惰性初始化场景下安全取值） */
+function playerAgilityOf(state: { player: { attributes: { agi: number } } }): number {
+  return state.player.attributes.agi
 }

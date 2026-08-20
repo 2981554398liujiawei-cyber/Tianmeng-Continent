@@ -168,7 +168,7 @@ describe('TM-P0-002：内容数量与指定条目', () => {
   })
 
   // TM-P1-025：骷髅士兵完整锁定（普通战斗规则，无技能/状态/抗性/掉落）
-  it('TM-P1-025：骷髅士兵注册表定义锁定（id/name/level=3/tags/maxHp/defense/attackBonus/damage）', () => {
+  it('TM-P1-025：骷髅士兵注册表定义锁定（id/name/level=3/tags/maxHp/armor/attackPower/agility）', () => {
     const soldier = getEnemy('skeleton_soldier')
     expect(soldier).toBeDefined()
     expect(soldier?.id).toBe('skeleton_soldier')
@@ -176,13 +176,13 @@ describe('TM-P0-002：内容数量与指定条目', () => {
     expect(soldier?.level).toBe(3)
     expect(soldier?.tags).toEqual(['undead'])
     expect(soldier?.maxHp).toBe(14)
-    expect(soldier?.defense).toBe(12)
-    expect(soldier?.attackBonus).toBe(3)
-    expect(soldier?.damage).toBe(3)
+    expect(soldier?.armor).toBe(12)
+    expect(soldier?.attackPower).toBe(3)
+    expect(soldier?.agility).toBe(8)
   })
 
   // TM-P1-026：骷髅队长完整锁定（一层 Boss——普通确定性 D20 战斗；无技能系统/抗性/掉落）
-  it('TM-P1-026：骷髅队长注册表定义锁定（id/name/level=4/tags/maxHp/defense/attackBonus/damage）', () => {
+  it('TM-P1-026：骷髅队长注册表定义锁定（id/name/level=4/tags/maxHp/armor/attackPower/agility）', () => {
     const captain = getEnemy('skeleton_captain')
     expect(captain).toBeDefined()
     expect(captain?.id).toBe('skeleton_captain')
@@ -190,13 +190,13 @@ describe('TM-P0-002：内容数量与指定条目', () => {
     expect(captain?.level).toBe(4)
     expect(captain?.tags).toEqual(['undead', 'boss'])
     expect(captain?.maxHp).toBe(22)
-    expect(captain?.defense).toBe(13)
-    expect(captain?.attackBonus).toBe(4)
-    expect(captain?.damage).toBe(4)
+    expect(captain?.armor).toBe(13)
+    expect(captain?.attackPower).toBe(4)
+    expect(captain?.agility).toBe(8)
   })
 
   // TM-P1-027：僵尸完整锁定（入口固定顺序第一场——普通 D20 战斗；无中毒/吸血/持续伤害/特殊恢复/掉落）
-  it('TM-P1-027：僵尸注册表定义锁定（id/name/level=4/tags/maxHp/defense/attackBonus/damage）', () => {
+  it('TM-P1-027：僵尸注册表定义锁定（id/name/level=4/tags/maxHp/armor/attackPower/agility）', () => {
     const zombie = getEnemy('tower_zombie')
     expect(zombie).toBeDefined()
     expect(zombie?.id).toBe('tower_zombie')
@@ -205,13 +205,13 @@ describe('TM-P0-002：内容数量与指定条目', () => {
     expect(zombie?.description).toContain('受到魔气侵染的腐败尸体')
     expect(zombie?.tags).toEqual(['undead'])
     expect(zombie?.maxHp).toBe(18)
-    expect(zombie?.defense).toBe(12)
-    expect(zombie?.attackBonus).toBe(4)
-    expect(zombie?.damage).toBe(4)
+    expect(zombie?.armor).toBe(12)
+    expect(zombie?.attackPower).toBe(4)
+    expect(zombie?.agility).toBe(6)
   })
 
   // TM-P1-027：黑法师完整锁定（入口固定顺序第二场——普通战斗模型；无盲目/暗属性/黑色火球/暴躁/特殊法术 AI/掉落）
-  it('TM-P1-027：黑法师注册表定义锁定（id/name/level=4/tags/maxHp/defense/attackBonus/damage）', () => {
+  it('TM-P1-027：黑法师注册表定义锁定（id/name/level=4/tags/maxHp/armor/attackPower/agility）', () => {
     const blackMage = getEnemy('black_mage')
     expect(blackMage).toBeDefined()
     expect(blackMage?.id).toBe('black_mage')
@@ -220,13 +220,13 @@ describe('TM-P0-002：内容数量与指定条目', () => {
     expect(blackMage?.description).toContain('生前曾是法师')
     expect(blackMage?.tags).toEqual(['undead'])
     expect(blackMage?.maxHp).toBe(14)
-    expect(blackMage?.defense).toBe(11)
-    expect(blackMage?.attackBonus).toBe(5)
-    expect(blackMage?.damage).toBe(4)
+    expect(blackMage?.armor).toBe(11)
+    expect(blackMage?.attackPower).toBe(4)
+    expect(blackMage?.agility).toBe(8)
   })
 
   // TM-P1-028：骷髅战士完整锁定（二层深处第三场——普通 D20 战斗；无技能系统/重击/格挡/眩晕/亡灵抗性/特殊 AI/掉落）
-  it('TM-P1-028：骷髅战士注册表定义锁定（id/name/level=5/tags/maxHp/defense/attackBonus/damage）', () => {
+  it('TM-P1-028：骷髅战士注册表定义锁定（id/name/level=5/tags/maxHp/armor/attackPower/agility）', () => {
     const warrior = getEnemy('skeleton_warrior')
     expect(warrior).toBeDefined()
     expect(warrior?.id).toBe('skeleton_warrior')
@@ -235,13 +235,13 @@ describe('TM-P0-002：内容数量与指定条目', () => {
     expect(warrior?.description).toContain('骷髅战士')
     expect(warrior?.tags).toEqual(['undead'])
     expect(warrior?.maxHp).toBe(20)
-    expect(warrior?.defense).toBe(13)
-    expect(warrior?.attackBonus).toBe(4)
-    expect(warrior?.damage).toBe(4)
+    expect(warrior?.armor).toBe(13)
+    expect(warrior?.attackPower).toBe(4)
+    expect(warrior?.agility).toBe(8)
   })
 
   // TM-P1-029：骷髅女妖完整锁定（三层守卫——普通 D20 战斗；不因「女妖」增加法术系统；无诅咒/恐惧/吸血/灵魂攻击/暗属性/召唤/特殊 AI）
-  it('TM-P1-029：骷髅女妖注册表定义锁定（id/name/level=5/tags/maxHp/defense/attackBonus/damage）', () => {
+  it('TM-P1-029：骷髅女妖注册表定义锁定（id/name/level=5/tags/maxHp/armor/attackPower/agility）', () => {
     const witch = getEnemy('skeleton_witch')
     expect(witch).toBeDefined()
     expect(witch?.id).toBe('skeleton_witch')
@@ -250,13 +250,13 @@ describe('TM-P0-002：内容数量与指定条目', () => {
     expect(witch?.description).toContain('骷髅女妖')
     expect(witch?.tags).toEqual(['undead'])
     expect(witch?.maxHp).toBe(18)
-    expect(witch?.defense).toBe(12)
-    expect(witch?.attackBonus).toBe(5)
-    expect(witch?.damage).toBe(5)
+    expect(witch?.armor).toBe(12)
+    expect(witch?.attackPower).toBe(5)
+    expect(witch?.agility).toBe(8)
   })
 
   // TM-P2-001 D4：黑鬃魔狼完整锁定（北门外荒野——普通战斗模型；无技能系统）
-  it('TM-P2-001 D4：黑鬃魔狼注册表定义锁定（id/name/level=3/tags/maxHp/defense/attackBonus/damage）', () => {
+  it('TM-P2-001 D4：黑鬃魔狼注册表定义锁定（id/name/level=3/tags/maxHp/armor/attackPower/agility）', () => {
     const wolf = getEnemy('black_mane_wolf')
     expect(wolf).toBeDefined()
     expect(wolf?.id).toBe('black_mane_wolf')
@@ -264,9 +264,9 @@ describe('TM-P0-002：内容数量与指定条目', () => {
     expect(wolf?.level).toBe(3)
     expect(wolf?.tags).toEqual(['beast'])
     expect(wolf?.maxHp).toBe(15)
-    expect(wolf?.defense).toBe(12)
-    expect(wolf?.attackBonus).toBe(3)
-    expect(wolf?.damage).toBe(3)
+    expect(wolf?.armor).toBe(12)
+    expect(wolf?.attackPower).toBe(3)
+    expect(wolf?.agility).toBe(12)
   })
 
   // TM-P2-001 D1：天龙城北门注册表锁定（Phase 2 新地点；无需 requiredFlag；连接天龙城；投放黑鬃魔狼）
@@ -456,23 +456,24 @@ describe('TM-P0-002-R1：关键内容身份锁', () => {
 })
 
 describe('TM-P0-007：敌人战斗数据一致性', () => {
-  it('全部敌人战斗字段为整数且 maxHp/defense/damage 为正整数', () => {
+  it('全部敌人战斗字段为整数且 maxHp/armor/attackPower/agility 合法', () => {
     for (const enemy of Object.values(ENEMIES)) {
       expect(Number.isInteger(enemy.maxHp), `${enemy.id} maxHp`).toBe(true)
       expect(enemy.maxHp).toBeGreaterThan(0)
-      expect(Number.isInteger(enemy.defense), `${enemy.id} defense`).toBe(true)
-      expect(enemy.defense).toBeGreaterThan(0)
-      expect(Number.isInteger(enemy.attackBonus), `${enemy.id} attackBonus`).toBe(true)
-      expect(Number.isInteger(enemy.damage), `${enemy.id} damage`).toBe(true)
-      expect(enemy.damage).toBeGreaterThan(0)
+      expect(Number.isInteger(enemy.armor), `${enemy.id} armor`).toBe(true)
+      expect(enemy.armor).toBeGreaterThan(0)
+      expect(Number.isInteger(enemy.attackPower), `${enemy.id} attackPower`).toBe(true)
+      expect(enemy.attackPower).toBeGreaterThan(0)
+      expect(Number.isInteger(enemy.agility), `${enemy.id} agility`).toBe(true)
+      expect(enemy.agility).toBeGreaterThan(0)
     }
   })
 
   it('四敌人战斗基线数值锁定（V1 平衡基线）', () => {
-    expect(getEnemy('corrupted_rabbit')).toMatchObject({ maxHp: 8, defense: 11, attackBonus: 2, damage: 2 })
-    expect(getEnemy('corrupted_rat')).toMatchObject({ maxHp: 6, defense: 10, attackBonus: 2, damage: 2 })
-    expect(getEnemy('corrupted_wolf')).toMatchObject({ maxHp: 12, defense: 12, attackBonus: 3, damage: 3 })
-    expect(getEnemy('dudu_rabbit')).toMatchObject({ maxHp: 24, defense: 13, attackBonus: 4, damage: 4 })
+    expect(getEnemy('corrupted_rabbit')).toMatchObject({ maxHp: 8, armor: 11, attackPower: 2, agility: 10 })
+    expect(getEnemy('corrupted_rat')).toMatchObject({ maxHp: 6, armor: 10, attackPower: 2, agility: 10 })
+    expect(getEnemy('corrupted_wolf')).toMatchObject({ maxHp: 12, armor: 12, attackPower: 3, agility: 12 })
+    expect(getEnemy('dudu_rabbit')).toMatchObject({ maxHp: 24, armor: 13, attackPower: 4, agility: 10 })
   })
 
   it('已锁定身份字段未被修改：name/description/tags/level', () => {

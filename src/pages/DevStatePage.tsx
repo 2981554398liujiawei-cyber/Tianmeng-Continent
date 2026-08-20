@@ -3,9 +3,9 @@ import Button from '../components/Button'
 import { useGameStore } from '../game/state/gameStore'
 import { performD20Check, type D20CheckResult } from '../game/rules/d20'
 import {
-  getPlayerAttackBonus,
-  getPlayerAttackDamage,
-  getPlayerDefense,
+  getPlayerAgility,
+  getPlayerArmor,
+  getPlayerAttackPower,
   performAttack,
   type AttackResult,
 } from '../game/rules/combat'
@@ -41,8 +41,7 @@ const OUTCOME_LABELS: Record<D20CheckResult['outcome'], string> = {
 const ATTACK_OUTCOME_LABELS: Record<AttackResult['outcome'], string> = {
   critical_hit: '暴击',
   hit: '命中',
-  glancing_hit: '擦中',
-  miss: '未命中',
+  glancing_hit: '擦伤',
   critical_miss: '大失败',
 }
 
@@ -79,14 +78,20 @@ export default function DevStatePage({ onBackToMenu }: DevStatePageProps) {
       return
     }
     try {
-      // TM-P0-013：开发测试与正式战斗共用同一伤害规则（读取当前装备武器加成）
+      // TM-P2-002：开发测试与正式战斗共用同一 V3 结算（敏捷命中 + 护甲减伤）
       const weaponId = gameState.equipment.weapon
       const weapon = weaponId ? getItem(weaponId) : undefined
       const bonus =
         weapon?.type === 'weapon' && Number.isInteger(weapon.weaponDamageBonus) ? (weapon.weaponDamageBonus ?? 0) : 0
-      const baseDamage = getPlayerAttackDamage(gameState.player.attributes.str, bonus)
-      const attackBonus = getPlayerAttackBonus(gameState.player.attributes.str, gameState.player.level)
-      setAttackResult(performAttack(attackBonus, enemy.defense, baseDamage))
+      const raw = getPlayerAttackPower(gameState.player.attributes.str, bonus, gameState.player.level)
+      setAttackResult(
+        performAttack(
+          getPlayerAgility(gameState.player.attributes.agi),
+          enemy.agility,
+          raw,
+          enemy.armor,
+        ),
+      )
     } catch (err) {
       setAttackError(err instanceof Error ? err.message : '攻击结算失败')
     }
@@ -105,8 +110,15 @@ export default function DevStatePage({ onBackToMenu }: DevStatePageProps) {
       return
     }
     try {
-      // TM-P2-001 C2：敌人攻击使用 enemy 模式（无擦中）
-      setAttackResult(performAttack(enemy.attackBonus, getPlayerDefense(gameState.player.attributes.agi), enemy.damage, 'enemy'))
+      // TM-P2-002：敌人攻击走同一 V3 结算（敏捷命中 + 玩家护甲减伤）
+      setAttackResult(
+        performAttack(
+          enemy.agility,
+          getPlayerAgility(gameState.player.attributes.agi),
+          enemy.attackPower,
+          getPlayerArmor(gameState.player.attributes.con),
+        ),
+      )
     } catch (err) {
       setAttackError(err instanceof Error ? err.message : '攻击结算失败')
     }
@@ -182,8 +194,8 @@ export default function DevStatePage({ onBackToMenu }: DevStatePageProps) {
           </Button>
         </div>
         <div className="mt-3 flex flex-wrap gap-2 border-t border-ink-600 pt-3">
-          <Button variant="primary" onClick={() => saveGame()}>
-            保存存档
+          <Button variant="primary" onClick={() => saveGame('slot1')}>
+            保存存档（Slot 1）
           </Button>
           <Button variant="ghost" onClick={() => loadGame()}>
             读取存档
@@ -310,7 +322,7 @@ export default function DevStatePage({ onBackToMenu }: DevStatePageProps) {
             >
               {Object.values(ENEMIES).map((enemy) => (
                 <option key={enemy.id} value={enemy.id}>
-                  {enemy.name}（Lv.{enemy.level} 防 {enemy.defense}）
+                  {enemy.name}（Lv.{enemy.level} 护甲 {enemy.armor}）
                 </option>
               ))}
             </select>
@@ -331,13 +343,19 @@ export default function DevStatePage({ onBackToMenu }: DevStatePageProps) {
               D20：<span className="text-bone-100">{attackResult.roll}</span>
             </p>
             <p>
-              攻击加值：<span className="text-bone-100">{attackResult.attackBonus}</span>
+              攻击者敏捷：<span className="text-bone-100">{attackResult.attackerAgility}</span>
             </p>
             <p>
-              总值：<span className="text-bone-100">{attackResult.total}</span>
+              对方敏捷：<span className="text-bone-100">{attackResult.defenderAgility}</span>
             </p>
             <p>
-              目标防御：<span className="text-bone-100">{attackResult.defense}</span>
+              原始伤害：<span className="text-bone-100">{attackResult.rawDamage}</span>
+            </p>
+            <p>
+              防守护甲：<span className="text-bone-100">{attackResult.armor}</span>
+            </p>
+            <p>
+              承伤率：<span className="text-bone-100">{Math.round(attackResult.damageTakenRate * 100)}%</span>
             </p>
             <p>
               是否命中：<span className="text-bone-100">{attackResult.hit ? '是' : '否'}</span>

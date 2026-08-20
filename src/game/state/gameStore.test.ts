@@ -137,7 +137,7 @@ describe('newGame 与状态完整性', () => {
 
 describe('TM-P0-001-R1：存档生命周期', () => {
   it('保存成功 → hasSave 为 true，loadGame 成功', () => {
-    useGameStore.getState().saveGame()
+    useGameStore.getState().saveGame('slot1')
     expect(useGameStore.getState().hasSave).toBe(true)
     expect(useGameStore.getState().loadGame()).toBe(true)
   })
@@ -150,13 +150,13 @@ describe('TM-P0-001-R1：存档生命周期', () => {
     vi.spyOn(localStorage, 'setItem').mockImplementation(() => {
       throw new Error('QuotaExceededError')
     })
-    const ok = useGameStore.getState().saveGame()
+    const ok = useGameStore.getState().saveGame('slot1')
     expect(ok).toBe(false)
     expect(useGameStore.getState().hasSave).toBe(false)
   })
 
   it('deleteGame 后 hasSave 为 false 且 loadGame 失败', () => {
-    useGameStore.getState().saveGame()
+    useGameStore.getState().saveGame('slot1')
     useGameStore.getState().deleteGame()
     expect(useGameStore.getState().hasSave).toBe(false)
     expect(useGameStore.getState().loadGame()).toBe(false)
@@ -165,13 +165,13 @@ describe('TM-P0-001-R1：存档生命周期', () => {
 
 describe('TM-P0-001-R2：hasSave 与 storage 真实状态一致', () => {
   it('已有合法旧档，下一次写入失败：saveGame 返回 false 但 hasSave 保持 true，旧档仍可加载', () => {
-    useGameStore.getState().saveGame()
+    useGameStore.getState().saveGame('slot1')
     expect(useGameStore.getState().hasSave).toBe(true)
 
     vi.spyOn(localStorage, 'setItem').mockImplementation(() => {
       throw new Error('QuotaExceededError')
     })
-    const ok = useGameStore.getState().saveGame()
+    const ok = useGameStore.getState().saveGame('slot1')
     expect(ok).toBe(false)
     // R2：写入失败不得错误丢失旧存档的 hasSave=true
     expect(useGameStore.getState().hasSave).toBe(true)
@@ -180,10 +180,10 @@ describe('TM-P0-001-R2：hasSave 与 storage 真实状态一致', () => {
   })
 
   it('运行期间存档被改坏：loadGame 返回 false 并同步 hasSave=false', () => {
-    useGameStore.getState().saveGame()
+    useGameStore.getState().saveGame('slot1')
     expect(useGameStore.getState().hasSave).toBe(true)
 
-    localStorage.setItem('tianmeng_continent_save', '{ broken')
+    localStorage.setItem('tianmeng_continent_save_slot_slot1', '{ broken')
     const ok = useGameStore.getState().loadGame()
     expect(ok).toBe(false)
     expect(useGameStore.getState().hasSave).toBe(false)
@@ -192,7 +192,7 @@ describe('TM-P0-001-R2：hasSave 与 storage 真实状态一致', () => {
 
 describe('TM-P0-001-R3：Store 与持久化约束一致', () => {
   it('deleteGame 时 removeItem 抛错：旧档保留则 hasSave 保持 true', () => {
-    useGameStore.getState().saveGame()
+    useGameStore.getState().saveGame('slot1')
     expect(useGameStore.getState().hasSave).toBe(true)
 
     vi.spyOn(localStorage, 'removeItem').mockImplementation(() => {
@@ -237,7 +237,7 @@ describe('TM-P0-001-R4：setFlag 拒绝非有限数字', () => {
 
   it('有限小数 Flag 可保存并读回（0.5 不被误伤）', () => {
     useGameStore.getState().setFlag('progress', 0.5)
-    useGameStore.getState().saveGame()
+    useGameStore.getState().saveGame('slot1')
     expect(useGameStore.getState().loadGame()).toBe(true)
     expect(useGameStore.getState().gameState?.world.flags.progress).toBe(0.5)
   })

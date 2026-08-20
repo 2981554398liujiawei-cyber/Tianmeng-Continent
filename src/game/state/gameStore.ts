@@ -11,26 +11,47 @@ import { LEVEL_2_MAX_HP_GAIN, LEVEL_2_MAX_MP_GAIN } from '../rules/character'
 /** TM-P1-003：《村外异动》完成后村长一次性回应事件 ID（唯一代码来源，GamePage 亦读取） */
 export const VILLAGE_ELDER_POST_QUEST_EVENT_ID = 'village_elder_post_quest_response'
 import {
-  deleteGame as deleteSave,
-  hasSave as storageHasSave,
-  loadGame as loadSaveFromStorage,
-  saveGame as persistGame,
+  deleteSlot as storageDeleteSlot,
+  exportSaves as storageExportSaves,
+  hasAnySave,
+  importSaves as storageImportSaves,
+  loadMostRecentSave,
+  loadSlot as storageLoadSlot,
+  loadIndex,
+  migrateLegacySave,
+  saveSlot as persistSlot,
+  type SavesIndex,
+  type SlotId,
+  type SlotSummary,
 } from '../utils/storage'
 
 interface GameStoreState {
   /** 当前游戏状态；null 表示尚未开始 */
   gameState: GameState | null
-  /** 是否存在可继续的存档 */
+  /** 是否存在可继续的存档（任一槽位有效） */
   hasSave: boolean
+  /** 五槽位摘要（姓名/职业/等级/位置/时间；空槽 null；TM-P2-002 G） */
+  slots: SavesIndex['slots']
+  /** 最近一次保存的槽位（Continue 入口；TM-P2-002 G） */
+  lastSavedSlot: SlotId | null
 
-  // 存档生命周期
+  // 存档生命周期（TM-P2-002 G/H：五槽位 + V1 迁移）
   /** 新建游戏：传入创建输入则按玩家数据生成角色，否则生成默认开发角色（TM-P0-004） */
   newGame: (input?: CharacterCreationInput) => void
-  /** 读档成功返回 true，无有效存档返回 false（TM-P0-001-R1：调用方据此决定是否可进入游戏页） */
+  /** 读取最近一次有效存档（Continue）；成功返回 true（自动执行 V1→V2 迁移） */
   loadGame: () => boolean
-  /** 保存成功返回 true，写入失败返回 false（TM-P0-001-R1） */
-  saveGame: () => boolean
+  /** 保存到指定槽位；成功返回 true（TM-P2-002 G：保存前需覆盖确认由 UI 负责） */
+  saveGame: (slotId: SlotId) => boolean
+  /** 读取指定槽位；成功返回 true */
+  loadSlot: (slotId: SlotId) => boolean
+  /** 删除指定槽位；成功返回 true（坏槽不影响其他槽） */
+  deleteSlot: (slotId: SlotId) => boolean
+  /** 删除最近存档槽位（兼容旧调用方；DevStatePage 使用） */
   deleteGame: () => void
+  /** 导出五槽位 JSON（TM-P2-002 I） */
+  exportSaves: () => string
+  /** 导入五槽位 JSON：完整校验，非法不覆盖（TM-P2-002 I） */
+  importSaves: (json: string) => boolean
 
   // 状态修改（数据流验证用最小动作集）
   /** 开发验证入口：直接设置地点（正式游戏页面禁止调用，仅开发者控制台使用，TM-P0-005） */
@@ -163,39 +184,69 @@ function applyQuestTransition(gameState: GameState, questId: string, to: QuestSt
 
 export const useGameStore = create<GameStoreState>()((set) => ({
   gameState: null,
-  hasSave: storageHasSave(),
+  // TM-P2-002 H：初始化即尝试自动迁移旧 V1 单档（Slot 1 为空时迁入）
+  hasSave: (migrateLegacySave(), hasAnySave()),
+  slots: loadIndexSummary(),
+  lastSavedSlot: loadIndexLast(),
 
   newGame: (input) => {
     set({ gameState: createInitialGameState(input) })
   },
 
   loadGame: () => {
-    const save = loadSaveFromStorage()
+    migrateLegacySave()
+    const save = loadMostRecentSave()
     if (save) {
-      set({ gameState: save.gameState, hasSave: true })
+      set({ gameState: save.gameState, hasSave: true, slots: loadIndexSummary(), lastSavedSlot: loadIndexLast() })
       return true
     }
-    // R2：storage 已无合法存档时同步 hasSave，保持「hasSave = storage 当前是否存在合法档」
     set({ hasSave: false })
     return false
   },
 
-  saveGame: () => {
+  saveGame: (slotId) => {
     let ok = false
     set((s) => {
       if (!s.gameState) return {}
-      ok = persistGame(s.gameState)
-      // R2：hasSave 始终反映 storage 的真实状态，而不是本次写入结果；
-      // 写入失败但旧合法存档仍在时，不得错误地丢失 hasSave=true
-      return { hasSave: storageHasSave() }
+      ok = persistSlot(slotId, s.gameState)
+      return { hasSave: hasAnySave(), slots: loadIndexSummary(), lastSavedSlot: loadIndexLast() }
     })
     return ok
   },
 
+  loadSlot: (slotId) => {
+    migrateLegacySave()
+    const save = storageLoadSlot(slotId)
+    if (save) {
+      set({ gameState: save.gameState, hasSave: true, slots: loadIndexSummary(), lastSavedSlot: loadIndexLast() })
+      return true
+    }
+    set({ hasSave: hasAnySave() })
+    return false
+  },
+
+  deleteSlot: (slotId) => {
+    const ok = storageDeleteSlot(slotId)
+    set({ hasSave: hasAnySave(), slots: loadIndexSummary(), lastSavedSlot: loadIndexLast() })
+    return ok
+  },
+
   deleteGame: () => {
-    deleteSave()
-    // R3：以 storage 实际状态为准——删除失败时旧档仍在，不得错误宣称无存档
-    set({ gameState: null, hasSave: storageHasSave() })
+    // 兼容旧调用方：删除最近存档槽位（单槽场景即全部清除）
+    const last = loadIndexLast()
+    if (last) storageDeleteSlot(last)
+    set({ gameState: null, hasSave: hasAnySave(), slots: loadIndexSummary(), lastSavedSlot: loadIndexLast() })
+  },
+
+  exportSaves: () => {
+    migrateLegacySave()
+    return storageExportSaves()
+  },
+
+  importSaves: (json) => {
+    const ok = storageImportSaves(json)
+    set({ hasSave: hasAnySave(), slots: loadIndexSummary(), lastSavedSlot: loadIndexLast() })
+    return ok
   },
 
   setCurrentLocation: (locationId) => {
@@ -1522,3 +1573,13 @@ export const useGameStore = create<GameStoreState>()((set) => ({
     return changed
   },
 }))
+
+// ---- 五槽位摘要/最近槽位读取（Store 状态同步辅助；TM-P2-002 G）----
+
+function loadIndexSummary(): SavesIndex['slots'] {
+  return loadIndex().slots
+}
+
+function loadIndexLast(): SlotId | null {
+  return loadIndex().lastSavedSlot
+}

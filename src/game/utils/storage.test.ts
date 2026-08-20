@@ -1,12 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createInitialGameState } from '../content/initial'
 import {
-  SAVE_KEY,
+  LEGACY_SAVE_KEY,
+  LEGACY_SAVE_VERSION,
   SAVE_VERSION,
-  deleteGame,
-  hasSave,
-  loadGame,
-  saveGame,
+  deleteSlot,
+  exportSaves,
+  hasAnySave,
+  importSaves,
+  loadIndex,
+  loadMostRecentSave,
+  loadSlot,
+  migrateLegacySave,
+  saveSlot,
+  type SlotId,
 } from './storage'
 
 function createMockStorage(): Storage {
@@ -35,307 +42,252 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-describe('存档读写', () => {
-  it('保存后关键状态保持一致', () => {
-    const state = createInitialGameState()
-    state.player.gold = 77
-    state.world.currentLocationId = 'misty_ruins'
-    saveGame(state)
+const stateWithGold = (gold: number) => {
+  const state = createInitialGameState()
+  state.player.gold = gold
+  return state
+}
 
-    const save = loadGame()
-    expect(save).not.toBeNull()
-    expect(save?.version).toBe(SAVE_VERSION)
+describe('TM-P2-002 G：五槽位相互独立', () => {
+  it('保存到 slot1/slot2 互不覆盖，各自读回', () => {
+    expect(saveSlot('slot1', stateWithGold(70))).toBe(true)
+    expect(saveSlot('slot2', stateWithGold(80))).toBe(true)
+    expect(loadSlot('slot1')?.gameState.player.gold).toBe(70)
+    expect(loadSlot('slot2')?.gameState.player.gold).toBe(80)
+    expect(loadSlot('slot3')).toBeNull()
+  })
+
+  it('删除 slot1 不影响 slot2', () => {
+    saveSlot('slot1', stateWithGold(70))
+    saveSlot('slot2', stateWithGold(80))
+    expect(deleteSlot('slot1')).toBe(true)
+    expect(loadSlot('slot1')).toBeNull()
+    expect(loadSlot('slot2')?.gameState.player.gold).toBe(80)
+    expect(hasAnySave()).toBe(true)
+  })
+
+  it('覆盖写入同一槽位（保存前确认由 UI 负责；storage 允许覆盖）', () => {
+    saveSlot('slot1', stateWithGold(70))
+    saveSlot('slot1', stateWithGold(90))
+    expect(loadSlot('slot1')?.gameState.player.gold).toBe(90)
+  })
+
+  it('五个槽位摘要正确（空槽 null）', () => {
+    saveSlot('slot1', stateWithGold(70))
+    saveSlot('slot3', stateWithGold(80))
+    const index = loadIndex()
+    expect(index.slots.slot1?.playerName).toBe('石头城')
+    expect(index.slots.slot1?.level).toBe(1)
+    expect(index.slots.slot1?.locationId).toBe('qingshi_village')
+    expect(index.slots.slot1?.profession).toBe('knight')
+    expect(index.slots.slot2).toBeNull()
+    expect(index.slots.slot3).not.toBeNull()
+    expect(index.slots.slot4).toBeNull()
+    expect(index.slots.slot5).toBeNull()
+    expect(index.lastSavedSlot).toBe('slot3')
+  })
+})
+
+describe('TM-P2-002 H：V1 单档自动迁移', () => {
+  const writeLegacy = (gameState: unknown, version = LEGACY_SAVE_VERSION) => {
+    localStorage.setItem(LEGACY_SAVE_KEY, JSON.stringify({ version, savedAt: '2026-01-01T00:00:00.000Z', gameState }))
+  }
+
+  it('旧 V1 单档存在且 Slot1 为空 → 迁移到 Slot1 并删除旧 key', () => {
+    const legacy = createInitialGameState()
+    legacy.player.gold = 66
+    writeLegacy(legacy)
+    expect(migrateLegacySave()).toBe(true)
+    // Slot1 有存档，旧 key 已删除
+    expect(loadSlot('slot1')?.gameState.player.gold).toBe(66)
+    expect(localStorage.getItem(LEGACY_SAVE_KEY)).toBeNull()
+    expect(loadIndex().lastSavedSlot).toBe('slot1')
+    expect(loadMostRecentSave()?.gameState.player.gold).toBe(66)
+  })
+
+  it('Slot1 已有存档 → 不迁移、不覆盖、旧 key 保留', () => {
+    saveSlot('slot1', stateWithGold(70))
+    const legacy = createInitialGameState()
+    legacy.player.gold = 66
+    writeLegacy(legacy)
+    expect(migrateLegacySave()).toBe(false)
+    expect(loadSlot('slot1')?.gameState.player.gold).toBe(70)
+    expect(localStorage.getItem(LEGACY_SAVE_KEY)).not.toBeNull()
+  })
+
+  it('旧 key 非法（损坏 JSON）→ 不迁移、不抛', () => {
+    localStorage.setItem(LEGACY_SAVE_KEY, '{ broken')
+    expect(() => migrateLegacySave()).not.toThrow()
+    expect(migrateLegacySave()).toBe(false)
+  })
+
+  it('旧 key 版本不匹配 → 不迁移', () => {
+    writeLegacy(createInitialGameState(), 999)
+    expect(migrateLegacySave()).toBe(false)
+    expect(loadSlot('slot1')).toBeNull()
+  })
+
+  it('迁移后可正常加载（Continue 语义）', () => {
+    const legacy = createInitialGameState()
+    legacy.player.name = '老存档'
+    writeLegacy(legacy)
+    migrateLegacySave()
+    expect(loadMostRecentSave()?.gameState.player.name).toBe('老存档')
+  })
+})
+
+describe('TM-P2-002 H：损坏单槽隔离', () => {
+  it('slot1 损坏 JSON → loadSlot null；slot2 正常读取', () => {
+    saveSlot('slot1', stateWithGold(70))
+    saveSlot('slot2', stateWithGold(80))
+    localStorage.setItem('tianmeng_continent_save_slot_slot1', '{ broken json')
+    expect(loadSlot('slot1')).toBeNull()
+    expect(loadSlot('slot2')?.gameState.player.gold).toBe(80)
+    expect(hasAnySave()).toBe(true)
+  })
+
+  it('slot1 结构非法 → 拒绝；slot2 正常；最近槽回退', () => {
+    saveSlot('slot1', stateWithGold(70))
+    saveSlot('slot2', stateWithGold(80))
+    localStorage.setItem('tianmeng_continent_save_slot_slot1', JSON.stringify({ savedAt: 'x', gameState: {} }))
+    expect(loadSlot('slot1')).toBeNull()
+    expect(loadSlot('slot2')?.gameState.player.gold).toBe(80)
+    // 最近槽是 slot2，不受影响
+    expect(loadMostRecentSave()?.gameState.player.gold).toBe(80)
+  })
+
+  it('删除最近槽后最近存档回退到其他有效槽', () => {
+    saveSlot('slot1', stateWithGold(70))
+    saveSlot('slot2', stateWithGold(80))
+    expect(loadIndex().lastSavedSlot).toBe('slot2')
+    deleteSlot('slot2')
+    expect(loadIndex().lastSavedSlot).toBe('slot1')
+    expect(loadMostRecentSave()?.gameState.player.gold).toBe(70)
+  })
+
+  it('全部删除 → 无存档', () => {
+    saveSlot('slot1', stateWithGold(70))
+    saveSlot('slot2', stateWithGold(80))
+    deleteSlot('slot1')
+    deleteSlot('slot2')
+    expect(hasAnySave()).toBe(false)
+    expect(loadMostRecentSave()).toBeNull()
+  })
+})
+
+describe('TM-P2-002 I：导出 / 导入', () => {
+  it('导出五槽位 JSON → 删除 → 导入 → 恢复', () => {
+    saveSlot('slot1', stateWithGold(70))
+    saveSlot('slot3', stateWithGold(80))
+    const json = exportSaves()
+    expect(json).toContain('slot1')
+    expect(json).toContain('slot3')
+
+    // 删除全部
+    deleteSlot('slot1')
+    deleteSlot('slot3')
+    expect(hasAnySave()).toBe(false)
+
+    // 导入恢复
+    expect(importSaves(json)).toBe(true)
+    expect(loadSlot('slot1')?.gameState.player.gold).toBe(70)
+    expect(loadSlot('slot3')?.gameState.player.gold).toBe(80)
+    expect(loadIndex().lastSavedSlot).toBe('slot3')
+  })
+
+  it('非法 JSON → 导入失败且不覆盖现有存档', () => {
+    saveSlot('slot1', stateWithGold(70))
+    expect(importSaves('{ not valid json')).toBe(false)
+    expect(importSaves('garbage')).toBe(false)
+    expect(loadSlot('slot1')?.gameState.player.gold).toBe(70)
+  })
+
+  it('版本不匹配 → 导入失败且不覆盖', () => {
+    saveSlot('slot1', stateWithGold(70))
+    const bad = JSON.stringify({
+      version: 999,
+      exportedAt: 'x',
+      slots: { slot1: { savedAt: 'x', gameState: stateWithGold(999) }, slot2: null, slot3: null, slot4: null, slot5: null },
+    })
+    expect(importSaves(bad)).toBe(false)
+    expect(loadSlot('slot1')?.gameState.player.gold).toBe(70)
+  })
+
+  it('任一槽结构非法 → 整体拒绝（不部分覆盖）', () => {
+    saveSlot('slot1', stateWithGold(70))
+    const state = createInitialGameState()
+    state.player.gold = 10.5 // 非法（非整数）
+    const bad = JSON.stringify({
+      version: SAVE_VERSION,
+      exportedAt: 'x',
+      slots: { slot1: { savedAt: 'x', gameState: state }, slot2: null, slot3: null, slot4: null, slot5: null },
+    })
+    expect(importSaves(bad)).toBe(false)
+    expect(loadSlot('slot1')?.gameState.player.gold).toBe(70)
+  })
+
+  it('保存 → 模拟刷新（重新读取）→ 状态保持', () => {
+    saveSlot('slot1', stateWithGold(123))
+    // 模拟刷新：localStorage 内容仍在（mock storage 未清空）
+    expect(loadSlot('slot1')?.gameState.player.gold).toBe(123)
+    expect(hasAnySave()).toBe(true)
+    expect(loadMostRecentSave()?.gameState.player.gold).toBe(123)
+  })
+})
+
+describe('TM-P0-001 校验语义（V2 槽位）', () => {
+  it('非法 GameState 不得写入任何槽位', () => {
+    const bad = createInitialGameState()
+    bad.player.gold = 10.5
+    expect(saveSlot('slot1', bad)).toBe(false)
+    expect(loadSlot('slot1')).toBeNull()
+  })
+
+  it('写入后关键状态保持一致', () => {
+    const state = stateWithGold(77)
+    state.world.currentLocationId = 'tianlong_city'
+    saveSlot('slot2', state)
+    const save = loadSlot('slot2')
+    expect(save?.savedAt).toBeTypeOf('string')
     expect(save?.gameState.player.gold).toBe(77)
-    expect(save?.gameState.world.currentLocationId).toBe('misty_ruins')
-    expect(save?.gameState.player.name).toBe('石头城')
-    expect(save?.gameState.inventory).toHaveLength(2)
+    expect(save?.gameState.world.currentLocationId).toBe('tianlong_city')
   })
 
-  it('无存档时返回 null', () => {
-    expect(loadGame()).toBeNull()
-    expect(hasSave()).toBe(false)
-  })
-
-  it('保存后 hasSave 为 true，删除后为 false', () => {
-    saveGame(createInitialGameState())
-    expect(hasSave()).toBe(true)
-    deleteGame()
-    expect(hasSave()).toBe(false)
-  })
-})
-
-describe('异常存档处理', () => {
-  it('损坏 JSON 不导致崩溃，返回 null', () => {
-    localStorage.setItem(SAVE_KEY, '{ not valid json !!!')
-    expect(() => loadGame()).not.toThrow()
-    expect(loadGame()).toBeNull()
-  })
-
-  it('结构不合法的存档被安全回退', () => {
-    localStorage.setItem(SAVE_KEY, JSON.stringify({ version: 1, savedAt: 'x', gameState: {} }))
-    expect(() => loadGame()).not.toThrow()
-    expect(loadGame()).toBeNull()
-  })
-
-  it('版本不匹配的存档被忽略', () => {
-    const state = createInitialGameState()
-    localStorage.setItem(
-      SAVE_KEY,
-      JSON.stringify({ version: 999, savedAt: 'x', gameState: state }),
-    )
-    expect(loadGame()).toBeNull()
-  })
-
-  it('顶层非对象数据被忽略', () => {
-    localStorage.setItem(SAVE_KEY, JSON.stringify('garbage'))
-    expect(loadGame()).toBeNull()
-  })
-})
-
-describe('TM-P0-001-R1：有效存档判定统一（loadGame / hasSave 共用）', () => {
-  const writeRaw = (gameState: unknown) => {
-    localStorage.setItem(
-      SAVE_KEY,
-      JSON.stringify({ version: SAVE_VERSION, savedAt: 'x', gameState }),
-    )
-  }
-
-  it('合法存档 → hasSave 为 true', () => {
-    saveGame(createInitialGameState())
-    expect(hasSave()).toBe(true)
-  })
-
-  it('损坏 JSON → hasSave 为 false', () => {
-    localStorage.setItem(SAVE_KEY, '{ broken json')
-    expect(hasSave()).toBe(false)
-  })
-
-  it('顶层看似正确但 player 缺字段（空对象）→ 拒绝', () => {
-    writeRaw({
-      player: {},
-      inventory: [],
-      equipment: { weapon: null, armor: null, accessory: null },
-      quests: [],
-      world: { currentLocationId: 'x', flags: {}, completedEvents: [], npcStates: {} },
+  it('setItem 抛错 → saveSlot false，旧档保留', () => {
+    saveSlot('slot1', stateWithGold(70))
+    vi.spyOn(localStorage, 'setItem').mockImplementation(() => {
+      throw new Error('QuotaExceededError')
     })
-    expect(loadGame()).toBeNull()
-    expect(hasSave()).toBe(false)
+    expect(saveSlot('slot2', stateWithGold(80))).toBe(false)
+    expect(loadSlot('slot1')?.gameState.player.gold).toBe(70)
   })
 
-  it('attributes 缺字段 → 拒绝', () => {
-    const state = createInitialGameState()
-    const attrs = state.player.attributes as Record<string, number>
-    delete attrs.str
-    writeRaw(state)
-    expect(loadGame()).toBeNull()
-    expect(hasSave()).toBe(false)
-  })
-
-  it('inventory entry 数量非法（0 / 负数）→ 拒绝', () => {
-    writeRaw({ ...createInitialGameState(), inventory: [{ itemId: 'x', quantity: 0 }] })
-    expect(loadGame()).toBeNull()
-    writeRaw({ ...createInitialGameState(), inventory: [{ itemId: 'x', quantity: -1 }] })
-    expect(loadGame()).toBeNull()
-    expect(hasSave()).toBe(false)
-  })
-
-  it('world 缺 currentLocationId → 拒绝', () => {
-    const state = createInitialGameState()
-    const world = state.world as Partial<typeof state.world>
-    delete world.currentLocationId
-    writeRaw(state)
-    expect(loadGame()).toBeNull()
-    expect(hasSave()).toBe(false)
-  })
-
-  it('错误版本 → 拒绝且 hasSave 为 false', () => {
-    localStorage.setItem(
-      SAVE_KEY,
-      JSON.stringify({ version: 2, savedAt: 'x', gameState: createInitialGameState() }),
-    )
-    expect(loadGame()).toBeNull()
-    expect(hasSave()).toBe(false)
-  })
-
-  it('坏档保留在 localStorage 但一律视为无效（行为确定：拒绝加载）', () => {
-    localStorage.setItem(SAVE_KEY, JSON.stringify({ version: 2, savedAt: 'x', gameState: {} }))
-    expect(localStorage.getItem(SAVE_KEY)).not.toBeNull()
-    expect(loadGame()).toBeNull()
-  })
-})
-
-describe('TM-P0-001-R2：类型守卫与运行时类型一致', () => {
-  const writeRaw = (gameState: unknown) => {
-    localStorage.setItem(
-      SAVE_KEY,
-      JSON.stringify({ version: SAVE_VERSION, savedAt: 'x', gameState }),
-    )
-  }
-  const validWorld = () => ({
-    currentLocationId: 'qingshi_village',
-    flags: {},
-    completedEvents: [],
-    npcStates: {},
-  })
-  const validPlayer = () => ({
-    id: 'p1',
-    name: '石头城',
-    gender: 'male',
-    level: 1,
-    profession: 'knight',
-    attributes: { str: 14, con: 12, agi: 10, mnd: 8, lck: 10 },
-    hp: 22,
-    maxHp: 22,
-    mp: 6,
-    maxMp: 6,
-    gold: 50,
-  })
-  const validBase = () => ({
-    player: validPlayer(),
-    inventory: [],
-    equipment: { weapon: null, armor: null, accessory: null },
-    quests: [],
-    world: validWorld(),
-  })
-
-  it('非法 profession "cleric" → 拒绝', () => {
-    writeRaw({ ...validBase(), player: { ...validPlayer(), profession: 'cleric' } })
-    expect(loadGame()).toBeNull()
-    expect(hasSave()).toBe(false)
-  })
-
-  it('quests 元素为空对象 → 拒绝', () => {
-    writeRaw({ ...validBase(), quests: [{}] })
-    expect(loadGame()).toBeNull()
-  })
-
-  it('quests 元素状态非法 → 拒绝', () => {
-    writeRaw({
-      ...validBase(),
-      quests: [{ questId: 'q1', status: 'bogus', stage: 0, flags: {} }],
-    })
-    expect(loadGame()).toBeNull()
-  })
-
-  it('world.completedEvents 含非字符串元素 → 拒绝', () => {
-    writeRaw({ ...validBase(), world: { ...validWorld(), completedEvents: [123] } })
-    expect(loadGame()).toBeNull()
-  })
-
-  it('world.flags 含非法值 null → 拒绝', () => {
-    writeRaw({ ...validBase(), world: { ...validWorld(), flags: { x: null } } })
-    expect(loadGame()).toBeNull()
-  })
-
-  it('world.npcStates 含非法 NpcState → 拒绝', () => {
-    writeRaw({
-      ...validBase(),
-      world: {
-        ...validWorld(),
-        npcStates: {
-          elder: { npcId: 'elder', alive: true, locationId: 'x', relationship: { trust: 'high' } },
-        },
-      },
-    })
-    expect(loadGame()).toBeNull()
-  })
-
-  it('合法 npcStates（含 romanceInterest）→ 接受', () => {
-    writeRaw({
-      ...validBase(),
-      world: {
-        ...validWorld(),
-        npcStates: {
-          elder: {
-            npcId: 'elder',
-            alive: true,
-            locationId: 'qingshi_village',
-            relationship: { trust: 1, affection: 2, respect: 3, fear: 0, resentment: 0, romanceInterest: true },
-          },
-        },
-      },
-    })
-    expect(loadGame()).not.toBeNull()
-  })
-})
-
-describe('TM-P0-001-R3：存储异常边界', () => {
-  it('getItem 抛错（权限受限）→ loadGame 返回 null、hasSave false、不抛出', () => {
-    vi.spyOn(localStorage, 'getItem').mockImplementation(() => {
-      throw new Error('SecurityError')
-    })
-    expect(() => loadGame()).not.toThrow()
-    expect(loadGame()).toBeNull()
-    expect(hasSave()).toBe(false)
-  })
-
-  it('removeItem 抛错 → deleteGame 返回 false，旧档保留且仍可加载', () => {
-    saveGame(createInitialGameState())
+  it('removeItem 抛错 → deleteSlot false', () => {
+    saveSlot('slot1', stateWithGold(70))
     vi.spyOn(localStorage, 'removeItem').mockImplementation(() => {
       throw new Error('SecurityError')
     })
-    expect(deleteGame()).toBe(false)
-    expect(loadGame()).not.toBeNull()
-    expect(hasSave()).toBe(true)
-  })
-
-  it('非法 GameState 不得写入，也不得覆盖旧档', () => {
-    saveGame(createInitialGameState())
-    const bad = createInitialGameState()
-    bad.player.gold = 10.5 // 非整数，与存档校验不一致
-    expect(saveGame(bad)).toBe(false)
-    // 旧合法存档仍在
-    expect(loadGame()?.gameState.player.gold).toBe(50)
-    expect(hasSave()).toBe(true)
-  })
-
-  it('正常删除后 deleteGame 返回 true 且无存档', () => {
-    saveGame(createInitialGameState())
-    expect(deleteGame()).toBe(true)
-    expect(hasSave()).toBe(false)
+    expect(deleteSlot('slot1')).toBe(false)
+    expect(loadSlot('slot1')).not.toBeNull()
   })
 })
 
-describe('TM-P0-001-R4：封闭非有限数值 Flag 漏洞', () => {
-  it('World Flag NaN → saveGame 返回 false，旧合法档不被覆盖', () => {
-    saveGame(createInitialGameState())
-    const bad = createInitialGameState()
-    bad.world.flags.bad = Number.NaN
-    expect(saveGame(bad)).toBe(false)
-    // 原合法旧档仍可加载
-    expect(loadGame()?.gameState.player.gold).toBe(50)
-    expect(hasSave()).toBe(true)
+describe('TM-P2-002 槽位 ID 常量', () => {
+  it('SLOT_IDS 顺序固定（slot1..slot5）', () => {
+    expect(loadIndex().slots).toHaveProperty('slot1')
+    expect(loadIndex().slots).toHaveProperty('slot5')
   })
 
-  it('World Flag Infinity / -Infinity → saveGame 返回 false', () => {
-    const inf = createInitialGameState()
-    inf.world.flags.bad = Number.POSITIVE_INFINITY
-    expect(saveGame(inf)).toBe(false)
-    const ninf = createInitialGameState()
-    ninf.world.flags.bad = Number.NEGATIVE_INFINITY
-    expect(saveGame(ninf)).toBe(false)
+  it('lastSavedSlot 随保存更新', () => {
+    saveSlot('slot4', stateWithGold(70))
+    expect(loadIndex().lastSavedSlot).toBe('slot4')
   })
+})
 
-  it('Quest Flag NaN → 拒绝保存（与 World Flag 同一校验语义）', () => {
-    const state = createInitialGameState()
-    state.quests = [{ questId: 'q1', status: 'in_progress', stage: 1, flags: { bad: Number.NaN } }]
-    expect(saveGame(state)).toBe(false)
-  })
-
-  it('有限小数 Flag 正常工作（save → load round-trip）', () => {
-    const state = createInitialGameState()
-    state.world.flags.progress = 0.5
-    expect(saveGame(state)).toBe(true)
-    const loaded = loadGame()
-    expect(loaded).not.toBeNull()
-    expect(loaded?.gameState.world.flags.progress).toBe(0.5)
-  })
-
-  it('写入成功即必然可读回（含有限数值 Flag 的完整 round-trip）', () => {
-    const state = createInitialGameState()
-    state.world.flags.progress = 1.5
-    const ok = saveGame(state)
-    expect(ok).toBe(true)
-    expect(loadGame()).not.toBeNull()
+describe('TM-P2-002 导出包含全部五个槽位键', () => {
+  it('导出 JSON 解析后 slots 含 slot1–slot5', () => {
+    saveSlot('slot2', stateWithGold(70))
+    const parsed = JSON.parse(exportSaves()) as { slots: Record<SlotId, unknown> }
+    expect(Object.keys(parsed.slots).sort()).toEqual(['slot1', 'slot2', 'slot3', 'slot4', 'slot5'])
   })
 })

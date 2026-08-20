@@ -4,10 +4,12 @@ interface MainMenuProps {
   hasSave: boolean
   onNewGame: () => void
   onContinue: () => void
+  /** TM-P2-002 G：读取存档（五槽位页面） */
+  onOpenSaves: () => void
   onOpenDev: () => void
 }
 
-export default function MainMenu({ hasSave, onNewGame, onContinue, onOpenDev }: MainMenuProps) {
+export default function MainMenu({ hasSave, onNewGame, onContinue, onOpenSaves, onOpenDev }: MainMenuProps) {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-8 px-4">
       <header className="text-center">
@@ -24,6 +26,10 @@ export default function MainMenu({ hasSave, onNewGame, onContinue, onOpenDev }: 
         </Button>
         <Button className="py-3 text-base" disabled={!hasSave} onClick={onContinue}>
           {hasSave ? '继续游戏' : '继续游戏（无存档）'}
+        </Button>
+        {/* TM-P2-002 G：读取存档 → 五槽位页面 */}
+        <Button className="py-3 text-base" onClick={onOpenSaves}>
+          读取存档
         </Button>
       </nav>
 

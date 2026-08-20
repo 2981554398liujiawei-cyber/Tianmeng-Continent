@@ -50,6 +50,46 @@ const clickByText = async (text) => {
 
 const bodyText = () => page.evaluate(() => document.body.textContent)
 
+// ---- TM-P2-002：五槽位存档辅助 ----
+const SAVE_KEYS = [
+  'tianmeng_continent_save',
+  'tianmeng_continent_saves_index',
+  'tianmeng_continent_save_slot_slot1',
+  'tianmeng_continent_save_slot_slot2',
+  'tianmeng_continent_save_slot_slot3',
+  'tianmeng_continent_save_slot_slot4',
+  'tianmeng_continent_save_slot_slot5',
+]
+const clearAllSaves = () =>
+  page.evaluate((keys) => keys.forEach((k) => localStorage.removeItem(k)), SAVE_KEYS)
+// 保存游戏：打开五槽位 → 保存到 Slot 1（已有存档先点「覆盖保存」确认）→ 返回游戏页
+const saveToSlot1 = async () => {
+  await clickByText('保存游戏')
+  await sleep(300)
+  const body = await page.evaluate(() => document.body.textContent)
+  if (body.includes('确认覆盖')) {
+    await clickByText('确认覆盖')
+  } else if (body.includes('覆盖保存')) {
+    // 已有存档：第一次点击进入覆盖确认，第二次点击确认执行
+    await clickByText('覆盖保存')
+    await sleep(300)
+    await clickByText('确认覆盖')
+  } else {
+    await clickByText('保存到此槽')
+  }
+  await sleep(300)
+}
+// 读取 Slot 1 存档（SaveSlot 结构 { savedAt, gameState }）
+const readSlot1Save = () =>
+  page.evaluate(() => {
+    try {
+      return JSON.parse(localStorage.getItem('tianmeng_continent_save_slot_slot1') || 'null')
+    } catch {
+      return null
+    }
+  })
+
+
 const continueDisabled = () =>
   page.evaluate(() => {
     const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.includes('继续游戏'))
@@ -124,6 +164,7 @@ try {
   await clickByText('继续游戏')
   await sleep(400)
   body = await bodyText()
+
   check('Continue 后到达武馆（tianlong_martial_hall）', (await readLocationId()) === 'tianlong_martial_hall')
   check('Phase 1 主线已完成（第一阶段完成）', body.includes('第一阶段完成'))
   check('王财任务已完成', body.includes('商人王财的麻烦') && body.includes('已完成'))
@@ -144,6 +185,7 @@ try {
 
   // 3. 马科发现《北门失联》→ 接受
   body = await bodyText()
+
   check('马科似乎有事相托（北门失联入口）', body.includes('马科似乎有事相托'))
   await clickByText('查看委托')
   await sleep(300)
@@ -244,17 +286,11 @@ try {
   await sleep(300)
 
   // 9. 保存 → 主菜单 → Continue → 状态保持；无 dead button
-  await clickByText('保存游戏')
+  await saveToSlot1()
   await sleep(300)
   body = await bodyText()
-  check('北门任务完成后保存成功（✓ 已保存）', body.includes('已保存'))
-  const saveData = await page.evaluate(() => {
-    try {
-      return JSON.parse(localStorage.getItem('tianmeng_continent_save') || 'null')
-    } catch {
-      return null
-    }
-  })
+  check('北门任务完成后保存成功（返回游戏页）', body.includes('当前位置'))
+  const saveData = await readSlot1Save()
   const qNorth = saveData?.gameState?.quests?.find((q) => q.questId === 'quest_north_gate_missing_patrol')
   check('存档：quest_north_gate_missing_patrol = completed', qNorth?.status === 'completed')
   check('存档：北门 flags 保持（trail_checked/wolf_defeated）', qNorth?.flags?.north_gate_trail_checked === true && qNorth?.flags?.north_gate_wolf_defeated === true)

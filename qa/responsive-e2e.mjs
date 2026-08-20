@@ -82,10 +82,23 @@ const readColumnRects = () =>
     }
   })
 
-// 清空存档并重新加载主菜单
+// 清空存档并重新加载主菜单（TM-P2-002：五槽位 + 旧 key 全部清除）
+const clearAllSaves = () =>
+  page.evaluate(
+    (keys) => keys.forEach((k) => localStorage.removeItem(k)),
+    [
+      'tianmeng_continent_save',
+      'tianmeng_continent_saves_index',
+      'tianmeng_continent_save_slot_slot1',
+      'tianmeng_continent_save_slot_slot2',
+      'tianmeng_continent_save_slot_slot3',
+      'tianmeng_continent_save_slot_slot4',
+      'tianmeng_continent_save_slot_slot5',
+    ],
+  )
 const resetAndLoad = async () => {
   await page.goto(URL, { waitUntil: 'networkidle0' })
-  await page.evaluate(() => localStorage.removeItem('tianmeng_continent_save'))
+  await clearAllSaves()
   await page.reload({ waitUntil: 'networkidle0' })
   await sleep(500)
 }

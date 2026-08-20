@@ -4,14 +4,17 @@ import GamePage from '../pages/GamePage'
 import DevStatePage from '../pages/DevStatePage'
 import CharacterCreationPage from '../pages/CharacterCreationPage'
 import CombatPage from '../pages/CombatPage'
+import SaveSlotsPage from '../pages/SaveSlotsPage'
 import { useGameStore } from '../game/state/gameStore'
 import { getEnemy, getLocation } from '../game/content'
 import type { CharacterCreationInput } from '../game/types'
 
-type Screen = 'main' | 'create' | 'game' | 'dev' | 'combat'
+type Screen = 'main' | 'create' | 'game' | 'dev' | 'combat' | 'saves'
+type SavesMode = 'save' | 'load'
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>('main')
+  const [savesMode, setSavesMode] = useState<SavesMode>('save')
   const [combatEnemyId, setCombatEnemyId] = useState<string | null>(null)
   const hasSave = useGameStore((s) => s.hasSave)
   const newGame = useGameStore((s) => s.newGame)
@@ -221,7 +224,27 @@ export default function App() {
   }
 
   if (screen === 'game') {
-    return <GamePage onBackToMenu={() => setScreen('main')} onEngage={handleEngage} />
+    return (
+      <GamePage
+        onBackToMenu={() => setScreen('main')}
+        onEngage={handleEngage}
+        onOpenSaves={() => {
+          setSavesMode('save')
+          setScreen('saves')
+        }}
+      />
+    )
+  }
+
+  if (screen === 'saves') {
+    return (
+      <SaveSlotsPage
+        mode={savesMode}
+        onBack={() => setScreen(savesMode === 'save' ? 'game' : 'main')}
+        onSaved={() => setScreen('game')}
+        onLoaded={() => setScreen('game')}
+      />
+    )
   }
 
   if (screen === 'dev') {
@@ -233,6 +256,10 @@ export default function App() {
       hasSave={hasSave}
       onNewGame={() => setScreen('create')}
       onContinue={handleContinue}
+      onOpenSaves={() => {
+        setSavesMode('load')
+        setScreen('saves')
+      }}
       onOpenDev={() => setScreen('dev')}
     />
   )

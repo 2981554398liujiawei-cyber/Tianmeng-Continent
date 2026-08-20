@@ -19,6 +19,8 @@ interface GamePageProps {
   onBackToMenu: () => void
   /** TM-P0-008：进入战斗（App 负责正式入口校验） */
   onEngage: (enemyId: string) => void
+  /** TM-P2-002 G：打开五槽位保存页面 */
+  onOpenSaves: () => void
 }
 
 /** 任务状态中文（TM-P0-006） */
@@ -46,7 +48,7 @@ function Bar({ label, value, max }: { label: string; value: number; max: number 
   )
 }
 
-export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
+export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePageProps) {
   const gameState = useGameStore((s) => s.gameState)
   const saveGame = useGameStore((s) => s.saveGame)
   const travelToLocation = useGameStore((s) => s.travelToLocation)
@@ -76,7 +78,6 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
   const restAtTianlongMartialHall = useGameStore((s) => s.restAtTianlongMartialHall)
   // TM-P2-001 D3：北门痕迹调查 action
   const investigateNorthGateTrail = useGameStore((s) => s.investigateNorthGateTrail)
-  const [saveResult, setSaveResult] = useState<'saved' | 'failed' | null>(null)
   const [travelError, setTravelError] = useState(false)
   // TM-P0-015：活动对话 NPC（仅 UI 本地状态，不进入 GameState / 存档）
   const [activeNpcId, setActiveNpcId] = useState<string | null>(null)
@@ -266,12 +267,6 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
     ? (equippedWeaponDef?.name ?? `未知武器（${gameState.equipment.weapon}）`)
     : '未装备'
 
-  const handleSave = () => {
-    const ok = saveGame()
-    setSaveResult(ok ? 'saved' : 'failed')
-    window.setTimeout(() => setSaveResult(null), 2500)
-  }
-
   const handleTravel = (targetId: string) => {
     // TM-P0-005：正式游戏移动只走 travelToLocation（Store 内部校验）
     const ok = travelToLocation(targetId)
@@ -323,9 +318,7 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
           <p className="text-sm text-bone-500">当前地点：{location?.name ?? '未知地点'}</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          {saveResult === 'saved' && <span className="text-sm text-gold-300">✓ 已保存</span>}
-          {saveResult === 'failed' && <span className="text-sm text-red-300">✗ 保存失败</span>}
-          <Button variant="primary" onClick={handleSave}>
+          <Button variant="primary" onClick={onOpenSaves}>
             保存游戏
           </Button>
           <Button variant="ghost" onClick={onBackToMenu}>
@@ -1138,7 +1131,7 @@ export default function GamePage({ onBackToMenu, onEngage }: GamePageProps) {
                               {threat.name} <span className="text-xs font-normal text-bone-500">· Lv.{threat.level}</span>
                             </p>
                             <p className="mt-1 text-xs text-bone-500">
-                              HP {threat.maxHp} · 防御 {threat.defense}
+                              HP {threat.maxHp} · 护甲 {threat.armor}
                             </p>
                           </div>
                           <Button variant="primary" disabled={cannotFight} onClick={() => onEngage(threat.id)}>

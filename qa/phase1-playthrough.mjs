@@ -69,6 +69,46 @@ const clickLabel = async (text) => {
 
 const bodyText = () => page.evaluate(() => document.body.textContent)
 
+// ---- TM-P2-002：五槽位存档辅助 ----
+const SAVE_KEYS = [
+  'tianmeng_continent_save',
+  'tianmeng_continent_saves_index',
+  'tianmeng_continent_save_slot_slot1',
+  'tianmeng_continent_save_slot_slot2',
+  'tianmeng_continent_save_slot_slot3',
+  'tianmeng_continent_save_slot_slot4',
+  'tianmeng_continent_save_slot_slot5',
+]
+const clearAllSaves = () =>
+  page.evaluate((keys) => keys.forEach((k) => localStorage.removeItem(k)), SAVE_KEYS)
+// 保存游戏：打开五槽位 → 保存到 Slot 1（已有存档先点「覆盖保存」确认）→ 返回游戏页
+const saveToSlot1 = async () => {
+  await clickByText('保存游戏')
+  await sleep(300)
+  const body = await page.evaluate(() => document.body.textContent)
+  if (body.includes('确认覆盖')) {
+    await clickByText('确认覆盖')
+  } else if (body.includes('覆盖保存')) {
+    // 已有存档：第一次点击进入覆盖确认，第二次点击确认执行
+    await clickByText('覆盖保存')
+    await sleep(300)
+    await clickByText('确认覆盖')
+  } else {
+    await clickByText('保存到此槽')
+  }
+  await sleep(300)
+}
+// 读取 Slot 1 存档（SaveSlot 结构 { savedAt, gameState }）
+const readSlot1Save = () =>
+  page.evaluate(() => {
+    try {
+      return JSON.parse(localStorage.getItem('tianmeng_continent_save_slot_slot1') || 'null')
+    } catch {
+      return null
+    }
+  })
+
+
 // TM-P1-031：continuity 占位符扫描——玩家正式流程 UI 不得出现任何开发占位/未定义/缺失文案
 const PLACEHOLDER_MARKERS = ['待补充', '待开放', 'TODO', 'TBD', 'undefined', '未知任务', '未知物品', '缺失物品定义']
 const assertNoPlaceholders = async (label) => {
@@ -208,7 +248,7 @@ try {
 
   // 0. 清空存档：从空存档开始（必须无 localStorage 残留）
   await page.goto(URL, { waitUntil: 'networkidle0' })
-  await page.evaluate(() => localStorage.removeItem('tianmeng_continent_save'))
+  await clearAllSaves()
   await page.reload({ waitUntil: 'networkidle0' })
   await sleep(500)
   body = await bodyText()
@@ -337,7 +377,7 @@ try {
   await sleep(300)
   body = await bodyText()
   check('进入兔王巢穴（rabbit_lair）', body.includes('兔王巢穴') && body.includes('魔化兔群的巢穴'))
-  check('嘟嘟兔可迎战（HP 24 · 防御 13）', body.includes('嘟嘟兔') && body.includes('HP 24') && body.includes('防御 13') && body.includes('迎战'))
+  check('嘟嘟兔可迎战（HP 24 · 护甲 13）', body.includes('嘟嘟兔') && body.includes('HP 24') && body.includes('护甲 13') && body.includes('迎战'))
   check('Boss 战前背包无兔子的路径', !body.includes('兔子的路径 ×'))
   await clickByText('迎战')
   await sleep(300)
@@ -702,17 +742,11 @@ try {
 
   // ---- 保存 → 读存档校验（只读，不修改任何状态）→ 主菜单 → Continue ----
   check('提交后冒险页仍显示第一阶段完成', body.includes('第一阶段完成') && body.includes('第一阶段主线已经告一段落。'))
-  await clickByText('保存游戏')
+  await saveToSlot1()
   await sleep(300)
   body = await bodyText()
-  check('当前位置可正常保存（✓ 已保存）', body.includes('已保存'))
-  const saveData = await page.evaluate(() => {
-    try {
-      return JSON.parse(localStorage.getItem('tianmeng_continent_save') || 'null')
-    } catch {
-      return null
-    }
-  })
+  check('保存后返回游戏页（当前位置）', body.includes('当前位置'))
+  const saveData = await readSlot1Save()
   const qWangcai = saveData?.gameState?.quests?.find((q) => q.questId === 'quest_wangcai_trouble')
   const qGolden = saveData?.gameState?.quests?.find((q) => q.questId === 'quest_golden_rabbit_search')
   const inv = saveData?.gameState?.inventory ?? []

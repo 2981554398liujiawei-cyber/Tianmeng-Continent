@@ -1,117 +1,21 @@
 /**
- * 最小战斗规则内核（TM-P0-007）。
- * 只输出规则计算结果，不修改任何 GameState / 敌人注册数据 / 玩家 HP。
+ * 最小战斗规则内核（TM-P0-007 / TM-P1-001~008 / TM-P2-001 战斗 V2 → TM-P2-002 战斗 V3）。
+ *
+ * V3（TM-P2-002）：废弃「攻击加值 vs 防御值」语义，改为：
+ *   - 玩家派生：攻击力 = max(1, 4 + STR修正 + 武器伤害加成 + 等级伤害加成)；
+ *               护甲   = max(0, 10 + CON修正 + 装备护甲加成)；
+ *               敏捷   = AGI 原始属性（不得再用 AGI 计算护甲）。
+ *   - 命中：D20，天然1 → critical_miss(0)；天然20 → critical_hit(原始×2)；
+ *           其他 (攻击者敏捷 + roll)/2 >= 防守者敏捷 → hit；否则 → glancing_hit(原始×50% 向上取整)。
+ *   - 护甲：非 MISS 攻击 finalDamage = max(1, ceil(rawDamage × roll/(armor+roll)))。
+ *   - 先手：双方 D20+AGI，高者先；平局 AGI 高者先；仍相同则玩家先。
+ * 本模块只输出规则计算结果，不修改任何 GameState / 敌人注册数据 / 玩家 HP。
  */
-import { getAttributeModifier, getProficiencyBonus, rollD20 } from './d20'
+import { getAttributeModifier, rollD20 } from './d20'
 
-/** 玩家防御：10 + AGI 属性修正（复用已封板 getAttributeModifier） */
-export function getPlayerDefense(agi: number): number {
-  return 10 + getAttributeModifier(agi)
-}
+// ---- 玩家派生属性（TM-P2-002 A）----
 
-/** 玩家普通攻击加值：STR 属性修正 + 熟练加值 */
-export function getPlayerAttackBonus(str: number, level: number): number {
-  return getAttributeModifier(str) + getProficiencyBonus(level)
-}
-
-/** 玩家普通攻击基础伤害：max(1, 4 + STR 属性修正) */
-export function getPlayerBasicDamage(str: number): number {
-  return Math.max(1, 4 + getAttributeModifier(str))
-}
-
-/**
- * 玩家普通攻击伤害：基础伤害 + 武器伤害加成（TM-P0-013）。
- * weaponDamageBonus 允许 0 / 正整数，非法（负数/小数/NaN/Infinity）抛 RangeError。
- */
-export function getPlayerAttackDamage(str: number, weaponDamageBonus = 0): number {
-  if (!Number.isInteger(weaponDamageBonus) || weaponDamageBonus < 0 || !Number.isFinite(weaponDamageBonus)) {
-    throw new RangeError('武器伤害加成必须是 0 或正整数')
-  }
-  const damage = getPlayerBasicDamage(str) + weaponDamageBonus
-  if (!Number.isFinite(damage)) {
-    throw new RangeError('攻击伤害溢出')
-  }
-  return damage
-}
-
-// ---- Phase 1：法师职业技能「法术攻击」（TM-P1-001）----
-
-/** 法术攻击灵力消耗（唯一业务常量，CombatPage 与 Store 都读取它） */
-export const MAGE_SPELL_MP_COST = 2
-
-/** 法师法术攻击加值：MND 属性修正 + 熟练加值（复用已封板 d20 公式） */
-export function getMageSpellAttackBonus(mnd: number, level: number): number {
-  return getAttributeModifier(mnd) + getProficiencyBonus(level)
-}
-
-/** 法师法术伤害：max(1, 6 + MND 属性修正)（不吃 STR / 武器伤害加成） */
-export function getMageSpellDamage(mnd: number): number {
-  return Math.max(1, 6 + getAttributeModifier(mnd))
-}
-
-// ---- Phase 1：骑士职业技能「骑士重击」（TM-P1-006）----
-
-/** 骑士重击灵力消耗（唯一业务常量，CombatPage 与 Store 都读取它） */
-export const KNIGHT_POWER_STRIKE_MP_COST = 2
-
-/**
- * 骑士重击伤害 = 普通攻击伤害 + 2（TM-P1-006）。
- * 复用封板 getPlayerAttackDamage（含 weaponDamageBonus 校验与溢出保护）；最终结果必须可安全结算，否则抛 RangeError。
- */
-export function getKnightPowerStrikeDamage(str: number, weaponDamageBonus = 0): number {
-  const damage = getPlayerAttackDamage(str, weaponDamageBonus) + 2
-  if (!Number.isFinite(damage)) {
-    throw new RangeError('骑士重击伤害溢出')
-  }
-  return damage
-}
-
-// ---- Phase 1：游侠职业技能「迅捷突袭」（TM-P1-007）----
-
-/** 游侠迅捷突袭攻击加值：AGI 属性修正 + 熟练加值 + 2（复用已封板 d20 公式） */
-export function getRangerSwiftStrikeAttackBonus(agi: number, level: number): number {
-  return getAttributeModifier(agi) + getProficiencyBonus(level) + 2
-}
-
-/**
- * 游侠迅捷突袭伤害 = 以 AGI 为攻击属性的物理伤害 + 2（TM-P1-007）。
- * 刻意把 AGI 传给封板 getPlayerAttackDamage（普通攻击用 STR）；未新增通用「任意属性攻击」系统。
- */
-export function getRangerSwiftStrikeDamage(agi: number, weaponDamageBonus = 0): number {
-  const damage = getPlayerAttackDamage(agi, weaponDamageBonus) + 2
-  if (!Number.isFinite(damage)) {
-    throw new RangeError('迅捷突袭伤害溢出')
-  }
-  return damage
-}
-
-// ---- Phase 1：战士职业技能「压制猛击」（TM-P1-008）----
-
-/** 压制猛击灵力消耗（唯一业务常量，CombatPage 与 Store 都读取它） */
-export const WARRIOR_SUPPRESS_STRIKE_MP_COST = 2
-
-// ---- Phase 2：战斗规则 V2（TM-P2-001 C）----
-
-/** 攻击结算模式：玩家使用 V2 擦中规则；敌人保持 命中/未命中/暴击/大失败（有意的不对称设计） */
-export type AttackMode = 'player' | 'enemy'
-
-export type AttackOutcome = 'critical_hit' | 'hit' | 'glancing_hit' | 'miss' | 'critical_miss'
-
-export interface AttackResult {
-  roll: number
-  attackBonus: number
-  total: number
-  defense: number
-  hit: boolean
-  critical: boolean
-  damage: number
-  outcome: AttackOutcome
-}
-
-/**
- * 基础等级伤害成长（TM-P2-001 C4）：Lv1–2 +0 / Lv3–4 +1 / Lv5–6 +2 / Lv7–8 +3 ...
- * 适用于所有玩家直接伤害（普通攻击/骑士重击/迅捷突袭/法术攻击/压制猛击）。
- */
+/** 基础等级伤害成长（TM-P2-001 C4）：Lv1–2 +0 / Lv3–4 +1 / Lv5–6 +2 ... */
 export function getPlayerLevelDamageBonus(level: number): number {
   if (!Number.isInteger(level) || level < 1) {
     throw new RangeError('等级必须为正整数')
@@ -119,126 +23,271 @@ export function getPlayerLevelDamageBonus(level: number): number {
   return Math.floor((level - 1) / 2)
 }
 
-/** 擦中伤害：max(1, ceil(baseDamage / 2))（TM-P2-001 C1，整数结算向上取整） */
-export function getGlancingDamage(baseDamage: number): number {
-  return Math.max(1, Math.ceil(baseDamage / 2))
-}
-
-/** 暴击伤害：ceil(baseDamage * 1.5)（TM-P2-001 C1/C2，玩家与敌人都从 200% 降为 150%） */
-export function getCriticalDamage(baseDamage: number): number {
-  return Math.ceil(baseDamage * 1.5)
+/**
+ * 玩家攻击力：max(1, 4 + STR修正 + 武器伤害加成 + 等级伤害加成)（TM-P2-002 A）。
+ * weaponDamageBonus 允许 0 / 正整数，非法抛 RangeError。
+ */
+export function getPlayerAttackPower(str: number, weaponDamageBonus = 0, level = 1): number {
+  if (!Number.isInteger(weaponDamageBonus) || weaponDamageBonus < 0 || !Number.isFinite(weaponDamageBonus)) {
+    throw new RangeError('武器伤害加成必须是 0 或正整数')
+  }
+  const power = Math.max(1, 4 + getAttributeModifier(str) + weaponDamageBonus + getPlayerLevelDamageBonus(level))
+  if (!Number.isFinite(power)) {
+    throw new RangeError('攻击力溢出')
+  }
+  return power
 }
 
 /**
- * 确定性攻击结算（测试入口）：骰面必须为 1–20 整数。
- * 默认 mode='player'（V2 擦中规则）；mode='enemy' 时无擦中（TM-P2-001 C2）。
+ * 玩家护甲：max(0, 10 + CON修正 + 装备护甲加成)（TM-P2-002 A）。
+ * armorDefenseBonus 允许 0 / 正整数，非法抛 RangeError。
  */
-export function resolveAttack(
+export function getPlayerArmor(con: number, armorDefenseBonus = 0): number {
+  if (!Number.isInteger(armorDefenseBonus) || armorDefenseBonus < 0 || !Number.isFinite(armorDefenseBonus)) {
+    throw new RangeError('装备护甲加成必须是 0 或正整数')
+  }
+  const armor = Math.max(0, 10 + getAttributeModifier(con) + armorDefenseBonus)
+  if (!Number.isFinite(armor)) {
+    throw new RangeError('护甲溢出')
+  }
+  return armor
+}
+
+/** 玩家敏捷：AGI 原始属性（TM-P2-002 A；不再由 AGI 推导护甲） */
+export function getPlayerAgility(agi: number): number {
+  if (!Number.isInteger(agi) || agi < 0) {
+    throw new RangeError('敏捷必须是非负整数')
+  }
+  return agi
+}
+
+// ---- 敌人数据语义（TM-P2-002 A）：attackPower / armor / agility 直接读取注册表 ----
+
+/** 敌人攻击力（原始伤害）：读 EnemyDefinition.attackPower */
+export function getEnemyAttackPower(attackPower: number): number {
+  if (!Number.isInteger(attackPower) || attackPower < 1) {
+    throw new RangeError('敌人攻击力必须为正整数')
+  }
+  return attackPower
+}
+
+/** 敌人护甲：读 EnemyDefinition.armor */
+export function getEnemyArmor(armor: number): number {
+  if (!Number.isInteger(armor) || armor < 0) {
+    throw new RangeError('敌人护甲必须是非负整数')
+  }
+  return armor
+}
+
+/** 敌人敏捷：读 EnemyDefinition.agility */
+export function getEnemyAgility(agility: number): number {
+  if (!Number.isInteger(agility) || agility < 0) {
+    throw new RangeError('敌人敏捷必须是非负整数')
+  }
+  return agility
+}
+
+// ---- 职业技能原始伤害（TM-P1-001/006/007/008；V3 下只负责 rawDamage，命中/护甲统一走 V3）----
+
+/** 法术攻击灵力消耗（唯一业务常量） */
+export const MAGE_SPELL_MP_COST = 2
+/** 骑士重击灵力消耗（唯一业务常量） */
+export const KNIGHT_POWER_STRIKE_MP_COST = 2
+/** 压制猛击灵力消耗（唯一业务常量） */
+export const WARRIOR_SUPPRESS_STRIKE_MP_COST = 2
+
+/** 法师法术原始伤害：max(1, 6 + MND修正)（不吃 STR / 武器加成） */
+export function getMageSpellDamage(mnd: number): number {
+  return Math.max(1, 6 + getAttributeModifier(mnd))
+}
+
+/** 骑士重击原始伤害 = 玩家攻击力 + 2（吃武器加成与等级加成） */
+export function getKnightPowerStrikeDamage(str: number, weaponDamageBonus = 0, level = 1): number {
+  const damage = getPlayerAttackPower(str, weaponDamageBonus, level) + 2
+  if (!Number.isFinite(damage)) {
+    throw new RangeError('骑士重击伤害溢出')
+  }
+  return damage
+}
+
+/** 游侠迅捷突袭原始伤害 = 以 AGI 为攻击属性的物理伤害 + 2 */
+export function getRangerSwiftStrikeDamage(agi: number, weaponDamageBonus = 0, level = 1): number {
+  // 迅捷突袭沿用「AGI 视为力量」的封板语义：4 + AGI修正 + 武器 + 等级，再 +2
+  if (!Number.isInteger(weaponDamageBonus) || weaponDamageBonus < 0 || !Number.isFinite(weaponDamageBonus)) {
+    throw new RangeError('武器伤害加成必须是 0 或正整数')
+  }
+  const damage = Math.max(1, 4 + getAttributeModifier(agi) + weaponDamageBonus + getPlayerLevelDamageBonus(level)) + 2
+  if (!Number.isFinite(damage)) {
+    throw new RangeError('迅捷突袭伤害溢出')
+  }
+  return damage
+}
+
+// ---- 命中判定（TM-P2-002 B）----
+
+export type AttackOutcome = 'critical_hit' | 'hit' | 'glancing_hit' | 'critical_miss'
+
+export interface AttackResult {
+  roll: number
+  /** 攻击者敏捷（命中判定输入） */
+  attackerAgility: number
+  /** 防守者敏捷（命中判定输入） */
+  defenderAgility: number
+  /** 原始伤害（倍率应用前） */
+  rawDamage: number
+  /** 防守者护甲 */
+  armor: number
+  /** 本次骰面承伤率 roll/(armor+roll)（0–1） */
+  damageTakenRate: number
+  hit: boolean
+  critical: boolean
+  damage: number
+  outcome: AttackOutcome
+}
+
+/**
+ * 命中判定（确定性）：天然1 → critical_miss；天然20 → critical_hit；
+ * 其他 (attackerAgility + roll)/2 >= defenderAgility → hit；否则 glancing_hit（TM-P2-002 B）。
+ */
+export function resolveHit(
   roll: number,
-  attackBonus: number,
-  defense: number,
-  baseDamage: number,
-  mode: AttackMode = 'player',
-): AttackResult {
-  if (mode !== 'player' && mode !== 'enemy') {
-    throw new RangeError('攻击模式必须为 player 或 enemy')
+  attackerAgility: number,
+  defenderAgility: number,
+): AttackOutcome {
+  if (!Number.isInteger(roll) || roll < 1 || roll > 20) {
+    throw new RangeError('骰面必须是 1–20 之间的整数')
+  }
+  if (!Number.isInteger(attackerAgility) || attackerAgility < 0) {
+    throw new RangeError('攻击者敏捷必须是非负整数')
+  }
+  if (!Number.isInteger(defenderAgility) || defenderAgility < 0) {
+    throw new RangeError('防守者敏捷必须是非负整数')
+  }
+  if (roll === 1) return 'critical_miss'
+  if (roll === 20) return 'critical_hit'
+  return (attackerAgility + roll) / 2 >= defenderAgility ? 'hit' : 'glancing_hit'
+}
+
+/** 护甲减伤后最终伤害：max(1, ceil(rawDamage × roll/(armor+roll)))（TM-P2-002 C；非 MISS 至少 1 点） */
+export function applyArmor(rawDamage: number, armor: number, roll: number): number {
+  if (!Number.isInteger(rawDamage) || rawDamage < 1) {
+    throw new RangeError('原始伤害必须为正整数')
+  }
+  if (!Number.isInteger(armor) || armor < 0) {
+    throw new RangeError('护甲必须是非负整数')
   }
   if (!Number.isInteger(roll) || roll < 1 || roll > 20) {
     throw new RangeError('骰面必须是 1–20 之间的整数')
   }
-  if (!Number.isInteger(attackBonus)) {
-    throw new RangeError('攻击加值必须是有限整数')
+  const takenRate = roll / (armor + roll)
+  const damage = Math.max(1, Math.ceil(rawDamage * takenRate))
+  if (!Number.isFinite(damage)) {
+    throw new RangeError('最终伤害溢出')
   }
-  if (!Number.isInteger(defense) || defense < 0) {
-    throw new RangeError('防御必须是非负整数')
-  }
-  if (!Number.isInteger(baseDamage) || baseDamage < 1 || !Number.isFinite(baseDamage * 2)) {
-    throw new RangeError('基础伤害必须是可安全结算暴击的正整数')
-  }
+  return damage
+}
 
-  const total = roll + attackBonus
-  // 最小防线：正常返回的所有数值必须有限（TM-P0-007-R1）
-  if (!Number.isFinite(total)) {
-    throw new RangeError('攻击结算结果溢出')
-  }
-
-  // 天然 20：必定暴击命中，伤害 150%（原 200%），无视 total
-  if (roll === 20) {
-    const criticalDamage = getCriticalDamage(baseDamage)
-    if (!Number.isFinite(criticalDamage)) {
-      throw new RangeError('暴击伤害溢出')
-    }
+/**
+ * 攻击结算（确定性）：命中判定 + 倍率 + 护甲减伤。
+ * critical_miss → 0；critical_hit → raw×2；glancing_hit → ceil(raw×0.5)；hit → raw；
+ * 然后统一过护甲（TM-P2-002 B/C）。
+ */
+export function resolveAttack(
+  roll: number,
+  attackerAgility: number,
+  defenderAgility: number,
+  rawDamage: number,
+  armor: number,
+): AttackResult {
+  const outcome = resolveHit(roll, attackerAgility, defenderAgility)
+  if (outcome === 'critical_miss') {
     return {
       roll,
-      attackBonus,
-      total,
-      defense,
-      hit: true,
-      critical: true,
-      damage: criticalDamage,
-      outcome: 'critical_hit',
-    }
-  }
-  // 天然 1：必定大失败，伤害 0，无视 total
-  if (roll === 1) {
-    return {
-      roll,
-      attackBonus,
-      total,
-      defense,
+      attackerAgility,
+      defenderAgility,
+      rawDamage,
+      armor,
+      damageTakenRate: 0,
       hit: false,
       critical: false,
       damage: 0,
-      outcome: 'critical_miss',
+      outcome,
     }
   }
-  // 玩家 V2：defense-4 <= total < defense → 擦中（50% 伤害，向上取整，至少 1）
-  if (mode === 'player' && total < defense && total >= defense - 4) {
-    const glancingDamage = getGlancingDamage(baseDamage)
-    if (!Number.isFinite(glancingDamage)) {
-      throw new RangeError('擦中伤害溢出')
-    }
-    return {
-      roll,
-      attackBonus,
-      total,
-      defense,
-      hit: true,
-      critical: false,
-      damage: glancingDamage,
-      outcome: 'glancing_hit',
-    }
+  const multiplier = outcome === 'critical_hit' ? 2 : outcome === 'glancing_hit' ? 0.5 : 1
+  // 原始伤害倍率（擦伤向上取整；暴击 2 倍）
+  const rawAfterMultiplier =
+    outcome === 'glancing_hit'
+      ? Math.max(1, Math.ceil(rawDamage * 0.5))
+      : outcome === 'critical_hit'
+        ? rawDamage * 2
+        : rawDamage
+  if (!Number.isFinite(rawAfterMultiplier)) {
+    throw new RangeError('倍率伤害溢出')
   }
-  if (total >= defense) {
-    return {
-      roll,
-      attackBonus,
-      total,
-      defense,
-      hit: true,
-      critical: false,
-      damage: baseDamage,
-      outcome: 'hit',
-    }
-  }
+  const damage = applyArmor(rawAfterMultiplier, armor, roll)
   return {
     roll,
-    attackBonus,
-    total,
-    defense,
-    hit: false,
-    critical: false,
-    damage: 0,
-    outcome: 'miss',
+    attackerAgility,
+    defenderAgility,
+    rawDamage,
+    armor,
+    damageTakenRate: roll / (armor + roll),
+    hit: true,
+    critical: outcome === 'critical_hit',
+    damage,
+    outcome,
   }
 }
 
-/** 随机攻击入口：复用现有 rollD20，不实现第二个 D20 函数 */
-export function performAttack(attackBonus: number, defense: number, baseDamage: number, mode: AttackMode = 'player'): AttackResult {
-  return resolveAttack(rollD20(), attackBonus, defense, baseDamage, mode)
+/** 随机攻击入口：复用 rollD20 */
+export function performAttack(
+  attackerAgility: number,
+  defenderAgility: number,
+  rawDamage: number,
+  armor: number,
+): AttackResult {
+  return resolveAttack(rollD20(), attackerAgility, defenderAgility, rawDamage, armor)
 }
 
-// ---- 单回合战斗阶段辅助（TM-P0-008-R1：确定性可测）----
+// ---- 先手（TM-P2-002 D）----
+
+export type InitiativeWinner = 'player' | 'enemy'
+
+/**
+ * 先手判定：D20+AGI 高者先；总和平局 → AGI 高者先；仍相同 → 玩家先。
+ * 纯函数：双方骰面由调用方提供（测试确定性）。
+ */
+export function resolveInitiative(
+  playerAgility: number,
+  enemyAgility: number,
+  playerRoll: number,
+  enemyRoll: number,
+): InitiativeWinner {
+  for (const value of [playerAgility, enemyAgility, playerRoll, enemyRoll]) {
+    if (!Number.isInteger(value) || value < 0) {
+      throw new RangeError('先手判定输入必须是非负整数')
+    }
+  }
+  if (playerRoll < 1 || playerRoll > 20 || enemyRoll < 1 || enemyRoll > 20) {
+    throw new RangeError('先手骰面必须是 1–20 之间的整数')
+  }
+  const playerTotal = playerRoll + playerAgility
+  const enemyTotal = enemyRoll + enemyAgility
+  if (playerTotal > enemyTotal) return 'player'
+  if (enemyTotal > playerTotal) return 'enemy'
+  // 平局：AGI 高者先；仍相同则玩家先
+  if (playerAgility > enemyAgility) return 'player'
+  if (enemyAgility > playerAgility) return 'enemy'
+  return 'player'
+}
+
+/** 随机先手入口 */
+export function rollInitiative(playerAgility: number, enemyAgility: number): InitiativeWinner {
+  return resolveInitiative(playerAgility, enemyAgility, rollD20(), rollD20())
+}
+
+// ---- 单回合战斗阶段辅助（TM-P0-008-R1 语义保留）----
 
 export type CombatPhase = 'active' | 'victory' | 'defeat'
 
@@ -249,7 +298,7 @@ export interface PlayerStrikeResolution {
   enemyShouldCounter: boolean
 }
 
-/** 玩家一击后的战斗阶段结算：致死攻击 → victory 且不反击；未命中 → 敌人回合继续 */
+/** 玩家一击后的战斗阶段结算：致死攻击 → victory 且不反击；未造成伤害（critical_miss）→ 敌人回合继续 */
 export function resolvePlayerStrike(enemyCurrentHp: number, attack: AttackResult): PlayerStrikeResolution {
   if (!attack.hit) {
     return { enemyHp: enemyCurrentHp, phase: 'active', enemyShouldCounter: true }

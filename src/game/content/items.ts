@@ -12,6 +12,8 @@ export interface ItemDefinition {
   healAmount?: number
   /** 装备后普通攻击伤害加成（仅 weapon 可使用，TM-P0-013） */
   weaponDamageBonus?: number
+  /** 装备后护甲加成（仅 armor 可使用，TM-P2-002 A；当前内容暂无护甲物品，接口预留） */
+  armorDefenseBonus?: number
 }
 
 /** V1 最小物品目录（仅当前需要的内容） */

@@ -45,6 +45,46 @@ const clickLabel = async (text) => {
 
 const bodyText = () => page.evaluate(() => document.body.textContent)
 
+// ---- TM-P2-002：五槽位存档辅助 ----
+const SAVE_KEYS = [
+  'tianmeng_continent_save',
+  'tianmeng_continent_saves_index',
+  'tianmeng_continent_save_slot_slot1',
+  'tianmeng_continent_save_slot_slot2',
+  'tianmeng_continent_save_slot_slot3',
+  'tianmeng_continent_save_slot_slot4',
+  'tianmeng_continent_save_slot_slot5',
+]
+const clearAllSaves = () =>
+  page.evaluate((keys) => keys.forEach((k) => localStorage.removeItem(k)), SAVE_KEYS)
+// 保存游戏：打开五槽位 → 保存到 Slot 1（已有存档先点「覆盖保存」确认）→ 返回游戏页
+const saveToSlot1 = async () => {
+  await clickByText('保存游戏')
+  await sleep(300)
+  const body = await page.evaluate(() => document.body.textContent)
+  if (body.includes('确认覆盖')) {
+    await clickByText('确认覆盖')
+  } else if (body.includes('覆盖保存')) {
+    // 已有存档：第一次点击进入覆盖确认，第二次点击确认执行
+    await clickByText('覆盖保存')
+    await sleep(300)
+    await clickByText('确认覆盖')
+  } else {
+    await clickByText('保存到此槽')
+  }
+  await sleep(300)
+}
+// 读取 Slot 1 存档（SaveSlot 结构 { savedAt, gameState }）
+const readSlot1Save = () =>
+  page.evaluate(() => {
+    try {
+      return JSON.parse(localStorage.getItem('tianmeng_continent_save_slot_slot1') || 'null')
+    } catch {
+      return null
+    }
+  })
+
+
 // TM-P2-001 A：创建页无默认预填——统一创建辅助（显式姓名 + 选择职业 + 手动分配属性）
 // 骑士/游侠/战士：STR14/CON12/AGI10/MND8/LCK10（与旧默认骑士数值一致：maxHp 22、灵力 6/6、普通攻击 6）
 // 法师：STR14/CON16/AGI8/MND8/LCK8（MND 保持 8 → 灵力 6/6）
@@ -251,7 +291,7 @@ try {
 
   // P005：流程 D —— 存档恢复位置（青石村 → 村外草原 → 保存 → Continue → 仍村外草原）
   await clickByText('村外草原')
-  await clickByText('保存游戏')
+  await saveToSlot1()
   await clickByText('返回主菜单')
   await clickByText('继续游戏')
   body = await bodyText()
@@ -295,7 +335,7 @@ try {
   await clickByText('村外草原')
   body = await bodyText()
   check('P008: 村外草原显示附近威胁（魔化兔）', body.includes('魔化兔') && body.includes('迎战'))
-  check('P008: 威胁信息含 HP 8 · 防御 11', body.includes('HP 8 · 防御 11'))
+  check('P008: 威胁信息含 HP 8 · 护甲 11', body.includes('HP 8 · 护甲 11'))
   await clickByText('迎战')
   body = await bodyText()
   check('P008: 进入战斗页', body.includes('战斗'))
@@ -419,13 +459,13 @@ try {
   await sleep(300)
   body = await bodyText()
   check(
-    'P007: 玩家攻击显示完整计算过程',
-    ['D20：', '攻击加值：', '总值：', '目标防御：', '是否命中：', '造成伤害：', '结果：'].every((t) =>
+    'P007: 玩家攻击显示完整计算过程（V3 敏捷/护甲/承伤率）',
+    ['D20：', '攻击者敏捷：', '对方敏捷：', '原始伤害：', '防守护甲：', '承伤率：', '造成伤害：', '结果：'].every((t) =>
       body.includes(t),
     ),
   )
   // TM-P2-001 C1：玩家攻击 V2 可能返回擦中
-  check('P007: 玩家攻击中文结果（暴击/命中/擦中/未命中/大失败）', /结果：(暴击|命中|擦中|未命中|大失败)/.test(body))
+  check('P007: 玩家攻击中文结果（暴击/命中/擦伤/大失败）', /结果：(暴击|命中|擦伤|大失败)/.test(body))
   state = await readState()
   check('P007: 玩家攻击后 HP 未变', state.player.hp === hpBeforePlayerAttack && state.player.hp >= 0)
   const hpBeforeEnemyAttack = state.player.hp
@@ -433,10 +473,10 @@ try {
   await sleep(300)
   body = await bodyText()
   check(
-    'P007: 敌人攻击显示完整计算过程',
-    ['D20：', '攻击加值：', '总值：', '目标防御：', '造成伤害：', '结果：'].every((t) => body.includes(t)),
+    'P007: 敌人攻击显示完整计算过程（V3 敏捷/护甲/承伤率）',
+    ['D20：', '攻击者敏捷：', '对方敏捷：', '原始伤害：', '防守护甲：', '承伤率：', '造成伤害：', '结果：'].every((t) => body.includes(t)),
   )
-  check('P007: 敌人攻击中文结果', /结果：(暴击|命中|未命中|大失败)/.test(body))
+  check('P007: 敌人攻击中文结果', /结果：(暴击|命中|擦伤|大失败)/.test(body))
   state = await readState()
   check('P007: 敌人攻击后 HP 未变', state.player.hp === hpBeforeEnemyAttack && state.player.hp >= 0)
 
@@ -545,7 +585,7 @@ try {
   check('P018: 任务日志显示奖励 20 金币', body.includes('奖励：20 金币'))
 
   // P018：存档恢复（任务 completed / 金币 70 / 兔王巢穴解锁保留）
-  await clickByText('保存游戏')
+  await saveToSlot1()
   await clickByText('返回主菜单')
   await clickByText('继续游戏')
   body = await bodyText()
@@ -566,7 +606,7 @@ try {
   await clickByText('兔王巢穴')
   body = await bodyText()
   check('P011: 进入兔王巢穴（显示地点描述）', body.includes('兔王巢穴') && body.includes('魔化兔群的巢穴'))
-  check('P011: 巢穴可见嘟嘟兔威胁（HP 24 · 防御 13）', body.includes('嘟嘟兔') && body.includes('HP 24 · 防御 13'))
+  check('P011: 巢穴可见嘟嘟兔威胁（HP 24 · 护甲 13）', body.includes('嘟嘟兔') && body.includes('HP 24 · 护甲 13'))
 
   // P012：击败嘟嘟兔获得唯一《兔子的路径》
   check('P012: Boss 战前背包无兔子的路径', !body.includes('兔子的路径'))
@@ -673,7 +713,7 @@ try {
   check('P1-014-C: 重进巢穴后新的线索仍显示', body.includes('新的线索'))
   check('P1-014-C: 重进巢穴后地图查看状态保持（无展开地图按钮）', !body.includes('展开地图'))
   await clickByText('村外草原')
-  await clickByText('保存游戏')
+  await saveToSlot1()
   await clickByText('返回主菜单')
   await clickByText('继续游戏')
   body = await bodyText()
@@ -716,7 +756,7 @@ try {
   check('P010: 满血时使用按钮禁用', (await buttonDisabled('使用')) === true)
   check('P010: 满血提示生命已满', body.includes('生命已满'))
 
-  // 确定性受伤：随机序列 [玩家2, 敌8, 玩家20] → 玩家未命中受伤2 → 第二击天然20击杀
+  // V3 确定性受伤：序列 [2, 8, 20] → 玩家擦伤1（兔8→7）、敌擦伤1（玩家22→21）、第二击暴击8击杀
   await clickByText('村外草原')
   await clickByText('迎战')
   await sleep(300)
@@ -727,9 +767,9 @@ try {
     let i = 0
     Math.random = () => seq[Math.min(i++, seq.length - 1)]
   })
-  await clickByText('普通攻击') // 玩家未命中，魔化兔命中 → HP 22→20
+  await clickByText('普通攻击') // 玩家擦伤 1 伤，魔化兔反击擦伤 1 伤 → HP 22→21
   await sleep(200)
-  await clickByText('普通攻击') // 玩家天然 20 暴击 12 击杀 → 胜利
+  await clickByText('普通攻击') // 玩家天然 20 暴击：16×20/31=ceil(10.3)=11 → 兔 7-11=0 击杀 → 胜利
   await sleep(300)
   body = await bodyText()
   check('P010: 确定性战斗胜利', body.includes('战斗胜利'))
@@ -738,7 +778,7 @@ try {
   })
   await clickByText('返回冒险')
   body = await bodyText()
-  check('P010: 受伤后 HP 20 / 22', body.includes('20 / 22'))
+  check('P010: 受伤后 HP 21 / 22', body.includes('21 / 22'))
   check('P010: 受伤后治疗药水仍 ×2', body.includes('治疗药水 ×2'))
   check('P010: 受伤后使用按钮启用', (await buttonDisabled('使用')) === false)
 
@@ -750,7 +790,7 @@ try {
   check('P010: 满血后使用按钮重新禁用', (await buttonDisabled('使用')) === true)
 
   // 存档恢复：用药后手动保存 → Continue → HP/药水保持使用后值
-  await clickByText('保存游戏')
+  await saveToSlot1()
   await clickByText('返回主菜单')
   await clickByText('继续游戏')
   body = await bodyText()
@@ -772,7 +812,7 @@ try {
   check('P013: 装备后铁剑仍 ×1（不消耗背包）', body.includes('铁剑 ×1'))
   check('P013: 已装备显示卸下按钮', body.includes('卸下'))
 
-  // 装备后真实伤害：玩家 roll 7 → 7+4=11 >= 11 命中 → 造成 8 点伤害 → 魔化兔 HP8 一击胜利（无反击）
+  // V3 装备后真实伤害：玩家 roll 20 暴击 → 攻击力8×2=16 → 兔护甲11、承伤率20/31 → ceil(10.3)=11 伤 → 魔化兔 HP8 一击胜利（无反击）
   await clickByText('村外草原')
   await clickByText('迎战')
   await sleep(300)
@@ -780,12 +820,12 @@ try {
   check('P013: 战斗页玩家区显示武器铁剑', body.includes('武器： 铁剑'))
   await page.evaluate(() => {
     window.__origRandom = Math.random.bind(Math)
-    Math.random = () => 0.3 // floor(0.3 * 20) + 1 = 7
+    Math.random = () => 0.99 // floor(0.99 * 20) + 1 = 20（暴击）
   })
   await clickByText('普通攻击')
   await sleep(300)
   body = await bodyText()
-  check('P013: 装备铁剑普通命中造成 8 点伤害', body.includes('造成 8 点伤害'))
+  check('P013: 装备铁剑暴击造成 11 点伤害', body.includes('暴击') && body.includes('造成 11 点伤害'))
   check('P013: 一击击杀魔化兔（战斗胜利）', body.includes('战斗胜利'))
   await page.evaluate(() => {
     Math.random = window.__origRandom
@@ -803,7 +843,7 @@ try {
   // 存档恢复：再装备 → 保存 → Continue → 装备状态保留
   await clickByText('装备')
   await sleep(200)
-  await clickByText('保存游戏')
+  await saveToSlot1()
   await clickByText('返回主菜单')
   await clickByText('继续游戏')
   body = await bodyText()
@@ -825,19 +865,19 @@ try {
   check('P014: 购买后治疗药水 ×3', body.includes('治疗药水 ×3'))
 
   // 存档恢复：购买 → 保存 → Continue → 金币 40 / 药水 ×3
-  await clickByText('保存游戏')
+  await saveToSlot1()
   await clickByText('返回主菜单')
   await clickByText('继续游戏')
   body = await bodyText()
   check('P014: Continue 后金币 40 且药水 ×3', body.includes('40') && body.includes('治疗药水 ×3'))
 
-  // 确定性受伤（HP 22→20）后购买不治疗，再使用药水恢复
+  // V3 确定性受伤（HP 22→21：玩家擦伤1、敌擦伤1）后购买不治疗，再使用药水恢复
   await clickByText('村外草原')
   await clickByText('迎战')
   await sleep(300)
   await page.evaluate(() => {
     window.__origRandom = Math.random.bind(Math)
-    const seq = [0.05, 0.35, 0.95] // 玩家2未命中 / 敌8命中伤2 / 玩家20击杀
+    const seq = [0.05, 0.35, 0.95] // 玩家2擦伤1 / 敌8擦伤1 / 玩家20暴击8击杀
     let i = 0
     Math.random = () => seq[Math.min(i++, seq.length - 1)]
   })
@@ -846,18 +886,18 @@ try {
   await clickByText('普通攻击')
   await sleep(300)
   body = await bodyText()
-  check('P014: 战斗胜利（受伤 2 点）', body.includes('战斗胜利'))
+  check('P014: 战斗胜利（受伤 1 点）', body.includes('战斗胜利'))
   await page.evaluate(() => {
     Math.random = window.__origRandom
   })
   await clickByText('返回冒险')
   await clickByText('青石村')
   body = await bodyText()
-  check('P014: 受伤后 HP 20 / 22', body.includes('20 / 22'))
+  check('P014: 受伤后 HP 21 / 22', body.includes('21 / 22'))
   await clickByText('购买')
   await sleep(200)
   body = await bodyText()
-  check('P014: 购买后 HP 仍 20（不自动治疗）', body.includes('20 / 22'))
+  check('P014: 购买后 HP 仍 21（不自动治疗）', body.includes('21 / 22'))
   check('P014: 购买后金币 30 药水 ×4', body.includes('治疗药水 ×4'))
   await clickByText('使用')
   await sleep(200)
@@ -960,7 +1000,7 @@ try {
   check('P016: 返回后无法重掷（无仔细调查）', await noInvestigateBtn())
 
   // 存档恢复
-  await clickByText('保存游戏')
+  await saveToSlot1()
   await clickByText('返回主菜单')
   await clickByText('继续游戏')
   body = await bodyText()
@@ -977,7 +1017,7 @@ try {
   check('P019: 未获得藏宝图时不显示新的线索', !body.includes('新的线索'))
   await clickByText('村外草原')
   body = await bodyText()
-  check('P017: 村外草原显示附近威胁（魔化兔 HP 8 防御 11）', body.includes('附近威胁') && body.includes('魔化兔') && body.includes('HP 8') && body.includes('防御 11') && body.includes('迎战'))
+  check('P017: 村外草原显示附近威胁（魔化兔 HP 8 护甲 11）', body.includes('附近威胁') && body.includes('魔化兔') && body.includes('HP 8') && body.includes('护甲 11') && body.includes('迎战'))
   await clickByText('青石村')
   body = await bodyText()
   check('P017: 返回青石村后附近威胁消失', !body.includes('附近威胁'))
@@ -1029,7 +1069,7 @@ try {
   check('P020: 不出现两条独立铁矿石 ×1', !body.includes('铁矿石 ×1'))
 
   // 存档恢复
-  await clickByText('保存游戏')
+  await saveToSlot1()
   await clickByText('返回主菜单')
   await clickByText('继续游戏')
   body = await bodyText()
@@ -1073,7 +1113,7 @@ try {
   check('P021: 出售后金币 50→55 铁矿石 ×1', body.includes('55') && body.includes('铁矿石 ×1'))
 
   // 存档恢复：铁矿石 ×1 金币 55
-  await clickByText('保存游戏')
+  await saveToSlot1()
   await clickByText('返回主菜单')
   await clickByText('继续游戏')
   body = await bodyText()
@@ -1103,7 +1143,7 @@ try {
   // 固定第一轮：玩家失手 + 敌人命中受伤，随后暴击击杀
   await page.evaluate(() => {
     window.__origRandom = Math.random.bind(Math)
-    const seq = [0.05, 0.35, 0.95] // 玩家2未命中 / 敌8命中伤2 / 玩家20击杀
+    const seq = [0.05, 0.35, 0.95] // 玩家2擦伤1 / 敌8擦伤1 / 玩家20暴击8击杀
     let i = 0
     Math.random = () => seq[Math.min(i++, seq.length - 1)]
   })
@@ -1140,7 +1180,7 @@ try {
 
   // 存档恢复：休整后的 HP/MP
   await clickByText('青石村')
-  await clickByText('保存游戏')
+  await saveToSlot1()
   await clickByText('返回主菜单')
   await clickByText('继续游戏')
   body = await bodyText()
@@ -1149,7 +1189,7 @@ try {
 
   // P022-R1：真正战败 → HP0 返回冒险 → 回村休整（修复战败软锁出口）
   // 先清空历史存档，验证「无存档起始」下战败与休整全程不自动创建存档
-  await page.evaluate(() => localStorage.removeItem('tianmeng_continent_save'))
+  await clearAllSaves()
   await page.reload({ waitUntil: 'networkidle0' })
   await sleep(500)
   await clickByText('新游戏')
@@ -1314,8 +1354,12 @@ try {
   await sleep(300)
   body = await bodyText()
   check('P1-001-F: 显示你的法术攻击', body.includes('你的法术攻击'))
-  check('P1-001-F: 暴击造成 8 点伤害', body.includes('暴击') && body.includes('造成 8 点伤害'))
-  check('P1-001-F: 法术暴击战斗胜利', body.includes('战斗胜利'))
+  check('P1-001-F: 第一击暴击造成 7 点伤害', body.includes('暴击') && body.includes('造成 7 点伤害'))
+  // V3：7 伤未击杀（兔 8→1）→ 第二击再暴击 7 伤击杀
+  await clickByText('法术攻击')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-001-F: 法术暴击战斗胜利（两击）', body.includes('战斗胜利'))
   await page.evaluate(() => {
     Math.random = window.__origRandom
   })
@@ -1323,12 +1367,12 @@ try {
   // G. 战斗后 MP 保留 + 手动存档 Continue 保持剩余 MP
   await clickByText('返回冒险')
   body = await bodyText()
-  check('P1-001-G: 战斗后灵力 4 / 6', body.includes('4 / 6'))
-  await clickByText('保存游戏')
+  check('P1-001-G: 战斗后灵力 2 / 6（两击法术）', body.includes('2 / 6'))
+  await saveToSlot1()
   await clickByText('返回主菜单')
   await clickByText('继续游戏')
   body = await bodyText()
-  check('P1-001-G: Continue 后灵力仍 4 / 6', body.includes('4 / 6'))
+  check('P1-001-G: Continue 后灵力仍 2 / 6', body.includes('2 / 6'))
   await clickByText('返回主菜单')
 
   // P1-002：《村外异动》完成后村长信任 +1
@@ -1383,7 +1427,7 @@ try {
   await clickByText('结束交谈')
 
   // F. 保存恢复后仍 信任：1
-  await clickByText('保存游戏')
+  await saveToSlot1()
   await clickByText('返回主菜单')
   await clickByText('继续游戏')
   await clickNthTalk(0)
@@ -1453,7 +1497,7 @@ try {
   await clickByText('结束交谈')
 
   // E. Save + Continue 后仍 1/1 且不可重选
-  await clickByText('保存游戏')
+  await saveToSlot1()
   await clickByText('返回主菜单')
   await clickByText('继续游戏')
   await clickNthTalk(0)
@@ -1511,7 +1555,7 @@ try {
   await clickByText('结束交谈')
 
   // C. Save + Continue 后仍 resolve 文案
-  await clickByText('保存游戏')
+  await saveToSlot1()
   await clickByText('返回主菜单')
   await clickByText('继续游戏')
   await clickNthTalk(0)
@@ -1646,7 +1690,7 @@ try {
   await clickByText('结束交谈')
 
   // H. Save + Continue 保持任务完成/金币/铁矿石
-  await clickByText('保存游戏')
+  await saveToSlot1()
   await clickByText('返回主菜单')
   await clickByText('继续游戏')
   body = await bodyText()
@@ -1733,7 +1777,7 @@ try {
   await sleep(300)
   body = await bodyText()
   check('P1-006-E: 显示你的骑士重击', body.includes('你的骑士重击'))
-  check('P1-006-E: 暴击造成 12 点伤害（150%）', body.includes('暴击') && body.includes('造成 12 点伤害'))
+  check('P1-006-E: 暴击造成 11 点伤害（V3：16×20/31）', body.includes('暴击') && body.includes('造成 11 点伤害'))
   check('P1-006-E: 骑士重击暴击战斗胜利', body.includes('战斗胜利'))
   check('P1-006-E: 致死后玩家 HP 未下降（敌人不反击）', readHps(body).player === beforeStrikePlayerHp)
   check('P1-006-E: 无魔化兔的攻击（敌人未行动）', !body.includes('魔化兔的攻击：'))
@@ -1745,7 +1789,7 @@ try {
   await clickByText('返回冒险')
   body = await bodyText()
   check('P1-006-F: 战斗后灵力 4 / 6', body.includes('4 / 6'))
-  await clickByText('保存游戏')
+  await saveToSlot1()
   await clickByText('返回主菜单')
   await clickByText('继续游戏')
   body = await bodyText()
@@ -1839,7 +1883,7 @@ try {
   await sleep(300)
   body = await bodyText()
   check('P1-007-F: 显示你的迅捷突袭', body.includes('你的迅捷突袭'))
-  check('P1-007-F: 暴击造成 9 点伤害（150%）', body.includes('暴击') && body.includes('造成 9 点伤害'))
+  check('P1-007-F: 暴击造成 8 点伤害（V3：12×20/31）', body.includes('暴击') && body.includes('造成 8 点伤害'))
   check('P1-007-F: 迅捷突袭暴击战斗胜利', body.includes('战斗胜利'))
   check('P1-007-F: 致死后玩家 HP 未下降（敌人不反击）', readHps(body).player === beforeSwiftHp)
   check('P1-007-F: 无魔化兔的攻击（敌人未行动）', !body.includes('魔化兔的攻击：'))
@@ -1874,18 +1918,18 @@ try {
   check('P1-008-A: 压制猛击按钮启用', (await buttonDisabled('压制猛击')) === false)
   check('P1-008-A: 战士不显示法术攻击/骑士重击/迅捷突袭', !body.includes('法术攻击') && !body.includes('骑士重击') && !body.includes('迅捷突袭'))
 
-  // B. 命中压制成功：D20 7 + 攻击加值 4 = 11 命中魔化兔 DEF11；STR14 无武器伤害 6 → 兔 HP 8→2，本次敌人不反击
+  // B. V3 命中压制成功：D20 10（0.5）→ (10+10)/2=10 >= 兔敏捷10 命中；攻击力6 → 护甲11 承伤率10/21 → 3 伤 → 兔 HP 8→5，本次敌人不反击
   const warriorInitialHp = readHps(await bodyText()).player
   await page.evaluate(() => {
-    Math.random = () => 0.3 // D20 = floor(0.3*20)+1 = 7
+    Math.random = () => 0.5 // D20 = floor(0.5*20)+1 = 10
   })
   await clickByText('压制猛击')
   await sleep(300)
   body = await bodyText()
   check('P1-008-B: 显示你的压制猛击', body.includes('你的压制猛击'))
-  check('P1-008-B: 命中并造成 6 点伤害', body.includes('命中') && body.includes('造成 6 点伤害'))
+  check('P1-008-B: 命中并造成 3 点伤害', body.includes('命中') && body.includes('造成 3 点伤害'))
   check('P1-008-B: MP 6→4', body.includes('4 / 6'))
-  check('P1-008-B: 魔化兔 HP 8→2', body.includes('2 / 8'))
+  check('P1-008-B: 魔化兔 HP 8→5', body.includes('5 / 8'))
   check('P1-008-B: 玩家 HP 不变（压制反击未发生）', readHps(body).player === warriorInitialHp)
   check('P1-008-B: 无魔化兔的攻击（敌人未行动）', !body.includes('魔化兔的攻击：'))
   check('P1-008-B: 战斗仍在进行（phase active）', body.includes('普通攻击') && (await buttonDisabled('普通攻击')) === false)
@@ -1902,9 +1946,9 @@ try {
   body = await bodyText()
   check('P1-008-C: 显示你的压制猛击：大失败', body.includes('你的压制猛击') && body.includes('大失败'))
   check('P1-008-C: MP 4→2', body.includes('2 / 6'))
-  check('P1-008-C: 魔化兔仍 HP 2 / 8（未命中不造成伤害）', body.includes('2 / 8'))
+  check('P1-008-C: 魔化兔仍 HP 5 / 8（大失败不造成伤害）', body.includes('5 / 8'))
   check('P1-008-C: 出现魔化兔的攻击（未命中正常反击）', body.includes('魔化兔的攻击：'))
-  check('P1-008-C: 玩家 HP 明确下降（敌人天然20 反击）', readHps(body).player < warriorInitialHp)
+  check('P1-008-C: 玩家 HP 明确下降（敌人天然20 暴击反击）', readHps(body).player < warriorInitialHp)
 
   // D. 普通攻击天然20 结束战斗（普攻不消费 MP）
   await page.evaluate(() => {
@@ -1940,7 +1984,7 @@ try {
   await clickByText('返回冒险')
   body = await bodyText()
   check('P1-008-F: 战斗后灵力 4 / 6', body.includes('4 / 6'))
-  await clickByText('保存游戏')
+  await saveToSlot1()
   await clickByText('返回主菜单')
   await clickByText('继续游戏')
   body = await bodyText()
@@ -2041,17 +2085,19 @@ try {
   body = await bodyText()
   check('P1-010-D: 魔化兔仍存在且魔化狼出现', body.includes('魔化兔') && body.includes('魔化狼'))
 
-  // E. 精准进入魔化狼战斗：Lv.2 / HP 12/12 / 防御 12；骑士 STR14 普攻天然20 暴击 12 伤一次击杀
+  // E. 精准进入魔化狼战斗：Lv.2 / HP 12/12 / 护甲 12；骑士重击 STR14 攻击力8+2=10 天然20 暴击20 → 护甲12承伤率20/32 → 13 伤一次击杀
   await engageEnemy('魔化狼')
   body = await bodyText()
   check(
-    'P1-010-E: 战斗页魔化狼 Lv.2 HP 12 / 12 防御 12',
-    body.includes('魔化狼') && body.includes('Lv.2') && body.includes('12 / 12') && body.includes('防御 12'),
+    'P1-010-E: 战斗页魔化狼 Lv.2 HP 12 / 12 护甲等级 12',
+    body.includes('魔化狼') && body.includes('Lv.2') && body.includes('12 / 12') && body.includes('护甲等级 12'),
   )
   await page.evaluate(() => {
     Math.random = () => 0.99
   })
-  // V2：骑士重击 STR14 伤害 8 暴击 150% = 12 === 魔化狼 HP 12 → 一击击杀（玩家不受伤，P1-011 依赖满血 22/24）
+  // V3：骑士重击 STR14 攻击力 6+2=8 暴击 200% = 16 → 护甲 12 承伤率 20/32 → ceil(10)=10 伤 → 狼 HP 12 需两击（第一击后狼暴击反击 4 伤）
+  await clickByText('骑士重击')
+  await sleep(250)
   await clickByText('骑士重击')
   await sleep(300)
   body = await bodyText()
@@ -2112,7 +2158,7 @@ try {
   await clickByText('结束交谈')
 
   // H. Save + Continue：任务完成/金币 110 保持；草原不再显示魔化狼
-  await clickByText('保存游戏')
+  await saveToSlot1()
   await clickByText('返回主菜单')
   await clickByText('继续游戏')
   body = await bodyText()
@@ -2256,7 +2302,7 @@ try {
   check('P1-016-F: 现有线索还不足以确认黄金兔子王的最终去向。', body.includes('现有线索还不足以确认黄金兔子王的最终去向。'))
   check('P1-016-F: 无新地点按钮（无前往【待补充】/下一章/进入新区域）', !body.includes('前往【待补充】') && !body.includes('下一章') && !body.includes('进入新区域'))
   // G. Save/Continue 保持 reported；重开村长不重复汇报
-  await clickByText('保存游戏')
+  await saveToSlot1()
   await clickByText('返回主菜单')
   await clickByText('继续游戏')
   body = await bodyText()
@@ -2328,7 +2374,7 @@ try {
     JSON.stringify(p1017TravelButtons) === JSON.stringify(['废弃矿洞', '村外草原']),
   )
   // F. Save / Continue：第四任务进行中保持
-  await clickByText('保存游戏')
+  await saveToSlot1()
   await clickByText('返回主菜单')
   await clickByText('继续游戏')
   await sleep(300)
@@ -2413,7 +2459,7 @@ try {
   })
   check('P1-018-G: 可前往按钮精确等于 [废弃矿洞, 村外草原]', JSON.stringify(p1018TravelButtons) === JSON.stringify(['废弃矿洞', '村外草原']))
   // H. Save/Continue：2/2 保持；铁匠/药师已询问回复 + 无按钮
-  await clickByText('保存游戏')
+  await saveToSlot1()
   await clickByText('返回主菜单')
   await clickByText('继续游戏')
   await sleep(300)
@@ -2509,7 +2555,7 @@ try {
   })
   check('P1-019-G: 可前往按钮精确等于 [废弃矿洞, 村外草原]', JSON.stringify(p1019TravelButtons) === JSON.stringify(['废弃矿洞', '村外草原']))
   // H. Save/Continue 保持复命状态；重开村长已汇报文案无按钮
-  await clickByText('保存游戏')
+  await saveToSlot1()
   await clickByText('返回主菜单')
   await clickByText('继续游戏')
   await sleep(300)
@@ -2600,7 +2646,7 @@ try {
       lairBeforeMapCount !== null && lairAfterMapCount !== null && lairBeforeMapCount[1] === lairAfterMapCount[1],
   )
   // H. Save/Continue：复查完成保持；无按钮/无嘟嘟兔/无威胁/地图 ×1/进行中
-  await clickByText('保存游戏')
+  await saveToSlot1()
   await clickByText('返回主菜单')
   await clickByText('继续游戏')
   await sleep(300)
@@ -2691,7 +2737,7 @@ try {
   check('P1-021-G: 黄金主线仍 in_progress', body.includes('追寻黄金兔子王') && body.includes('进行中'))
   check('P1-021-G: 巢穴复查完成仍保留', body.includes('巢穴复查完成。'))
   // H. Save/Continue：采药受阻已完成；黄金主线保持；无采药调查按钮
-  await clickByText('保存游戏')
+  await saveToSlot1()
   await clickByText('返回主菜单')
   await clickByText('继续游戏')
   await sleep(300)
@@ -2778,7 +2824,7 @@ try {
   check('P1-022-F: 下一步目的地【待补充】', body.includes('现有线索还不足以确认黄金兔子王的最终去向。'))
   check('P1-022-F: 采药受阻已完成', body.includes('采药受阻') && body.includes('已完成'))
   // G. Save/Continue：支线均已完成，不重新出现为可接受
-  await clickByText('保存游戏')
+  await saveToSlot1()
   await clickByText('返回主菜单')
   await clickByText('继续游戏')
   await sleep(300)
@@ -2813,7 +2859,7 @@ try {
   check('P1-023-B: 入口正文', body.includes('青石村的事情暂时告一段落。你已经可以前往天龙城继续旅程。'))
   check('P1-023-B: 准备前往天龙城按钮 enabled', (await buttonDisabled('准备前往天龙城')) === false)
   // R1：UI 与 Store 前置对齐——异常地图状态（缺失/quantity 0/examined false/reported false）时不得出现离村入口
-  const departureSaveBackup = await page.evaluate(() => localStorage.getItem('tianmeng_continent_save'))
+  const departureSaveBackup = await page.evaluate(() => localStorage.getItem('tianmeng_continent_save_slot_slot1'))
   check('R1: 合法存档已备份（供注入后恢复）', departureSaveBackup !== null)
   const injectDepartureSave = async (label, mutateFn) => {
     await page.evaluate(
@@ -2822,7 +2868,24 @@ try {
         const mutate = JSON.parse(mutateKey) // 传递函数体字符串再 eval
         // eslint-disable-next-line no-eval
         eval(mutate.fn)(save.gameState)
-        localStorage.setItem('tianmeng_continent_save', JSON.stringify(save))
+        localStorage.setItem(
+          'tianmeng_continent_save_slot_slot1',
+          JSON.stringify({ savedAt: save.savedAt, gameState: save.gameState }),
+        )
+        localStorage.setItem(
+          'tianmeng_continent_saves_index',
+          JSON.stringify({
+            version: 2,
+            lastSavedSlot: 'slot1',
+            slots: {
+              slot1: { playerName: save.gameState.player.name, profession: save.gameState.player.profession, level: save.gameState.player.level, locationId: save.gameState.world.currentLocationId, savedAt: save.savedAt },
+              slot2: null,
+              slot3: null,
+              slot4: null,
+              slot5: null,
+            },
+          }),
+        )
       },
       { saveStr: departureSaveBackup, mutateKey: JSON.stringify({ fn: mutateFn.toString() }) },
     )
@@ -2854,7 +2917,14 @@ try {
     gs.world.flags.rabbit_path_reported = false
   })
   // 恢复合法存档：入口必须仍在且 enabled（零回归）
-  await page.evaluate((saveStr) => localStorage.setItem('tianmeng_continent_save', saveStr), departureSaveBackup)
+  await page.evaluate((saveStr) => (() => {
+          const __sv = JSON.parse(saveStr)
+          localStorage.setItem('tianmeng_continent_save_slot_slot1', JSON.stringify({ savedAt: __sv.savedAt, gameState: __sv.gameState }))
+          localStorage.setItem(
+            'tianmeng_continent_saves_index',
+            JSON.stringify({ version: 2, lastSavedSlot: 'slot1', slots: { slot1: { playerName: __sv.gameState.player.name, profession: __sv.gameState.player.profession, level: __sv.gameState.player.level, locationId: __sv.gameState.world.currentLocationId, savedAt: __sv.savedAt }, slot2: null, slot3: null, slot4: null, slot5: null } }),
+          )
+        })(), departureSaveBackup)
   await page.reload({ waitUntil: 'networkidle0' })
   await sleep(400)
   await clickByText('继续游戏')
@@ -2934,7 +3004,7 @@ try {
   check('P1-023-H: 具体目的地【待补充】', body.includes('地图上的标记还无法对应到任何已知地点'))
   check('P1-023-H: 两条支线仍已完成', body.includes('采药受阻') && body.includes('已完成') && body.includes('矿洞余患') && body.includes('已完成'))
   // I. Save/Continue：仍在天龙城
-  await clickByText('保存游戏')
+  await saveToSlot1()
   await clickByText('返回主菜单')
   await clickByText('继续游戏')
   await sleep(300)
@@ -3070,7 +3140,7 @@ try {
   check('P1-024-H: 巢穴复查完成', body.includes('巢穴复查完成。'))
   check('P1-024-H: 具体目的地【待补充】', body.includes('地图上的标记还无法对应到任何已知地点'))
   // I. Save/Continue
-  await clickByText('保存游戏')
+  await saveToSlot1()
   await clickByText('返回主菜单')
   await clickByText('继续游戏')
   await sleep(300)
@@ -3233,7 +3303,7 @@ try {
   check('P1-025-H: 再次进入无威胁卡片骷髅士兵；附近威胁仅骷髅队长', !body.includes('骷髅士兵 · Lv.3') && body.includes('骷髅队长') && body.includes('Lv.4') && body.includes('迎战'))
   check('P1-025-H: 骷髅队长踪迹剧情仍在', body.includes('更深处传来沉重的骨骼碰撞声，一名身材高大的骷髅队长守在前方。'))
   // I. Save/Continue（黑石塔一层；P1-026 到期调整：无【待开放】，附近威胁仅骷髅队长）
-  await clickByText('保存游戏')
+  await saveToSlot1()
   await clickByText('返回主菜单')
   await clickByText('继续游戏')
   await sleep(300)
@@ -3257,7 +3327,7 @@ try {
   await clickByText('返回主菜单')
 
   // TM-P1-025-R1：黑石塔解锁 UI 守卫对齐——stage!=0 或 unlock flag 异常非 boolean 时不得出现「动身调查黑石塔」死按钮（沿用存档注入模式）
-  const towerSaveBackup = await page.evaluate(() => localStorage.getItem('tianmeng_continent_save'))
+  const towerSaveBackup = await page.evaluate(() => localStorage.getItem('tianmeng_continent_save_slot_slot1'))
   check('P1-025-R1: 合法存档已备份', towerSaveBackup !== null)
   const injectTowerSave = async (label, mutateFn, expectEntry) => {
     await page.evaluate(
@@ -3266,7 +3336,24 @@ try {
         const mutate = JSON.parse(mutateKey)
         // eslint-disable-next-line no-eval
         eval(mutate.fn)(save.gameState)
-        localStorage.setItem('tianmeng_continent_save', JSON.stringify(save))
+        localStorage.setItem(
+          'tianmeng_continent_save_slot_slot1',
+          JSON.stringify({ savedAt: save.savedAt, gameState: save.gameState }),
+        )
+        localStorage.setItem(
+          'tianmeng_continent_saves_index',
+          JSON.stringify({
+            version: 2,
+            lastSavedSlot: 'slot1',
+            slots: {
+              slot1: { playerName: save.gameState.player.name, profession: save.gameState.player.profession, level: save.gameState.player.level, locationId: save.gameState.world.currentLocationId, savedAt: save.savedAt },
+              slot2: null,
+              slot3: null,
+              slot4: null,
+              slot5: null,
+            },
+          }),
+        )
       },
       { saveStr: towerSaveBackup, mutateKey: JSON.stringify({ fn: mutateFn.toString() }) },
     )
@@ -3318,7 +3405,14 @@ try {
     gs.world.flags.black_stone_tower_unlocked = 0.5
   }, false)
   // F. 恢复正式合法存档（P1-025-I 档：黑石塔一层清场状态）→ 零回归
-  await page.evaluate((saveStr) => localStorage.setItem('tianmeng_continent_save', saveStr), towerSaveBackup)
+  await page.evaluate((saveStr) => (() => {
+          const __sv = JSON.parse(saveStr)
+          localStorage.setItem('tianmeng_continent_save_slot_slot1', JSON.stringify({ savedAt: __sv.savedAt, gameState: __sv.gameState }))
+          localStorage.setItem(
+            'tianmeng_continent_saves_index',
+            JSON.stringify({ version: 2, lastSavedSlot: 'slot1', slots: { slot1: { playerName: __sv.gameState.player.name, profession: __sv.gameState.player.profession, level: __sv.gameState.player.level, locationId: __sv.gameState.world.currentLocationId, savedAt: __sv.savedAt }, slot2: null, slot3: null, slot4: null, slot5: null } }),
+          )
+        })(), towerSaveBackup)
   await page.reload({ waitUntil: 'networkidle0' })
   await sleep(400)
   await clickByText('继续游戏')
@@ -3356,8 +3450,18 @@ try {
     if (!section) return ''
     return section.textContent.trim()
   })
-  // D. 确定性 Boss 战（Math.random 隔离 0.99；骷髅队长 HP22 防御13）
-  // V2：普通攻击暴击 9 需 3 击（2 次反击 12 伤，进战 HP 仅 11 会战败）→ 改用骑士重击暴击 12 两击击杀（只挨 1 次反击 6 伤）
+  // D. 确定性 Boss 战（Math.random 隔离 0.99；骷髅队长 HP22 护甲13）
+  // V3：骑士重击暴击 16 → 护甲 13 承伤率 20/33 → 10 伤/击，22 HP 需 3 击（2 次反击各 6 伤）→ 先回武馆休整保证满血
+  await clickByText('天龙城')
+  await sleep(250)
+  await clickByText('武馆')
+  await sleep(250)
+  await clickByText('休整')
+  await sleep(250)
+  await clickByText('天龙城')
+  await sleep(250)
+  await clickByText('黑石塔一层')
+  await sleep(300)
   await clickByText('迎战')
   await sleep(300)
   await page.evaluate(() => {
@@ -3447,7 +3551,7 @@ try {
       !captainFloor1Travel.some((b) => b.text.includes('黑石塔三层')),
   )
   // I. Save/Continue
-  await clickByText('保存游戏')
+  await saveToSlot1()
   await clickByText('返回主菜单')
   await clickByText('继续游戏')
   await sleep(300)
@@ -3491,14 +3595,31 @@ try {
   check('P1-027-A: 无附近威胁', !body.includes('附近威胁') && !body.includes('迎战'))
   check('P1-027-A: 一层移动按钮含黑石塔二层（disabled）', body.includes('黑石塔二层'))
   // B. 武馆休整（存档注入 HP=1）：备份 → 注入 → 武馆休整 → HP 满 → 保存满血档继续（不恢复旧档，避免带回 P1-026 战后残血导致二层战斗被击败）
-  const floor2SaveBackup = await page.evaluate(() => localStorage.getItem('tianmeng_continent_save'))
+  const floor2SaveBackup = await page.evaluate(() => localStorage.getItem('tianmeng_continent_save_slot_slot1'))
   check('P1-027-B: 合法存档已备份', floor2SaveBackup !== null)
   await page.evaluate(() => {
-    const raw = localStorage.getItem('tianmeng_continent_save')
+    const raw = localStorage.getItem('tianmeng_continent_save_slot_slot1')
     if (!raw) return
     const save = JSON.parse(raw)
     save.gameState.player.hp = 1
-    localStorage.setItem('tianmeng_continent_save', JSON.stringify(save))
+    localStorage.setItem(
+          'tianmeng_continent_save_slot_slot1',
+          JSON.stringify({ savedAt: save.savedAt, gameState: save.gameState }),
+        )
+        localStorage.setItem(
+          'tianmeng_continent_saves_index',
+          JSON.stringify({
+            version: 2,
+            lastSavedSlot: 'slot1',
+            slots: {
+              slot1: { playerName: save.gameState.player.name, profession: save.gameState.player.profession, level: save.gameState.player.level, locationId: save.gameState.world.currentLocationId, savedAt: save.savedAt },
+              slot2: null,
+              slot3: null,
+              slot4: null,
+              slot5: null,
+            },
+          }),
+        )
   })
   await page.reload()
   await sleep(600)
@@ -3520,7 +3641,7 @@ try {
     'P1-027-B: 休整后 HP=maxHp',
     restBeforeHp !== null && restAfterHp !== null && restAfterHp[1] === restAfterHp[2] && restAfterHp[2] === restBeforeHp[2],
   )
-  await clickByText('保存游戏')
+  await saveToSlot1()
   await clickByText('返回主菜单')
   // C. Continue（满血档）→ 武馆 → 天龙城 → 黑石塔一层 → 解锁二层
   await clickByText('继续游戏')
@@ -3622,12 +3743,12 @@ try {
   check('P1-027-G: 黄金兔子主线仍进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
   check('P1-027-G: 兔子的路径 ×1', body.includes('兔子的路径 ×1'))
   // 保存二层清场档（供 H 注入与 I 恢复使用）
-  await clickByText('保存游戏')
+  await saveToSlot1()
   // H. 负路径：僵尸未击败时黑法师不可通过正式战斗入口挑战（存档注入二层 + zombie 未击败）
-  const floor2ClearedSave = await page.evaluate(() => localStorage.getItem('tianmeng_continent_save'))
+  const floor2ClearedSave = await page.evaluate(() => localStorage.getItem('tianmeng_continent_save_slot_slot1'))
   check('P1-027-H: 清场档已保存', floor2ClearedSave !== null && floor2ClearedSave.includes('floor2_black_mage_defeated'))
   await page.evaluate(() => {
-    const raw = localStorage.getItem('tianmeng_continent_save')
+    const raw = localStorage.getItem('tianmeng_continent_save_slot_slot1')
     if (!raw) return
     const save = JSON.parse(raw)
     save.gameState.world.currentLocationId = 'black_stone_tower_floor2'
@@ -3635,7 +3756,24 @@ try {
     const quest = save.gameState.quests.find((q) => q.questId === 'quest_wangcai_trouble')
     if (quest && quest.flags) delete quest.flags.floor2_zombie_defeated
     if (quest && quest.flags) delete quest.flags.floor2_black_mage_defeated
-    localStorage.setItem('tianmeng_continent_save', JSON.stringify(save))
+    localStorage.setItem(
+          'tianmeng_continent_save_slot_slot1',
+          JSON.stringify({ savedAt: save.savedAt, gameState: save.gameState }),
+        )
+        localStorage.setItem(
+          'tianmeng_continent_saves_index',
+          JSON.stringify({
+            version: 2,
+            lastSavedSlot: 'slot1',
+            slots: {
+              slot1: { playerName: save.gameState.player.name, profession: save.gameState.player.profession, level: save.gameState.player.level, locationId: save.gameState.world.currentLocationId, savedAt: save.savedAt },
+              slot2: null,
+              slot3: null,
+              slot4: null,
+              slot5: null,
+            },
+          }),
+        )
   })
   await page.reload()
   await sleep(600)
@@ -3652,7 +3790,14 @@ try {
   check('P1-027-H: 页面无任何黑法师/骷髅战士按钮', engageableButtons.length === 0)
   // I. 恢复二层清场档（负路径注入不污染存档）
   await page.evaluate((saveStr) => {
-    localStorage.setItem('tianmeng_continent_save', saveStr)
+    (() => {
+          const __sv = JSON.parse(saveStr)
+          localStorage.setItem('tianmeng_continent_save_slot_slot1', JSON.stringify({ savedAt: __sv.savedAt, gameState: __sv.gameState }))
+          localStorage.setItem(
+            'tianmeng_continent_saves_index',
+            JSON.stringify({ version: 2, lastSavedSlot: 'slot1', slots: { slot1: { playerName: __sv.gameState.player.name, profession: __sv.gameState.player.profession, level: __sv.gameState.player.level, locationId: __sv.gameState.world.currentLocationId, savedAt: __sv.savedAt }, slot2: null, slot3: null, slot4: null, slot5: null } }),
+          )
+        })()
   }, floor2ClearedSave)
   await page.reload()
   await sleep(600)
@@ -3670,12 +3815,29 @@ try {
   // 起点：P1-027 二层清场档（floor2ClearedSave 已恢复，zombie+mage 均击败；主菜单）
   // 存档注入满 HP/MP（P1-027 战后残血不足以打满血 HP20 骷髅战士；P1-027-B 同模式测试手段）
   await page.evaluate(() => {
-    const raw = localStorage.getItem('tianmeng_continent_save')
+    const raw = localStorage.getItem('tianmeng_continent_save_slot_slot1')
     if (!raw) return
     const save = JSON.parse(raw)
     save.gameState.player.hp = save.gameState.player.maxHp
     save.gameState.player.mp = save.gameState.player.maxMp
-    localStorage.setItem('tianmeng_continent_save', JSON.stringify(save))
+    localStorage.setItem(
+          'tianmeng_continent_save_slot_slot1',
+          JSON.stringify({ savedAt: save.savedAt, gameState: save.gameState }),
+        )
+        localStorage.setItem(
+          'tianmeng_continent_saves_index',
+          JSON.stringify({
+            version: 2,
+            lastSavedSlot: 'slot1',
+            slots: {
+              slot1: { playerName: save.gameState.player.name, profession: save.gameState.player.profession, level: save.gameState.player.level, locationId: save.gameState.world.currentLocationId, savedAt: save.savedAt },
+              slot2: null,
+              slot3: null,
+              slot4: null,
+              slot5: null,
+            },
+          }),
+        )
   })
   await page.reload()
   await sleep(600)
@@ -3750,7 +3912,7 @@ try {
   check('P1-028-G: 黄金兔子主线仍进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
   check('P1-028-G: 兔子的路径 ×1', body.includes('兔子的路径 ×1'))
   // H. Save/Continue 状态保持
-  await clickByText('保存游戏')
+  await saveToSlot1()
   await clickByText('返回主菜单')
   await clickByText('继续游戏')
   await sleep(300)
@@ -3772,20 +3934,44 @@ try {
   check('P1-029-A: 继续向上入口存在', body.includes('继续向上'))
   check('P1-029-A: 无附近威胁/迎战', !body.includes('附近威胁') && !body.includes('迎战'))
   // R1：三层「继续向上」UI guard 负路径——注入异常存档验证入口不显示（合法状态已由 A 段确认入口存在）
-  const floor3UnlockLegalSave = await page.evaluate(() => localStorage.getItem('tianmeng_continent_save'))
+  const floor3UnlockLegalSave = await page.evaluate(() => localStorage.getItem('tianmeng_continent_save_slot_slot1'))
   const injectFloor3Entry = async (mutateBody) => {
     // 在浏览器侧执行注入（Node 侧无 localStorage）：mutateBody 是 new Function('gs', body) 的函数体字符串
     // 每条负路径先从 floor3UnlockLegalSave 恢复再注入单一异常（保证隔离，避免 stage=1 残留到下一条）
     await page.evaluate((body, legalSave) => {
-      localStorage.setItem('tianmeng_continent_save', legalSave)
-      const raw = localStorage.getItem('tianmeng_continent_save')
+      (() => {
+          const __sv = JSON.parse(legalSave)
+          localStorage.setItem('tianmeng_continent_save_slot_slot1', JSON.stringify({ savedAt: __sv.savedAt, gameState: __sv.gameState }))
+          localStorage.setItem(
+            'tianmeng_continent_saves_index',
+            JSON.stringify({ version: 2, lastSavedSlot: 'slot1', slots: { slot1: { playerName: __sv.gameState.player.name, profession: __sv.gameState.player.profession, level: __sv.gameState.player.level, locationId: __sv.gameState.world.currentLocationId, savedAt: __sv.savedAt }, slot2: null, slot3: null, slot4: null, slot5: null } }),
+          )
+        })()
+      const raw = localStorage.getItem('tianmeng_continent_save_slot_slot1')
       if (!raw) return
       const save = JSON.parse(raw)
       save.gameState.world.currentLocationId = 'black_stone_tower_floor2'
       // eslint-disable-next-line no-new-func
       const fn = new Function('gs', body)
       fn(save.gameState)
-      localStorage.setItem('tianmeng_continent_save', JSON.stringify(save))
+      localStorage.setItem(
+          'tianmeng_continent_save_slot_slot1',
+          JSON.stringify({ savedAt: save.savedAt, gameState: save.gameState }),
+        )
+        localStorage.setItem(
+          'tianmeng_continent_saves_index',
+          JSON.stringify({
+            version: 2,
+            lastSavedSlot: 'slot1',
+            slots: {
+              slot1: { playerName: save.gameState.player.name, profession: save.gameState.player.profession, level: save.gameState.player.level, locationId: save.gameState.world.currentLocationId, savedAt: save.savedAt },
+              slot2: null,
+              slot3: null,
+              slot4: null,
+              slot5: null,
+            },
+          }),
+        )
     }, mutateBody, floor3UnlockLegalSave)
     await page.reload()
     await sleep(600)
@@ -3807,7 +3993,14 @@ try {
   check('P1-029-R1: floor3_unlocked="yes" 不显示继续向上', !b.includes('继续向上'))
   // ⑤ 恢复合法存档 → 入口重新出现
   await page.evaluate((saveStr) => {
-    localStorage.setItem('tianmeng_continent_save', saveStr)
+    (() => {
+          const __sv = JSON.parse(saveStr)
+          localStorage.setItem('tianmeng_continent_save_slot_slot1', JSON.stringify({ savedAt: __sv.savedAt, gameState: __sv.gameState }))
+          localStorage.setItem(
+            'tianmeng_continent_saves_index',
+            JSON.stringify({ version: 2, lastSavedSlot: 'slot1', slots: { slot1: { playerName: __sv.gameState.player.name, profession: __sv.gameState.player.profession, level: __sv.gameState.player.level, locationId: __sv.gameState.world.currentLocationId, savedAt: __sv.savedAt }, slot2: null, slot3: null, slot4: null, slot5: null } }),
+          )
+        })()
   }, floor3UnlockLegalSave)
   await page.reload()
   await sleep(600)
@@ -3828,6 +4021,23 @@ try {
     return [...container.querySelectorAll('button')].map((b) => ({ text: b.textContent.trim(), disabled: b.disabled }))
   })
   check('P1-029-B: 二层移动按钮含黑石塔三层（enabled）', floor2Travel3.some((b) => b.text === '黑石塔三层' && !b.disabled))
+  // TM-P2-002 修复：026/027/028 连战后 store HP 不足（V3 女妖两次暴击反击 14 伤）→ 回武馆休整满血再战
+  await clickByText('黑石塔一层')
+  await sleep(300)
+  await clickByText('天龙城')
+  await sleep(300)
+  await clickByText('武馆')
+  await sleep(300)
+  await clickByText('休整')
+  await sleep(300)
+  body = await bodyText()
+  check('P1-029-B2: 武馆休整后 HP 满 24 / 24', body.includes('24 / 24'))
+  await clickByText('天龙城')
+  await sleep(300)
+  await clickByText('黑石塔一层')
+  await sleep(300)
+  await clickByText('黑石塔二层')
+  await sleep(300)
   // C. 前往三层 → 骷髅女妖 Lv.5
   await clickByText('黑石塔三层')
   await sleep(300)
@@ -3898,7 +4108,7 @@ try {
   check('P1-029-H: 夔峒项链 ×1', witchNecklaceCount === '1')
   check('P1-029-H: 黄金兔子主线仍进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
   // I. Save/Continue 状态保持
-  await clickByText('保存游戏')
+  await saveToSlot1()
   await clickByText('返回主菜单')
   await clickByText('继续游戏')
   await sleep(300)
@@ -3940,17 +4150,41 @@ try {
   body = await bodyText()
   check('P1-030-C: 交还项链按钮存在', (await buttonDisabled('将夔峒项链交还王财')) === false)
   // P1-030-R1：交还按钮负路径——quantity=2 / 两条 entry 均不显示（与 Store 一致，避免 dead button）；每条从合法基线（唯一 entry、quantity=1、位置天龙城）独立恢复再注入单一异常
-  const necklaceLegalSave = await page.evaluate(() => localStorage.getItem('tianmeng_continent_save'))
+  const necklaceLegalSave = await page.evaluate(() => localStorage.getItem('tianmeng_continent_save_slot_slot1'))
   const injectNecklaceSave = async (mutateBody) => {
     await page.evaluate((saveStr, body) => {
-      localStorage.setItem('tianmeng_continent_save', saveStr)
-      const raw = localStorage.getItem('tianmeng_continent_save')
+      (() => {
+          const __sv = JSON.parse(saveStr)
+          localStorage.setItem('tianmeng_continent_save_slot_slot1', JSON.stringify({ savedAt: __sv.savedAt, gameState: __sv.gameState }))
+          localStorage.setItem(
+            'tianmeng_continent_saves_index',
+            JSON.stringify({ version: 2, lastSavedSlot: 'slot1', slots: { slot1: { playerName: __sv.gameState.player.name, profession: __sv.gameState.player.profession, level: __sv.gameState.player.level, locationId: __sv.gameState.world.currentLocationId, savedAt: __sv.savedAt }, slot2: null, slot3: null, slot4: null, slot5: null } }),
+          )
+        })()
+      const raw = localStorage.getItem('tianmeng_continent_save_slot_slot1')
       const save = JSON.parse(raw)
       save.gameState.world.currentLocationId = 'tianlong_city'
       // eslint-disable-next-line no-new-func
       const fn = new Function('gs', body)
       fn(save.gameState)
-      localStorage.setItem('tianmeng_continent_save', JSON.stringify(save))
+      localStorage.setItem(
+          'tianmeng_continent_save_slot_slot1',
+          JSON.stringify({ savedAt: save.savedAt, gameState: save.gameState }),
+        )
+        localStorage.setItem(
+          'tianmeng_continent_saves_index',
+          JSON.stringify({
+            version: 2,
+            lastSavedSlot: 'slot1',
+            slots: {
+              slot1: { playerName: save.gameState.player.name, profession: save.gameState.player.profession, level: save.gameState.player.level, locationId: save.gameState.world.currentLocationId, savedAt: save.savedAt },
+              slot2: null,
+              slot3: null,
+              slot4: null,
+              slot5: null,
+            },
+          }),
+        )
     }, necklaceLegalSave, mutateBody)
     await page.reload()
     await sleep(600)
@@ -4017,7 +4251,7 @@ try {
   check('P1-030-H: 无提交任务按钮残留', (await page.evaluate(() => [...document.querySelectorAll('button')].some((b) => b.textContent.trim() === '提交任务'))) === false)
   await clickByText('结束交谈')
   // I. Save → 主菜单 → Continue 后 Phase1 完成状态保持
-  await clickByText('保存游戏')
+  await saveToSlot1()
   await clickByText('返回主菜单')
   await clickByText('继续游戏')
   await sleep(300)
@@ -4059,7 +4293,7 @@ try {
   check('P1-015-B: 两轮大失败受伤后生命 16 / 22', body.includes('16 / 22'))
   check('P1-015-B: 魔化兔 8 / 8 未受伤', body.includes('8 / 8'))
   check('P1-015-B: 受伤后药水按钮可用', (await buttonDisabled('使用治疗药水（+8 生命）')) === false)
-  // C. 第一瓶：恢复 16→22（V2 实际+6，上限截断），敌普通命中反击 2 伤 → 20/22；药水 2→1
+  // C. 第一瓶：恢复 16→22（V3 实际+6，上限截断），敌普通命中反击（护甲减伤）1 伤 → 21/22；药水 2→1
   await page.evaluate(() => {
     const seq = [0.5] // 敌普通命中（非暴击非天然1）
     let i = 0
@@ -4068,7 +4302,7 @@ try {
   await clickByText('使用治疗药水（+8 生命）')
   await sleep(300)
   body = await bodyText()
-  check('P1-015-C: 第一瓶后生命 20 / 22', body.includes('20 / 22'))
+  check('P1-015-C: 第一瓶后生命 21 / 22（V3 护甲减伤反击 1 伤）', body.includes('21 / 22'))
   check('P1-015-C: 魔化兔仍 8 / 8', body.includes('8 / 8'))
   check('P1-015-C: 灵力仍 6 / 6', body.includes('6 / 6'))
   check('P1-015-C: 药水剩余 1', body.includes('剩余：1'))
@@ -4077,7 +4311,7 @@ try {
   check('P1-015-C: 日志显示魔化兔的攻击', body.includes('魔化兔的攻击：'))
   // D. 喝药是治疗行动不是攻击：无玩家攻击/技能日志；敌 HP 不变
   check('P1-015-D: 无你的攻击/骑士重击日志', !body.includes('你的攻击：') && !body.includes('你的骑士重击：'))
-  // E. 第二瓶：上限截断实际恢复 2（20→22），敌天然1 大失败；药水 1→0
+  // E. 第二瓶：上限截断实际恢复 1（21→22），敌天然1 大失败；药水 1→0
   await page.evaluate(() => {
     const seq = [0] // 敌天然1 大失败
     let i = 0
@@ -4087,7 +4321,7 @@ try {
   await sleep(300)
   body = await bodyText()
   check('P1-015-E: 第二瓶后生命 22 / 22', body.includes('22 / 22'))
-  check('P1-015-E: 日志显示实际恢复 2 点生命（非8）', body.includes('你使用了治疗药水：恢复 2 点生命。'))
+  check('P1-015-E: 日志显示实际恢复 1 点生命（非8）', body.includes('你使用了治疗药水：恢复 1 点生命。'))
   check('P1-015-E: 魔化兔的攻击且大失败', body.includes('魔化兔的攻击：') && body.includes('大失败'))
   // F. 库存耗尽：没有治疗药水 + disabled + 普通攻击仍可用 + MP 6/6 + 魔化兔 8/8
   check('P1-015-F: 显示没有治疗药水', body.includes('没有治疗药水'))
@@ -4119,12 +4353,12 @@ try {
   // R2：运行期间存档改坏 → 触发一次 load → Continue 禁用且不进入游戏页
   await clickByText('新游戏')
   await createQuickKnight() // P004：默认预填合法，直接确认创建
-  await clickByText('保存游戏')
+  await saveToSlot1()
   await clickByText('返回主菜单')
   check('R2: 合法存档存在时 Continue 可用', (await continueDisabled()) === false)
   await clickByText('开发者控制台')
   await page.evaluate(() => {
-    window.localStorage.setItem('tianmeng_continent_save', '{ broken')
+    window.localStorage.setItem('tianmeng_continent_save_slot_slot1', '{ broken')
   })
   await clickByText('返回主菜单')
   await clickByText('继续游戏') // 按钮此时仍 enabled（hasSave 尚未同步），点击触发 loadGame
@@ -4145,7 +4379,7 @@ try {
         world: { currentLocationId: 'x', flags: {}, completedEvents: [], npcStates: {} },
       },
     }
-    window.localStorage.setItem('tianmeng_continent_save', JSON.stringify(bad))
+    window.localStorage.setItem('tianmeng_continent_save_slot_slot1', JSON.stringify(bad))
   })
   await page.reload({ waitUntil: 'networkidle0' })
   await sleep(500)
@@ -4155,7 +4389,7 @@ try {
 
   // F. 异常存档回退：注入非法 JSON 后刷新不得白屏
   await page.evaluate(() => {
-    window.localStorage.setItem('tianmeng_continent_save', '{ broken json')
+    window.localStorage.setItem('tianmeng_continent_save_slot_slot1', '{ broken json')
   })
   await page.reload({ waitUntil: 'networkidle0' })
   await sleep(500)
