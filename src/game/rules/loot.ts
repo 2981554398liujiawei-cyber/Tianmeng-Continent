@@ -4,7 +4,7 @@
  *  - luckTier 条目：按幸运检定结果追加（success → 成功即掉；critical_success → 大成功才掉）。
  * 幸运检定玩家可见（D20 + 幸运修正 vs DC），不做后台偷偷加概率。
  */
-import { resolveLuckCheck, rollLuckCheck } from './luck'
+import { resolveLuckCheck, rollLuckCheck, type LuckCheckResult } from './luck'
 import { getLootTable } from '../content/lootTables'
 import type { LootGrant, LootEntry } from '../types/loot'
 
@@ -27,19 +27,11 @@ export function rollLoot(enemyId: string, luck: number): LootGrant | null {
   return buildGrant(table.entries, check)
 }
 
-function buildGrant(
-  entries: readonly LootEntry[],
-  check: { total: number; dc: number; success: boolean; outcome: string },
-): LootGrant {
+function buildGrant(entries: readonly LootEntry[], check: LuckCheckResult): LootGrant {
   const grant: LootGrant = { items: [], gold: 0, luckCheck: null }
   const hasLuckEntries = entries.some((e) => e.luckTier !== undefined)
   if (hasLuckEntries) {
-    grant.luckCheck = {
-      total: check.total,
-      dc: check.dc,
-      success: check.success,
-      criticalSuccess: check.outcome === 'critical_success',
-    }
+    grant.luckCheck = check
   }
   for (const entry of entries) {
     if (entry.guaranteed) {

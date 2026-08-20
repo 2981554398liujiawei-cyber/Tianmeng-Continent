@@ -10,6 +10,7 @@ import { LEVEL_2_MAX_HP_GAIN, LEVEL_2_MAX_MP_GAIN } from '../rules/character'
 import { rollLoot } from '../rules/loot'
 import type { LootGrant } from '../types/loot'
 import { getSkill } from '../content/skills'
+import { hasLearnedSkill, skillMpCost } from '../rules/skill'
 import { rollLuckCheck, resolveLuckCheck, type LuckCheckResult } from '../rules/luck'
 import { resolveD20Check, rollD20 } from '../rules/d20'
 
@@ -101,6 +102,8 @@ interface GameStoreState {
   /** 武馆免费休整（TM-P1-027）：仅武馆可用——hp=maxHp、mp=maxMp；HP=0 时允许、任一资源未满即可成功；HP/MP 全满 → false 且 GameState 完全不变；成功只改 hp/mp（金币/XP/等级/物品/装备/Quest/flags/关系/npcState 全不变）；不自动保存；未建 RestSystem */
   restAtTianlongMartialHall: () => boolean
   /** 法师法术攻击灵力消费（TM-P1-001）：仅 mage 可消费 MAGE_SPELL_MP_COST；只改 player.mp；不自动保存 */
+  /** TM-P2-003-R1 B：按技能注册表灵力消耗通用消费（CombatPage 唯一技能 MP 入口） */
+  spendSkillMp: (skillId: string) => boolean
   spendMageSpellMp: () => boolean
   /** 调查废弃矿洞（TM-P0-016）：心智 D20 检定一次性写入 flags；非法/已调查/异常 → null 且不变 */
   investigateAbandonedMine: () => D20CheckResult | null
@@ -280,6 +283,8 @@ export const useGameStore = create<GameStoreState>()((set) => ({
     if (opened || claimed) return { outcome: 'already_opened' }
     const skill = getSkill(skillId)
     if (!skill || skill.profession !== s.player.profession) return { outcome: 'no_skill' }
+    // TM-P2-003-R1 C：必须真正学过（learnedSkillIds 显式包含）；同职业但未学习不能使用
+    if (!hasLearnedSkill(s.player.learnedSkillIds, skillId)) return { outcome: 'no_skill' }
     // TM-P2-003 D：按 Tag 判断解法（不是按技能 ID）
     const hasTag = skill.tags.some((t) => t === 'force' || t === 'movement' || t === 'magic')
     if (!hasTag) return { outcome: 'wrong_tag' }
@@ -307,6 +312,8 @@ export const useGameStore = create<GameStoreState>()((set) => ({
     const wolfDefeated = s.quests.find((q) => q.questId === 'quest_north_gate_missing_patrol')?.flags.north_gate_wolf_defeated === true
     if (!atNorthGate || !wolfDefeated) return null
     if (s.world.flags.north_tower_opened === true) return null
+    // TM-P2-003-R1 A：MND 检定一次性——失败后（north_tower_mnd_failed）不得再掷，只能走命运补救
+    if (s.world.flags.north_tower_mnd_failed === true) return null
     const check = resolveD20Check(
       { attributeScore: s.player.attributes.mnd, level: s.player.level, dc: NORTH_TOWER_MND_DC },
       roll ?? rollD20(),
@@ -1184,6 +1191,18 @@ export const useGameStore = create<GameStoreState>()((set) => ({
       }
     })
     return rested
+  },
+
+  spendSkillMp: (skillId) => {
+    const cost = skillMpCost(skillId)
+    if (cost <= 0) return true // 不消耗 MP 的技能直接可用
+    let spent = false
+    set((s) => {
+      if (!s.gameState || s.gameState.player.mp < cost) return {}
+      spent = true
+      return { gameState: { ...s.gameState, player: { ...s.gameState.player, mp: s.gameState.player.mp - cost } } }
+    })
+    return spent
   },
 
   spendMageSpellMp: () => {

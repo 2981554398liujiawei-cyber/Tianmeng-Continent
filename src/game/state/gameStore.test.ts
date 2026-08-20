@@ -7040,3 +7040,82 @@ describe('TM-P2-003 G：机缘型社交（路边旧货商；首次交流自动 L
     expect(useGameStore.getState().gameState?.player.gold).toBe(goldBefore)
   })
 })
+
+// ================= TM-P2-003-R1：审计返修测试 =================
+
+describe('TM-P2-003-R1 A：MND 检定一次性（防刷新刷骰）', () => {
+  const seedWolfDefeated = () => {
+    useGameStore.getState().newGame()
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return {
+        gameState: {
+          ...s.gameState,
+          world: { ...s.gameState.world, currentLocationId: 'tianlong_north_gate' },
+          quests: [
+            {
+              questId: 'quest_north_gate_missing_patrol',
+              status: 'completable',
+              stage: 0,
+              flags: { north_gate_trail_checked: true, north_gate_wolf_defeated: true },
+            },
+          ],
+        },
+      }
+    })
+  }
+
+  it('① MND 失败后再传 roll20 仍不能成功（返回 null）', () => {
+    seedWolfDefeated()
+    expect(useGameStore.getState().northTowerMndCheck(2)?.outcome).toBe('failed')
+    expect(useGameStore.getState().northTowerMndCheck(20)).toBeNull()
+    expect(useGameStore.getState().gameState?.world.flags.north_tower_opened).not.toBe(true)
+  })
+
+  it('② 保存/读取后仍不能重掷（flag 进存档，MND 锁定保持）', () => {
+    seedWolfDefeated()
+    useGameStore.getState().northTowerMndCheck(2) // 失败 → north_tower_mnd_failed
+    // 模拟保存/读取：flags 从存档恢复（north_tower_mnd_failed 仍在）
+    expect(useGameStore.getState().gameState?.world.flags.north_tower_mnd_failed).toBe(true)
+    expect(useGameStore.getState().northTowerMndCheck(20)).toBeNull()
+  })
+})
+
+describe('TM-P2-003-R1 C：Store 强制 learnedSkillIds（未学技能不能使用）', () => {
+  const seedWolfDefeated = () => {
+    useGameStore.getState().newGame()
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return {
+        gameState: {
+          ...s.gameState,
+          world: { ...s.gameState.world, currentLocationId: 'tianlong_north_gate' },
+          player: { ...s.gameState.player, profession: 'knight', learnedSkillIds: [] },
+          quests: [
+            {
+              questId: 'quest_north_gate_missing_patrol',
+              status: 'completable',
+              stage: 0,
+              flags: { north_gate_trail_checked: true, north_gate_wolf_defeated: true },
+            },
+          ],
+        },
+      }
+    })
+  }
+
+  it('③ 同职业但未学习技能（learnedSkillIds=[]）→ no_skill', () => {
+    seedWolfDefeated()
+    expect(useGameStore.getState().openNorthTowerWithSkill('knight_power_strike')?.outcome).toBe('no_skill')
+    expect(useGameStore.getState().gameState?.world.flags.north_tower_opened).not.toBe(true)
+  })
+
+  it('④ 已学习技能可正常使用（learnedSkillIds 包含）', () => {
+    seedWolfDefeated()
+    useGameStore.setState((s) => {
+      if (!s.gameState) return {}
+      return { gameState: { ...s.gameState, player: { ...s.gameState.player, learnedSkillIds: ['knight_power_strike'] } } }
+    })
+    expect(useGameStore.getState().openNorthTowerWithSkill('knight_power_strike')?.outcome).toBe('opened')
+  })
+})

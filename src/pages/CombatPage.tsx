@@ -5,14 +5,10 @@ import { getEnemy, getItem } from '../game/content'
 import { ATTRIBUTE_KEYS, ATTRIBUTE_LABELS, getProfessionName } from '../game/content/professions'
 import {
   formatAttackLog,
-  getKnightPowerStrikeDamage,
-  getMageSpellDamage,
   getPlayerAgility,
   getPlayerArmor,
   getPlayerAttackPower,
   getPlayerLevelDamageBonus,
-  getRangerSwiftStrikeDamage,
-  getWarriorSuppressStrikeDamage,
   performAttack,
   rollInitiative,
   getCombatPhaseAfterEnemyAttack,
@@ -20,7 +16,9 @@ import {
   type AttackResult,
   type CombatPhase,
 } from '../game/rules/combat'
+import { getSkillExecutionInfo, isSuppressOnFullHitSkill, resolveSkillRawDamage } from '../game/rules/skill'
 import type { InitiativeWinner } from '../game/rules/combat'
+import { formatLuckCheckLog } from '../game/rules/luck'
 import { getSkill } from '../game/content/skills'
 import type { SkillDefinition } from '../game/types/skill'
 import type { LootGrant } from '../game/types/loot'
@@ -40,9 +38,7 @@ const ENEMY_FIRST_STRIKE_DELAY_MS = 400
 export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu }: CombatPageProps) {
   const gameState = useGameStore((s) => s.gameState)
   const damagePlayer = useGameStore((s) => s.damagePlayer)
-  const spendMageSpellMp = useGameStore((s) => s.spendMageSpellMp)
-  const spendKnightPowerStrikeMp = useGameStore((s) => s.spendKnightPowerStrikeMp)
-  const spendWarriorSuppressStrikeMp = useGameStore((s) => s.spendWarriorSuppressStrikeMp)
+  const spendSkillMp = useGameStore((s) => s.spendSkillMp)
   const useHealingPotion = useGameStore((s) => s.useHealingPotion)
   const enemy = getEnemy(enemyId)
 
@@ -169,38 +165,29 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
     applyPlayerAttack(playerResult, 'basic')
   }
 
-  /** TM-P2-003 A：技能统一入口（learnedSkillIds → Skill Registry → 动态执行）。
-   * 未知/损坏 skillId 安全忽略；职业不匹配的已学习项忽略；V3 命中/护甲结算不变。 */
+  /** TM-P2-003-R1 B：技能统一入口（learnedSkillIds → Skill Registry → rules/skill 执行）。
+   * 伤害 resolver / MP cost / once-per-combat / 压制全部来自注册表与 rules/skill.ts，
+   * 页面不再硬编码任何 skillId 分支。未知/损坏/未学习/职业不匹配安全忽略。 */
   const handleSkill = (skillId: string) => {
     if (phase !== 'active' || enemyFirstStriking) return
-    const skill = getSkill(skillId)
-    if (!skill || skill.profession !== player.profession) return
-    // 每场一次（迅捷突袭）
-    if (skill.combat?.oncePerCombat) {
+    const info = getSkillExecutionInfo(skillId)
+    if (!info || info.skill.profession !== player.profession) return
+    // 每场一次（注册表 oncePerCombat；按 skillId 独立）
+    if (info.oncePerCombat) {
       if (rangerSwiftStrikeUsed) return
       setRangerSwiftStrikeUsed(true)
     }
-    // MP 消费（唯一入口；false → 不掷骰、不改 HP、不反击）
-    if (skill.mpCost > 0) {
-      let ok = false
-      if (skillId === 'mage_spell') ok = spendMageSpellMp()
-      else if (skillId === 'knight_power_strike') ok = spendKnightPowerStrikeMp()
-      else if (skillId === 'warrior_suppress_strike') ok = spendWarriorSuppressStrikeMp()
-      if (!ok) return
-    }
-    // 伤害公式按 skillId 分发（V3 命中/护甲不变）
-    let rawDamage = playerAttackPower
-    if (skillId === 'mage_spell') {
-      rawDamage = getMageSpellDamage(player.attributes.mnd) + levelDamageBonus
-    } else if (skillId === 'knight_power_strike') {
-      rawDamage = getKnightPowerStrikeDamage(player.attributes.str, weaponDamageBonus, player.level)
-    } else if (skillId === 'ranger_swift_strike') {
-      rawDamage = getRangerSwiftStrikeDamage(player.attributes.agi, weaponDamageBonus, player.level)
-    } else if (skillId === 'warrior_suppress_strike') {
-      rawDamage = getWarriorSuppressStrikeDamage(player.attributes.str, weaponDamageBonus, player.level)
-    } else {
-      return
-    }
+    // MP 消费（注册表 cost；唯一入口；false → 不掷骰、不改 HP、不反击）
+    if (!spendSkillMp(skillId)) return
+    // 原始伤害（rules/skill resolver；未知技能返回 null → 拒绝）
+    const rawDamage = resolveSkillRawDamage(skillId, {
+      str: player.attributes.str,
+      agi: player.attributes.agi,
+      mnd: player.attributes.mnd,
+      weaponDamageBonus,
+      level: player.level,
+    })
+    if (rawDamage === null) return
     const skillResult = performAttack(playerAgility, enemy.agility, rawDamage, enemy.armor)
     applyPlayerAttack(skillResult, skillId)
   }
@@ -220,9 +207,8 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
       setVictoryLoot(useGameStore.getState().grantLoot(enemyId))
       return
     }
-    // TM-P1-008/TM-P2-003 A：suppressCounterOnFullHit 技能仅「正常命中/暴击」压制本次反击；擦伤不压制
-    const skill = action === 'basic' ? undefined : getSkill(action)
-    if (skill?.combat?.suppressCounterOnFullHit && (attack.outcome === 'hit' || attack.outcome === 'critical_hit')) {
+    // TM-P1-008/TM-P2-003-R1：suppressCounterOnFullHit 技能仅「正常命中/暴击」压制本次反击；擦伤不压制
+    if (action !== 'basic' && isSuppressOnFullHitSkill(action) && (attack.outcome === 'hit' || attack.outcome === 'critical_hit')) {
       return
     }
     applyEnemyCounter()
@@ -401,10 +387,11 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
                 })}
                 {victoryLoot.gold > 0 && <p className="mt-1">金币 +{victoryLoot.gold}</p>}
                 {victoryLoot.luckCheck && (
-                  <p className="mt-2 text-xs text-bone-500">
-                    幸运检定：D20 {victoryLoot.luckCheck.total - victoryLoot.luckCheck.dc >= 0 ? victoryLoot.luckCheck.total : victoryLoot.luckCheck.total} / DC {victoryLoot.luckCheck.dc}{' '}
-                    {victoryLoot.luckCheck.success ? '（成功）' : '（失败）'}
-                  </p>
+                  <div className="mt-2 text-xs text-bone-500">
+                    {formatLuckCheckLog(victoryLoot.luckCheck).map((line) => (
+                      <p key={line}>{line}</p>
+                    ))}
+                  </div>
                 )}
               </div>
             )}

@@ -706,17 +706,19 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
                     ))}
                   </div>
                 )}
-                {/* 普通属性路线 */}
-                <Button
-                  variant="ghost"
-                  className="mt-2"
-                  onClick={() => {
-                    setTowerMndResult(northTowerMndCheck())
-                    setTowerSkillResult(null)
-                  }}
-                >
-                  [MND 检定] 寻找备用机关
-                </Button>
+                {/* 普通属性路线（TM-P2-003-R1 A：失败后一次性锁定，只留命运补救；Store 亦拒绝重掷） */}
+                {!towerMndFailed && (
+                  <Button
+                    variant="ghost"
+                    className="mt-2"
+                    onClick={() => {
+                      setTowerMndResult(northTowerMndCheck())
+                      setTowerSkillResult(null)
+                    }}
+                  >
+                    [MND 检定] 寻找备用机关
+                  </Button>
+                )}
                 {/* 检定结果展示 */}
                 {towerSkillResult?.outcome === 'opened' && (
                   <p className="mt-3 text-gold-300">你用{towerSkillResult.skillName}移开了阻碍（消耗 {towerSkillResult.mpCost} 灵力）。</p>

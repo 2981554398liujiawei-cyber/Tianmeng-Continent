@@ -191,12 +191,19 @@ export function isGameState(value: unknown): value is GameState {
   )
 }
 
-/** 合法槽位存档判定（TM-P2-002-R1 G：version 允许缺失——兼容 514f3e2 无槽版本 V2；缺失/===2 合法，其他版本非法） */
+/** 合法槽位存档判定（TM-P2-003-R1 D：版本感知——可迁移格式 version undefined(514f3e2)/2(9ddb5db)/3(当前) 均合法；
+ * 其中 version 3 必须携带 learnedSkillIds，缺失判 malformed；旧版本允许缺失（迁移链补全）） */
 export function isValidSaveSlot(raw: unknown): raw is SaveSlot {
   if (!isRecord(raw)) return false
-  if (raw.version !== undefined && raw.version !== SLOT_FORMAT_VERSION) return false
+  const v = raw.version
+  if (v !== undefined && v !== 2 && v !== SLOT_FORMAT_VERSION) return false
   if (typeof raw.savedAt !== 'string') return false
-  return isGameState(raw.gameState)
+  if (!isGameState(raw.gameState)) return false
+  // v3 严格：必须已带 learnedSkillIds（TM-P2-003-R1 D：v3 缺 learnedSkillIds 判 malformed）
+  if (v === SLOT_FORMAT_VERSION && !Array.isArray((raw.gameState as { player: { learnedSkillIds?: unknown } }).player.learnedSkillIds)) {
+    return false
+  }
+  return true
 }
 
 /** 合法旧 V1 单槽存档判定（迁移源） */
@@ -382,7 +389,12 @@ export function loadSlot(slotId: SlotId): SaveSlot | null {
       return null
     }
     const p = parsed as { version?: number; savedAt: string; gameState: GameState }
-    return { version: SLOT_FORMAT_VERSION, savedAt: p.savedAt, gameState: p.gameState }
+    // TM-P2-003 A/R1：旧版本（undefined/2）读时补 learnedSkillIds（内存级；不写回——持久迁移由 migrateSave/importSaves 负责）
+    const gs = p.gameState
+    if (!Array.isArray(gs.player.learnedSkillIds)) {
+      gs.player.learnedSkillIds = defaultSkillsForProfession(gs.player.profession)
+    }
+    return { version: SLOT_FORMAT_VERSION, savedAt: p.savedAt, gameState: gs }
   } catch (err) {
     console.error(`[存档] 槽位 ${slotId} 读取失败（数据损坏），已安全回退；其余槽位不受影响`, err)
     return null
@@ -561,7 +573,16 @@ export function migrateSave(): boolean {
   return changed
 }
 
-// ---------- 导出 / 导入（TM-P2-002 I） ----------
+// ---------- 导出 / 导入（TM-P2-002 I / TM-P2-003-R1 D） ----------
+
+/** 将单个槽位条目迁移到当前格式（version 3 + learnedSkillIds）；旧版本原地升级，v3 直接返回 */
+function migrateSlotEntryToCurrent(entry: SaveSlot): SaveSlot {
+  const gs = entry.gameState
+  if (!Array.isArray(gs.player.learnedSkillIds)) {
+    gs.player.learnedSkillIds = defaultSkillsForProfession(gs.player.profession)
+  }
+  return { version: SLOT_FORMAT_VERSION, savedAt: entry.savedAt, gameState: gs }
+}
 
 /** 导出五槽位为单个 JSON 字符串（含完整 gameState；空槽为 null；损坏槽按空槽导出） */
 export function exportSaves(): string {
@@ -617,9 +638,11 @@ export function importSaves(json: string): boolean {
       const entry = parsed.slots[slotId]
       if (entry === null) {
         storage.removeItem(slotKey(slotId))
-      } else {
-        storage.setItem(slotKey(slotId), JSON.stringify(entry))
+        continue
       }
+      // TM-P2-003-R1 D：旧导出（version undefined/2）导入时迁移到当前格式（补 learnedSkillIds + version 3）
+      const migrated = migrateSlotEntryToCurrent(entry)
+      storage.setItem(slotKey(slotId), JSON.stringify(migrated))
     }
   } catch (err) {
     console.error('[存档] 导入写入失败，全部回滚', err)

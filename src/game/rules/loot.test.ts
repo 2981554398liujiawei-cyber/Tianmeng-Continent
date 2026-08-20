@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { resolveLoot, LOOT_LUCK_DC } from './loot'
+import { formatLuckCheckLog } from './luck'
 import { getLootTable } from '../content/lootTables'
 
 describe('TM-P2-003 C：LootSystem（基础掉落 + 幸运追加）', () => {
@@ -24,7 +25,7 @@ describe('TM-P2-003 C：LootSystem（基础掉落 + 幸运追加）', () => {
   it('幸运大成功 → 额外一件 uncommon 材料（黑鬃狼皮）', () => {
     const grant = resolveLoot('black_mane_wolf', 10, 20)
     expect(grant!.items.some((i) => i.itemId === 'black_mane_pelt' && i.quantity === 1)).toBe(true)
-    expect(grant!.luckCheck?.criticalSuccess).toBe(true)
+    expect(grant!.luckCheck?.outcome).toBe('critical_success')
   })
 
   it('幸运成功但不含大成功 → 无 uncommon 材料', () => {
@@ -34,6 +35,15 @@ describe('TM-P2-003 C：LootSystem（基础掉落 + 幸运追加）', () => {
 
   it('检定结果可见（total/dc/success/criticalSuccess）', () => {
     const grant = resolveLoot('black_mane_wolf', 10, 14)
-    expect(grant!.luckCheck).toMatchObject({ total: 14, dc: LOOT_LUCK_DC, success: true })
+    expect(grant!.luckCheck).toMatchObject({ roll: 14, total: 14, dc: LOOT_LUCK_DC, success: true, outcome: 'success' })
+  })
+})
+
+describe('TM-P2-003-R1 E：Loot 展示完整真实 Luck 计算', () => {
+  it('⑧ LCK14 + roll14 → luckCheck 保留 roll=14/modifier=2/total=16（D20 14 + 幸运修正 2 = 16）', () => {
+    const grant = resolveLoot('black_mane_wolf', 14, 14)
+    expect(grant?.luckCheck).toMatchObject({ roll: 14, modifier: 2, total: 16, dc: LOOT_LUCK_DC, success: true })
+    const lines = formatLuckCheckLog(grant!.luckCheck!)
+    expect(lines[0]).toBe('D20 14 + 幸运修正 2 = 16')
   })
 })

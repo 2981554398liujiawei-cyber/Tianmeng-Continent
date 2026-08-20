@@ -11,6 +11,7 @@ import {
   exportSaves,
   hasAnySave,
   importSaves,
+  isValidSaveSlot,
   loadIndex,
   loadMostRecentSave,
   loadSlot,
@@ -738,5 +739,83 @@ describe('TM-P2-003 A：旧 V2 存档迁移 learnedSkillIds', () => {
     const raw = JSON.parse(localStorage.getItem('tianmeng_continent_save_slot_slot5')!)
     expect(raw.version).toBe(3)
     expect(raw.gameState.player.learnedSkillIds).toEqual(['knight_power_strike'])
+  })
+})
+
+// ================= TM-P2-003-R1 D：旧 V2 导出兼容 / v3 严格 =================
+
+describe('TM-P2-003-R1 D1：9ddb5db V2 export 真正可以导入', () => {
+  it('⑤ 旧 V2 导出（slot version 2、无 learnedSkillIds）→ 导入成功并迁移为 v3', () => {
+    const v2Slot = () => {
+      const state = stateWithGold(70)
+      // @ts-expect-error 模拟旧 schema
+      delete state.player.learnedSkillIds
+      return { version: 2, savedAt: '2026-01-01T08:00:00.000Z', gameState: state }
+    }
+    const json = JSON.stringify({
+      version: SAVE_VERSION,
+      exportedAt: '2026-01-01T09:00:00.000Z',
+      lastSavedSlot: 'slot1',
+      slots: { slot1: v2Slot(), slot2: null, slot3: null, slot4: null, slot5: null },
+    })
+    expect(importSaves(json)).toBe(true)
+    const raw = JSON.parse(localStorage.getItem('tianmeng_continent_save_slot_slot1')!)
+    expect(raw.version).toBe(3)
+    expect(raw.gameState.player.learnedSkillIds).toEqual(['knight_power_strike'])
+    expect(raw.gameState.player.gold).toBe(70)
+  })
+
+  it('⑥ V2 导入中途失败 → 完整 rollback（五槽保持原样）', () => {
+    // 已有存档
+    saveSlot('slot1', stateWithGold(70))
+    saveSlot('slot2', stateWithGold(80))
+    const before = [1, 2].map((n) => localStorage.getItem(`tianmeng_continent_save_slot_slot${n}`)).join('|')
+    const makeV2Export = () => {
+      const mk = (gold: number) => {
+        const state = stateWithGold(gold)
+        // @ts-expect-error 模拟旧 schema
+        delete state.player.learnedSkillIds
+        return { version: 2, savedAt: '2026-01-01T08:00:00.000Z', gameState: state }
+      }
+      return JSON.stringify({
+        version: SAVE_VERSION,
+        exportedAt: '2026-01-01T09:00:00.000Z',
+        lastSavedSlot: 'slot3',
+        slots: { slot1: mk(111), slot2: mk(222), slot3: mk(333), slot4: mk(444), slot5: mk(555) },
+      })
+    }
+    const storage = localStorage
+    const orig = storage.setItem.bind(storage)
+    vi.spyOn(storage, 'setItem').mockImplementation((key: string, value: string) => {
+      if (key === 'tianmeng_continent_save_slot_slot3') throw new Error('mock fail slot3')
+      return orig(key, value)
+    })
+    expect(importSaves(makeV2Export())).toBe(false)
+    const after = [1, 2].map((n) => localStorage.getItem(`tianmeng_continent_save_slot_slot${n}`)).join('|')
+    expect(after).toBe(before)
+    expect(loadSlot('slot1')?.gameState.player.gold).toBe(70)
+    expect(loadSlot('slot2')?.gameState.player.gold).toBe(80)
+    expect(loadSlot('slot3')).toBeNull()
+    expect(loadSlot('slot4')).toBeNull()
+    expect(loadSlot('slot5')).toBeNull()
+  })
+})
+
+describe('TM-P2-003-R1 D2：v3 缺 learnedSkillIds 判 malformed', () => {
+  it('⑦ version 3 但 player 无 learnedSkillIds → isValidSaveSlot false / importSaves 拒绝', () => {
+    const state = stateWithGold(70)
+    // @ts-expect-error 模拟 v3 缺字段
+    delete state.player.learnedSkillIds
+    const badSlot = { version: 3, savedAt: '2026-01-01T08:00:00.000Z', gameState: state }
+    expect(isValidSaveSlot(badSlot)).toBe(false)
+    // 通过 importSaves 整体拒绝
+    const json = JSON.stringify({
+      version: SAVE_VERSION,
+      exportedAt: '2026-01-01T09:00:00.000Z',
+      lastSavedSlot: null,
+      slots: { slot1: badSlot, slot2: null, slot3: null, slot4: null, slot5: null },
+    })
+    expect(importSaves(json)).toBe(false)
+    expect(loadSlot('slot1')).toBeNull()
   })
 })

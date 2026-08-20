@@ -2,6 +2,7 @@
  * 掉落系统类型（TM-P2-003 C：基础掉落 + 幸运追加）。
  */
 import type { ItemRarity } from '../content/items'
+import type { LuckCheckResult } from '../rules/luck'
 
 export type LuckTier = 'success' | 'critical_success'
 
@@ -30,8 +31,8 @@ export interface LootGrant {
   items: { itemId: string; quantity: number }[]
   /** 掉落金币 */
   gold: number
-  /** 幸运检定结果（若本表含 luckTier 条目；无则 null） */
-  luckCheck?: { total: number; dc: number; success: boolean; criticalSuccess: boolean } | null
+  /** 幸运检定完整结果（TM-P2-003-R1 E：保留 roll/modifier/total/dc/outcome，展示完整计算） */
+  luckCheck?: LuckCheckResult | null
 }
 
 /** 品阶中文标签（掉落展示） */
