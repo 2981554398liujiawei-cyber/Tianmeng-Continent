@@ -6,7 +6,7 @@
  *  - 本地失败不因云端失败而丢失（14 节）：调用方先保证本地操作成功，再调 sync 上传。
  */
 import { create } from 'zustand'
-import { callCloudSave, isCloudConfigured, normalizePassphrase } from './cloudSaveApi'
+import { callCloudSave, isCloudConfigured, normalizePassphrase, validatePassphrase } from './cloudSaveApi'
 import {
   createEmptyCloudVaultPayload,
   type CloudSession,
@@ -40,7 +40,7 @@ interface CloudSessionStore extends CloudSession {
   /** 仅本机模式（未配置/服务器不可达降级；24 节：明确显示不会跨设备同步） */
   enterLocalOnly: () => void
   /** 云端存在且本机无档：自动创建空 vault 并进入主菜单 */
-  createEmptyVault: () => Promise<'connected' | 'error'>
+  createEmptyVault: () => Promise<'connected' | 'error' | 'conflict'>
   /** 云端不存在 + 本机有档：把本机五槽上传为 vault 初始版本（16 节迁移体验） */
   uploadLocalAsVault: () => Promise<'connected' | 'error' | 'conflict'>
   /** 冲突时读取云端最新版（12.1 节；导入前备份本地，导入失败自动回滚） */
@@ -73,7 +73,7 @@ export const useCloudSession = create<CloudSessionStore>()((set, get) => ({
 
   unlock: async (rawPassphrase) => {
     const passphrase = normalizePassphrase(rawPassphrase)
-    if (!passphrase) return 'invalid'
+    if (validatePassphrase(passphrase)) return 'invalid'
     set({ status: 'loading', passphrase, unlockConflict: null })
     const res = await callCloudSave({ action: 'load', passphrase })
     if (!res.ok || !('exists' in res)) {
@@ -114,11 +114,12 @@ export const useCloudSession = create<CloudSessionStore>()((set, get) => ({
     }
     // 云端不存在：本机已有有效存档 → 留在口令页给出上传/空白选择（15.1 节）；无档 → 自动创建空 vault
     if (hasAnySave()) {
-      set({ status: 'connected', revision: 0, passphrase, syncStatus: 'idle' })
+      set({ status: 'migration_choice', revision: 0, passphrase, syncStatus: 'idle' })
       return 'connected'
     }
     const created = await get().createEmptyVault()
-    return created
+    // 抢先创建会设置 unlockConflict；沿用 unlock 的 connected 语义，UI 据此留在冲突页。
+    return created === 'conflict' ? 'connected' : created
   },
 
   enterLocalOnly: () => {
@@ -127,12 +128,15 @@ export const useCloudSession = create<CloudSessionStore>()((set, get) => ({
 
   createEmptyVault: async () => {
     const passphrase = get().passphrase
-    if (!passphrase) return 'error'
+    if (!passphrase || validatePassphrase(passphrase)) return 'error'
     const payload = createEmptyCloudVaultPayload()
     const res = await callCloudSave({ action: 'save', passphrase, expectedRevision: 0, payload })
     if (res.ok) {
-      set({ status: 'connected', revision: res.revision, passphrase })
+      set({ status: 'connected', revision: res.revision, passphrase, syncStatus: 'synced', unlockConflict: null })
       return 'connected'
+    }
+    if (res.code === 'conflict') {
+      return enterVaultCreationConflict(passphrase, res.revision, set)
     }
     set({ status: 'error', passphrase: null })
     return 'error'
@@ -140,7 +144,7 @@ export const useCloudSession = create<CloudSessionStore>()((set, get) => ({
 
   uploadLocalAsVault: async () => {
     const passphrase = get().passphrase
-    if (!passphrase || !hasAnySave()) return 'error'
+    if (!passphrase || validatePassphrase(passphrase) || !hasAnySave()) return 'error'
     const payload = exportCurrentSaves()
     const res = await callCloudSave({ action: 'save', passphrase, expectedRevision: 0, payload })
     if (res.ok) {
@@ -148,8 +152,7 @@ export const useCloudSession = create<CloudSessionStore>()((set, get) => ({
       return 'connected'
     }
     if (!res.ok && res.code === 'conflict') {
-      set({ status: 'connected', revision: res.revision, passphrase })
-      return 'conflict'
+      return enterVaultCreationConflict(passphrase, res.revision, set)
     }
     set({ status: 'error', passphrase: null })
     return 'error'
@@ -157,7 +160,7 @@ export const useCloudSession = create<CloudSessionStore>()((set, get) => ({
 
   loadCloudLatest: async () => {
     const passphrase = get().passphrase
-    if (!passphrase) return 'error'
+    if (!passphrase || validatePassphrase(passphrase)) return 'error'
     const res = await callCloudSave({ action: 'load', passphrase })
     if (!res.ok || !('exists' in res) || !res.exists || !res.payload) {
       set({ syncStatus: 'cloud_failed' })
@@ -174,7 +177,7 @@ export const useCloudSession = create<CloudSessionStore>()((set, get) => ({
 
   forceOverwriteCloud: async () => {
     const passphrase = get().passphrase
-    if (!passphrase) return 'cloud_failed'
+    if (!passphrase || validatePassphrase(passphrase)) return 'cloud_failed'
     const payload = exportCurrentSaves()
     const res = await callCloudSave({ action: 'force_save', passphrase, payload })
     if (res.ok) {
@@ -190,7 +193,7 @@ export const useCloudSession = create<CloudSessionStore>()((set, get) => ({
     if (status === 'not_configured') return { outcome: 'not_configured', revision: 0 }
     // 仅本机模式（offline）：本地操作正常，不上传
     if (syncStatus === 'offline') return { outcome: 'not_configured', revision: 0 }
-    if (!passphrase) return { outcome: 'cloud_failed', revision: get().revision }
+    if (!passphrase || validatePassphrase(passphrase)) return { outcome: 'cloud_failed', revision: get().revision }
     set({ syncStatus: 'syncing' })
     const payload = exportCurrentSaves()
     const res = await callCloudSave({ action: 'save', passphrase, expectedRevision: get().revision, payload })
@@ -224,6 +227,30 @@ export const useCloudSession = create<CloudSessionStore>()((set, get) => ({
 
   resetSyncStatus: () => set({ syncStatus: 'idle' }),
 }))
+
+async function enterVaultCreationConflict(
+  passphrase: string,
+  conflictRevision: number,
+  set: (partial: Partial<CloudSessionStore>) => void,
+): Promise<'conflict' | 'error'> {
+  const latest = await callCloudSave({ action: 'load', passphrase })
+  if (!latest.ok || !('exists' in latest) || !latest.exists || !latest.payload) {
+    set({ status: 'error', revision: conflictRevision, passphrase: null, syncStatus: 'cloud_failed' })
+    return 'error'
+  }
+  const localPayload = exportCurrentSaves()
+  set({
+    status: 'locked',
+    revision: latest.revision,
+    passphrase,
+    syncStatus: 'conflict',
+    unlockConflict: {
+      local: getLatestCloudSaveSummary(localPayload),
+      cloud: getLatestCloudSaveSummary(latest.payload),
+    },
+  })
+  return 'conflict'
+}
 
 /**
  * 云端 payload → 本地存档（TM-P2-005 64/65 节）：

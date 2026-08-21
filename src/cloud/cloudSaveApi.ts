@@ -52,6 +52,11 @@ const REQUEST_TIMEOUT_MS = 12_000
  *  - 绝不把 passphrase 写入日志。
  */
 export async function callCloudSave(req: CloudSaveRequest, endpointOverride?: string): Promise<CloudSaveResponse> {
+  const normalizedPassphrase = normalizePassphrase(req.passphrase)
+  const passphraseError = validatePassphrase(normalizedPassphrase)
+  if (passphraseError) {
+    return { ok: false, code: 'invalid', message: passphraseError }
+  }
   const endpoint = (endpointOverride ?? cloudEndpoint()).trim()
   if (!endpoint) {
     return { ok: false, code: 'server_error', message: '云存档服务尚未配置' }
@@ -59,7 +64,7 @@ export async function callCloudSave(req: CloudSaveRequest, endpointOverride?: st
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
   try {
-    const normalizedRequest = { ...req, passphrase: normalizePassphrase(req.passphrase) } as CloudSaveRequest
+    const normalizedRequest = { ...req, passphrase: normalizedPassphrase } as CloudSaveRequest
     const res = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

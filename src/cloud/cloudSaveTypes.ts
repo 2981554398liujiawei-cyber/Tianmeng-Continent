@@ -67,7 +67,7 @@ export type CloudSaveResponse =
   | { ok: false; code: 'server_error'; message: string } // 5xx
 
 /** 前端云连接状态（TM-P2-005 21 节：轻量 runtime state，不入 GameState） */
-export type CloudConnectionState = 'locked' | 'loading' | 'connected' | 'error' | 'not_configured'
+export type CloudConnectionState = 'locked' | 'loading' | 'migration_choice' | 'connected' | 'error' | 'not_configured'
 
 /** 前端云同步状态（保存生命周期内的短时状态） */
 export type CloudSyncStatus =

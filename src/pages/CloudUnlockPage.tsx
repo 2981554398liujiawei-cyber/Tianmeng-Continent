@@ -35,9 +35,10 @@ export default function CloudUnlockPage({ onUnlocked }: CloudUnlockPageProps) {
   const [serverError, setServerError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [confirmLocalOverwrite, setConfirmLocalOverwrite] = useState(false)
+  const [confirmEmptyCloud, setConfirmEmptyCloud] = useState(false)
 
   // 云端无档 + 本机有档 → 迁移选择（TM-P2-005 15.1/16 节）
-  const cloudEmptyWithLocalSave = status === 'connected' && revision === 0 && hasAnySave()
+  const cloudEmptyWithLocalSave = status === 'migration_choice' && revision === 0 && hasAnySave()
 
   const configured = isCloudConfigured()
 
@@ -55,7 +56,7 @@ export default function CloudUnlockPage({ onUnlocked }: CloudUnlockPageProps) {
     const result = await unlock(normalized)
     setBusy(false)
     if (result === 'invalid') {
-      setInputError('口令不能为空。')
+      setInputError(validatePassphrase(normalized) ?? '口令无效。')
       return
     }
     if (result === 'error') {
@@ -177,8 +178,7 @@ export default function CloudUnlockPage({ onUnlocked }: CloudUnlockPageProps) {
                 const result = await uploadLocalAsVault()
                 setBusy(false)
                 if (result === 'connected') onUnlocked()
-                else if (result === 'conflict') setServerError('云存档刚刚被创建，请重新输入口令。')
-                else setServerError('云存档暂时无法连接。')
+                else if (result === 'error') setServerError('云存档暂时无法连接。')
               }}
             >
               使用本机存档创建云存档
@@ -186,17 +186,31 @@ export default function CloudUnlockPage({ onUnlocked }: CloudUnlockPageProps) {
             <Button
               variant="ghost"
               disabled={busy}
-              onClick={async () => {
-                setBusy(true)
-                setServerError(null)
-                const result = await createEmptyVault()
-                setBusy(false)
-                if (result === 'connected') onUnlocked()
-                else setServerError('云存档暂时无法连接。')
-              }}
+              onClick={() => setConfirmEmptyCloud(true)}
             >
               创建空白云存档
             </Button>
+            <Button variant="ghost" disabled={busy} onClick={() => { enterLocalOnly(); onUnlocked() }}>
+              保留本机存档，仅在本机进入
+            </Button>
+            {confirmEmptyCloud && (
+              <div className="rounded border border-red-500/50 bg-red-950/20 p-3" role="alertdialog" aria-label="确认创建空白云存档">
+                <p className="text-sm text-red-200">云端将从空白开始，本机存档仍保留在当前浏览器。</p>
+                <div className="mt-2 flex flex-col gap-2">
+                  <Button variant="danger" disabled={busy} onClick={async () => {
+                    setBusy(true)
+                    setServerError(null)
+                    const result = await createEmptyVault()
+                    setBusy(false)
+                    if (result === 'connected') onUnlocked()
+                    else if (result === 'error') setServerError('云存档暂时无法连接。')
+                  }}>
+                    确认创建空白云存档
+                  </Button>
+                  <Button variant="ghost" disabled={busy} onClick={() => setConfirmEmptyCloud(false)}>取消</Button>
+                </div>
+              </div>
+            )}
           </div>
         </section>
       )}

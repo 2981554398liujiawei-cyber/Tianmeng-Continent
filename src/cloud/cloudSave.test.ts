@@ -5,15 +5,16 @@
  *  - 云端导入失败不破坏本地存档（64 节 failure atomicity）
  *  - mock handler 的 load/save/conflict/force 行为（与生产 contract 一致）
  */
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createEmptyCloudVaultPayload, CLOUD_SAVE_FORMAT_VERSION } from './cloudSaveTypes'
-import { normalizePassphrase, validatePassphrase } from './cloudSaveApi'
-import { cloudVaultsContainSameSaves, getLatestCloudSaveSummary, isCloudVaultPayloadShape, importCloudPayloadToLocal } from './cloudSessionStore'
+import { callCloudSave, normalizePassphrase, validatePassphrase } from './cloudSaveApi'
+import { cloudVaultsContainSameSaves, getLatestCloudSaveSummary, isCloudVaultPayloadShape, importCloudPayloadToLocal, useCloudSession } from './cloudSessionStore'
 // QA handler is a Node-only .mjs module; its runtime is covered by the cloud E2E.
 // @ts-expect-error no browser-side declaration is emitted for the Node QA helper.
 import { createMockCloudStore, handleCloudRequest } from '../../qa/cloud-save-mock-handler.mjs'
 
 describe('TM-P2-005：口令标准化与校验（7.2/19 节）', () => {
+  afterEach(() => vi.unstubAllGlobals())
   it('normalize：trim 但保留大小写（" MySave " → "MySave"；不 lowercase）', () => {
     expect(normalizePassphrase('  MySave  ')).toBe('MySave')
     expect(normalizePassphrase('MySave')).toBe('MySave')
@@ -77,6 +78,64 @@ describe('TM-P2-005-R1：云解锁存档身份比较', () => {
     const cloud = structuredClone(local)
     cloud.savesExport.exportedAt = '2099-01-01T00:00:00.000Z'
     expect(cloudVaultsContainSameSaves(local, cloud)).toBe(true)
+  })
+
+  it('按 Unicode code points 计数，代理对不被重复计算', () => {
+    expect(validatePassphrase('😀'.repeat(8))).toBeNull()
+    expect(validatePassphrase('😀'.repeat(7))).not.toBeNull()
+    expect(validatePassphrase('😀'.repeat(128))).toBeNull()
+    expect(validatePassphrase('😀'.repeat(129))).not.toBeNull()
+  })
+
+  it.each(['load', 'save', 'force_save'] as const)('API %s：无效口令返回 invalid 且 fetch 0 次', async (action) => {
+    const fetchSpy = vi.fn()
+    vi.stubGlobal('fetch', fetchSpy)
+    const payload = createEmptyCloudVaultPayload()
+    const request = action === 'load'
+      ? { action, passphrase: 'short' } as const
+      : action === 'save'
+        ? { action, passphrase: 'short', expectedRevision: 0, payload } as const
+        : { action, passphrase: 'short', payload } as const
+    await expect(callCloudSave(request, 'https://cloud.example.test')).resolves.toMatchObject({ ok: false, code: 'invalid' })
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
+  it.each(['load', 'save', 'force_save'] as const)('API %s：129 Unicode code points 返回 invalid 且 fetch 0 次', async (action) => {
+    const fetchSpy = vi.fn()
+    vi.stubGlobal('fetch', fetchSpy)
+    const payload = createEmptyCloudVaultPayload()
+    const passphrase = '😀'.repeat(129)
+    const request = action === 'load'
+      ? { action, passphrase } as const
+      : action === 'save'
+        ? { action, passphrase, expectedRevision: 0, payload } as const
+        : { action, passphrase, payload } as const
+    await expect(callCloudSave(request, 'https://cloud.example.test')).resolves.toMatchObject({ ok: false, code: 'invalid' })
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
+  it('session unlock：short 直接返回 invalid 且 fetch 0 次', async () => {
+    const fetchSpy = vi.fn()
+    vi.stubGlobal('fetch', fetchSpy)
+    await expect(useCloudSession.getState().unlock('short')).resolves.toBe('invalid')
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
+  it('API NFKC 后恰好 8 code points 可发送', async () => {
+    const fetchSpy = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true, exists: false, revision: 0, payload: null }),
+    })
+    vi.stubGlobal('fetch', fetchSpy)
+    const rawPassphrase = '  Ｃｌｏｕｄ１２３  '
+    expect([...normalizePassphrase(rawPassphrase)]).toHaveLength(8)
+    expect(validatePassphrase(rawPassphrase)).toBeNull()
+    await expect(callCloudSave({ action: 'load', passphrase: rawPassphrase }, 'https://cloud.example.test'))
+      .resolves.toMatchObject({ ok: true, exists: false })
+    expect(fetchSpy).toHaveBeenCalledOnce()
+    const requestInit = fetchSpy.mock.calls[0]![1] as RequestInit
+    expect(JSON.parse(requestInit.body as string)).toMatchObject({ passphrase: 'Cloud123' })
   })
 
   it('本机槽位更新时判为 divergent，不能视为相同档', () => {

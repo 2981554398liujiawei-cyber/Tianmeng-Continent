@@ -65,6 +65,11 @@ const CONTRACT_CHOICES: { choice: SakuraContractChoice; label: string }[] = [
   { choice: 'joke', label: '可以。不过这样你可真成我的宠物了。' },
 ]
 
+export const SAKURA_CONTRACT_REWARD_NOTICE = {
+  quest: '任务完成：《落樱越界》',
+  xp: '冒险阅历 +100',
+} as const
+
 export default function SakuraEncounterPanel({ onEngage, onLevelUp }: SakuraEncounterPanelProps) {
   const gameState = useGameStore((s) => s.gameState)
   const startSakuraEncounter = useGameStore((s) => s.startSakuraEncounter)
@@ -80,6 +85,8 @@ export default function SakuraEncounterPanel({ onEngage, onLevelUp }: SakuraEnco
 
   // 关系变化短提示（仅 UI 本地状态；不进入 GameState/存档）
   const [relationNote, setRelationNote] = useState<string | null>(null)
+  // 仅由本次成功缔约触发；刷新、拒绝和重复调用均不会补显或重显。
+  const [showContractReward, setShowContractReward] = useState(false)
   const [dismissedRain, setDismissedRain] = useState(false)
   const [dismissedContract, setDismissedContract] = useState(false)
 
@@ -150,6 +157,7 @@ export default function SakuraEncounterPanel({ onEngage, onLevelUp }: SakuraEnco
       if (result.affectionDelta !== 0) parts.push(`好感 ${result.affectionDelta > 0 ? '+' : ''}${result.affectionDelta}`)
       if (result.trustDelta !== 0) parts.push(`信任 ${result.trustDelta > 0 ? '+' : ''}${result.trustDelta}`)
       setRelationNote(`神契已缔结。${parts.length ? ` 樱花优子 ${parts.join('  ')}` : ''}`)
+      setShowContractReward(true)
       setDismissedContract(true)
     }
   }
@@ -346,6 +354,15 @@ export default function SakuraEncounterPanel({ onEngage, onLevelUp }: SakuraEnco
         <p className="mt-2 text-sm leading-relaxed text-bone-300">
           樱花优子以「神契宠物」的身份与你同行。她的神格暂时锚定于此界，等待神域重建的那一天。
         </p>
+        {showContractReward && (
+          <div className="mt-4 rounded border border-gold-500/60 bg-gold-900/30 p-4" role="status" aria-live="polite">
+            <p className="font-bold text-gold-300">{SAKURA_CONTRACT_REWARD_NOTICE.quest}</p>
+            <p className="mt-1 text-sm text-gold-200">{SAKURA_CONTRACT_REWARD_NOTICE.xp}</p>
+            <Button className="mt-3" variant="primary" onClick={() => setShowContractReward(false)}>
+              知道了
+            </Button>
+          </div>
+        )}
       </section>
     )
   }

@@ -24,6 +24,11 @@ export interface InventoryPanelProps {
   profession: string
 }
 
+/** React-only identity: duplicate itemId entries remain separate inventory rows. */
+export function inventoryEntryKey(itemId: string, index: number): string {
+  return `${itemId}-${index}`
+}
+
 export default function InventoryPanel({
   inventory,
   equippedWeaponId,
@@ -41,7 +46,7 @@ export default function InventoryPanel({
         <p className="text-bone-500">背包空空如也。</p>
       ) : (
         <div className="flex flex-col gap-2">
-          {inventory.map((entry) => {
+          {inventory.map((entry, index) => {
             const def = getItem(entry.itemId)
             // TM-P2-003-R3 A：武器判断只看 ItemDefinition.type === 'weapon'（数据驱动，不再 hardcode iron_sword）
             const isWeapon = def?.type === 'weapon'
@@ -51,7 +56,7 @@ export default function InventoryPanel({
             const canUse = isPotion && playerHp > 0 && playerHp < playerMaxHp
             return (
               <div
-                key={entry.itemId}
+                key={inventoryEntryKey(entry.itemId, index)}
                 className="flex items-center justify-between gap-3 rounded border border-ink-600 bg-ink-900/40 p-3"
               >
                 <div>

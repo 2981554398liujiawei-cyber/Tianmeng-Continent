@@ -557,15 +557,55 @@ describe('TM-P2-002-R1 G：兼容 514f3e2 已产生的无版本 V2 存档', () =
 describe('TM-P2-005：V5 XP 保真与 V1/V2/V3/V4 → V5 迁移', () => {
   it('读取当前 V5 时 XP、等级和资源保持 bit-for-bit', () => {
     const state = createInitialGameState()
-    state.player.adventureXp = 137
+    state.player.adventureXp = 130
     state.player.level = 2
     state.player.hp = 7
     state.player.maxHp = 31
     state.player.mp = 2
     state.player.maxMp = 11
-    const raw = { version: SLOT_FORMAT_VERSION, savedAt: '2026-01-01T08:00:00.000Z', gameState: state }
+    const raw = { version: 5, savedAt: '2026-01-01T08:00:00.000Z', gameState: state }
     localStorage.setItem('tianmeng_continent_save_slot_slot1', JSON.stringify(raw))
     expect(loadSlot('slot1')?.gameState).toEqual(state)
+  })
+
+  it.each([
+    [3, 0],
+    [3, 249],
+    [16, 999999],
+  ])('当前 V5 Lv%s XP%s malformed → reject 且不自动修复', (level, adventureXp) => {
+    const state = createInitialGameState()
+    state.player.level = level
+    state.player.adventureXp = adventureXp
+    const raw = { version: 5, savedAt: '2026-01-01T08:00:00.000Z', gameState: state }
+    localStorage.setItem('tianmeng_continent_save_slot_slot1', JSON.stringify(raw))
+    expect(isValidSaveSlot(raw)).toBe(false)
+    expect(loadSlot('slot1')).toBeNull()
+    expect(JSON.parse(localStorage.getItem('tianmeng_continent_save_slot_slot1')!).gameState.player.adventureXp).toBe(adventureXp)
+  })
+
+  it.each([
+    [1, 0],
+    [2, 100],
+    [2, 130],
+    [3, 250],
+    [15, 5950],
+  ])('当前 V5 Lv%s XP%s 满足 invariant → pass', (level, adventureXp) => {
+    const state = createInitialGameState()
+    state.player.level = level
+    state.player.adventureXp = adventureXp
+    const raw = { version: 5, savedAt: '2026-01-01T08:00:00.000Z', gameState: state }
+    expect(isValidSaveSlot(raw)).toBe(true)
+  })
+
+  it.each([0, 120, 249])('旧 V4 Lv3 即使携带 XP%s，迁移后仍至少为等级阈值 250', (adventureXp) => {
+    const state = createInitialGameState()
+    state.player.level = 3
+    state.player.adventureXp = adventureXp
+    const raw = { version: 4, savedAt: '2026-01-01T08:00:00.000Z', gameState: state }
+    localStorage.setItem('tianmeng_continent_save_slot_slot1', JSON.stringify(raw))
+    expect(migrateSave()).toBe(true)
+    expect(JSON.parse(localStorage.getItem('tianmeng_continent_save_slot_slot1')!).version).toBe(5)
+    expect(loadSlot('slot1')?.gameState.player.adventureXp).toBe(250)
   })
 
   it.each([undefined, 2, 3, 4] as const)('旧格式 %s 可严格迁移为 V5，并补齐 XP/当前字段', (version) => {
@@ -583,7 +623,7 @@ describe('TM-P2-005：V5 XP 保真与 V1/V2/V3/V4 → V5 迁移', () => {
     localStorage.setItem('tianmeng_continent_save_slot_slot1', JSON.stringify(entry))
     expect(migrateSave()).toBe(true)
     const migrated = JSON.parse(localStorage.getItem('tianmeng_continent_save_slot_slot1')!)
-    expect(migrated.version).toBe(SLOT_FORMAT_VERSION)
+    expect(migrated.version).toBe(5)
     expect(migrated.gameState.player.adventureXp).toBe(60)
     expect(loadSlot('slot1')?.gameState.player.adventureXp).toBe(60)
   })
@@ -763,21 +803,13 @@ describe('TM-P2-003 A：旧 V2 存档迁移 learnedSkillIds', () => {
 
   it('迁移前后黄金兔四 flags / rabbit_path ×1 原封不动', () => {
     writeV2Slot('slot3', 70)
+    const before = JSON.parse(localStorage.getItem('tianmeng_continent_save_slot_slot3')!).gameState
     migrateSave()
     const raw = JSON.parse(localStorage.getItem('tianmeng_continent_save_slot_slot3')!)
     const gs = raw.gameState
-    expect(gs.quests[0]).toMatchObject({
-      questId: 'quest_golden_rabbit_search',
-      status: 'in_progress',
-      stage: 0,
-      flags: {
-        asked_blacksmith: true,
-        asked_apothecary: true,
-        village_inquiry_reported: true,
-        rabbit_lair_rechecked: true,
-      },
-    })
-    expect(gs.inventory).toEqual([{ itemId: 'rabbit_path', quantity: 1 }])
+    expect(raw.version).toBe(5)
+    expect(gs.quests[0]).toEqual(before.quests[0])
+    expect(gs.inventory).toEqual(before.inventory)
   })
 
   it('migrateSave 幂等：已带 learnedSkillIds 的 v3 槽不重复改写', () => {
@@ -1081,24 +1113,16 @@ describe('TM-P2-003-R2 D3：V2 multi-slot 导出导入（含黄金兔冻结）',
     })
 
   it('slot1/slot3 两槽迁移为当前版本；黄金兔四 flags 与 rabbit_path ×1 原封不动；lastSavedSlot=slot3', () => {
-    expect(importSaves(makeV2Export())).toBe(true)
+    const exportJson = makeV2Export()
+    const before = JSON.parse(exportJson).slots.slot1.gameState
+    expect(importSaves(exportJson)).toBe(true)
     const s1 = JSON.parse(localStorage.getItem('tianmeng_continent_save_slot_slot1')!)
-    expect(s1.version).toBe(SLOT_FORMAT_VERSION)
+    expect(s1.version).toBe(5)
     expect(s1.gameState.player.learnedSkillIds).toEqual(['knight_power_strike'])
     expect(s1.gameState.player.gold).toBe(111)
     expect(s1.gameState.world.restCount).toBe(0)
-    expect(s1.gameState.quests[0]).toMatchObject({
-      questId: 'quest_golden_rabbit_search',
-      status: 'in_progress',
-      stage: 0,
-      flags: {
-        asked_blacksmith: true,
-        asked_apothecary: true,
-        village_inquiry_reported: true,
-        rabbit_lair_rechecked: true,
-      },
-    })
-    expect(s1.gameState.inventory).toEqual([{ itemId: 'rabbit_path', quantity: 1 }])
+    expect(s1.gameState.quests[0]).toEqual(before.quests[0])
+    expect(s1.gameState.inventory).toEqual(before.inventory)
     const s3 = JSON.parse(localStorage.getItem('tianmeng_continent_save_slot_slot3')!)
     expect(s3.gameState.player.learnedSkillIds).toEqual(['mage_spell'])
     expect(loadIndex().lastSavedSlot).toBe('slot3')

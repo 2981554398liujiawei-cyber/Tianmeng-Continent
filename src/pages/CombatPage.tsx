@@ -595,11 +595,11 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
             {victoryLoot && (
               <div className="rounded border border-gold-500/40 bg-ink-900/40 p-4 text-left text-sm text-bone-300">
                 <p className="text-bone-500">掉落：</p>
-                {victoryLoot.items.map((it) => {
+                {victoryLoot.items.map((it, index) => {
                   const def = getItem(it.itemId)
                   const rarity = def?.rarity ? `（${RARITY_LABELS[def.rarity]}）` : ''
                   return (
-                    <p key={it.itemId} className="mt-1">
+                    <p key={combatLootItemKey(it.itemId, index)} className="mt-1">
                       {def?.name ?? '异常物品（无法识别）'} ×{it.quantity}
                       {rarity}
                     </p>
@@ -631,6 +631,11 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
       </footer>
     </div>
   )
+}
+
+/** React-only identity for victory loot rows; duplicate itemId drops remain separate. */
+export function combatLootItemKey(itemId: string, index: number): string {
+  return `${itemId}-${index}`
 }
 
 /** 读取玩家敏捷（在 gameState 可能为 null 的惰性初始化场景下安全取值） */

@@ -1,1 +1,14 @@
-{ "name": "tianmeng-cloud-save", "main": "src/index.ts", "compatibility_date": "2026-08-21", "d1_databases": [{ "binding": "DB", "database_name": "tianmeng-cloud-save", "database_id": "REPLACE_WITH_D1_DATABASE_ID", "migrations_dir": "migrations" }] }
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "tianmeng-cloud-save",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-21",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "tianmeng-cloud-save",
+      "database_id": "REPLACE_WITH_D1_DATABASE_ID",
+      "migrations_dir": "migrations"
+    }
+  ]
+}

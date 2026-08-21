@@ -51,3 +51,17 @@ jobs:
           EXIT_CODE=$?
           kill $PREVIEW_PID 2>/dev/null || true
           exit $EXIT_CODE
+
+  release-regression:
+    name: Release Regression
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run qa:rc

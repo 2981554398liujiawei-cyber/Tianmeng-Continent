@@ -6,6 +6,28 @@ import { getLocation, getProfessionName } from '../game/content'
 import type { ProfessionId } from '../game/types'
 import { SLOT_IDS, type SlotId } from '../game/utils/storage'
 
+export type LocalSyncStatus = 'synced' | 'offline' | 'cloud_failed' | null
+type LocalSyncOperation = 'save' | 'delete' | 'import' | 'retry'
+
+export function LocalSyncNote({ status, onRetry }: { status: LocalSyncStatus; onRetry: () => void }) {
+  if (status === null) return null
+  if (status === 'synced') return <p className="mt-2 text-xs text-gold-300">本地已保存+云端已同步</p>
+  if (status === 'offline') return <p className="mt-2 text-xs text-bone-500">本地已保存 · 云同步未启用</p>
+  return (
+    <p className="mt-2 text-xs text-red-300">
+      云同步失败
+      <button type="button" className="ml-2 text-gold-300 underline underline-offset-2" onClick={onRetry}>
+        重试同步
+      </button>
+    </p>
+  )
+}
+
+/** 只有一次性的保存动作可以在同步成功后离开；删除、导入和重试均留在存档列表。 */
+export function shouldNavigateAfterSync(operation: LocalSyncOperation): boolean {
+  return operation === 'save'
+}
+
 interface SaveSlotsPageProps {
   /** save：游戏内保存（点击槽位保存后返回）；load：主菜单读取（点击槽位读取后进入游戏） */
   mode: 'save' | 'load'
@@ -60,7 +82,7 @@ export default function SaveSlotsPage({ mode, onBack, onSaved, onLoaded }: SaveS
       setPendingOverwrite(null)
       const ok = saveGame(slotId)
       if (ok) {
-        void afterLocalSave()
+        void syncLocalMutation('save')
       }
       return
     }
@@ -72,7 +94,7 @@ export default function SaveSlotsPage({ mode, onBack, onSaved, onLoaded }: SaveS
   }
 
   // ---- TM-P2-005：正式存档生命周期（save/delete/import）后同步云端 ----
-  const [syncNote, setSyncNote] = useState<'synced' | 'cloud_failed' | null>(null)
+  const [syncNote, setSyncNote] = useState<LocalSyncStatus>(null)
   const [showConflict, setShowConflict] = useState(false)
   const [confirmForce, setConfirmForce] = useState(false)
   const syncAfterLocalSave = useCloudSession((s) => s.syncAfterLocalSave)
@@ -80,12 +102,17 @@ export default function SaveSlotsPage({ mode, onBack, onSaved, onLoaded }: SaveS
   const resolveConflictByOverwrite = useCloudSession((s) => s.resolveConflictByOverwrite)
 
   /** 本地操作成功后：云同步（14 节：本地成功优先；云失败不阻塞、本地档保留） */
-  const afterLocalSave = async (navigateOnSuccess = true) => {
+  const syncLocalMutation = async (operation: LocalSyncOperation) => {
     setSyncNote(null)
     const result = await syncAfterLocalSave()
-    if (result.outcome === 'synced' || result.outcome === 'not_configured') {
+    if (result.outcome === 'synced') {
       setSyncNote('synced')
-      if (navigateOnSuccess) onSaved()
+      if (shouldNavigateAfterSync(operation)) onSaved()
+      return
+    }
+    if (result.outcome === 'not_configured') {
+      setSyncNote('offline')
+      if (shouldNavigateAfterSync(operation)) onSaved()
       return
     }
     if (result.outcome === 'conflict') {
@@ -104,7 +131,7 @@ export default function SaveSlotsPage({ mode, onBack, onSaved, onLoaded }: SaveS
     setPendingDelete(null)
     // TM-P2-005 28 节：本地删除 → 导出当前五槽 → 云同步（刷新后不复活被删槽位）
     const ok = deleteSlot(slotId)
-    if (ok) void afterLocalSave(false)
+    if (ok) void syncLocalMutation('delete')
   }
 
   const handleExport = () => {
@@ -145,7 +172,7 @@ export default function SaveSlotsPage({ mode, onBack, onSaved, onLoaded }: SaveS
     if (ok) {
       setImportText('')
       // TM-P2-005 26 节：Import 成功 → 云同步
-      void afterLocalSave()
+      void syncLocalMutation('import')
     }
   }
 
@@ -154,16 +181,7 @@ export default function SaveSlotsPage({ mode, onBack, onSaved, onLoaded }: SaveS
       <header className="text-center">
         <h1 className="text-3xl font-bold tracking-[0.3em] text-gold-300">天梦大陆</h1>
         <p className="mt-1 text-sm tracking-[0.5em] text-bone-500">{mode === 'save' ? '保存游戏' : '读取存档'}</p>
-        {/* TM-P2-005 59 节：明确区分「本地已保存」与「云同步失败」，绝不只写“保存失败” */}
-        {syncNote === 'synced' && <p className="mt-2 text-xs text-gold-300">✓ 本地已保存 · ✓ 云端已同步</p>}
-        {syncNote === 'cloud_failed' && (
-          <p className="mt-2 text-xs text-red-300">
-            ✓ 本地已保存 · ⚠ 云同步失败
-            <button type="button" className="ml-2 text-gold-300 underline underline-offset-2" onClick={() => void afterLocalSave()}>
-              重试同步
-            </button>
-          </p>
-        )}
+        <LocalSyncNote status={syncNote} onRetry={() => void syncLocalMutation('retry')} />
       </header>
 
       <div className="flex flex-col gap-3">

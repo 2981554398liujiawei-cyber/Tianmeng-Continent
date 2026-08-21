@@ -56,6 +56,12 @@ const APP_URL = `http://localhost:${DEV_PORT}/`
 const PASS_A = `E2E-CLOUD-TEST-${Math.random().toString(36).slice(2, 10).toUpperCase()}`
 const PASS_V3 = `E2E-CLOUD-TEST-V3-${Math.random().toString(36).slice(2, 8).toUpperCase()}`
 const PASS_CONFLICT = `E2E-CLOUD-CONFLICT-${Math.random().toString(36).slice(2, 8).toUpperCase()}`
+const PASS_FRESH_UPLOAD = `E2E-CLOUD-FRESH-UP-${Math.random().toString(36).slice(2, 8).toUpperCase()}`
+const PASS_FRESH_EMPTY = `E2E-CLOUD-FRESH-EMPTY-${Math.random().toString(36).slice(2, 8).toUpperCase()}`
+const PASS_DELETE_RETRY = `E2E-CLOUD-DELETE-${Math.random().toString(36).slice(2, 8).toUpperCase()}`
+const PASS_IMPORT_STAY = `E2E-CLOUD-IMPORT-${Math.random().toString(36).slice(2, 8).toUpperCase()}`
+const PASS_RACE_EMPTY = `E2E-CLOUD-RACE-EMPTY-${Math.random().toString(36).slice(2, 8).toUpperCase()}`
+const PASS_RACE_UPLOAD = `E2E-CLOUD-RACE-UP-${Math.random().toString(36).slice(2, 8).toUpperCase()}`
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const results = []
@@ -387,7 +393,6 @@ try {
   const cloudConflictPayload = structuredClone(afterForce.json.payload)
   cloudConflictPayload.savesExport.exportedAt = '2026-08-21T09:00:00.000Z'
   cloudConflictPayload.savesExport.slots.slot1.gameState.player.name = '云端冲突角色'
-  cloudConflictPayload.savesExport.slots.slot1.gameState.player.level = 4
   cloudConflictPayload.savesExport.slots.slot1.gameState.world.currentLocationId = 'qingshi_village'
   cloudConflictPayload.savesExport.slots.slot1.savedAt = '2026-08-21T09:00:00.000Z'
   const conflictCreated = await cloudRequest({ action: 'save', passphrase: PASS_CONFLICT, expectedRevision: 0, payload: cloudConflictPayload })
@@ -396,7 +401,6 @@ try {
   const localConflictPayload = structuredClone(cloudConflictPayload)
   localConflictPayload.savesExport.exportedAt = '2026-08-21T10:00:00.000Z'
   localConflictPayload.savesExport.slots.slot1.gameState.player.name = '本机较新角色'
-  localConflictPayload.savesExport.slots.slot1.gameState.player.level = 5
   localConflictPayload.savesExport.slots.slot1.gameState.world.currentLocationId = 'tianlong_city'
   localConflictPayload.savesExport.slots.slot1.savedAt = '2026-08-21T10:00:00.000Z'
 
@@ -446,11 +450,52 @@ try {
     const key = 'tianmeng_continent_save_slot_slot1'
     const slot = JSON.parse(localStorage.getItem(key))
     slot.gameState.player.name = '本机覆盖角色'
-    slot.gameState.player.level = 6
     slot.gameState.world.currentLocationId = 'tianlong_city'
     slot.savedAt = '2026-08-21T11:00:00.000Z'
     localStorage.setItem(key, JSON.stringify(slot))
   })
+
+/** 向 fresh browser context 写入一份合法本地 V5 slot1 + index。 */
+const seedLocalSlot1 = async (page, cloudPayload, playerName = null) => {
+  await page.evaluate(({ payload, name }) => {
+    const slot = structuredClone(payload.savesExport.slots.slot1)
+    if (name) slot.gameState.player.name = name
+    localStorage.setItem('tianmeng_continent_save_slot_slot1', JSON.stringify(slot))
+    localStorage.setItem('tianmeng_continent_saves_index', JSON.stringify({
+      version: 2,
+      lastSavedSlot: 'slot1',
+      slots: {
+        slot1: {
+          playerName: slot.gameState.player.name,
+          profession: slot.gameState.player.profession,
+          level: slot.gameState.player.level,
+          locationId: slot.gameState.world.currentLocationId,
+          savedAt: slot.savedAt,
+        },
+        slot2: null, slot3: null, slot4: null, slot5: null,
+      },
+    }))
+  }, { payload: cloudPayload, name: playerName })
+}
+
+/** 浏览器首次 create/upload save 发出前，让另一设备先以 revision 0 建立 vault。 */
+const interceptFirstVaultSaveWithRace = async (page, passphrase, competingPayload) => {
+  await page.setRequestInterception(true)
+  let raced = false
+  page.on('request', async (request) => {
+    let body = null
+    try {
+      body = request.postData() ? JSON.parse(request.postData()) : null
+    } catch {
+      /* 非 JSON 请求照常放行 */
+    }
+    if (!raced && request.url() === MOCK_URL + '/' && body?.action === 'save' && body?.expectedRevision === 0) {
+      raced = true
+      await cloudRequest({ action: 'save', passphrase, expectedRevision: 0, payload: competingPayload })
+    }
+    await request.continue()
+  })
+}
   await pageE.reload({ waitUntil: 'networkidle0' })
   await typePassphrase(pageE, PASS_CONFLICT)
   body = await bodyText(pageE)
@@ -465,6 +510,164 @@ try {
   body = await bodyText(pageE)
   check('C38: 二次确认后 force 成功并完成解锁', body.includes('继续游戏') && afterUnlockForce.json.payload?.savesExport?.slots?.slot1?.gameState?.player?.name === '本机覆盖角色')
   check('C39: 解锁 force_save 后云 revision 更新（1→2）', afterUnlockForce.json.revision === 2, `revision=${afterUnlockForce.json.revision}`)
+
+  // ============ R2 Browser E2E：fresh cloud + 合法 V5 local 迁移选择 ============
+  const ctxFreshUpload = await browser.createBrowserContext()
+  const pageFreshUpload = await ctxFreshUpload.newPage()
+  pageFreshUpload.on('pageerror', (e) => jsErrors.push('FreshUpload:' + String(e)))
+  await pageFreshUpload.goto(APP_URL, { waitUntil: 'networkidle0' })
+  await seedLocalSlot1(pageFreshUpload, afterForce.json.payload, 'R2本机上传角色')
+  await pageFreshUpload.reload({ waitUntil: 'networkidle0' })
+  await typePassphrase(pageFreshUpload, PASS_FRESH_UPLOAD)
+  body = await bodyText(pageFreshUpload)
+  check('C40: fresh cloud + 合法 V5 local 保持 CloudUnlock', body.includes('云存档口令') && !body.includes('天梦大陆菜单'))
+  check('C41: fresh cloud 显示迁移提示和双路径按钮', body.includes('检测到当前浏览器已有本地存档') && body.includes('使用本机存档创建云存档') && body.includes('创建空白云存档'))
+  check('C42: 迁移选择前 MainMenu 未出现', !body.includes('新游戏') && !body.includes('继续游戏') && !body.includes('读取存档'))
+
+  // 路径 A：上传 local，创建 revision 1，云/本地 slot 一致并进入 MainMenu。
+  await clickByText(pageFreshUpload, '使用本机存档创建云存档')
+  await sleep(700)
+  const uploadedFresh = await cloudRequest({ action: 'load', passphrase: PASS_FRESH_UPLOAD })
+  body = await bodyText(pageFreshUpload)
+  check('C43: 路径A上传 local 后云 revision=1', uploadedFresh.json.ok && uploadedFresh.json.revision === 1, `revision=${uploadedFresh.json.revision}`)
+  check('C44: 路径A cloud slot 与 local slot 一致', uploadedFresh.json.payload?.savesExport?.slots?.slot1?.gameState?.player?.name === await localSlot1Name(pageFreshUpload))
+  check('C45: 路径A上传后进入 MainMenu', body.includes('新游戏') && body.includes('读取存档'))
+  check('C46: 路径A MainMenu 可 Continue', body.includes('继续游戏'))
+
+  // 路径 B：fresh pass + local，空白云必须二次确认；本地保留，云五槽为空。
+  const ctxFreshEmpty = await browser.createBrowserContext()
+  const pageFreshEmpty = await ctxFreshEmpty.newPage()
+  pageFreshEmpty.on('pageerror', (e) => jsErrors.push('FreshEmpty:' + String(e)))
+  await pageFreshEmpty.goto(APP_URL, { waitUntil: 'networkidle0' })
+  await seedLocalSlot1(pageFreshEmpty, afterForce.json.payload, 'R2本机保留角色')
+  await pageFreshEmpty.reload({ waitUntil: 'networkidle0' })
+  await typePassphrase(pageFreshEmpty, PASS_FRESH_EMPTY)
+  await clickByText(pageFreshEmpty, '创建空白云存档')
+  body = await bodyText(pageFreshEmpty)
+  const beforeEmptyConfirm = await cloudRequest({ action: 'load', passphrase: PASS_FRESH_EMPTY })
+  check('C47: 路径B首次点击仅显示空白云二次确认', body.includes('确认创建空白云存档') && beforeEmptyConfirm.json.revision === 0)
+  check('C48: 路径B二次确认显示任务卡精确完整文案', body.includes('云端将从空白开始，本机存档仍保留在当前浏览器。'))
+  await clickByText(pageFreshEmpty, '确认创建空白云存档')
+  await sleep(700)
+  const emptyFresh = await cloudRequest({ action: 'load', passphrase: PASS_FRESH_EMPTY })
+  body = await bodyText(pageFreshEmpty)
+  const emptySlots = emptyFresh.json.payload?.savesExport?.slots
+  check('C49: 路径B确认后 cloud revision=1 且五槽为空', emptyFresh.json.revision === 1 && emptySlots && Object.values(emptySlots).every((slot) => slot === null))
+  check('C50: 路径B确认后 local slot 仍保留', (await localSlot1Name(pageFreshEmpty)) === 'R2本机保留角色')
+  check('C51: 路径B确认后进入 MainMenu', body.includes('新游戏') && body.includes('读取存档'))
+
+  // not_configured/local-only：删除是本地成功，必须显示 offline truth，绝不能伪报 synced。
+  const ctxOffline = await browser.createBrowserContext()
+  const pageOffline = await ctxOffline.newPage()
+  pageOffline.on('pageerror', (e) => jsErrors.push('Offline:' + String(e)))
+  await pageOffline.goto(APP_URL, { waitUntil: 'networkidle0' })
+  await seedLocalSlot1(pageOffline, afterForce.json.payload, 'R2离线角色')
+  await pageOffline.reload({ waitUntil: 'networkidle0' })
+  await typePassphrase(pageOffline, `E2E-CLOUD-OFFLINE-${Math.random().toString(36).slice(2, 8).toUpperCase()}`)
+  await pageOffline.waitForFunction(
+    () => [...document.querySelectorAll('button')].some((item) => item.textContent.includes('保留本机存档，仅在本机进入')),
+    { timeout: 5_000 },
+  )
+  await clickByText(pageOffline, '保留本机存档，仅在本机进入')
+  await clickByText(pageOffline, '读取存档')
+  await clickByText(pageOffline, '删除')
+  await clickByText(pageOffline, '确认删除')
+  body = await bodyText(pageOffline)
+  check('C52: offline/not_configured 显示本地已保存与云同步未启用', body.includes('本地已保存') && body.includes('云同步未启用'))
+  check('C53: offline/not_configured 不得显示云端已同步', !body.includes('云端已同步'))
+
+  // load 删除：首轮 cloud_failed，retry success 后仍留在读取存档页。
+  const deleteSeed = await cloudRequest({ action: 'save', passphrase: PASS_DELETE_RETRY, expectedRevision: 0, payload: afterForce.json.payload })
+  const ctxDelete = await browser.createBrowserContext()
+  const pageDelete = await ctxDelete.newPage()
+  pageDelete.on('pageerror', (e) => jsErrors.push('DeleteRetry:' + String(e)))
+  await pageDelete.setRequestInterception(true)
+  let failNextDeleteSync = false
+  pageDelete.on('request', (request) => {
+    if (failNextDeleteSync && request.url() === MOCK_URL + '/' && request.method() === 'POST') {
+      failNextDeleteSync = false
+      void request.abort('failed')
+    } else {
+      void request.continue()
+    }
+  })
+  await pageDelete.goto(APP_URL, { waitUntil: 'networkidle0' })
+  await typePassphrase(pageDelete, PASS_DELETE_RETRY)
+  await clickByText(pageDelete, '读取存档')
+  failNextDeleteSync = true
+  await clickByText(pageDelete, '删除')
+  await clickByText(pageDelete, '确认删除')
+  await sleep(700)
+  body = await bodyText(pageDelete)
+  check('C54: load 删除首轮 cloud_failed 显示失败与重试', deleteSeed.json.revision === 1 && body.includes('云同步失败') && body.includes('重试同步'))
+  await clickByText(pageDelete, '重试同步')
+  await sleep(700)
+  body = await bodyText(pageDelete)
+  check('C55: load 删除 retry success 仍留读取存档页', body.includes('读取存档') && !body.includes('保存游戏'))
+  check('C56: load 删除 retry success 后显示 synced truth', body.includes('本地已保存+云端已同步'))
+
+  // MainMenu → 读取存档 → 导入 JSON：导入后留列表，只有显式读取才进 GamePage。
+  await cloudRequest({ action: 'save', passphrase: PASS_IMPORT_STAY, expectedRevision: 0, payload: afterForce.json.payload })
+  const ctxImport = await browser.createBrowserContext()
+  const pageImport = await ctxImport.newPage()
+  pageImport.on('pageerror', (e) => jsErrors.push('ImportStay:' + String(e)))
+  await pageImport.goto(APP_URL, { waitUntil: 'networkidle0' })
+  await typePassphrase(pageImport, PASS_IMPORT_STAY)
+  await clickByText(pageImport, '读取存档')
+  await pageImport.type('textarea[placeholder*="粘贴导出的存档 JSON"]', JSON.stringify(afterForce.json.payload.savesExport))
+  await clickByText(pageImport, '导入并覆盖五槽位')
+  await sleep(700)
+  body = await bodyText(pageImport)
+  check('C57: MainMenu 读取存档导入 JSON 后仍留存档列表', body.includes('读取存档') && body.includes('导入成功') && !body.includes('保存游戏'))
+  check('C58: 导入后列表仍提供可用的显式读取入口', await pageImport.evaluate(() => {
+    const button = [...document.querySelectorAll('button')].find((item) => item.textContent.trim() === '读取')
+    return Boolean(button && !button.disabled)
+  }))
+  await clickByText(pageImport, '读取')
+  await sleep(600)
+  body = await bodyText(pageImport)
+  check('C59: 导入后只有显式读取才进入 GamePage', body.includes('保存游戏') && (await readLocationName(pageImport)) !== null)
+
+  // 创建空白云竞态：另一设备在确认期间抢先建 vault，必须转入标准冲突选择且不覆盖本地。
+  const raceEmptyRemote = structuredClone(afterForce.json.payload)
+  raceEmptyRemote.savesExport.slots.slot1.gameState.player.name = '抢先建立云端角色A'
+  const ctxRaceEmpty = await browser.createBrowserContext()
+  const pageRaceEmpty = await ctxRaceEmpty.newPage()
+  pageRaceEmpty.on('pageerror', (e) => jsErrors.push('RaceEmpty:' + String(e)))
+  await interceptFirstVaultSaveWithRace(pageRaceEmpty, PASS_RACE_EMPTY, raceEmptyRemote)
+  await pageRaceEmpty.goto(APP_URL, { waitUntil: 'networkidle0' })
+  await seedLocalSlot1(pageRaceEmpty, afterForce.json.payload, '竞态本机角色A')
+  await pageRaceEmpty.reload({ waitUntil: 'networkidle0' })
+  await typePassphrase(pageRaceEmpty, PASS_RACE_EMPTY)
+  await clickByText(pageRaceEmpty, '创建空白云存档')
+  await clickByText(pageRaceEmpty, '确认创建空白云存档')
+  await pageRaceEmpty.waitForFunction(() => document.body.textContent.includes('本机/云端存档冲突'), { timeout: 5_000 })
+  body = await bodyText(pageRaceEmpty)
+  const afterRaceEmpty = await cloudRequest({ action: 'load', passphrase: PASS_RACE_EMPTY })
+  check('C60: 创建空白云期间被抢先建 vault 后进入正常冲突页', body.includes('本机/云端存档冲突') && !body.includes('新游戏'))
+  check('C61: 创建竞态显示标准本机/云端双选择', body.includes('使用云端存档') && body.includes('使用本机存档覆盖云端'))
+  check('C62: 创建竞态不覆盖合法 local', (await localSlot1Name(pageRaceEmpty)) === '竞态本机角色A')
+  check('C63: 创建竞态不覆盖抢先建立的 cloud vault', afterRaceEmpty.json.revision === 1 && afterRaceEmpty.json.payload?.savesExport?.slots?.slot1?.gameState?.player?.name === '抢先建立云端角色A')
+
+  // 上传本机档竞态：另一设备在上传期间抢先建 vault，同样必须转入冲突选择。
+  const raceUploadRemote = structuredClone(afterForce.json.payload)
+  raceUploadRemote.savesExport.slots.slot1.gameState.player.name = '抢先建立云端角色B'
+  const ctxRaceUpload = await browser.createBrowserContext()
+  const pageRaceUpload = await ctxRaceUpload.newPage()
+  pageRaceUpload.on('pageerror', (e) => jsErrors.push('RaceUpload:' + String(e)))
+  await interceptFirstVaultSaveWithRace(pageRaceUpload, PASS_RACE_UPLOAD, raceUploadRemote)
+  await pageRaceUpload.goto(APP_URL, { waitUntil: 'networkidle0' })
+  await seedLocalSlot1(pageRaceUpload, afterForce.json.payload, '竞态本机角色B')
+  await pageRaceUpload.reload({ waitUntil: 'networkidle0' })
+  await typePassphrase(pageRaceUpload, PASS_RACE_UPLOAD)
+  await clickByText(pageRaceUpload, '使用本机存档创建云存档')
+  await pageRaceUpload.waitForFunction(() => document.body.textContent.includes('本机/云端存档冲突'), { timeout: 5_000 })
+  body = await bodyText(pageRaceUpload)
+  const afterRaceUpload = await cloudRequest({ action: 'load', passphrase: PASS_RACE_UPLOAD })
+  check('C64: 上传本机档期间被抢先建 vault 后进入正常冲突页', body.includes('本机/云端存档冲突') && !body.includes('新游戏'))
+  check('C65: 上传竞态显示标准本机/云端双选择', body.includes('使用云端存档') && body.includes('使用本机存档覆盖云端'))
+  check('C66: 上传竞态不覆盖合法 local', (await localSlot1Name(pageRaceUpload)) === '竞态本机角色B')
+  check('C67: 上传竞态不覆盖抢先建立的 cloud vault', afterRaceUpload.json.revision === 1 && afterRaceUpload.json.payload?.savesExport?.slots?.slot1?.gameState?.player?.name === '抢先建立云端角色B')
 
   // ============ 24 服务器不可达 → 本地降级 ============
   mockProc.kill()

@@ -710,10 +710,10 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
                   {towerClaimResult?.outcome === 'claimed' && (
                     <div className="mt-3 rounded bg-ink-950/60 p-3">
                       <p className="text-bone-200">你当时获得了：</p>
-                      {towerClaimResult.items.map((it) => {
+                      {towerClaimResult.items.map((it, index) => {
                         const def = getItem(it.itemId)
                         return (
-                          <p key={it.itemId} className="mt-1">
+                          <p key={rewardItemKey(it.itemId, index)} className="mt-1">
                             {def?.name ?? '物品数据异常'} ×{it.quantity}
                           </p>
                         )
@@ -765,10 +765,10 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
                   {towerClaimResult?.outcome === 'claimed' ? (
                     <div className="mt-3">
                       <p className="text-bone-200">你获得了：</p>
-                      {towerClaimResult.items.map((it) => {
+                      {towerClaimResult.items.map((it, index) => {
                         const def = getItem(it.itemId)
                         return (
-                          <p key={it.itemId} className="mt-1">
+                          <p key={rewardItemKey(it.itemId, index)} className="mt-1">
                             {def?.name ?? '异常物品（无法识别）'} ×{it.quantity}
                           </p>
                         )
@@ -2022,4 +2022,8 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
       </div>
     </div>
   )
+}
+/** React-only identity for reward rows; duplicate loot entries remain separate and visible. */
+export function rewardItemKey(itemId: string, index: number): string {
+  return `${itemId}-${index}`
 }

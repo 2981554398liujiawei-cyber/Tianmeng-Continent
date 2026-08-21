@@ -12,6 +12,10 @@ const PORT = Number(process.env.MERCHANT_E2E_PORT || 5215)
 const APP_URL = process.env.BASE_URL || `http://localhost:${PORT}/`
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 const results = []
+// R2 任务卡独立字面量：当前 V5 的 Lv.4 必须至少拥有 450 累计冒险阅历。
+// 不引用生产 progression/validator，避免测试与实现共享同一判据来源。
+const V5_FIXTURE_LEVEL = 4
+const V5_FIXTURE_ADVENTURE_XP = 450
 const check = (name, ok, extra = '') => {
   results.push({ name, ok })
   console.log(`${ok ? 'PASS' : 'FAIL'} | ${name}${extra ? ` | ${extra}` : ''}`)
@@ -61,10 +65,10 @@ async function clickButton(text) {
   return clicked
 }
 
-function fixture({ profession, locationId }) {
+function legacyV4Fixture({ profession, locationId }) {
   return {
     player: {
-      id: 'player-hero', name: `商店E2E-${profession}`, gender: 'male', level: 4, adventureXp: 300,
+      id: 'player-hero', name: `商店E2E-${profession}`, gender: 'male', level: V5_FIXTURE_LEVEL,
       profession, attributes: { str: 14, con: 12, agi: 10, mnd: 8, lck: 10 },
       hp: 26, maxHp: 26, mp: 9, maxMp: 9, gold: 100,
       learnedSkillIds: profession === 'mage' ? ['mage_arcane_bolt'] : ['knight_power_strike'],
@@ -78,6 +82,14 @@ function fixture({ profession, locationId }) {
     quests: [],
     world: { currentLocationId: locationId, flags: {}, completedEvents: [], npcStates: {}, restCount: 0 },
     companions: {}, relationships: {}, party: { activeCompanionIds: [] },
+  }
+}
+
+function v5Fixture(options) {
+  const state = legacyV4Fixture(options)
+  return {
+    ...state,
+    player: { ...state.player, adventureXp: V5_FIXTURE_ADVENTURE_XP },
   }
 }
 
@@ -147,7 +159,7 @@ try {
   await ready()
 
   // A. V5 青石村铁匠：三件报价、职业禁用、合法购买闭环。
-  await loadVersionedSave(5, fixture({ profession: 'mage', locationId: 'qingshi_village' }))
+  await loadVersionedSave(5, v5Fixture({ profession: 'mage', locationId: 'qingshi_village' }))
   let shop = await merchantSection('铁匠的货架')
   check('V5 青石村铁匠商店通过正式 UI 可见', shop !== null)
   check('青石村铁匠出售三件商品', shop?.rows.length === 3, `实际 ${shop?.rows.length ?? 0} 件`)
@@ -162,7 +174,7 @@ try {
   check('购买旅行布衣后数量 +1', (await inventoryQuantity('旅行布衣')) === armorBefore + 1)
 
   // B. V5 天龙城王财：四防具 + 8 金币桂花糕，购买闭环。
-  await loadVersionedSave(5, fixture({ profession: 'knight', locationId: 'tianlong_city' }))
+  await loadVersionedSave(5, v5Fixture({ profession: 'knight', locationId: 'tianlong_city' }))
   shop = await merchantSection('王财的货摊')
   check('V5 天龙城王财商店通过正式 UI 可见', shop !== null)
   check('王财出售四件防具与天龙桂花糕（共五件）', shop?.rows.length === 5 &&
@@ -175,7 +187,7 @@ try {
   check('购买桂花糕后背包数量为 1', (await inventoryQuantity('天龙桂花糕')) === 1)
 
   // C. V4 版本化存档：由主菜单 Continue 走正式迁移/读取入口，不改运行中状态。
-  await loadVersionedSave(4, fixture({ profession: 'knight', locationId: 'tianlong_city' }))
+  await loadVersionedSave(4, legacyV4Fixture({ profession: 'knight', locationId: 'tianlong_city' }))
   shop = await merchantSection('王财的货摊')
   check('旧 V4 存档经正式 Continue 迁移后进入王财商店', shop !== null && (await bodyText()).includes('天龙城'))
   const v4GoldBefore = await readGold()
