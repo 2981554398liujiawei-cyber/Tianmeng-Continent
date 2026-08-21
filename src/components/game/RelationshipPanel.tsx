@@ -63,7 +63,7 @@ export default function RelationshipPanel() {
     if (!result) return
     if (result.outcome === 'given') {
       const def = getItem(itemId)
-      setNote(`赠礼：${def?.name ?? itemId} 好感 +${result.affectionDelta}`)
+      setNote(`赠礼：${def?.name ?? '物品数据异常'} 好感 +${result.affectionDelta}`)
       setLastGiftId(itemId)
     } else if (result.outcome === 'already_gifted') {
       setNote('她今天已经收过你的礼物了。')

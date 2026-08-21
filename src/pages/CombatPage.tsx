@@ -388,6 +388,10 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
           <p>
             敏捷 <span className="tabular-nums text-bone-100">{playerAgility}</span>
           </p>
+          <p className="mt-1">
+            当前防具：{' '}
+            {equippedArmor ? <span className="text-bone-100">{equippedArmor.name}</span> : gameState.equipment.armor ? <span className="text-bone-100">物品数据异常</span> : <span className="text-bone-500">未装备</span>}
+          </p>
           <p className="mt-2">
             当前武器：{' '}
             {equippedWeapon ? (

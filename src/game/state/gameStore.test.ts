@@ -62,6 +62,28 @@ describe('金币操作', () => {
   })
 })
 
+describe('TM-P2-005 王财商店', () => {
+  it('在王财处购买防具，金币与库存原子更新', () => {
+    useGameStore.getState().setCurrentLocation('tianlong_city')
+    const before = useGameStore.getState().gameState!
+    expect(useGameStore.getState().buyMerchantItem('hardened_leather_armor')).toBe(true)
+    const after = useGameStore.getState().gameState!
+    expect(after.player.gold).toBe(before.player.gold - 30)
+    expect(after.inventory.find((entry) => entry.itemId === 'hardened_leather_armor')?.quantity).toBe(1)
+  })
+
+  it('错误地点、未知商品、余额不足均拒绝且不变', () => {
+    const before = JSON.stringify(useGameStore.getState().gameState)
+    expect(useGameStore.getState().buyMerchantItem('chainmail_armor')).toBe(false)
+    expect(JSON.stringify(useGameStore.getState().gameState)).toBe(before)
+    useGameStore.getState().setCurrentLocation('tianlong_city')
+    useGameStore.setState((state) => ({ gameState: state.gameState ? { ...state.gameState, player: { ...state.gameState.player, gold: 0 } } : null }))
+    const poor = JSON.stringify(useGameStore.getState().gameState)
+    expect(useGameStore.getState().buyMerchantItem('chainmail_armor')).toBe(false)
+    expect(JSON.stringify(useGameStore.getState().gameState)).toBe(poor)
+  })
+})
+
 describe('背包操作', () => {
   it('添加已有物品时数量增加', () => {
     useGameStore.getState().addItem('healing_potion', 1)

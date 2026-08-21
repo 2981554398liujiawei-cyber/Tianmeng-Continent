@@ -2,7 +2,9 @@ import type { GameState } from '../types'
 import { getQuest } from '../content'
 export interface CurrentObjective { questId: string; title: string; objective: string; locationHint?: string }
 export function getCurrentObjective(state: GameState): CurrentObjective | null {
-  const q = state.quests.find((x) => x.status === 'completable') ?? state.quests.find((x) => x.status === 'in_progress')
+  const priority = ['quest_north_gate_missing_patrol', 'quest_wangcai_trouble', 'quest_golden_rabbit_search']
+  const active = state.quests.filter((x) => x.status === 'completable' || x.status === 'in_progress')
+  const q = priority.map((id) => active.find((x) => x.questId === id)).find(Boolean) ?? active.find((x) => x.status === 'completable') ?? active[0]
   if (!q) return null
   const title = getQuest(q.questId)?.title ?? '当前任务'
   if (q.questId === 'quest_north_gate_missing_patrol') {

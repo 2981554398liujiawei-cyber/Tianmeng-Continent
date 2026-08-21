@@ -8,6 +8,7 @@ import { performD20Check, CHECK_DC, type D20CheckResult } from '../rules/d20'
 import { KNIGHT_POWER_STRIKE_MP_COST, MAGE_SPELL_MP_COST, WARRIOR_SUPPRESS_STRIKE_MP_COST } from '../rules/combat'
 import { applyAdventureXpReward } from '../rules/progression'
 import { checkEquipItem } from '../rules/equipment'
+import { canBuyMerchantItem, getMerchantOffer } from '../rules/merchant'
 import { rollLoot } from '../rules/loot'
 import type { LootGrant } from '../types/loot'
 import { checkSkillUse } from '../rules/skill'
@@ -139,6 +140,8 @@ interface GameStoreState {
   unequipSlot: (slot: 'weapon' | 'armor' | 'accessory') => boolean
   /** 在药师处购买治疗药水：gold 扣减与药水增加原子完成；不治疗、不自动保存（TM-P0-014） */
   buyHealingPotion: () => boolean
+  /** TM-P2-005：在王财处购买注册商店报价中的一件物品；金币与库存原子更新。 */
+  buyMerchantItem: (itemId: string) => boolean
   /** 在铁匠处出售铁矿石：gold 增加与铁矿石减少原子完成；不自动保存（TM-P0-021） */
   sellIronOre: () => boolean
   /** 青石村休整：HP/MP 恢复至最大值；免费、只改 hp/mp、不自动保存（TM-P0-022） */
@@ -1193,6 +1196,24 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
           inventory,
         },
       }
+    })
+    return bought
+  },
+
+  buyMerchantItem: (itemId) => {
+    let bought = false
+    set((s) => {
+      const state = s.gameState
+      const offer = getMerchantOffer(itemId)
+      if (!offer || !canBuyMerchantItem(state, itemId) || !state) return {}
+      const idx = state.inventory.findIndex((entry) => entry.itemId === itemId)
+      const current = idx >= 0 ? (state.inventory[idx]?.quantity ?? 0) : 0
+      if (!Number.isSafeInteger(current) || current < 0 || !Number.isSafeInteger(current + 1)) return {}
+      const inventory = idx >= 0
+        ? state.inventory.map((entry, i) => (i === idx ? { ...entry, quantity: current + 1 } : entry))
+        : [...state.inventory, { itemId, quantity: 1 }]
+      bought = true
+      return { gameState: { ...state, player: { ...state.player, gold: state.player.gold - offer.price }, inventory } }
     })
     return bought
   },

@@ -30,6 +30,7 @@ import type {
 import type { QuestStatus } from '../game/types'
 import { getCurrentObjective } from '../game/rules/objective'
 import { getPlayerArmor } from '../game/rules/combat'
+import { MERCHANT_OFFERS } from '../game/rules/merchant'
 
 /** D20 检定结果中文（TM-P0-016） */
 const CHECK_OUTCOME_LABELS: Record<D20CheckResult['outcome'], string> = {
@@ -94,6 +95,7 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
   const [towerClaimResult, setTowerClaimResult] = useState<NorthTowerClaimResult>(null)
   const [traderResult, setTraderResult] = useState<OldTraderResult>(null)
   const buyHealingPotion = useGameStore((s) => s.buyHealingPotion)
+  const buyMerchantItem = useGameStore((s) => s.buyMerchantItem)
   const sellIronOre = useGameStore((s) => s.sellIronOre)
   const restAtVillage = useGameStore((s) => s.restAtVillage)
   const respondToVillageElderAfterQuest = useGameStore((s) => s.respondToVillageElderAfterQuest)
@@ -709,7 +711,7 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
                         const def = getItem(it.itemId)
                         return (
                           <p key={it.itemId} className="mt-1">
-                            {def?.name ?? it.itemId} ×{it.quantity}
+                            {def?.name ?? '物品数据异常'} ×{it.quantity}
                           </p>
                         )
                       })}
@@ -1366,6 +1368,31 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
                   </div>
                 )
               })()}
+            </section>
+          )}
+
+          {getNpc('merchant_wangcai')?.locationId === world.currentLocationId && (
+            <section className="order-4 rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
+              <h3 className="mb-3 text-sm font-bold tracking-wider text-bone-500">王财的货摊</h3>
+              <div className="flex flex-col gap-2">
+                {MERCHANT_OFFERS.map((offer) => {
+                  const item = getItem(offer.itemId)
+                  if (!item) return null
+                  const canAfford = Number.isSafeInteger(player.gold) && player.gold >= offer.price
+                  return (
+                    <div key={offer.itemId} className="flex items-center justify-between gap-3 rounded border border-ink-600 bg-ink-900/40 p-3">
+                      <div>
+                        <p className="font-bold text-bone-100">{item.name}</p>
+                        <p className="mt-1 text-xs text-bone-500">{item.description} 护甲 +{item.armorDefenseBonus ?? 0} · 价格：{offer.price} 金币</p>
+                      </div>
+                      <div className="flex flex-col items-end gap-1">
+                        <Button variant="primary" disabled={!canAfford} onClick={() => buyMerchantItem(offer.itemId)}>购买</Button>
+                        {!canAfford && <span className="text-xs text-red-300">金币不足</span>}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
             </section>
           )}
 

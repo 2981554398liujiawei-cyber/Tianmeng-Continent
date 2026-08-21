@@ -37,6 +37,7 @@ export const ITEMS: Record<string, ItemDefinition> = {
   traveler_cloth_armor: {
     id: 'traveler_cloth_armor', name: '旅行布衣', type: 'armor', value: 12,
     armorDefenseBonus: 1, description: '常见的厚布旅行服，虽挡不住重击，却多少能减轻擦伤。',
+    allowedProfessions: ['warrior', 'knight', 'ranger', 'mage'],
   },
   hardened_leather_armor: {
     id: 'hardened_leather_armor', name: '硬皮甲', type: 'armor', value: 30,

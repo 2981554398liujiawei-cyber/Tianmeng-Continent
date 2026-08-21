@@ -13,6 +13,7 @@
     "qa:r3": "node qa/r3-e2e.mjs",
     "qa:prod": "node qa/prod-smoke.mjs",
     "qa:cloud": "node qa/p2-005-cloud-e2e.mjs",
+    "qa:p2-005-layout": "node qa/p2-005-layout-e2e.mjs",
     "qa:p2-004": "node qa/p2-004-e2e.mjs && node qa/p2-004-r1-e2e.mjs",
     "qa:rc": "npm run build && node qa/p2-004-r1-e2e.mjs && node qa/p2-004-e2e.mjs && node qa/p2-005-cloud-e2e.mjs"
   },
