@@ -64,4 +64,12 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm run qa:rc
+      - name: Run release regression
+        run: |
+          CHROME_PATH="$(command -v google-chrome-stable || command -v google-chrome || command -v chromium || true)"
+          if [ -z "$CHROME_PATH" ]; then
+            echo "Chrome executable was not found on the runner"
+            exit 1
+          fi
+          echo "Using Chrome at $CHROME_PATH"
+          CHROME_PATH="$CHROME_PATH" npm run qa:rc
