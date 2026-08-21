@@ -15,6 +15,10 @@ const suites = [
   { name: 'Combat', script: 'qa/p2-005-combat-layout-e2e.mjs' },
   { name: 'Merchant', script: 'qa/p2-005-merchant-e2e.mjs' },
   { name: 'Worker + Local D1', script: 'qa/p2-005-worker-e2e.mjs' },
+  // TM-P2-006：Game UI 信息架构 + CombatPage V4 + Balance（balance 0.4s，满足任务卡 87 节 <2min）
+  { name: 'P2-006 Game UI', script: 'qa/p2-006-game-ui-e2e.mjs' },
+  { name: 'P2-006 Combat UI', script: 'qa/p2-006-combat-ui-e2e.mjs' },
+  { name: 'P2-006 Balance', script: 'qa/p2-006-balance.mjs --phase after' },
 ]
 
 const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds))

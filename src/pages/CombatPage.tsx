@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import Button from '../components/Button'
 import { useGameStore } from '../game/state/gameStore'
 import { getEnemy, getItem, getCompanion, SAKURA_COMPANION_ID } from '../game/content'
-import { ATTRIBUTE_KEYS, ATTRIBUTE_LABELS, getProfessionName } from '../game/content/professions'
+import { ATTRIBUTE_LABELS, getProfessionName } from '../game/content/professions'
 import {
   formatAttackLog,
   getPlayerAgility,
@@ -31,11 +31,17 @@ import { resolveEnemyCounterWithSupport } from '../game/rules/combatSupport'
 import type { LootGrant } from '../game/types/loot'
 import { RARITY_LABELS } from '../game/types/loot'
 import { SAKURA_SEALED_SKILLS } from '../game/content/companions'
+import { getHighestPartyAgility, getHighestEnemyAgility, resolveEscape, rollEscape } from '../game/rules/escape'
+import { getEnemyFirstKillXp } from '../game/rules/combatXp'
+import { applyAdventureXpReward } from '../game/rules/progression'
+import { combatEventId, type CombatEvent } from '../game/rules/combatEvent'
 
 interface CombatPageProps {
   enemyId: string
   onVictory: () => void
   onDefeat: () => void
+  /** TM-P2-006 第 33 节：逃跑成功 → 直接结束战斗返回冒险（不结算 defeated/XP/loot） */
+  onEscape: () => void
   /** TM-P0-022-R2：防御性异常出口（无 GameState / 未知 enemyId）→ 真正返回主菜单 */
   onExitToMenu: () => void
 }
@@ -46,7 +52,10 @@ const ENEMY_FIRST_STRIKE_DELAY_MS = 400
 /** TM-P2-004 第 48/49 节：樱花魔法盾减伤量（reduce_next_enemy_damage amount=3，来自技能注册表） */
 const SAKURA_SHIELD_AMOUNT = 3
 
-export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu }: CombatPageProps) {
+/** V4：战斗事件（summary 简洁播报 / detail 详细日志） */
+type CombatEventKind = CombatEvent['kind']
+
+export default function CombatPage({ enemyId, onVictory, onDefeat, onEscape, onExitToMenu }: CombatPageProps) {
   const gameState = useGameStore((s) => s.gameState)
   const damagePlayer = useGameStore((s) => s.damagePlayer)
   const spendSkillMp = useGameStore((s) => s.spendSkillMp)
@@ -93,6 +102,30 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
   const [lastCompanionAction, setLastCompanionAction] = useState<string | null>(null)
   /** 最近一次伙伴飞斩攻击结果（日志展示） */
   const [lastCompanionAttack, setLastCompanionAttack] = useState<AttackResult | null>(null)
+
+  // ---- TM-P2-006 Combat V4：事件流（简洁播报 summary / 详细日志 detail 按回合分组）----
+  const [events, setEvents] = useState<CombatEvent[]>([])
+  const eventSeqRef = useRef(0)
+  const roundRef = useRef(0)
+  const pushEvent = (kind: CombatEventKind, actor: CombatEvent['actor'], summary: string, detail: string[] = []) => {
+    eventSeqRef.current += 1
+    const ev: CombatEvent = {
+      id: combatEventId(eventSeqRef.current),
+      round: roundRef.current,
+      actor,
+      kind,
+      summary,
+      detail,
+    }
+    setEvents((prev) => [...prev, ev])
+  }
+  /** 玩家/伙伴行动后进入下一回合计数（先手/系统事件为 0 回合） */
+  const nextRound = () => {
+    roundRef.current += 1
+  }
+
+  // ---- TM-P2-006 第 32 节：逃跑系统 V1（纯公式 escapeScore=(highestPartyAgility+d20)/3 >= highestEnemyAgility）----
+  const canEscape = enemy?.canEscape !== false
 
   // ---- 防御性异常出口 ----
   if (!gameState) {
@@ -150,6 +183,8 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
   useEffect(() => {
     if (initiativeWinner !== 'enemy') return
     setEnemyFirstStriking(true)
+    nextRound()
+    pushEvent('initiative', 'enemy', `${enemy.name}抢得先手。`)
     let cancelled = false
     const timer = window.setTimeout(() => {
       if (cancelled) return
@@ -183,8 +218,18 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
     // 仅真实命中消耗盾；miss 保留到下一次真实命中的敌人反击
     if (shieldConsumed) setShieldRemaining(0)
     setLastEnemyAttack(result)
+    // V4：敌人攻击事件（summary 简洁 + detail 完整公式）
+    const detail = formatAttackLog(result, player.name)
     if (result.hit && result.damage > 0) {
+      pushEvent('enemy_attack', 'enemy', `${enemy.name}的攻击命中，造成 ${result.damage} 点伤害。`, detail)
       damagePlayer(result.damage)
+    } else if (result.hit && result.damage <= 0) {
+      pushEvent('enemy_attack', 'enemy', `${enemy.name}的攻击被挡下，没有造成伤害。`, detail)
+    } else {
+      pushEvent('enemy_attack', 'enemy', `${enemy.name}的攻击落空了。`, detail)
+    }
+    if (absorbed !== null && absorbed > 0) {
+      pushEvent('shield', 'companion', `樱花魔法盾抵消了 ${absorbed} 点伤害。`)
     }
     setPhase(getCombatPhaseAfterEnemyAttack(useGameStore.getState().gameState?.player.hp ?? 1))
   }
@@ -199,6 +244,8 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
     setLastPlayerAction(null)
     setLastPotionHeal(hpAfter - hpBefore)
     setLastEnemyAttack(null)
+    nextRound()
+    pushEvent('potion', 'player', `你使用了治疗药水，恢复 ${hpAfter - hpBefore} 点生命。`)
     // 药水行动后同样可进入伙伴阶段（MVP 统一流程）
     if (companionReady) {
       setAwaitingCompanionAction(true)
@@ -244,6 +291,17 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
     setLastPlayerAction(action)
     setLastPotionHeal(null)
     setLastEnemyAttack(null)
+    nextRound()
+    // V4：玩家攻击事件（summary 简洁 + detail 完整公式）
+    const detail = formatAttackLog(attack, enemy.name)
+    const skillName = action === 'basic' ? null : getSkill(action)?.name ?? '技能'
+    if (attack.outcome === 'critical_miss') {
+      pushEvent('player_attack', 'player', `你的攻击落空了。`, detail)
+    } else if (attack.damage > 0) {
+      pushEvent('player_attack', 'player', `${skillName ? `${skillName}命中` : '你的攻击命中'}${enemy.name}，造成 ${attack.damage} 点伤害。`, detail)
+    } else {
+      pushEvent('player_attack', 'player', `${skillName ? `${skillName}没有` : '你的攻击没有'}造成伤害。`, detail)
+    }
 
     const strike = resolvePlayerStrike(enemyCurrentHp, attack)
     setEnemyCurrentHp(strike.enemyHp)
@@ -252,10 +310,13 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
       // TM-P2-003 C：胜利时结算掉落（基础 + 幸运追加；只结算一次）
       if (strike.phase === 'victory') {
         setVictoryLoot(useGameStore.getState().grantLoot(enemyId))
+        pushEvent('system', 'system', `${enemy.name}被击败了！`, [])
       }
       return
     }
     // TM-P1-008/TM-P2-003-R1：suppressCounterOnFullHit 技能仅「正常命中/暴击」压制本次反击；擦伤不压制
+    // eslint-disable-next-line no-console
+    console.log('[DBG-SUPPRESS]', JSON.stringify({ action, outcome: attack.outcome, isSuppress: action !== 'basic' && isSuppressOnFullHitSkill(action), shouldCounter: strike.enemyShouldCounter }))
     if (action !== 'basic' && isSuppressOnFullHitSkill(action) && (attack.outcome === 'hit' || attack.outcome === 'critical_hit')) {
       // 压制已取消本次反击：不进入伙伴阶段（轻舞无意义，绝不白耗 MP）
       return
@@ -291,11 +352,13 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
         // R1 A：盾量以显式上下文传给本次反击（不依赖刚 setShieldRemaining 的闭包旧值）
         setShieldRemaining(support.amount)
         setLastCompanionAction('shield')
+        pushEvent('companion_support', 'companion', `樱花优子展开了魔法盾（可抵消 ${support.amount} 点伤害）。`)
         applyEnemyCounter({ incomingDamageReduction: support.amount })
       } else if (support.type === 'cancel_next_enemy_counter') {
         // 樱花轻舞：本轮敌人不反击
         setCompanionCanceledCounter(true)
         setLastCompanionAction('light_dance')
+        pushEvent('companion_support', 'companion', '樱花优子施展轻舞，敌人的攻势被牵走，没有找到反击的机会。')
       }
       return
     }
@@ -316,6 +379,14 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
     setLastCompanionAttack(result)
     setLastCompanionAction('petalslash')
     setAwaitingCompanionAction(false)
+    nextRound()
+    // V4：伙伴飞斩事件
+    const detail = formatAttackLog(result, enemy.name)
+    if (result.damage > 0) {
+      pushEvent('companion_attack', 'companion', `樱花飞斩命中${enemy.name}，造成 ${result.damage} 点伤害。`, detail)
+    } else {
+      pushEvent('companion_attack', 'companion', `樱花飞斩落空了。`, detail)
+    }
     const strike = resolvePlayerStrike(enemyCurrentHp, result)
     setEnemyCurrentHp(strike.enemyHp)
     if (!strike.enemyShouldCounter) {
@@ -323,6 +394,7 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
       // 伙伴击杀 → 胜利（只结算一次 loot / 一次 victory 提交；无反击）
       if (strike.phase === 'victory') {
         setVictoryLoot(useGameStore.getState().grantLoot(enemyId))
+        pushEvent('system', 'system', `${enemy.name}被击败了！`, [])
       }
       return
     }
@@ -336,6 +408,23 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
     setLastPotionHeal(null)
     setLastCompanionAction('skip')
     setAwaitingCompanionAction(false)
+    pushEvent('companion_skip', 'companion', '樱花优子静静守在后方。')
+    applyEnemyCounter()
+  }
+
+  // ---- TM-P2-006 第 31-35 节：逃跑（成功→onEscape；失败→消耗本轮行动，敌人正常行动）----
+  const handleEscape = () => {
+    if (phase !== 'active' || enemyFirstStriking || awaitingCompanionAction || !canEscape) return
+    const partyAgility = getHighestPartyAgility(playerAgility, companionReady && sakuraAttrs ? [sakuraAgility] : [])
+    const enemyAgility = getHighestEnemyAgility([enemy.agility])
+    const result = rollEscape(partyAgility, enemyAgility)
+    nextRound()
+    if (result.success) {
+      pushEvent('escape_success', 'player', `你成功脱离了战斗。`, [`逃跑值 = (最高敏捷 ${partyAgility} + D20 ${result.roll}) / 3 = ${result.score}；敌方最高敏捷 ${enemyAgility}。`])
+      onEscape()
+      return
+    }
+    pushEvent('escape_failure', 'player', `逃跑失败，${enemy.name}封住了你的退路。`, [`逃跑值 = (最高敏捷 ${partyAgility} + D20 ${result.roll}) / 3 = ${result.score}；敌方最高敏捷 ${enemyAgility}。`])
     applyEnemyCounter()
   }
 
@@ -352,23 +441,48 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
     return null
   })()
 
+  // ---- TM-P2-006 第 42 节：胜利结算面板数据（首次击败 XP + 掉落 + 升级预览）----
+  const victoryXp = phase === 'victory' ? getEnemyFirstKillXp(gameState, enemyId) : 0
+  const victoryLevelPreview = phase === 'victory' && victoryXp > 0
+    ? applyAdventureXpReward(player, victoryXp)
+    : null
+
+  // ---- V4：回合分组（详细日志按回合折叠分组）----
+  const roundGroups = (() => {
+    const groups: { round: number; items: CombatEvent[] }[] = []
+    for (const ev of events) {
+      const last = groups[groups.length - 1]
+      if (last && last.round === ev.round) {
+        last.items.push(ev)
+      } else {
+        groups.push({ round: ev.round, items: [ev] })
+      }
+    }
+    return groups
+  })()
+
+  // ---- V4：行动栏 tray 状态（技能 / 物品；仅页面本地 UI 状态）----
+  const [actionTray, setActionTray] = useState<'skill' | 'item' | null>(null)
+
+  const actionsLocked = phase !== 'active' || enemyFirstStriking || awaitingCompanionAction
+
   return (
-    <div className="combat-page mx-auto flex min-h-screen w-full max-w-3xl flex-col gap-6 px-4 py-6">
-      <header className="border-b border-ink-600 pb-4 text-center">
-        <h2 className="text-xl font-bold tracking-widest text-gold-300">战斗</h2>
+    <div className="combat-page mx-auto flex h-full w-full max-w-[1600px] flex-col px-4 py-3">
+      {/* 顶部薄标题栏 */}
+      <header className="mb-3 flex items-center justify-between border-b border-ink-600 pb-2">
+        <p className="text-sm tracking-widest text-bone-500">
+          战斗 · <span className="text-gold-300">{enemy.name}</span>
+          <span className="ml-2 text-bone-500">Lv.{enemy.level}</span>
+        </p>
+        <p className="text-xs text-bone-500">
+          {phase === 'active' ? (enemyFirstStriking ? '敌方先手' : '战斗进行中') : phase === 'victory' ? '胜利' : '失败'}
+        </p>
       </header>
 
-      {/* TM-P2-002 D：先手提示（TM-P2-002-R1 A：攻击进行期间显示「抢得先手」并封锁操作） */}
-      {enemyFirstStriking && phase === 'active' && (
-        <p className="text-center text-sm text-gold-300">{enemy.name}抢得先手……</p>
-      )}
-      {enemyFirstStrikeDone && !enemyFirstStriking && phase === 'active' && (
-        <p className="text-center text-sm text-bone-500">{enemy.name}先手。</p>
-      )}
-
-      <div className="grid gap-4 sm:grid-cols-2">
-        {/* TM-P2-002 E：玩家面板（攻击力/护甲/敏捷/五属性/武器） */}
-        <section className="rounded border border-ink-600 bg-ink-800/50 p-4 text-sm text-bone-300">
+      {/* 上：战况（玩家 / 敌人 / 伙伴三面板） */}
+      <section className="combat-status mb-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        {/* TM-P2-002 E：玩家面板 */}
+        <section data-testid="combat-player-panel" className="rounded border border-ink-600 bg-ink-800/50 p-4 text-sm text-bone-300">
           <p className="text-base font-bold text-bone-100">{player.name}</p>
           <p className="mt-1 text-xs text-bone-500">
             Lv.{player.level} · {getProfessionName(player.profession)}
@@ -407,7 +521,7 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
         </section>
 
         {/* TM-P2-002 E：敌人面板（名称/等级/HP/攻击力/护甲/敏捷） */}
-        <section className="rounded border border-ink-600 bg-ink-800/50 p-4 text-sm text-bone-300">
+        <section data-testid="combat-enemy-panel" className="rounded border border-gold-500/40 bg-ink-800/50 p-4 text-sm text-bone-300">
           <p className="text-base font-bold text-bone-100">{enemy.name}</p>
           <p className="mt-1 text-xs text-bone-500">Lv.{enemy.level}</p>
           <p className="mt-2">
@@ -426,7 +540,7 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
 
         {/* TM-P2-004 第 47 节：伙伴面板（樱花优子——MP/技能/封印技能展示；敌人只攻击玩家，她不参与受击） */}
         {companion && companionDef && (
-          <section className="rounded border border-sakura-500/40 bg-ink-800/50 p-4 text-sm text-bone-300 sm:col-span-2">
+          <section data-testid="combat-companion-panel" className="rounded border border-sakura-500/40 bg-ink-800/50 p-4 text-sm text-bone-300 sm:col-span-2 xl:col-span-1">
             <p className="text-base font-bold text-sakura-200">
               {companionDef.name}
               <span className="ml-2 text-xs font-normal text-bone-500">
@@ -459,101 +573,137 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
             )}
           </section>
         )}
-      </div>
+        {!companion && (
+          <section className="hidden rounded border border-ink-700 bg-ink-900/40 p-4 text-sm text-bone-500 sm:col-span-2 xl:col-span-1 xl:block">
+            没有并肩作战的伙伴。
+          </section>
+        )}
+      </section>
 
-      {(lastPlayerAttack || lastEnemyAttack || lastPotionHeal !== null || lastCompanionAction !== null) && (
-        <section className="combat-log rounded border border-ink-600 bg-ink-900/50 p-4 text-sm leading-relaxed text-bone-300">
-          {lastPlayerAttack && (
-            <div>
-              <p className="text-bone-500">{actionLabel}</p>
-              {formatAttackLog(lastPlayerAttack, enemy.name).map((line, i) => (
-                <p key={i} className="mt-1">
-                  {line}
+      {/* 中 + 右：简洁战斗播报（中央）+ 详细战斗日志（右侧，按回合分组） */}
+      <section className="combat-main grid min-h-0 flex-1 grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_360px]">
+        {/* 中央：简洁战斗播报（summary feed） */}
+        <div data-testid="combat-summary-feed" className="combat-feed min-h-0 overflow-y-auto rounded border border-ink-600 bg-ink-900/40 p-4">
+          <p className="mb-3 text-xs tracking-widest text-bone-500">战况播报</p>
+          {events.length === 0 ? (
+            <p className="text-sm text-bone-500">战斗开始。</p>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {events.map((ev) => (
+                <p key={ev.id} className="text-sm leading-relaxed text-bone-200">
+                  {ev.actor === 'enemy' ? <span className="text-gold-300">【{enemy.name}】</span> : ev.actor === 'companion' ? <span className="text-sakura-300">【樱花优子】</span> : ev.actor === 'system' ? <span className="text-bone-500">【系统】</span> : <span className="text-bone-500">【你】</span>}{' '}
+                  {ev.summary}
                 </p>
               ))}
             </div>
           )}
-          {lastPotionHeal !== null && (
-            <p className="mt-2">
-              <span className="text-bone-500">你使用了治疗药水：恢复 {lastPotionHeal} 点生命。</span>
-            </p>
-          )}
-          {/* TM-P2-004：伙伴行动日志 */}
-          {lastCompanionAction === 'petalslash' && lastCompanionAttack && (
-            <div className="mt-2">
-              <p className="text-sakura-200">{companionActionLabel}</p>
-              {formatAttackLog(lastCompanionAttack, enemy.name).map((line, i) => (
-                <p key={i} className="mt-1">
-                  {line}
-                </p>
-              ))}
-            </div>
-          )}
-          {lastCompanionAction === 'shield' && (
-            <p className="mt-2 text-sakura-200">下一次敌人反击的伤害将被削减。</p>
-          )}
-          {shieldAbsorbedLast !== null && (
-            <p className="mt-1 text-sakura-200">樱花魔法盾抵消了 {shieldAbsorbedLast} 点伤害。</p>
-          )}
-          {lastCompanionAction === 'light_dance' && (
-            <p className="mt-2 text-sakura-200">敌人的攻势被轻舞牵走，没有找到反击的机会。</p>
-          )}
-          {lastCompanionAction === 'skip' && (
-            <p className="mt-2 text-bone-500">樱花优子静静守在后方。</p>
-          )}
-          {lastEnemyAttack && (
-            <div className="mt-2">
-              <p className="text-bone-500">{enemy.name}的攻击：</p>
-              {formatAttackLog(lastEnemyAttack, player.name).map((line, i) => (
-                <p key={i} className="mt-1">
-                  {line}
-                </p>
-              ))}
-            </div>
-          )}
-        </section>
-      )}
+        </div>
 
-      <footer className="flex flex-col items-center gap-4">
+        {/* 右侧：详细战斗日志（detail log，按回合分组） */}
+        <div data-testid="combat-detail-log" className="combat-log min-h-0 overflow-y-auto rounded border border-ink-600 bg-ink-900/50 p-4">
+          <p className="mb-3 text-xs tracking-widest text-bone-500">详细战斗日志</p>
+          {roundGroups.length === 0 ? (
+            <p className="text-sm text-bone-500">尚无记录。</p>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {roundGroups.map((group) => (
+                <div key={`round-${group.round}`} className="rounded border border-ink-700 bg-ink-950/50 p-3">
+                  <p className="mb-2 text-xs font-bold text-bone-500">回合 {group.round}</p>
+                  <div className="flex flex-col gap-2">
+                    {group.items.map((ev) => (
+                      <div key={ev.id}>
+                        <p className="text-sm text-bone-200">{ev.summary}</p>
+                        {ev.detail.length > 0 && (
+                          <div className="mt-1 pl-3 text-xs leading-relaxed text-bone-500">
+                            {ev.detail.map((line, i) => (
+                              <p key={i}>{line}</p>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* 下：固定行动栏（V4 P0：fixed action bar；技能/物品 tray；逃跑） */}
+      <footer className="mt-3 border-t border-ink-600 pt-3">
         {phase === 'active' && !awaitingCompanionAction && (
           <div className="flex flex-col items-center gap-3">
-            <Button variant="primary" disabled={enemyFirstStriking} onClick={handleAttack}>
-              普通攻击
-            </Button>
-            {/* TM-P2-003 A：技能按钮由 learnedSkillIds → Skill Registry 动态生成 */}
-            {learnedSkills.map((skill) => {
-              const mpNotEnough = skill.mpCost > 0 && player.mp < skill.mpCost
-              const onceUsed =
-                skill.combat?.oncePerCombat === true && isOncePerCombatUsed(usedOnceSkillIds, skill.id)
-              return (
-                <div key={skill.id} className="flex flex-col items-center gap-1">
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <Button variant="primary" disabled={actionsLocked} onClick={handleAttack}>
+                普通攻击
+              </Button>
+              {learnedSkills.length > 0 && (
+                <Button variant="ghost" disabled={actionsLocked} onClick={() => setActionTray(actionTray === 'skill' ? null : 'skill')}>
+                  技能{actionTray === 'skill' ? ' ▴' : ' ▾'}
+                </Button>
+              )}
+              {healingPotionAmount !== undefined && (
+                <Button variant="ghost" disabled={actionsLocked} onClick={() => setActionTray(actionTray === 'item' ? null : 'item')}>
+                  物品{actionTray === 'item' ? ' ▴' : ' ▾'}
+                </Button>
+              )}
+              {canEscape && (
+                <Button variant="ghost" disabled={actionsLocked} onClick={handleEscape}>
+                  逃跑
+                </Button>
+              )}
+              {!canEscape && (
+                <span className="text-xs text-bone-600">无法逃离</span>
+              )}
+            </div>
+            {/* TM-P2-003 A：技能 tray（按 learnedSkillIds → Skill Registry 动态生成） */}
+            {actionTray === 'skill' && (
+              <div data-testid="combat-skill-tray" className="flex flex-wrap items-center justify-center gap-2">
+                {learnedSkills.map((skill) => {
+                  const mpNotEnough = skill.mpCost > 0 && player.mp < skill.mpCost
+                  const onceUsed =
+                    skill.combat?.oncePerCombat === true && isOncePerCombatUsed(usedOnceSkillIds, skill.id)
+                  return (
+                    <div key={skill.id} className="flex flex-col items-center gap-1">
+                      <Button
+                        variant="primary"
+                        disabled={actionsLocked || mpNotEnough || onceUsed}
+                        onClick={() => {
+                          setActionTray(null)
+                          handleSkill(skill.id)
+                        }}
+                      >
+                        {skill.name}
+                        {skill.mpCost > 0 ? `（${skill.mpCost} 灵力）` : ''}
+                      </Button>
+                      {mpNotEnough && <span className="text-xs text-red-300">灵力不足</span>}
+                      {onceUsed && <span className="text-xs text-bone-500">本场战斗已使用</span>}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+            {/* TM-P2-006：物品 tray（当前 MVP：治疗药水） */}
+            {actionTray === 'item' && (
+              <div data-testid="combat-item-tray" className="flex flex-wrap items-center justify-center gap-2">
+                <div className="flex flex-col items-center gap-1">
                   <Button
                     variant="primary"
-                    disabled={enemyFirstStriking || mpNotEnough || onceUsed}
-                    onClick={() => handleSkill(skill.id)}
+                    disabled={actionsLocked || player.hp >= player.maxHp || healingPotionCount <= 0}
+                    onClick={() => {
+                      setActionTray(null)
+                      handleUseHealingPotion()
+                    }}
                   >
-                    {skill.name}
-                    {skill.mpCost > 0 ? `（${skill.mpCost} 灵力）` : ''}
+                    使用治疗药水（+{healingPotionAmount} 生命）
                   </Button>
-                  {mpNotEnough && <span className="text-xs text-red-300">灵力不足</span>}
-                  {onceUsed && <span className="text-xs text-bone-500">本场战斗已使用</span>}
+                  {healingPotionCount > 0 && <span className="text-xs text-bone-500">剩余：{healingPotionCount}</span>}
+                  {healingPotionCount <= 0 && <span className="text-xs text-red-300">没有治疗药水</span>}
+                  {healingPotionCount > 0 && player.hp >= player.maxHp && (
+                    <span className="text-xs text-bone-500">生命已满</span>
+                  )}
                 </div>
-              )
-            })}
-            {healingPotionAmount !== undefined && (
-              <div className="flex flex-col items-center gap-1">
-                <Button
-                  variant="primary"
-                  disabled={enemyFirstStriking || player.hp >= player.maxHp || healingPotionCount <= 0}
-                  onClick={handleUseHealingPotion}
-                >
-                  使用治疗药水（+{healingPotionAmount} 生命）
-                </Button>
-                {healingPotionCount > 0 && <span className="text-xs text-bone-500">剩余：{healingPotionCount}</span>}
-                {healingPotionCount <= 0 && <span className="text-xs text-red-300">没有治疗药水</span>}
-                {healingPotionCount > 0 && player.hp >= player.maxHp && (
-                  <span className="text-xs text-bone-500">生命已满</span>
-                )}
               </div>
             )}
           </div>
@@ -562,71 +712,92 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
         {phase === 'active' && awaitingCompanionAction && companionReady && (
           <div className="flex flex-col items-center gap-3">
             <p className="text-base font-bold text-sakura-200">樱花优子的行动</p>
-            {companionSkills.map((skill) => {
-              const mpNotEnough = skill.mpCost > 0 && (companion?.mp ?? 0) < skill.mpCost
-              const onceUsed =
-                skill.combat?.oncePerCombat === true &&
-                isOncePerCombatUsed(usedOnceCompanionSkillIds, skill.id)
-              const shieldAlreadyUp = skill.combat?.supportEffect?.type === 'reduce_next_enemy_damage' && shieldRemaining > 0
-              return (
-                <div key={skill.id} className="flex flex-col items-center gap-1">
-                  <Button
-                    variant="primary"
-                    disabled={mpNotEnough || onceUsed || shieldAlreadyUp}
-                    onClick={() => handleCompanionSkill(skill.id)}
-                  >
-                    {skill.name}
-                    {skill.mpCost > 0 ? `（${skill.mpCost} 灵力）` : ''}
-                  </Button>
-                  {mpNotEnough && <span className="text-xs text-red-300">灵力不足</span>}
-                  {onceUsed && <span className="text-xs text-bone-500">本场战斗已使用</span>}
-                  {shieldAlreadyUp && <span className="text-xs text-bone-500">盾已展开</span>}
-                </div>
-              )
-            })}
-            <Button variant="ghost" onClick={handleCompanionSkip}>
-              跳过
-            </Button>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              {companionSkills.map((skill) => {
+                const mpNotEnough = skill.mpCost > 0 && (companion?.mp ?? 0) < skill.mpCost
+                const onceUsed =
+                  skill.combat?.oncePerCombat === true &&
+                  isOncePerCombatUsed(usedOnceCompanionSkillIds, skill.id)
+                const shieldAlreadyUp = skill.combat?.supportEffect?.type === 'reduce_next_enemy_damage' && shieldRemaining > 0
+                return (
+                  <div key={skill.id} className="flex flex-col items-center gap-1">
+                    <Button
+                      variant="primary"
+                      disabled={mpNotEnough || onceUsed || shieldAlreadyUp}
+                      onClick={() => handleCompanionSkill(skill.id)}
+                    >
+                      {skill.name}
+                      {skill.mpCost > 0 ? `（${skill.mpCost} 灵力）` : ''}
+                    </Button>
+                    {mpNotEnough && <span className="text-xs text-red-300">灵力不足</span>}
+                    {onceUsed && <span className="text-xs text-bone-500">本场战斗已使用</span>}
+                    {shieldAlreadyUp && <span className="text-xs text-bone-500">盾已展开</span>}
+                  </div>
+                )
+              })}
+              <Button variant="ghost" onClick={handleCompanionSkip}>
+                跳过
+              </Button>
+            </div>
           </div>
         )}
+        {/* TM-P2-006 第 42 节：胜利结算面板（XP + 掉落 + 升级预览） */}
         {phase === 'victory' && (
           <>
-            <p className="text-lg font-bold text-gold-300">战斗胜利</p>
-            {victoryLoot && (
-              <div className="rounded border border-gold-500/40 bg-ink-900/40 p-4 text-left text-sm text-bone-300">
-                <p className="text-bone-500">掉落：</p>
-                {victoryLoot.items.map((it, index) => {
-                  const def = getItem(it.itemId)
-                  const rarity = def?.rarity ? `（${RARITY_LABELS[def.rarity]}）` : ''
-                  return (
-                    <p key={combatLootItemKey(it.itemId, index)} className="mt-1">
-                      {def?.name ?? '异常物品（无法识别）'} ×{it.quantity}
-                      {rarity}
-                    </p>
-                  )
-                })}
-                {victoryLoot.gold > 0 && <p className="mt-1">金币 +{victoryLoot.gold}</p>}
-                {victoryLoot.luckCheck && (
-                  <div className="mt-2 text-xs text-bone-500">
-                    {formatLuckCheckLog(victoryLoot.luckCheck).map((line) => (
-                      <p key={line}>{line}</p>
-                    ))}
+            <div className="flex flex-col items-center gap-3">
+              <p className="text-lg font-bold text-gold-300">战斗胜利</p>
+              <div className="w-full max-w-md rounded border border-gold-500/40 bg-ink-900/40 p-4 text-left text-sm text-bone-300">
+                {victoryXp > 0 && (
+                  <p className="font-bold text-gold-300">冒险阅历 +{victoryXp}</p>
+                )}
+                {victoryLevelPreview && victoryLevelPreview.levelGain > 0 && (
+                  <p className="mt-1 text-bone-200">
+                    等级提升至 Lv.{victoryLevelPreview.player.level}
+                    {victoryLevelPreview.maxHpGain > 0 && `（生命上限 +${victoryLevelPreview.maxHpGain}`}
+                    {victoryLevelPreview.maxMpGain > 0 && `，灵力上限 +${victoryLevelPreview.maxMpGain}`}
+                    {victoryLevelPreview.maxHpGain > 0 && '）'}
+                  </p>
+                )}
+                {victoryLoot && (
+                  <div className="mt-3">
+                    <p className="text-bone-500">掉落：</p>
+                    {victoryLoot.items.map((it, index) => {
+                      const def = getItem(it.itemId)
+                      const rarity = def?.rarity ? `（${RARITY_LABELS[def.rarity]}）` : ''
+                      return (
+                        <p key={combatLootItemKey(it.itemId, index)} className="mt-1">
+                          {def?.name ?? '异常物品（无法识别）'} ×{it.quantity}
+                          {rarity}
+                        </p>
+                      )
+                    })}
+                    {victoryLoot.gold > 0 && <p className="mt-1">金币 +{victoryLoot.gold}</p>}
+                    {victoryLoot.luckCheck && (
+                      <div className="mt-2 text-xs text-bone-500">
+                        {formatLuckCheckLog(victoryLoot.luckCheck).map((line) => (
+                          <p key={line}>{line}</p>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
+                {victoryXp <= 0 && !victoryLoot && (
+                  <p className="text-bone-500">本次胜利没有额外奖励。</p>
+                )}
               </div>
-            )}
-            <Button variant="primary" onClick={onVictory}>
-              返回冒险
-            </Button>
+              <Button variant="primary" onClick={onVictory}>
+                返回冒险
+              </Button>
+            </div>
           </>
         )}
         {phase === 'defeat' && (
-          <>
+          <div className="flex flex-col items-center gap-3">
             <p className="text-lg font-bold text-red-300">战斗失败</p>
             <Button variant="danger" onClick={onDefeat}>
               返回冒险
             </Button>
-          </>
+          </div>
         )}
       </footer>
     </div>

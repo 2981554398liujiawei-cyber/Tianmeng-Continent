@@ -7,6 +7,7 @@ import { getEnemy, getItem, getLocation, getNpc, getQuest } from '../content'
 import { performD20Check, CHECK_DC, type D20CheckResult } from '../rules/d20'
 import { KNIGHT_POWER_STRIKE_MP_COST, MAGE_SPELL_MP_COST, WARRIOR_SUPPRESS_STRIKE_MP_COST } from '../rules/combat'
 import { applyAdventureXpReward } from '../rules/progression'
+import { getEnemyFirstKillXp } from '../rules/combatXp'
 import { checkEquipItem } from '../rules/equipment'
 import { canBuyMerchantItem, getMerchantOffer } from '../rules/merchant'
 import { rollLoot } from '../rules/loot'
@@ -907,21 +908,29 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
         if (!canFightCalamity(s.gameState)) return {}
       }
       ok = true
-      // 《村外异动》任务推进：村外草原击败魔化兔 → completable（复用封板状态机）
+      // TM-P2-006 第 38/40 节：战斗阅历——只在「首次正式击败」时授予（getEnemyFirstKillXp 复用现有 defeated flags 防重复）；
+      // 重复遭遇 / 无 XP 定义 → firstKillXp=0，withFirstKillXp 原样返回
+      const firstKillXp = getEnemyFirstKillXp(s.gameState, enemyId)
+      const withFirstKillXp = (gs: GameState): GameState => {
+        if (firstKillXp <= 0) return gs
+        const progression = applyAdventureXpReward(gs.player, firstKillXp)
+        if (!progression) return gs
+        return { ...gs, player: progression.player }
+      }
       // 《村外异动》任务推进：村外草原击败魔化兔 → completable（复用封板状态机）
       if (enemyId === 'corrupted_rabbit' && location.id === 'village_grassland') {
         const next = applyQuestTransition(s.gameState, 'quest_village_monsters', 'completable')
-        if (next) return { gameState: next }
+        if (next) return { gameState: withFirstKillXp(next) }
       }
       // 嘟嘟兔固定战利品（TM-P0-012）：兔王巢穴击败嘟嘟兔 → 首次获得《兔子的路径》×1（唯一，不重复）
       if (enemyId === 'dudu_rabbit' && location.id === 'rabbit_lair') {
         const hasPath = s.gameState.inventory.some((e) => e.itemId === 'rabbit_path')
         if (!hasPath) {
           return {
-            gameState: {
+            gameState: withFirstKillXp({
               ...s.gameState,
               inventory: [...s.gameState.inventory, { itemId: 'rabbit_path', quantity: 1 }],
-            },
+            }),
           }
         }
       }
@@ -946,12 +955,12 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
             ? inv.map((e, i) => (i === idx ? { ...e, quantity: current + 1 } : e))
             : [...inv, { itemId: 'iron_ore', quantity: 1 }]
           : inv
-        return { gameState: { ...next, inventory } }
+        return { gameState: withFirstKillXp({ ...next, inventory }) }
       }
       // 《草原狼影》任务推进（TM-P1-010）：村外草原击败魔化狼且任务 in_progress → completable；无战利品（金币只在回村提交时获得）
       if (enemyId === 'corrupted_wolf' && location.id === 'village_grassland') {
         const next = applyQuestTransition(s.gameState, 'quest_grassland_wolf', 'completable')
-        if (next) return { gameState: next }
+        if (next) return { gameState: withFirstKillXp(next) }
       }
       // 黑石塔一层骷髅士兵（TM-P1-025）：黑石塔一层击败骷髅士兵且第五主线 in_progress/stage 0 + wangcai_briefed===true + 黑石塔已解锁 + floor1_soldier_defeated undefined/false → 成功只写 quest.flags.floor1_soldier_defeated=true（status/stage 不变；无金币/物品/装备/经验/关系奖励；不自动保存）
       if (enemyId === 'skeleton_soldier' && location.id === 'black_stone_tower_floor1') {
@@ -966,7 +975,7 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
             if (briefed === true && unlocked === true && (defeated === undefined || defeated === false)) {
               const nextQuests = [...s.gameState.quests]
               nextQuests[questIndex] = { ...quest, flags: { ...quest.flags, floor1_soldier_defeated: true } }
-              return { gameState: { ...s.gameState, quests: nextQuests } }
+              return { gameState: withFirstKillXp({ ...s.gameState, quests: nextQuests }) }
             }
           }
         }
@@ -979,7 +988,7 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
           if (quest) {
             const nextQuests = [...s.gameState.quests]
             nextQuests[questIndex] = { ...quest, flags: { ...quest.flags, floor1_captain_defeated: true } }
-            return { gameState: { ...s.gameState, quests: nextQuests } }
+            return { gameState: withFirstKillXp({ ...s.gameState, quests: nextQuests }) }
           }
         }
       }
@@ -991,7 +1000,7 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
           if (quest) {
             const nextQuests = [...s.gameState.quests]
             nextQuests[questIndex] = { ...quest, flags: { ...quest.flags, floor2_zombie_defeated: true } }
-            return { gameState: { ...s.gameState, quests: nextQuests } }
+            return { gameState: withFirstKillXp({ ...s.gameState, quests: nextQuests }) }
           }
         }
       }
@@ -1003,7 +1012,7 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
           if (quest) {
             const nextQuests = [...s.gameState.quests]
             nextQuests[questIndex] = { ...quest, flags: { ...quest.flags, floor2_black_mage_defeated: true } }
-            return { gameState: { ...s.gameState, quests: nextQuests } }
+            return { gameState: withFirstKillXp({ ...s.gameState, quests: nextQuests }) }
           }
         }
       }
@@ -1015,7 +1024,7 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
           if (quest) {
             const nextQuests = [...s.gameState.quests]
             nextQuests[questIndex] = { ...quest, flags: { ...quest.flags, floor2_skeleton_warrior_defeated: true } }
-            return { gameState: { ...s.gameState, quests: nextQuests } }
+            return { gameState: withFirstKillXp({ ...s.gameState, quests: nextQuests }) }
           }
         }
       }
@@ -1030,7 +1039,7 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
             // 背包只允许一条 kuidong_necklace entry；已有则不重复堆叠
             const hasNecklace = s.gameState.inventory.some((i) => i.itemId === 'kuidong_necklace')
             const nextInventory = hasNecklace ? s.gameState.inventory : [...s.gameState.inventory, { itemId: 'kuidong_necklace', quantity: 1 }]
-            return { gameState: { ...s.gameState, quests: nextQuests, inventory: nextInventory } }
+            return { gameState: withFirstKillXp({ ...s.gameState, quests: nextQuests, inventory: nextInventory }) }
           }
         }
       }
@@ -1046,14 +1055,14 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
               status: 'completable',
               flags: { ...quest.flags, north_gate_wolf_defeated: true },
             }
-            return { gameState: { ...s.gameState, quests: nextQuests } }
+            return { gameState: withFirstKillXp({ ...s.gameState, quests: nextQuests }) }
           }
         }
       }
       // TM-P2-004 第 42/43 节：残灾之影胜利——写 sakura_calamity_defeated=true + 位置回天龙城 + 契约提议就绪（神域崩塌 → 契约场景由 UI 消费；只结算一次）
       if (enemyId === SAKURA_CALAMITY_ENEMY_ID && location.id === SAKURA_DOMAIN_LOCATION) {
         return {
-          gameState: {
+          gameState: withFirstKillXp({
             ...s.gameState,
             world: {
               ...s.gameState.world,
@@ -1064,11 +1073,12 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
                 [SAKURA_FLAGS.contractOffered]: true,
               },
             },
-          },
+          }),
         }
       }
-      // 合法胜利但无持久效果（其他敌人 / 重复嘟嘟兔胜利 / 任务不在推进条件）：其余状态全部不变
-      return {}
+      // 合法胜利但无持久效果（其他敌人 / 重复嘟嘟兔胜利 / 任务不在推进条件）：仍可能授予首次击败 XP（如：未接任务就击败的可重复遭遇敌人首次奖励）；其余状态全部不变
+      const xpState = withFirstKillXp(s.gameState)
+      return xpState === s.gameState ? {} : { gameState: xpState }
     })
     return ok
   },

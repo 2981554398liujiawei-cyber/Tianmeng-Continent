@@ -146,11 +146,10 @@ const saveToSlot1 = async (page) => {
 
 const readLocationName = (page) =>
   page.evaluate(() => {
-    const label = [...document.querySelectorAll('p')].find((el) => el.textContent.trim() === '当前位置')
-    if (!label) return null
-    const section = label.closest('section')
+    // TM-P2-006：中央场景标题（h2 地点名）；旧「当前位置」标签已删除
+    const section = document.querySelector('[data-current-location-id]')
     if (!section) return null
-    const nameEl = section.querySelector('h3')
+    const nameEl = section.querySelector('h2')
     return nameEl ? nameEl.textContent.trim() : null
   })
 

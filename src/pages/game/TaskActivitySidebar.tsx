@@ -1,0 +1,494 @@
+import { useState } from 'react'
+import Button from '../../components/Button'
+import Accordion from '../../components/Accordion'
+import Drawer from '../../components/Drawer'
+import RelationshipPanel from '../../components/game/RelationshipPanel'
+import CompanionPanel from '../../components/game/CompanionPanel'
+import { useGameStore } from '../../game/state/gameStore'
+import { getQuest, getNpc, getItem, QUESTS } from '../../game/content'
+import { getCurrentObjective, type CurrentObjective } from '../../game/rules/objective'
+import type { GameState, QuestStatus } from '../../game/types'
+
+/**
+ * 右栏：任务与记录中心（TM-P2-006）。
+ * 结构：① 当前目标（固定顶部，仅一个）② 任务（进行中/可提交/附近委托/已完成折叠）③ 最近记录（Activity Feed + Drawer）。
+ * UI ephemeral state（useState）不进入 GameState。
+ */
+export const QUEST_STATUS_LABELS: Record<QuestStatus, string> = {
+  undiscovered: '未发现',
+  available: '可接受',
+  in_progress: '进行中',
+  completable: '可完成',
+  completed: '已完成',
+  failed: '失败',
+}
+
+interface TaskActivitySidebarProps {
+  /** 任务提交（GamePage 包装升级检测） */
+  onCompleteQuest: (questId: string) => void
+  /** 附近委托「查看」→ 跳转 NPC 交互面板（由 GamePage 处理） */
+  onViewQuest: (questId: string) => void
+  /** 接受/发现委托（默认走 store action；GamePage 可覆盖） */
+  onAcceptQuest?: (questId: string) => void
+}
+
+/** 基于 GameState 推导最近记录（Activity Feed；UI 层轻量实现，不建 Event Sourcing） */
+function deriveActivityItems(state: GameState): { id: string; category: '任务' | '战利品' | '成长' | '世界' | '系统'; text: string }[] {
+  const items: { id: string; category: '任务' | '战利品' | '成长' | '世界' | '系统'; text: string }[] = []
+  // 已完成任务（新完成在前）
+  for (const qs of state.quests) {
+    if (qs.status === 'completed') {
+      const def = getQuest(qs.questId)
+      items.push({ id: `quest-${qs.questId}`, category: '任务', text: `《${def?.title ?? '未知任务'}》已完成` })
+    }
+  }
+  // 世界：青石村阶段完成（TM-P2-006 第 16 节：阶段播报移入 Activity Feed，不再常驻中央大卡）
+  if (state.world.flags.rabbit_path_reported === true) {
+    items.push({ id: 'world-qingshi-stage', category: '世界', text: '青石村阶段完成' })
+  }
+  // 剧情世界事件
+  for (const eventId of state.world.completedEvents) {
+    items.push({ id: `event-${eventId}`, category: '世界', text: `事件记录：${eventId}` })
+  }
+  // 关键道具（战利品/线索）
+  const pathDef = getItem('rabbit_path')
+  if (pathDef && state.inventory.some((e) => e.itemId === 'rabbit_path' && e.quantity >= 1)) {
+    items.push({ id: 'loot-rabbit_path', category: '战利品', text: `获得《${pathDef.name}》` })
+  }
+  const necklaceDef = getItem('kuidong_necklace')
+  if (necklaceDef && state.inventory.some((e) => e.itemId === 'kuidong_necklace' && e.quantity >= 1)) {
+    items.push({ id: 'loot-kuidong_necklace', category: '战利品', text: `获得《${necklaceDef.name}》` })
+  }
+  // 成长（等级/阅历）
+  if (state.player.level >= 2) {
+    items.push({ id: 'growth-level', category: '成长', text: `达到 Lv.${state.player.level}` })
+  }
+  return items
+}
+
+export default function TaskActivitySidebar({ onCompleteQuest, onViewQuest, onAcceptQuest }: TaskActivitySidebarProps) {
+  const gameState = useGameStore((s) => s.gameState)
+  const acceptQuest = useGameStore((s) => s.acceptQuest)
+  const discoverQuest = useGameStore((s) => s.discoverQuest)
+  const [activityOpen, setActivityOpen] = useState(false)
+  // 已完成任务详情展开（仅 UI）
+  const [completedDetail, setCompletedDetail] = useState<string | null>(null)
+  // 附近委托详情展开（仅 UI）
+  const [nearbyDetail, setNearbyDetail] = useState<string | null>(null)
+
+  if (!gameState) return null
+  const { player, world } = gameState
+
+  const objective: CurrentObjective | null = getCurrentObjective(gameState)
+
+  // ---- 任务分组 ----
+  const inProgress = gameState.quests.filter((q) => q.status === 'in_progress')
+  const completable = gameState.quests.filter((q) => q.status === 'completable')
+  const completed = gameState.quests.filter((q) => q.status === 'completed')
+  const failed = gameState.quests.filter((q) => q.status === 'failed')
+
+  // 附近委托 = 给予者位于当前地点的注册任务（与 GamePage 原逻辑一致；不含已接/已完成）
+  const nearbyQuests = Object.values(QUESTS)
+    .filter((quest) => {
+      const giver = getNpc(quest.giverNpcId)
+      if (giver?.locationId !== world.currentLocationId) return false
+      // UI 侧窄前置（与 Store discoverQuest 一致）
+      if (quest.id === 'quest_mine_cleanup') {
+        return gameState.quests.some((q) => q.questId === 'quest_village_monsters' && q.status === 'completed')
+      }
+      if (quest.id === 'quest_grassland_wolf') {
+        return gameState.quests.some((q) => q.questId === 'quest_mine_cleanup' && q.status === 'completed')
+      }
+      if (quest.id === 'quest_golden_rabbit_search') {
+        return world.flags.rabbit_path_reported === true
+      }
+      if (quest.id === 'quest_apothecary_herb_route') {
+        return gameState.quests.some((q) => q.questId === 'quest_village_monsters' && q.status === 'completed')
+      }
+      if (quest.id === 'quest_blacksmith_mine_remnant') {
+        return gameState.quests.some((q) => q.questId === 'quest_mine_cleanup' && q.status === 'completed')
+      }
+      if (quest.id === 'quest_north_gate_missing_patrol') {
+        return gameState.quests.some((q) => q.questId === 'quest_wangcai_trouble' && q.status === 'completed')
+      }
+      if (quest.id === 'quest_sakura_boundary') return false
+      return true
+    })
+    .map((quest) => {
+      const qs = gameState.quests.find((q) => q.questId === quest.id)
+      const status = qs?.status ?? 'undiscovered'
+      if (status === 'in_progress' || status === 'completable' || status === 'completed') return null
+      return { def: quest, status }
+    })
+    .filter((entry): entry is { def: (typeof QUESTS)[string]; status: 'undiscovered' | 'available' } => entry !== null)
+
+  const activityItems = deriveActivityItems(gameState)
+
+  const handleNearbyAction = (questId: string, status: 'undiscovered' | 'available') => {
+    if (status === 'undiscovered') {
+      discoverQuest(questId)
+    } else if (onAcceptQuest) {
+      onAcceptQuest(questId)
+    } else {
+      acceptQuest(questId)
+    }
+  }
+
+  return (
+    <div data-testid="quest-column" className="flex h-full flex-col gap-4">
+      {/* ① 当前目标（固定顶部，只显示一个） */}
+      <section className="rounded border border-gold-500/50 bg-gold-900/20 p-4 text-sm text-bone-300">
+        <h3 className="mb-2 text-xs font-bold tracking-wider text-gold-300">当前目标</h3>
+        {objective ? (
+          <>
+            <p className="font-bold text-bone-100">《{objective.title}》</p>
+            <p className="mt-1 leading-relaxed text-bone-200">{objective.objective}</p>
+            {objective.locationHint && <p className="mt-1 text-xs text-bone-500">地点提示：{objective.locationHint}</p>}
+          </>
+        ) : (
+          <p className="text-bone-500">暂无当前目标。</p>
+        )}
+      </section>
+
+      {/* ② 任务中心 */}
+      <div className="flex flex-col gap-3">
+        {/* 进行中 */}
+        {inProgress.length > 0 && (
+          <Accordion title={`进行中（${inProgress.length}）`} defaultOpen ariaLabel="进行中的任务">
+            <div className="flex flex-col gap-3">
+              {inProgress.map((qs) => (
+                <QuestRow key={qs.questId} questId={qs.questId} gameState={gameState} compact />
+              ))}
+            </div>
+          </Accordion>
+        )}
+
+        {/* 可提交 */}
+        {completable.length > 0 && (
+          <Accordion title={`可提交（${completable.length}）`} defaultOpen ariaLabel="可提交的任务">
+            <div className="flex flex-col gap-3">
+              {completable.map((qs) => {
+                const def = getQuest(qs.questId)
+                const giver = def ? getNpc(def.giverNpcId) : undefined
+                const canSubmit = giver?.locationId === world.currentLocationId
+                return (
+                  <div key={qs.questId} className="rounded border border-gold-500/40 bg-ink-900/40 p-3">
+                    <p className="font-bold text-bone-100">{def?.title ?? '未知任务'}</p>
+                    <p className="mt-1 text-xs text-bone-500">{def?.summary ?? '异常任务（无法识别）'}</p>
+                    {def?.goldReward !== undefined && (
+                      <p className="mt-1 text-xs text-gold-300">奖励：{def.goldReward} 金币</p>
+                    )}
+                    {qs.questId === 'quest_north_gate_missing_patrol' && (
+                      <p className="mt-1 text-xs text-gold-300">黑鬃魔狼已击败，找到了断裂的铜牌。返回武馆，将发现告诉马科。</p>
+                    )}
+                    {canSubmit ? (
+                      <Button variant="primary" className="mt-2" onClick={() => onCompleteQuest(qs.questId)}>
+                        提交任务
+                      </Button>
+                    ) : (
+                      <p className="mt-2 text-xs text-bone-500">前往任务发布者处提交</p>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </Accordion>
+        )}
+
+        {/* 附近委托 */}
+        {nearbyQuests.length > 0 && (
+          <Accordion title={`附近委托（${nearbyQuests.length}）`} defaultOpen ariaLabel="附近委托">
+            <div className="flex flex-col gap-2">
+              {nearbyQuests.map(({ def, status }) => {
+                const giver = getNpc(def.giverNpcId)
+                const isDetail = nearbyDetail === def.id
+                return (
+                  <div key={def.id} className="rounded border border-ink-600 bg-ink-900/40 p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm text-bone-200">
+                        {giver?.name ?? '异常人物'}：《{def.title}》
+                      </p>
+                      <Button variant="ghost" onClick={() => setNearbyDetail(isDetail ? null : def.id)}>
+                        {isDetail ? '收起' : '查看'}
+                      </Button>
+                    </div>
+                    {isDetail && (
+                      <div className="mt-2 text-xs leading-relaxed text-bone-400">
+                        <p>{def.summary}</p>
+                        <div className="mt-2 flex gap-2">
+                          {status === 'undiscovered' ? (
+                            <Button variant="primary" onClick={() => handleNearbyAction(def.id, 'undiscovered')}>
+                              查看委托
+                            </Button>
+                          ) : (
+                            <Button variant="primary" onClick={() => handleNearbyAction(def.id, 'available')}>
+                              接受任务
+                            </Button>
+                          )}
+                          <Button variant="ghost" onClick={() => onViewQuest(def.id)}>
+                            找到发布者
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </Accordion>
+        )}
+
+        {/* 已完成（默认折叠） */}
+        {completed.length > 0 && (
+          <Accordion title={`已完成（${completed.length}）`} ariaLabel="已完成的任务">
+            <div className="flex flex-col gap-1">
+              {completed.map((qs) => {
+                const def = getQuest(qs.questId)
+                const isDetail = completedDetail === qs.questId
+                return (
+                  <div key={qs.questId}>
+                    <button
+                      type="button"
+                      className="flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left text-sm text-bone-300 hover:bg-ink-700/40"
+                      onClick={() => setCompletedDetail(isDetail ? null : qs.questId)}
+                    >
+                      <span>{def?.title ?? '未知任务'}</span>
+                      <span className="shrink-0 text-xs text-bone-500">已完成</span>
+                    </button>
+                    {isDetail && (
+                      <div className="mb-1 rounded border border-ink-600 bg-ink-900/40 px-3 py-2 text-xs leading-relaxed text-bone-400">
+                        <p>{def?.summary ?? '异常任务（无法识别）'}</p>
+                        {def?.goldReward !== undefined && <p className="mt-1 text-gold-300">奖励：{def.goldReward} 金币</p>}
+                        {qs.questId === 'quest_wangcai_trouble' && qs.status === 'completed' && (
+                          <p className="mt-1 text-bone-300">第一阶段主线已经告一段落。《追寻黄金兔子王》仍需等待新的线索。</p>
+                        )}
+                        {qs.questId === 'quest_north_gate_missing_patrol' && qs.status === 'completed' && (
+                          <p className="mt-1 text-bone-300">北门失联 · 已完成</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+              {failed.length > 0 && (
+                <div className="mt-2 border-t border-ink-600 pt-2">
+                  <p className="px-2 text-xs text-bone-500">失败（{failed.length}）</p>
+                  {failed.map((qs) => (
+                    <p key={qs.questId} className="px-2 py-1 text-sm text-bone-500">
+                      {getQuest(qs.questId)?.title ?? '未知任务'}
+                    </p>
+                  ))}
+                </div>
+              )}
+            </div>
+          </Accordion>
+        )}
+      </div>
+
+      {/* ③ 最近记录（Activity Feed；3-5 条 + 查看全部 → Drawer） */}
+      <section className="rounded border border-ink-600 bg-ink-800/50 p-4 text-sm text-bone-300">
+        <h3 className="mb-2 text-xs font-bold tracking-wider text-bone-500">最近记录</h3>
+        {activityItems.length === 0 ? (
+          <p className="text-bone-500">暂无记录。</p>
+        ) : (
+          <ul className="flex flex-col gap-1.5">
+            {activityItems.slice(0, 5).map((item) => (
+              <li key={item.id} className="flex items-start gap-2 text-xs text-bone-400">
+                <span className="shrink-0 text-bone-500">[{item.category}]</span>
+                <span>{item.text}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        {activityItems.length > 5 && (
+          <Button variant="ghost" className="mt-2" onClick={() => setActivityOpen(true)}>
+            查看全部
+          </Button>
+        )}
+      </section>
+
+      {/* 红颜录 / 伙伴（保留原右栏面板） */}
+      <RelationshipPanel />
+      <CompanionPanel />
+
+      {/* Activity Drawer（消息中心） */}
+      <Drawer open={activityOpen} onClose={() => setActivityOpen(false)} title="消息中心" ariaLabel="消息中心">
+        <div className="flex flex-col gap-2">
+          {activityItems.map((item) => (
+            <div key={item.id} className="rounded border border-ink-600 bg-ink-900/40 px-3 py-2 text-sm text-bone-300">
+              <span className="mr-2 text-xs text-gold-300">[{item.category}]</span>
+              {item.text}
+            </div>
+          ))}
+        </div>
+      </Drawer>
+    </div>
+  )
+}
+
+/** 进行中任务行（进度提示，从原「冒险日志」迁移） */
+function QuestRow({ questId, gameState, compact }: { questId: string; gameState: GameState; compact?: boolean }) {
+  const def = getQuest(questId)
+  const qs = gameState.quests.find((q) => q.questId === questId)
+  if (!qs) return null
+  const world = gameState.world
+  const goldenSearchQuest = gameState.quests.find((q) => q.questId === 'quest_golden_rabbit_search')
+  const goldenAskedBlacksmith = goldenSearchQuest?.flags.asked_blacksmith === true
+  const goldenAskedApothecary = goldenSearchQuest?.flags.asked_apothecary === true
+  const goldenInvestigationCount = (goldenAskedBlacksmith ? 1 : 0) + (goldenAskedApothecary ? 1 : 0)
+  const goldenVillageInquiryReported = goldenSearchQuest?.flags.village_inquiry_reported === true
+  const goldenLairRechecked = goldenSearchQuest?.flags.rabbit_lair_rechecked === true
+  const northGateQuest = gameState.quests.find((q) => q.questId === 'quest_north_gate_missing_patrol')
+  const northGateTrailChecked = northGateQuest?.flags.north_gate_trail_checked === true
+  const northGateWolfDefeated = northGateQuest?.flags.north_gate_wolf_defeated === true
+  const wangcaiQuest = gameState.quests.find((q) => q.questId === 'quest_wangcai_trouble')
+  const wangcaiBriefed = wangcaiQuest?.flags.wangcai_briefed === true
+  const towerUnlocked = world.flags.black_stone_tower_unlocked === true
+  const towerFloor2Unlocked = world.flags.black_stone_tower_floor2_unlocked === true
+  const towerFloor3Unlocked = world.flags.black_stone_tower_floor3_unlocked === true
+  const floor1SoldierDefeated = wangcaiQuest?.flags.floor1_soldier_defeated === true
+  const floor1CaptainDefeated = wangcaiQuest?.flags.floor1_captain_defeated === true
+  const floor2ZombieDefeated = wangcaiQuest?.flags.floor2_zombie_defeated === true
+  const floor2BlackMageDefeated = wangcaiQuest?.flags.floor2_black_mage_defeated === true
+  const floor2SkeletonWarriorDefeated = wangcaiQuest?.flags.floor2_skeleton_warrior_defeated === true
+  const floor3SkeletonWitchDefeated = wangcaiQuest?.flags.floor3_skeleton_witch_defeated === true
+  const kuidongNecklaceReturned = wangcaiQuest?.flags.kuidong_necklace_returned === true
+
+  return (
+    <div className="rounded border border-ink-600 bg-ink-900/40 p-3">
+      <div className="flex items-center justify-between gap-3">
+        <p className="font-bold text-bone-100">{def?.title ?? '未知任务'}</p>
+        <span className="shrink-0 text-xs text-gold-300">进行中</span>
+      </div>
+      {!compact && <p className="mt-1 text-xs leading-relaxed text-bone-500">{def?.summary ?? '异常任务（无法识别）'}</p>}
+      {/* 进度提示（保持与 P2-005 语义一致） */}
+      {questId === 'quest_golden_rabbit_search' && qs.status === 'in_progress' && (
+        <p className="mt-1 text-xs text-bone-400">地图线索调查：{goldenInvestigationCount} / 2</p>
+      )}
+      {questId === 'quest_golden_rabbit_search' && goldenInvestigationCount === 2 && (
+        <div className="mt-2 rounded border border-gold-500/40 bg-ink-900/40 p-2 text-xs leading-relaxed text-bone-200">
+          <p>你已经向铁匠和药师打听过，但仍无法确认地图指向的具体地点。</p>
+          <p className="mt-1 text-bone-300">地图上的标记仍无法对应到任何已知地点。</p>
+        </div>
+      )}
+      {questId === 'quest_golden_rabbit_search' && goldenVillageInquiryReported && (
+        <p className="mt-1 text-xs text-gold-300">村内调查已汇报。</p>
+      )}
+      {questId === 'quest_golden_rabbit_search' && goldenVillageInquiryReported && !goldenLairRechecked && (
+        <p className="mt-1 text-xs text-bone-400">当前目标：返回兔王巢穴重新比对地图。</p>
+      )}
+      {questId === 'quest_golden_rabbit_search' && goldenLairRechecked && (
+        <p className="mt-1 text-xs text-gold-300">巢穴复查完成。</p>
+      )}
+      {questId === 'quest_apothecary_herb_route' && qs.status === 'in_progress' && (
+        <p className="mt-1 text-xs text-bone-400">当前目标：前往村外草原查看采药区域。</p>
+      )}
+      {questId === 'quest_blacksmith_mine_remnant' && qs.status === 'in_progress' && (
+        <p className="mt-1 text-xs text-bone-400">当前目标：前往废弃矿洞处理残余的魔化鼠。</p>
+      )}
+      {questId === 'quest_wangcai_trouble' && qs.status === 'in_progress' && (
+        <div className="mt-1 text-xs text-bone-400">
+          {!wangcaiBriefed ? (
+            <p>当前目标：返回天龙城，找到商人王财了解情况。</p>
+          ) : !towerUnlocked ? (
+            <>
+              <p className="text-gold-300">已向王财了解情况。</p>
+              <p className="mt-1">当前目标：调查黑石塔附近的情况。</p>
+              <p className="mt-1">黑石塔的调查尚未开始。</p>
+            </>
+          ) : !floor1SoldierDefeated ? (
+            <>
+              <p className="text-gold-300">已向王财了解情况。</p>
+              <p className="mt-1 text-gold-300">黑石塔路线已确认。</p>
+              <p className="mt-1">当前目标：前往黑石塔一层调查。</p>
+            </>
+          ) : !floor1CaptainDefeated ? (
+            <>
+              <p className="text-gold-300">已向王财了解情况。</p>
+              <p className="mt-1 text-gold-300">黑石塔路线已确认。</p>
+              <p className="mt-1 text-gold-300">黑石塔一层：已击败骷髅士兵。</p>
+              <p className="mt-1">当前目标：击败骷髅队长。</p>
+            </>
+          ) : !floor2ZombieDefeated || !floor2BlackMageDefeated ? (
+            <>
+              <p className="text-gold-300">已向王财了解情况。</p>
+              <p className="mt-1 text-gold-300">黑石塔路线已确认。</p>
+              <p className="mt-1 text-gold-300">黑石塔一层：已击败骷髅士兵。</p>
+              <p className="mt-1 text-gold-300">黑石塔一层：骷髅队长已击败，未发现夔峒项链。</p>
+              <p className="mt-1">当前目标：继续深入黑石塔。</p>
+              <p className="mt-1">黑石塔上层尚未开启。</p>
+            </>
+          ) : !floor2SkeletonWarriorDefeated ? (
+            <>
+              <p className="text-gold-300">已向王财了解情况。</p>
+              <p className="mt-1 text-gold-300">黑石塔路线已确认。</p>
+              <p className="mt-1 text-gold-300">黑石塔一层：已击败骷髅士兵。</p>
+              <p className="mt-1 text-gold-300">黑石塔一层：骷髅队长已击败，未发现夔峒项链。</p>
+              <p className="mt-1 text-gold-300">黑石塔二层：入口区域已清理。</p>
+              <p className="mt-1">当前目标：击败骷髅战士。</p>
+            </>
+          ) : !floor3SkeletonWitchDefeated ? (
+            <>
+              <p className="text-gold-300">已向王财了解情况。</p>
+              <p className="mt-1 text-gold-300">黑石塔路线已确认。</p>
+              <p className="mt-1 text-gold-300">黑石塔一层：已击败骷髅士兵。</p>
+              <p className="mt-1 text-gold-300">黑石塔一层：骷髅队长已击败，未发现夔峒项链。</p>
+              <p className="mt-1 text-gold-300">黑石塔二层：入口区域已清理。</p>
+              <p className="mt-1 text-gold-300">黑石塔二层深处：骷髅战士已击败，仍未发现夔峒项链。</p>
+              <p className="mt-1">当前目标：击败骷髅女妖。</p>
+            </>
+          ) : kuidongNecklaceReturned ? (
+            <>
+              <p className="text-gold-300">已向王财了解情况。</p>
+              <p className="mt-1 text-gold-300">黑石塔路线已确认。</p>
+              <p className="mt-1 text-gold-300">黑石塔一层：已击败骷髅士兵。</p>
+              <p className="mt-1 text-gold-300">黑石塔一层：骷髅队长已击败，未发现夔峒项链。</p>
+              <p className="mt-1 text-gold-300">黑石塔二层：入口区域已清理。</p>
+              <p className="mt-1 text-gold-300">黑石塔二层深处：骷髅战士已击败，仍未发现夔峒项链。</p>
+              <p className="mt-1 text-gold-300">黑石塔三层：骷髅女妖已击败。</p>
+              <p className="mt-1 text-gold-300">黑石塔三层：已找到夔峒项链。</p>
+              <p className="mt-1 text-gold-300">夔峒项链：已交还王财。</p>
+              <p className="mt-1">当前目标：返回武馆，向马科复命。</p>
+            </>
+          ) : (
+            <>
+              <p className="text-gold-300">已向王财了解情况。</p>
+              <p className="mt-1 text-gold-300">黑石塔路线已确认。</p>
+              <p className="mt-1 text-gold-300">黑石塔一层：已击败骷髅士兵。</p>
+              <p className="mt-1 text-gold-300">黑石塔一层：骷髅队长已击败，未发现夔峒项链。</p>
+              <p className="mt-1 text-gold-300">黑石塔二层：入口区域已清理。</p>
+              <p className="mt-1 text-gold-300">黑石塔二层深处：骷髅战士已击败，仍未发现夔峒项链。</p>
+              <p className="mt-1 text-gold-300">黑石塔三层：骷髅女妖已击败。</p>
+              <p className="mt-1 text-gold-300">黑石塔三层：已找到夔峒项链。</p>
+              <p className="mt-1">当前目标：返回天龙城，将夔峒项链交还王财。</p>
+            </>
+          )}
+        </div>
+      )}
+      {questId === 'quest_north_gate_missing_patrol' && qs.status === 'in_progress' && (
+        <div className="mt-1 text-xs text-bone-400">
+          {!northGateTrailChecked ? (
+            <>
+              <p>当前目标：前往天龙城北门，寻找巡逻队留下的踪迹。</p>
+              <p className="mt-1 text-bone-300">巡逻队离开前最后的路线是经过北门。</p>
+            </>
+          ) : (
+            <>
+              <p className="text-gold-300">北门外的痕迹已发现。</p>
+              <p className="mt-1">当前目标：调查北门外的异常痕迹。</p>
+            </>
+          )}
+        </div>
+      )}
+      {questId === 'quest_north_gate_missing_patrol' && qs.status === 'completable' && (
+        <div className="mt-1 text-xs text-bone-400">
+          <p className="text-gold-300">黑鬃魔狼已击败，找到了断裂的铜牌。</p>
+          <p className="mt-1">当前目标：返回武馆，将发现告诉马科。</p>
+        </div>
+      )}
+      {northGateWolfDefeated && questId === 'quest_north_gate_missing_patrol' && (
+        <p className="mt-1 text-xs text-bone-500">北门外的黑鬃魔狼已击败。</p>
+      )}
+    </div>
+  )
+}

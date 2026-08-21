@@ -58,6 +58,12 @@ export default function App() {
     setScreen('game')
   }
 
+  // TM-P2-006 第 33 节：逃跑成功 → 直接结束战斗返回冒险（不 resolveCombatVictory：无 defeated / XP / loot / 金币 / kill flag）
+  const handleEscape = () => {
+    setCombatEnemyId(null)
+    setScreen('game')
+  }
+
   const handleDefeat = () => {
     // TM-P0-022-R1：正常战败返回冒险页（保持 HP0 与原战斗地点，可回村休整恢复）；不复活、不自动读档、不自动传送
     setCombatEnemyId(null)
@@ -80,6 +86,7 @@ export default function App() {
         enemyId={combatEnemyId}
         onVictory={handleVictory}
         onDefeat={handleDefeat}
+        onEscape={handleEscape}
         onExitToMenu={handleExitToMenu}
       />
     )

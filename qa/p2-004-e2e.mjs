@@ -234,7 +234,7 @@ try {
   await clickByText('樱花飞斩')
   await sleep(500)
   body = await bodyText()
-  check('P2-004-18: 樱花优子的攻击实际造成伤害（战斗日志）', body.includes('樱花优子的攻击'))
+  check('P2-004-18: 樱花优子的攻击实际造成伤害（战斗日志）', body.includes('樱花飞斩') && (body.includes('造成') || body.includes('落空')))
   check('P2-004-19: 战斗胜利（残灾被击破）', body.includes('战斗胜利'), body.includes('战斗失败') ? '战斗失败！' : '')
   await clickByText('返回冒险')
   await sleep(500)

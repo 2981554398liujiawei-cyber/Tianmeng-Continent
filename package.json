@@ -19,6 +19,10 @@
     "qa:p2-005-combat-layout": "node qa/p2-005-combat-layout-e2e.mjs",
     "qa:p2-005-merchant": "node qa/p2-005-merchant-e2e.mjs",
     "qa:p2-004": "node qa/p2-004-e2e.mjs && node qa/p2-004-r1-e2e.mjs",
+    "qa:p2-006-game-ui": "node qa/p2-006-game-ui-e2e.mjs",
+    "qa:p2-006-combat-ui": "node qa/p2-006-combat-ui-e2e.mjs",
+    "qa:p2-006-balance": "node qa/p2-006-balance.mjs --phase after",
+    "qa:p2-006": "npm run qa:p2-006-game-ui && npm run qa:p2-006-combat-ui && npm run qa:p2-006-balance",
     "qa:rc": "npm run build && node qa/rc-e2e.mjs"
   },
   "dependencies": {

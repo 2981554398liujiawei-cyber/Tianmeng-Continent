@@ -187,7 +187,7 @@ describe('TM-P0-002：内容数量与指定条目', () => {
     expect(soldier?.tags).toEqual(['undead'])
     expect(soldier?.maxHp).toBe(14)
     expect(soldier?.armor).toBe(12)
-    expect(soldier?.attackPower).toBe(3)
+    expect(soldier?.attackPower).toBe(20)
     expect(soldier?.agility).toBe(8)
   })
 
@@ -201,7 +201,7 @@ describe('TM-P0-002：内容数量与指定条目', () => {
     expect(captain?.tags).toEqual(['undead', 'boss'])
     expect(captain?.maxHp).toBe(22)
     expect(captain?.armor).toBe(13)
-    expect(captain?.attackPower).toBe(4)
+    expect(captain?.attackPower).toBe(14)
     expect(captain?.agility).toBe(8)
   })
 
@@ -216,7 +216,7 @@ describe('TM-P0-002：内容数量与指定条目', () => {
     expect(zombie?.tags).toEqual(['undead'])
     expect(zombie?.maxHp).toBe(18)
     expect(zombie?.armor).toBe(12)
-    expect(zombie?.attackPower).toBe(4)
+    expect(zombie?.attackPower).toBe(18)
     expect(zombie?.agility).toBe(6)
   })
 
@@ -231,7 +231,7 @@ describe('TM-P0-002：内容数量与指定条目', () => {
     expect(blackMage?.tags).toEqual(['undead'])
     expect(blackMage?.maxHp).toBe(14)
     expect(blackMage?.armor).toBe(11)
-    expect(blackMage?.attackPower).toBe(4)
+    expect(blackMage?.attackPower).toBe(14)
     expect(blackMage?.agility).toBe(8)
   })
 
@@ -246,7 +246,7 @@ describe('TM-P0-002：内容数量与指定条目', () => {
     expect(warrior?.tags).toEqual(['undead'])
     expect(warrior?.maxHp).toBe(20)
     expect(warrior?.armor).toBe(13)
-    expect(warrior?.attackPower).toBe(4)
+    expect(warrior?.attackPower).toBe(18)
     expect(warrior?.agility).toBe(8)
   })
 
@@ -261,7 +261,7 @@ describe('TM-P0-002：内容数量与指定条目', () => {
     expect(witch?.tags).toEqual(['undead'])
     expect(witch?.maxHp).toBe(18)
     expect(witch?.armor).toBe(12)
-    expect(witch?.attackPower).toBe(5)
+    expect(witch?.attackPower).toBe(16)
     expect(witch?.agility).toBe(8)
   })
 
@@ -275,7 +275,7 @@ describe('TM-P0-002：内容数量与指定条目', () => {
     expect(wolf?.tags).toEqual(['beast'])
     expect(wolf?.maxHp).toBe(15)
     expect(wolf?.armor).toBe(12)
-    expect(wolf?.attackPower).toBe(3)
+    expect(wolf?.attackPower).toBe(16)
     expect(wolf?.agility).toBe(12)
   })
 
@@ -489,11 +489,11 @@ describe('TM-P0-007：敌人战斗数据一致性', () => {
     }
   })
 
-  it('四敌人战斗基线数值锁定（V1 平衡基线）', () => {
-    expect(getEnemy('corrupted_rabbit')).toMatchObject({ maxHp: 8, armor: 11, attackPower: 2, agility: 10 })
-    expect(getEnemy('corrupted_rat')).toMatchObject({ maxHp: 6, armor: 10, attackPower: 2, agility: 10 })
-    expect(getEnemy('corrupted_wolf')).toMatchObject({ maxHp: 12, armor: 12, attackPower: 3, agility: 12 })
-    expect(getEnemy('dudu_rabbit')).toMatchObject({ maxHp: 24, armor: 13, attackPower: 4, agility: 10 })
+  it('TM-P2-006 After 调参：四敌人战斗基线数值锁定（attackPower 按平衡审计上调）', () => {
+    expect(getEnemy('corrupted_rabbit')).toMatchObject({ maxHp: 8, armor: 11, attackPower: 16, agility: 10 })
+    expect(getEnemy('corrupted_rat')).toMatchObject({ maxHp: 6, armor: 10, attackPower: 16, agility: 10 })
+    expect(getEnemy('corrupted_wolf')).toMatchObject({ maxHp: 12, armor: 12, attackPower: 14, agility: 12 })
+    expect(getEnemy('dudu_rabbit')).toMatchObject({ maxHp: 24, armor: 13, attackPower: 18, agility: 10 })
   })
 
   it('已锁定身份字段未被修改：name/description/tags/level', () => {

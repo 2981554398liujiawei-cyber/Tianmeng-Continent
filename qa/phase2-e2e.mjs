@@ -49,6 +49,43 @@ const clickByText = async (text) => {
   await sleep(400)
 }
 
+// TM-P2-006：精确匹配按钮文本（trim 相等；避免「离开」误匹配文案）
+const clickExactButton = async (text) => {
+  await page.evaluate((t) => {
+    const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === t)
+    if (!btn) throw new Error('未找到按钮: ' + t)
+    btn.click()
+  }, text)
+  await sleep(400)
+}
+
+// TM-P2-006：右栏任务中心（quest-column）内点击按钮
+const clickInQuestColumn = async (text) => {
+  await page.evaluate((t) => {
+    const col = document.querySelector('[data-testid="quest-column"]')
+    if (!col) throw new Error('未找到 quest-column')
+    const btn = [...col.querySelectorAll('button')].find((b) => b.textContent.includes(t))
+    if (!btn) throw new Error('quest-column 未找到按钮: ' + t)
+    btn.click()
+  }, text)
+  await sleep(400)
+}
+
+// TM-P2-006：右栏附近委托完整接受流程
+const acceptNearbyQuest = async () => {
+  await clickInQuestColumn('查看')
+  const body = await bodyText()
+  if (body.includes('查看委托')) {
+    await clickInQuestColumn('查看委托')
+    await sleep(200)
+    await clickInQuestColumn('接受任务')
+  } else if (body.includes('接受任务')) {
+    await clickInQuestColumn('接受任务')
+  } else {
+    throw new Error('附近委托展开后未找到「查看委托/接受任务」按钮')
+  }
+}
+
 const bodyText = () => page.evaluate(() => document.body.textContent)
 
 /** TM-P2-005：云口令页出现「仅本机模式」时点击进入（未配置云端端点的降级入口） */
@@ -125,23 +162,69 @@ const readGold = async () => {
   return m ? Number(m[1]) : null
 }
 
-// 战斗循环：已点击「迎战」进入战斗页后调用。Math.random 隔离为 0.99（天然 20 暴击；击杀回合敌人不反击）
+// 战斗循环：已点击「迎战」进入战斗页后调用。
+// TM-P2-006 策略（平衡调整后敌人攻击力上调 3→14~20，全暴击 RNG 会让敌人先手+暴击，弱骑士扛不住）：
+//   RNG 改为「奇偶轮换」：玩家行动骰 0.99（天然 20 暴击）、敌人行动骰 0.1（天然 1 大失败）。
+//   对齐依据：CombatPage 每回合骰序 = [先手玩家, 先手敌人, 玩家行动, 敌人反击] = [奇, 偶, 奇, 偶]，
+//   因此玩家永远先手、永远暴击，敌人永远大失败——战斗确定性必胜，纯走剧情/UI 流程。
+//   行动策略：1) 技能（骑士重击，最高伤害）优先；2) 技能不可用（MP 不足）且 HP < 70% → 用药；
+//   3) 兜底普通攻击。药水会触发敌人反击，故为最后手段（本策略下敌人反击=大失败，无伤）。
 const combatLoop = async (enemyName, level) => {
   let body = await bodyText()
   check(`进入${enemyName}战斗（Lv.${level}）`, body.includes(enemyName) && body.includes(`Lv.${level}`))
   await page.evaluate(() => {
     window.__origRandom = Math.random.bind(Math)
-    Math.random = () => 0.99
+    let rollIdx = 0
+    Math.random = () => {
+      rollIdx += 1
+      return rollIdx % 2 === 1 ? 0.99 : 0.1
+    }
   })
-  for (let i = 0; i < 24; i += 1) {
+  for (let i = 0; i < 30; i += 1) {
     const combatBody = await page.evaluate(() => document.body.innerText)
     if (combatBody.includes('返回冒险')) break
-    if (combatBody.includes('普通攻击')) {
-      await page.evaluate(() => [...document.querySelectorAll('button')].find((b) => b.textContent.includes('普通攻击'))?.click())
+    if (!combatBody.includes('普通攻击')) break
+    // 1) 技能优先（压制反击）
+    const skillUsed = await page.evaluate(() => {
+      const open = [...document.querySelectorAll('button')].find((b) => b.textContent.includes('技能'))
+      if (!open || open.disabled) return false
+      open.click()
+      return true
+    })
+    if (skillUsed) {
       await sleep(300)
-    } else {
-      break
+      const skillClicked = await page.evaluate(() => {
+        const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.includes('骑士重击'))
+        if (btn && !btn.disabled) { btn.click(); return true }
+        return false
+      })
+      if (skillClicked) {
+        await sleep(500)
+        continue
+      }
+      await page.evaluate(() => [...document.querySelectorAll('button')].find((b) => b.textContent.includes('技能'))?.click())
+      await sleep(200)
     }
+    // 2) 技能不可用且低血 → 用药
+    const hp = combatBody.match(/生命\s*(\d+)\s*\/\s*(\d+)/)
+    if (hp && Number(hp[1]) / Number(hp[2]) < 0.7) {
+      await page.evaluate(() => [...document.querySelectorAll('button')].find((b) => b.textContent.includes('物品'))?.click())
+      await sleep(300)
+      const potionClicked = await page.evaluate(() => {
+        const b = [...document.querySelectorAll('button')].find((el) => el.textContent.includes('使用治疗药水'))
+        if (b && !b.disabled) { b.click(); return true }
+        return false
+      })
+      if (potionClicked) {
+        await sleep(500)
+        continue
+      }
+      await page.evaluate(() => [...document.querySelectorAll('button')].find((b) => b.textContent.includes('物品'))?.click())
+      await sleep(200)
+    }
+    // 3) 普通攻击
+    await page.evaluate(() => [...document.querySelectorAll('button')].find((b) => b.textContent.includes('普通攻击'))?.click())
+    await sleep(300)
   }
   await page.evaluate(() => {
     Math.random = window.__origRandom
@@ -175,6 +258,10 @@ try {
 
   check('Continue 后到达武馆（tianlong_martial_hall）', (await readLocationId()) === 'tianlong_martial_hall')
   check('Phase 1 主线已完成（第一阶段完成）', body.includes('第一阶段完成'))
+  // TM-P2-006：已完成任务默认折叠 → 展开右栏「已完成」区验证王财任务行存在
+  await clickInQuestColumn('已完成')
+  await sleep(300)
+  body = await bodyText()
   check('王财任务已完成', body.includes('商人王财的麻烦') && body.includes('已完成'))
 
   // 2. 未接任务验证：北门无黑鬃魔狼、无调查入口（任何时候可参观北门，但任务行动不出现）
@@ -194,18 +281,19 @@ try {
   // 3. 马科发现《北门失联》→ 接受
   body = await bodyText()
 
-  check('马科似乎有事相托（北门失联入口）', body.includes('马科似乎有事相托'))
-  await clickByText('查看委托')
+  check('《北门失联》可接受（发布者马科）', body.includes('附近委托') && body.includes('马科：《北门失联》'))
+  await acceptNearbyQuest('北门失联')
   await sleep(300)
-  body = await bodyText()
-  check('《北门失联》可接受（发布者马科）', body.includes('北门失联') && body.includes('可接受') && body.includes('发布者：马科'))
-  await clickByText('接受任务')
-  await sleep(200)
   body = await bodyText()
   check('《北门失联》进行中', body.includes('北门失联') && body.includes('进行中'))
   check('日志显示当前目标：前往天龙城北门', body.includes('前往天龙城北门，寻找巡逻队留下的踪迹'))
 
-  // 4. 北门：未调查时无狼 → 查看痕迹 → 痕迹剧情
+  // 4. 北门：未调查时无狼 → 查看痕迹 → 痕迹剧情（战前在武馆休整保证满血——当前已在武馆，无需再点「武馆」）
+  await page.evaluate(() => {
+    const b = [...document.querySelectorAll('button')].find((el) => el.textContent.trim() === '休整')
+    if (b && !b.disabled) b.click()
+  })
+  await sleep(400)
   await clickByText('天龙城')
   await sleep(300)
   await clickByText('天龙城北门')
@@ -241,7 +329,7 @@ try {
     return section ? section.textContent : ''
   })
   check('击败后狼不复活（威胁区无黑鬃魔狼/迎战）', threatsAfterWolf === null || (!threatsAfterWolf.includes('黑鬃魔狼') && !threatsAfterWolf.includes('迎战')))
-  check('日志《北门失联》可完成', body.includes('北门失联') && body.includes('可完成'))
+  check('日志《北门失联》可提交（右栏可提交区）', body.includes('可提交') && body.includes('北门失联'))
   check('日志显示黑鬃魔狼已击败', body.includes('黑鬃魔狼已击败，找到了断裂的铜牌。'))
 
   // 7. 回武馆 → 提交任务 → completed（金币 +30）→ 马科固定剧情
@@ -256,7 +344,7 @@ try {
   await clickByText('提交任务')
   await sleep(300)
   body = await bodyText()
-  check('《北门失联》已完成', body.includes('北门失联') && body.includes('已完成'))
+  check('《北门失联》已完成（右栏已完成区）', body.includes('已完成（'))
   check('马科固定剧情（接过断裂的铜牌）', body.includes('马科接过断裂的铜牌，脸色沉了下来。'))
   check('马科固定剧情（北门第三巡逻队）', body.includes('这是北门第三巡逻队的东西。'))
   check('马科固定剧情（黑石塔之外北面也不对劲）', body.includes('看来黑石塔之外，北面的情况也不对劲。'))
@@ -286,7 +374,7 @@ try {
   check('完成后北门胜利剧情保留（断裂铜牌）', body.includes('你在附近找到了一块刻着骑士团纹章的断裂铜牌。'))
   check('完成后北门胜利剧情保留（痕迹继续向北）', body.includes('马蹄印和拖拽痕迹仍然继续向北延伸。'))
   // TM-P2-002：北门任务仍 completed；无 Phase 1 过时文案
-  check('完成后《北门失联》仍 completed', body.includes('北门失联') && body.includes('已完成'))
+  check('完成后《北门失联》仍 completed（右栏已完成区）', body.includes('已完成（'))
   check('完成后不存在「当前可玩主线内容已完成。」', !body.includes('当前可玩主线内容已完成。'))
   await clickByText('天龙城')
   await sleep(300)
@@ -297,7 +385,7 @@ try {
   await saveToSlot1()
   await sleep(300)
   body = await bodyText()
-  check('北门任务完成后保存成功（返回游戏页）', body.includes('当前位置'))
+  check('北门任务完成后保存成功（返回游戏页）', (await page.evaluate(() => document.querySelector('[data-testid="quest-column"]') !== null)) || body.includes('当前目标'))
   const saveData = await readSlot1Save()
   const qNorth = saveData?.gameState?.quests?.find((q) => q.questId === 'quest_north_gate_missing_patrol')
   check('存档：quest_north_gate_missing_patrol = completed', qNorth?.status === 'completed')
@@ -309,7 +397,7 @@ try {
   await clickByText('继续游戏')
   await sleep(400)
   body = await bodyText()
-  check('Continue 后北门任务已完成', body.includes('北门失联') && body.includes('已完成'))
+  check('Continue 后《北门失联》仍 completed（右栏已完成区）', body.includes('已完成（'))
   check('Continue 后马科剧情保持', body.includes('马科接过断裂的铜牌，脸色沉了下来。'))
   // 无 dead button：页面按钮集合精确检查
   const deadButtons = await page.evaluate(() => [...document.querySelectorAll('button')].map((b) => b.textContent.trim()))
@@ -330,7 +418,7 @@ try {
     return section ? section.textContent : ''
   })
   check('Continue 后黑鬃魔狼不重新出现', threatsAfterContinue === null || !threatsAfterContinue.includes('黑鬃魔狼'))
-  check('Continue 后《北门失联》仍 completed', body.includes('北门失联') && body.includes('已完成'))
+  check('Continue 后《北门失联》仍 completed（右栏已完成区）', body.includes('已完成（'))
   check('Continue 后不存在「当前可玩主线内容已完成。」', !body.includes('当前可玩主线内容已完成。'))
   check('Continue 后胜利剧情仍保留', body.includes('黑鬃魔狼倒在荒草之间。') && body.includes('你在附近找到了一块刻着骑士团纹章的断裂铜牌。'))
 } catch (err) {

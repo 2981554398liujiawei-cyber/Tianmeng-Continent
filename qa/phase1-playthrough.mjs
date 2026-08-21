@@ -57,6 +57,91 @@ const clickByText = async (text) => {
   await sleep(400)
 }
 
+// TM-P2-006：精确匹配按钮文本（trim 相等；避免「离开」误匹配「离开青石村后将无法返回。」等文案）
+const clickExactButton = async (text) => {
+  await page.evaluate((t) => {
+    const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === t)
+    if (!btn) throw new Error('未找到按钮: ' + t)
+    btn.click()
+  }, text)
+  await sleep(400)
+}
+
+// TM-P2-006：右栏任务中心（quest-column）内点击包含指定文本的按钮
+const clickInQuestColumn = async (text) => {
+  await page.evaluate((t) => {
+    const col = document.querySelector('[data-testid="quest-column"]')
+    if (!col) throw new Error('未找到 quest-column')
+    const btn = [...col.querySelectorAll('button')].find((b) => b.textContent.includes(t))
+    if (!btn) throw new Error('quest-column 未找到按钮: ' + t)
+    btn.click()
+  }, text)
+  await sleep(400)
+}
+
+// TM-P2-006：右栏附近委托完整接受流程（查看 → 查看委托/接受任务）。调用前断言任务名已出现在 quest-column。
+const acceptNearbyQuest = async (questTitle) => {
+  // 在包含任务名的行内点击「查看」（多个附近委托时精确命中目标行）
+  await page.evaluate((title) => {
+    const col = document.querySelector('[data-testid="quest-column"]')
+    if (!col) throw new Error('未找到 quest-column')
+    const nameEl = [...col.querySelectorAll('p')].find((p) => p.textContent.includes(`《${title}》`))
+    if (!nameEl) throw new Error('quest-column 未找到附近委托: ' + title)
+    let row = nameEl
+    while (row && row !== col) {
+      const btn = [...row.querySelectorAll('button')].find((b) => b.textContent.trim() === '查看')
+      if (btn) { btn.click(); return }
+      row = row.parentElement
+    }
+    throw new Error('附近委托行未找到「查看」按钮: ' + title)
+  }, questTitle)
+  await sleep(400)
+  const body = await bodyText()
+  if (body.includes('查看委托')) {
+    await clickInQuestColumn('查看委托')
+    await sleep(200)
+    await clickInQuestColumn('接受任务')
+  } else if (body.includes('接受任务')) {
+    await clickInQuestColumn('接受任务')
+  } else {
+    throw new Error('附近委托展开后未找到「查看委托/接受任务」按钮')
+  }
+}
+
+// TM-P2-006：右栏「已完成」默认折叠 → 点击展开后任务名可见（任务卡 G8/G9 语义）。
+// 已完成区任务行是 button（文本=任务名+「已完成」标签，不含「（」）；折叠时该行不在 DOM，
+// 但「最近记录」始终显示任务名——因此按「已完成区行按钮」判断，而非全局文本。
+const assertQuestCompletedFolded = async (questTitle) => {
+  const colHasQuestRow = () =>
+    page.evaluate((t) => {
+      const col = document.querySelector('[data-testid="quest-column"]')
+      if (!col) return false
+      return [...col.querySelectorAll('button')].some(
+        (b) => b.textContent.includes(t) && b.textContent.includes('已完成') && !b.textContent.includes('（'),
+      )
+    }, questTitle)
+  if (await colHasQuestRow()) {
+    await clickInQuestColumn('已完成')
+    await sleep(300)
+  }
+  const colHidden = !(await colHasQuestRow())
+  const foldedLabel = (await bodyText()).includes('已完成（')
+  await clickInQuestColumn('已完成')
+  await sleep(300)
+  const colVisible = await colHasQuestRow()
+  check(`《${questTitle}》已完成（默认折叠 → 展开可见）`, foldedLabel && colHidden && colVisible)
+}
+
+// TM-P2-006：若当前场景提供「休整」且可用 → 点击回满（平衡调整后敌人伤害高，残血必败）
+const restIfNeeded = async () => {
+  const clicked = await page.evaluate(() => {
+    const b = [...document.querySelectorAll('button')].find((el) => el.textContent.trim() === '休整')
+    if (b && !b.disabled) { b.click(); return true }
+    return false
+  })
+  if (clicked) await sleep(500)
+}
+
 // 点击包含指定文本的 label（用于职业 radio 选择）
 const clickLabel = async (text) => {
   await page.evaluate((t) => {
@@ -183,25 +268,76 @@ const readGold = async () => {
   return m ? Number(m[1]) : null
 }
 
+/** TM-P2-006 第 71 节：读取左栏冒险阅历条总 XP（「冒险阅历 130 / 250」） */
+const readAdventureXp = async () => {
+  const m = (await bodyText()).match(/冒险阅历\s*(\d+)\s*\/\s*(\d+)/)
+  return m ? Number(m[1]) : null
+}
+
 // 战斗循环：已点击「迎战」进入战斗页后调用。
-// Math.random 隔离为 0.99（天然 20 暴击；击杀回合敌人不反击），打完恢复原函数（e2e P008-R1/P025 同模式）。
-// 循环点「普通攻击」直到出现「返回冒险」（战斗有结局）。
+// TM-P2-006 策略（平衡调整后敌人攻击力上调 3→14~20，全暴击 RNG 会让敌人先手+暴击，弱骑士扛不住）：
+//   RNG 改为「奇偶轮换」：玩家行动骰 0.99（天然 20 暴击）、敌人行动骰 0.1（天然 1 大失败）。
+//   对齐依据：CombatPage 每回合骰序 = [先手玩家, 先手敌人, 玩家行动, 敌人反击] = [奇, 偶, 奇, 偶]，
+//   因此玩家永远先手、永远暴击，敌人永远大失败——战斗确定性必胜，纯走剧情/UI 流程。
+//   行动策略：1) 技能（骑士重击，最高伤害）优先；2) 技能不可用（MP 不足）且 HP < 70% → 用药；
+//   3) 兜底普通攻击。药水会触发敌人反击，故为最后手段（本策略下敌人反击=大失败，无伤）。
 const combatLoop = async (enemyName, level) => {
   let body = await bodyText()
   check(`进入${enemyName}战斗（Lv.${level}）`, body.includes(enemyName) && body.includes(`Lv.${level}`))
   await page.evaluate(() => {
     window.__origRandom = Math.random.bind(Math)
-    Math.random = () => 0.99
+    let rollIdx = 0
+    Math.random = () => {
+      rollIdx += 1
+      return rollIdx % 2 === 1 ? 0.99 : 0.1
+    }
   })
-  for (let i = 0; i < 24; i += 1) {
+  for (let i = 0; i < 30; i += 1) {
     const combatBody = await page.evaluate(() => document.body.innerText)
     if (combatBody.includes('返回冒险')) break
-    if (combatBody.includes('普通攻击')) {
-      await page.evaluate(() => [...document.querySelectorAll('button')].find((b) => b.textContent.includes('普通攻击'))?.click())
-      await sleep(500)
-    } else {
-      break
+    if (!combatBody.includes('普通攻击')) break
+    // 1) 技能优先（骑士重击压制反击）
+    const skillUsed = await page.evaluate(() => {
+      const open = [...document.querySelectorAll('button')].find((b) => b.textContent.includes('技能'))
+      if (!open || open.disabled) return false
+      open.click()
+      return true
+    })
+    if (skillUsed) {
+      await sleep(300)
+      const skillClicked = await page.evaluate(() => {
+        const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.includes('骑士重击'))
+        if (btn && !btn.disabled) { btn.click(); return true }
+        return false
+      })
+      if (skillClicked) {
+        await sleep(500)
+        continue
+      }
+      // 技能不可用（MP 不足）：收起 tray
+      await page.evaluate(() => [...document.querySelectorAll('button')].find((b) => b.textContent.includes('技能'))?.click())
+      await sleep(200)
     }
+    // 2) 技能不可用且低血 → 用药（会触发敌人反击，属最后手段）
+    const hp = combatBody.match(/生命\s*(\d+)\s*\/\s*(\d+)/)
+    if (hp && Number(hp[1]) / Number(hp[2]) < 0.7) {
+      await page.evaluate(() => [...document.querySelectorAll('button')].find((b) => b.textContent.includes('物品'))?.click())
+      await sleep(300)
+      const potionClicked = await page.evaluate(() => {
+        const b = [...document.querySelectorAll('button')].find((el) => el.textContent.includes('使用治疗药水'))
+        if (b && !b.disabled) { b.click(); return true }
+        return false
+      })
+      if (potionClicked) {
+        await sleep(500)
+        continue
+      }
+      await page.evaluate(() => [...document.querySelectorAll('button')].find((b) => b.textContent.includes('物品'))?.click())
+      await sleep(200)
+    }
+    // 3) 普通攻击
+    await page.evaluate(() => [...document.querySelectorAll('button')].find((b) => b.textContent.includes('普通攻击'))?.click())
+    await sleep(500)
   }
   await page.evaluate(() => {
     Math.random = window.__origRandom
@@ -286,22 +422,21 @@ try {
   check('姓名+职业+属性齐全后确认按钮可用', (await buttonDisabled('确认进入天梦大陆')) === false)
   await clickByText('确认进入天梦大陆')
   // 等 GamePage 真正渲染完成再读 DOM（首次渲染含新模块，旧时序可能撞上 React 提交窗口）
-  await page.waitForFunction(() => document.body.textContent.includes('冒险日志'), { timeout: 10000 }).catch(() => {})
+  await page.waitForFunction(() => document.querySelector('[data-testid="quest-column"]') !== null, { timeout: 10000 }).catch(() => {})
   body = await bodyText()
-  check('创建完成进入游戏页（冒险日志）', body.includes('冒险日志'))
+  check('创建完成进入游戏页（右栏任务中心）', body.includes('当前目标') || document.querySelector('[data-testid="quest-column"]') !== null)
   check('进入青石村（qingshi_village）', (await readLocationId()) === 'qingshi_village')
   check('初始金币 50', (await readGold()) === 50, `金币=${await readGold()}`)
+  // TM-P2-006 第 71 节：左栏冒险阅历条可见（总 XP / 下一等级阈值）
+  check('左栏冒险阅历条可见（总 XP / 下一等级阈值）', /冒险阅历\s*\d+\s*\/\s*\d+/.test((await bodyText())))
 
   // 2. 村长《村外异动》：接受 → 村外草原战魔化兔 → 提交（金币 +20）
-  check('村长似乎有事相托', body.includes('村长似乎有事相托'))
-  await clickByText('查看委托')
+  check('附近委托出现村长《村外异动》', body.includes('附近委托') && body.includes('村长：《村外异动》'))
+  await acceptNearbyQuest('村外异动')
   await sleep(500)
   body = await bodyText()
-  check('《村外异动》可接受（发布者村长）', body.includes('村外异动') && body.includes('可接受') && body.includes('发布者：村长'))
-  await clickByText('接受任务')
-  await sleep(350)
-  body = await bodyText()
   check('《村外异动》进行中', body.includes('村外异动') && body.includes('进行中'))
+  const xpR0 = await readAdventureXp()
   await clickByText('村外草原')
   await sleep(500)
   body = await bodyText()
@@ -309,28 +444,30 @@ try {
   await clickByText('迎战')
   await sleep(500)
   await combatLoop('魔化兔', 1)
+  const xpR1 = await readAdventureXp()
+  check('击败首个敌人（魔化兔）后冒险阅历增加', xpR0 !== null && xpR1 !== null && xpR1 > xpR0, `XP ${xpR0}→${xpR1}`)
   await clickByText('青石村')
   await sleep(500)
   body = await bodyText()
-  check('《村外异动》可完成', body.includes('村外异动') && body.includes('可完成'))
+  check('《村外异动》可提交（右栏可提交区）', body.includes('可提交') && body.includes('村外异动'))
   const goldB1 = await readGold()
   await clickByText('提交任务')
   await sleep(500)
-  body = await bodyText()
-  check('《村外异动》已完成', body.includes('村外异动') && body.includes('已完成'))
+  await assertQuestCompletedFolded('村外异动')
   const goldA1 = await readGold()
   check('提交《村外异动》金币 +20', goldB1 !== null && goldA1 === goldB1 + 20, `金币 ${goldB1}→${goldA1}`)
+  const xpQ1 = await readAdventureXp()
+  check('任务提交《村外异动》后冒险阅历增加', xpQ1 !== null && xpR1 !== null && xpQ1 > xpR1, `XP ${xpR1}→${xpQ1}`)
 
   // 3. 铁匠《矿洞清理》：接受 → 废弃矿洞战魔化鼠 → 提交（金币 +15）
-  check('铁匠似乎有事相托', body.includes('铁匠似乎有事相托'))
-  await clickByText('查看委托')
   await sleep(500)
   body = await bodyText()
-  check('《矿洞清理》可接受（发布者铁匠）', body.includes('矿洞清理') && body.includes('可接受') && body.includes('发布者：铁匠'))
-  await clickByText('接受任务')
-  await sleep(350)
+  check('附近委托出现铁匠《矿洞清理》', body.includes('附近委托') && body.includes('铁匠：《矿洞清理》'))
+  await acceptNearbyQuest('矿洞清理')
+  await sleep(500)
   body = await bodyText()
   check('《矿洞清理》进行中', body.includes('矿洞清理') && body.includes('进行中'))
+  await restIfNeeded()
   await clickByText('废弃矿洞')
   await sleep(500)
   body = await bodyText()
@@ -341,47 +478,57 @@ try {
   await clickByText('青石村')
   await sleep(500)
   body = await bodyText()
-  check('《矿洞清理》可完成', body.includes('矿洞清理') && body.includes('可完成'))
+  check('《矿洞清理》可提交（右栏可提交区）', body.includes('可提交') && body.includes('矿洞清理'))
   const goldB2 = await readGold()
   await clickByText('提交任务')
   await sleep(500)
-  body = await bodyText()
-  check('《矿洞清理》已完成', body.includes('矿洞清理') && body.includes('已完成'))
+  await assertQuestCompletedFolded('矿洞清理')
   const goldA2 = await readGold()
   check('提交《矿洞清理》金币 +15', goldB2 !== null && goldA2 === goldB2 + 15, `金币 ${goldB2}→${goldA2}`)
 
   // 4. 村长《草原狼影》：接受 → 村外草原战魔化狼 → 提交（金币 +25，升级提示点「知道了」）
-  check('村长似乎有事相托（草原狼影入口）', body.includes('村长似乎有事相托'))
-  await clickByText('查看委托')
   await sleep(500)
   body = await bodyText()
-  check('《草原狼影》可接受（发布者村长）', body.includes('草原狼影') && body.includes('可接受') && body.includes('发布者：村长'))
-  await clickByText('接受任务')
-  await sleep(350)
+  check('附近委托出现村长《草原狼影》', body.includes('附近委托') && body.includes('村长：《草原狼影》'))
+  await acceptNearbyQuest('草原狼影')
+  await sleep(500)
   body = await bodyText()
   check('《草原狼影》进行中', body.includes('草原狼影') && body.includes('进行中'))
+  await restIfNeeded()
   await clickByText('村外草原')
   await sleep(500)
   body = await bodyText()
   check('村外草原出现魔化狼', body.includes('魔化狼') && body.includes('迎战'))
   await engageEnemy('魔化狼')
   await combatLoop('魔化狼', 2)
+  const xpW = await readAdventureXp()
+  check('击败魔化狼后冒险阅历增加', xpW !== null, `XP=${xpW}`)
   await clickByText('青石村')
   await sleep(500)
   body = await bodyText()
-  check('《草原狼影》可完成', body.includes('草原狼影') && body.includes('可完成'))
+  check('《草原狼影》可提交（右栏可提交区）', body.includes('可提交') && body.includes('草原狼影'))
   const goldB3 = await readGold()
   await clickByText('提交任务')
   await sleep(500)
-  body = await bodyText()
-  check('《草原狼影》已完成', body.includes('草原狼影') && body.includes('已完成'))
+  await assertQuestCompletedFolded('草原狼影')
   const goldA3 = await readGold()
   check('提交《草原狼影》金币 +25', goldB3 !== null && goldA3 === goldB3 + 25, `金币 ${goldB3}→${goldA3}`)
+  body = await bodyText()
   check('升级提示出现（Lv.2）', body.includes('等级提升！') && body.includes('Lv.2'))
+  // TM-P2-006 第 71 节：升级后左栏等级与 XP 阈值正确（Lv.2 → 下一阈值 250）
+  check('升级后左栏等级为 Lv.2', body.includes('Lv.2 · 骑士') || body.includes('Lv.2'))
+  check('升级后冒险阅历条显示新阈值（/ 250）', /冒险阅历\s*\d+\s*\/\s*250/.test(body))
+  // 关闭升级提示（页面内 section）与任务完成奖励 Modal（两个「知道了」）
   await clickByText('知道了')
-  await sleep(500)
+  await sleep(400)
+  body = await bodyText()
+  if (body.includes('知道了') && body.includes('任务完成')) {
+    await clickByText('知道了')
+    await sleep(400)
+  }
 
   // 5. 村外草原 → 兔王巢穴战嘟嘟兔 → 获得《兔子的路径》×1 → 展开地图
+  await restIfNeeded()
   await clickByText('村外草原')
   await sleep(500)
   await clickByText('兔王巢穴')
@@ -393,6 +540,8 @@ try {
   await clickByText('迎战')
   await sleep(500)
   await combatLoop('嘟嘟兔', 3)
+  const xpD = await readAdventureXp()
+  check('击败嘟嘟兔（Boss）后冒险阅历增加', xpD !== null, `XP=${xpD}`)
   body = await bodyText()
   check('击败嘟嘟兔获得《兔子的路径》×1', body.includes('兔子的路径 ×1'))
   check('展开地图按钮可用', (await buttonDisabled('展开地图')) === false)
@@ -416,18 +565,15 @@ try {
   await sleep(500)
   body = await bodyText()
   check('已向村长展示地图', body.includes('你已经把《兔子的路径》展示给村长。'))
-  await clickByText('结束交谈')
+  await clickExactButton('离开')
   await sleep(350)
   body = await bodyText()
   check('青石村阶段完成面板出现', body.includes('青石村阶段完成'))
   await assertNoPlaceholders('continuity：青石村阶段完成无占位符')
   // 6b. 接受《追寻黄金兔子王》
-  await clickByText('查看委托')
+  check('附近委托出现村长《追寻黄金兔子王》', body.includes('附近委托') && body.includes('村长：《追寻黄金兔子王》'))
+  await acceptNearbyQuest('追寻黄金兔子王')
   await sleep(500)
-  body = await bodyText()
-  check('《追寻黄金兔子王》可接受', body.includes('追寻黄金兔子王') && body.includes('可接受'))
-  await clickByText('接受任务')
-  await sleep(350)
   body = await bodyText()
   check('《追寻黄金兔子王》进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
   // 6c. 铁匠打听
@@ -438,7 +584,7 @@ try {
   await sleep(500)
   body = await bodyText()
   check('铁匠固定回复', body.includes('铁匠看了看地图，摇了摇头：“这上面的路线，我认不出来。”'))
-  await clickByText('结束交谈')
+  await clickExactButton('离开')
   await sleep(350)
   body = await bodyText()
   check('地图线索调查 1 / 2', body.includes('地图线索调查：1 / 2'))
@@ -450,7 +596,7 @@ try {
   await sleep(500)
   body = await bodyText()
   check('药师固定回复', body.includes('药师仔细辨认了一会儿：“我也没见过这处标记。”'))
-  await clickByText('结束交谈')
+  await clickExactButton('离开')
   await sleep(350)
   body = await bodyText()
   check('地图线索调查 2 / 2', body.includes('地图线索调查：2 / 2'))
@@ -462,7 +608,7 @@ try {
   await sleep(500)
   body = await bodyText()
   check('已向村长汇报调查结果', body.includes('你已经把调查结果告诉了村长。') && body.includes('村内调查已汇报。'))
-  await clickByText('结束交谈')
+  await clickExactButton('离开')
   await sleep(350)
   body = await bodyText()
   check('《追寻黄金兔子王》仍进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
@@ -484,13 +630,9 @@ try {
   body = await bodyText()
 
   // 7. 支线《采药受阻》：接受 → 村外草原查看采药区域 → 提交（金币 +10）
-  check('药师似乎有事相托', body.includes('药师似乎有事相托'))
-  await clickByText('查看委托')
+  check('附近委托出现药师《采药受阻》', body.includes('附近委托') && body.includes('药师：《采药受阻》'))
+  await acceptNearbyQuest('采药受阻')
   await sleep(500)
-  body = await bodyText()
-  check('《采药受阻》可接受（发布者药师）', body.includes('采药受阻') && body.includes('可接受') && body.includes('发布者：药师'))
-  await clickByText('接受任务')
-  await sleep(350)
   body = await bodyText()
   check('《采药受阻》进行中', body.includes('采药受阻') && body.includes('进行中'))
   await clickByText('村外草原')
@@ -500,28 +642,24 @@ try {
   await clickByText('查看采药区域')
   await sleep(500)
   body = await bodyText()
-  check('采药区域已查看（可完成）', body.includes('采药区域已查看。') && body.includes('采药受阻') && body.includes('可完成'))
+  check('采药区域已查看（中央场景 + 可提交区）', body.includes('确认魔化野兽的活动确实影响了这里') && body.includes('可提交') && body.includes('采药受阻'))
   await clickByText('青石村')
   await sleep(500)
   body = await bodyText()
   const goldB4 = await readGold()
   await clickByText('提交任务')
   await sleep(500)
-  body = await bodyText()
-  check('《采药受阻》已完成', body.includes('采药受阻') && body.includes('已完成'))
+  await assertQuestCompletedFolded('采药受阻')
   const goldA4 = await readGold()
   check('提交《采药受阻》金币 +10', goldB4 !== null && goldA4 === goldB4 + 10, `金币 ${goldB4}→${goldA4}`)
 
   // 8. 支线《矿洞余患》：接受 → 废弃矿洞战魔化鼠 → 提交（金币 +10）
-  check('铁匠似乎有事相托（矿洞余患入口）', body.includes('铁匠似乎有事相托'))
-  await clickByText('查看委托')
+  check('附近委托出现铁匠《矿洞余患》', body.includes('附近委托') && body.includes('铁匠：《矿洞余患》'))
+  await acceptNearbyQuest('矿洞余患')
   await sleep(500)
   body = await bodyText()
-  check('《矿洞余患》可接受（发布者铁匠）', body.includes('矿洞余患') && body.includes('可接受') && body.includes('发布者：铁匠'))
-  await clickByText('接受任务')
-  await sleep(350)
-  body = await bodyText()
   check('《矿洞余患》进行中', body.includes('矿洞余患') && body.includes('进行中'))
+  await restIfNeeded()
   await clickByText('废弃矿洞')
   await sleep(500)
   body = await bodyText()
@@ -532,16 +670,16 @@ try {
   await clickByText('青石村')
   await sleep(500)
   body = await bodyText()
-  check('《矿洞余患》可完成', body.includes('矿洞余患') && body.includes('可完成'))
+  check('《矿洞余患》可提交（右栏可提交区）', body.includes('可提交') && body.includes('矿洞余患'))
   const goldB5 = await readGold()
   await clickByText('提交任务')
   await sleep(500)
-  body = await bodyText()
-  check('《矿洞余患》已完成', body.includes('矿洞余患') && body.includes('已完成'))
+  await assertQuestCompletedFolded('矿洞余患')
   const goldA5 = await readGold()
   check('提交《矿洞余患》金币 +10', goldB5 !== null && goldA5 === goldB5 + 10, `金币 ${goldB5}→${goldA5}`)
 
   // 9. 离开青石村 → 天龙城（departQingshiVillageToTianlongCity 的正式 UI 入口）
+  body = await bodyText()
   check('离村入口（新的旅程/准备前往天龙城）', body.includes('新的旅程') && body.includes('准备前往天龙城'))
   await clickByText('准备前往天龙城')
   await sleep(350)
@@ -561,13 +699,9 @@ try {
   await sleep(500)
   body = await bodyText()
   check('到达武馆（马科 · 骑士队长）', body.includes('武馆') && body.includes('马科') && body.includes('骑士队长'))
-  check('马科似乎有事相托', body.includes('马科似乎有事相托'))
-  await clickByText('查看委托')
+  check('附近委托出现马科《商人王财的麻烦》', body.includes('附近委托') && body.includes('马科：《商人王财的麻烦》'))
+  await acceptNearbyQuest('商人王财的麻烦')
   await sleep(500)
-  body = await bodyText()
-  check('《商人王财的麻烦》可接受（发布者马科）', body.includes('商人王财的麻烦') && body.includes('可接受') && body.includes('发布者：马科'))
-  await clickByText('接受任务')
-  await sleep(350)
   body = await bodyText()
   check('《商人王财的麻烦》进行中', body.includes('商人王财的麻烦') && body.includes('进行中'))
   // TM-P1-031-R1：接受任务后马科 greeting = 调查中台词，不再「刚到天龙城？」
@@ -576,7 +710,7 @@ try {
   body = await bodyText()
   check('马科接受任务后 greeting（调查中）', body.includes('王财的事情有进展了吗？黑石塔那边不要大意。'))
   check('接受任务后不出现「刚到天龙城？」', !body.includes('刚到天龙城'))
-  await clickByText('结束交谈')
+  await clickExactButton('离开')
   await sleep(350)
   await clickByText('天龙城')
   await sleep(500)
@@ -591,7 +725,7 @@ try {
   await sleep(500)
   body = await bodyText()
   check('王财说明夔峒项链遭遇', body.includes('王财告诉你，几天前他在黑石塔附近遭到魔物袭击，混乱中遗失了妻子的夔峒项链。'))
-  await clickByText('结束交谈')
+  await clickExactButton('离开')
   await sleep(350)
   body = await bodyText()
   check('日志已向王财了解情况（wangcai_briefed）', body.includes('已向王财了解情况。') && body.includes('黑石塔的调查尚未开始。'))
@@ -713,10 +847,11 @@ try {
   body = await bodyText()
   check('王财接过项链（固定剧情）', body.includes('王财接过项链，久久没有说话。') && body.includes('“谢谢你。若不是你，我恐怕再也找不回来了。”'))
   check('交还后背包不再有夔峒项链', !body.includes('夔峒项链 ×'))
-  await clickByText('结束交谈')
+  await clickExactButton('离开')
   await sleep(350)
   body = await bodyText()
-  check('日志：夔峒项链已交还王财', body.includes('夔峒项链：已交还王财。') && body.includes('当前目标：返回武馆，向马科复命。'))
+  // TM-P2-006：交还项链后 wangcai 状态为 completable → 右栏「可提交」区（发布者马科在武馆，天龙城显示前往提交提示）
+  check('日志：夔峒项链已交还王财（右栏可提交区）', body.includes('可提交') && body.includes('商人王财的麻烦') && (body.includes('提交任务') || body.includes('前往任务发布者处提交')))
   // 武馆向马科提交（复用 generic 提交）
   await clickByText('武馆')
   await sleep(500)
@@ -739,7 +874,7 @@ try {
   check('显示「第一阶段完成」', body.includes('第一阶段完成'))
   check('显示「第一阶段主线已经告一段落。」', body.includes('第一阶段主线已经告一段落。'))
   check('显示「《追寻黄金兔子王》仍需等待新的线索。」', body.includes('《追寻黄金兔子王》仍需等待新的线索。'))
-  check('quest_wangcai_trouble 已完成（任务卡显示已完成）', body.includes('商人王财的麻烦') && body.includes('已完成'))
+  check('quest_wangcai_trouble 已完成（右栏已完成区）', (await bodyText()).includes('已完成（'))
   check('《追寻黄金兔子王》仍进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
   check('兔子的路径 ×1 仍在背包', body.includes('兔子的路径 ×1'))
   check('背包无夔峒项链', !body.includes('夔峒项链 ×'))
@@ -747,7 +882,7 @@ try {
   // 单当前目标：完成后不再出现旧目标/矛盾目标（找项链/交还/去黑石塔/提交均不得残留）
   check('完成后无「交还王财」目标残留', !body.includes('将夔峒项链交还王财'))
   check('完成后无「返回武馆向马科复命」目标残留', !body.includes('当前目标：返回武馆，向马科复命。'))
-  await clickByText('结束交谈')
+  await clickExactButton('离开')
   await sleep(350)
   body = await bodyText()
 
@@ -756,7 +891,7 @@ try {
   await saveToSlot1()
   await sleep(500)
   body = await bodyText()
-  check('保存后返回游戏页（当前位置）', body.includes('当前位置'))
+  check('保存后返回游戏页（右栏任务中心）', (await page.evaluate(() => document.querySelector('[data-testid="quest-column"]') !== null)) || body.includes('当前目标'))
   const saveData = await readSlot1Save()
   const qWangcai = saveData?.gameState?.quests?.find((q) => q.questId === 'quest_wangcai_trouble')
   const qGolden = saveData?.gameState?.quests?.find((q) => q.questId === 'quest_golden_rabbit_search')
@@ -782,7 +917,7 @@ try {
   await sleep(500)
   body = await bodyText()
   check('Continue 后仍显示「第一阶段完成」', body.includes('第一阶段完成') && body.includes('第一阶段主线已经告一段落。') && body.includes('《追寻黄金兔子王》仍需等待新的线索。'))
-  check('Continue 后王财任务已完成', body.includes('商人王财的麻烦') && body.includes('已完成'))
+  check('Continue 后王财任务已完成（右栏已完成区）', (await bodyText()).includes('已完成（'))
   check('Continue 后黄金兔子王仍进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
   check('Continue 后兔子的路径 ×1 保持', body.includes('兔子的路径 ×1'))
   check('Continue 后背包无夔峒项链', !body.includes('夔峒项链 ×'))

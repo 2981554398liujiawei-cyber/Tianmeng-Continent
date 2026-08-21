@@ -213,7 +213,10 @@ try {
   body = await bodyText()
   const hpAfterShieldAbsorb = await readPlayerHp()
   check('R1-10: B2b 敌人命中 → 盾抵消 3 点伤害（日志）', body.includes('樱花魔法盾抵消了 3 点伤害'))
-  check('R1-11: B2b 实际 HP 变化 = raw(4) - absorbed(3) = -1', hpAfterShieldAbsorb.hp === hp0.hp - 1, `before=${hp0.hp} after=${hpAfterShieldAbsorb.hp}`)
+  // TM-P2-006 数值平衡：残灾之影 attackPower 3→14（Combat V3 公式冻结不动）。不再硬编码 raw=4，
+  // 改为相对断言：日志中的造成伤害（已含盾减伤）必须恰好等于实际 HP 变化（盾确实吸收 3 点）。
+  const absorbedDealt = Number((body.match(/残灾之影的攻击命中，造成 (\d+) 点伤害/) ?? [])[1] ?? -1)
+  check('R1-11: B2b 盾减伤后 HP 变化 = 日志伤害（盾吸收 3 点已计入）', hpAfterShieldAbsorb.hp === hp0.hp - absorbedDealt && absorbedDealt >= 0, `before=${hp0.hp} after=${hpAfterShieldAbsorb.hp} logDealt=${absorbedDealt}`)
   check('R1-12: B2b 盾被消耗（已展开提示消失）', !body.includes('樱花魔法盾已展开'))
   check('R1-13: 盾施放只扣一次 MP（灵力 6→4）', (await readSakuraMp()) === 4, `mp=${await readSakuraMp()}`)
 
@@ -225,7 +228,7 @@ try {
   await sleep(500)
   body = await bodyText()
   const hpAfterDance = await readPlayerHp()
-  check('R1-14: B3 轻舞日志（敌人找不到反击机会）', body.includes('敌人的攻势被轻舞牵走，没有找到反击的机会'))
+  check('R1-14: B3 轻舞日志（敌人找不到反击机会）', body.includes('敌人的攻势被牵走，没有找到反击的机会'))
   check('R1-15: B3 本轮敌人未反击（玩家 HP 不变）', hpAfterDance.hp === hpAfterShieldAbsorb.hp, `before=${hpAfterShieldAbsorb.hp} after=${hpAfterDance.hp}`)
   // 轻舞只取消本轮：下一玩家行动 → 跳过 → 敌人反击恢复正常（无盾无轻舞，HP -4）
   setRandom(0.4)
@@ -238,7 +241,9 @@ try {
   await sleep(500)
   body = await bodyText()
   const hpAfterCounterBack = await readPlayerHp()
-  check('R1-17: 轻舞只取消本轮（下一轮反击恢复，HP -4）', hpAfterCounterBack.hp === hpAfterShieldAbsorb.hp - 4, `before=${hpAfterShieldAbsorb.hp} after=${hpAfterCounterBack.hp}`)
+  // TM-P2-006 数值平衡：残灾攻击 3→14，暴击反击在无盾下会重创甚至击杀玩家。不再硬编码 -4，
+  // 断言「下一轮反击恢复（HP 必然下降）」即可验证轻舞只取消本轮的语义。
+  check('R1-17: 轻舞只取消本轮（下一轮反击恢复，HP 下降）', hpAfterCounterBack.hp < hpAfterShieldAbsorb.hp, `before=${hpAfterShieldAbsorb.hp} after=${hpAfterCounterBack.hp}`)
 
   // ================= 刷新退出第一场战斗 → 神域残灾威胁仍在 =================
   await page.reload({ waitUntil: 'networkidle0' })
@@ -264,7 +269,9 @@ try {
   body = await bodyText()
   const hpAfterImmediateAbsorb = await readPlayerHp()
   check('R1-20: B1 施盾后敌人立即命中 → 抵消 3 点伤害（DOM 日志）', body.includes('樱花魔法盾抵消了 3 点伤害'))
-  check('R1-21: B1 即时吸收生效（HP 变化 = raw(4) - absorbed(3) = -1）', hpAfterImmediateAbsorb.hp === hp1.hp - 1, `before=${hp1.hp} after=${hpAfterImmediateAbsorb.hp}`)
+  // TM-P2-006 数值平衡：与 R1-11 相同，改为相对断言（日志伤害已含盾减伤 == 实际 HP 变化）
+  const immediateDealt = Number((body.match(/残灾之影的攻击命中，造成 (\d+) 点伤害/) ?? [])[1] ?? -1)
+  check('R1-21: B1 即时吸收生效（HP 变化 = 日志伤害，盾吸收 3 点）', hpAfterImmediateAbsorb.hp === hp1.hp - immediateDealt && immediateDealt >= 0, `before=${hp1.hp} after=${hpAfterImmediateAbsorb.hp} logDealt=${immediateDealt}`)
   check('R1-22: B1 盾已消耗（已展开提示消失）', !body.includes('樱花魔法盾已展开'))
   // ---- B4：樱花飞斩暴击击杀（保留真实攻击/击杀） ----
   setRandom(0.4)
@@ -274,7 +281,7 @@ try {
   await clickByText('樱花飞斩')
   await sleep(500)
   body = await bodyText()
-  check('R1-23: B4 樱花优子的攻击实际结算（战斗日志）', body.includes('樱花优子的攻击'))
+  check('R1-23: B4 樱花优子的攻击实际结算（战斗日志）', body.includes('樱花飞斩') && (body.includes('造成') || body.includes('落空')))
   check('R1-24: B4 飞斩暴击击杀 → 战斗胜利', body.includes('战斗胜利'), body.includes('战斗失败') ? '战斗失败！' : '')
   await clickByText('返回冒险')
   await sleep(500)

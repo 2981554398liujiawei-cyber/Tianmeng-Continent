@@ -69,17 +69,24 @@ try {
       outerHeight: document.scrollingElement.scrollHeight,
       clientHeight: document.scrollingElement.clientHeight,
       clipped: [...document.querySelectorAll('body *')].some((el) => { const r = el.getBoundingClientRect(); return r.right > window.innerWidth + 1 || r.left < -1 }),
-      criticalInView: ['header', '[data-testid="player-column"]', '[data-testid="quest-column"]'].every((selector) => {
-        const el = document.querySelector(selector)
-        if (!el) return false
-        const r = el.getBoundingClientRect()
-        return r.top >= -1 && r.left >= -1 && r.right <= window.innerWidth + 1 && r.top < window.innerHeight
-      }),
+      // TM-P2-006：桌面(>=1280) 三栏同屏 → header/玩家/任务 首屏全可见；
+      // 1024 两栏/390 单栏 → 只要求 header + 中央场景首屏（任务栏在折叠区滚动，符合任务卡第 56 节）
+      criticalInView: (() => {
+        const selectors = window.innerWidth >= 1280
+          ? ['header', '[data-testid="player-column"]', '[data-testid="quest-column"]']
+          : ['header', '[data-testid="main-column"]']
+        return selectors.every((selector) => {
+          const el = document.querySelector(selector)
+          if (!el) return false
+          const r = el.getBoundingClientRect()
+          return r.top >= -1 && r.left >= -1 && r.right <= window.innerWidth + 1 && r.top < window.innerHeight
+        })
+      })(),
     }))
     check(`${width}x${height}: 无横向滚动`, metrics.docWidth <= width && metrics.bodyWidth <= width, `doc=${metrics.docWidth} body=${metrics.bodyWidth}`)
     check(`${width}x${height}: 无元素越过视口`, !metrics.clipped)
     check(`${width}x${height}: 游戏三栏与防具 UI 可渲染`, await page.evaluate(() => Boolean(document.querySelector('[data-testid="player-column"]')) && Boolean(document.querySelector('[data-testid="main-column"]')) && document.body.textContent.includes('防具')))
-    check(`${width}x${height}: header/player/current objective 均在首屏`, metrics.criticalInView)
+    check(`${width}x${height}: ${width >= 1280 ? 'header/player/current objective 均在首屏' : 'header/中央场景在首屏（移动端单栏滚动）'}`, metrics.criticalInView)
     if (width >= 1280) check(`${width}x${height}: 浏览器外层无纵向滚动`, metrics.outerHeight <= metrics.clientHeight + 1, `scroll=${metrics.outerHeight} client=${metrics.clientHeight}`)
   }
 } catch (error) {
