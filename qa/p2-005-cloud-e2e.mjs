@@ -10,12 +10,45 @@
 // ============================================================================
 import puppeteer from 'puppeteer-core'
 import { spawn } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const CHROME = process.env.CHROME_PATH || 'C:/Program Files/Google/Chrome/Application/chrome.exe'
+function findChromeExecutable() {
+  const configured = process.env.CHROME_PATH?.trim()
+  const windowsCandidates = [
+    'C:/Program Files/Google/Chrome/Application/chrome.exe',
+    'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe',
+    process.env.LOCALAPPDATA && join(process.env.LOCALAPPDATA, 'Google/Chrome/Application/chrome.exe'),
+  ]
+  const linuxCandidates = [
+    '/usr/bin/google-chrome',
+    '/usr/bin/google-chrome-stable',
+    '/usr/bin/chromium',
+    '/usr/bin/chromium-browser',
+    '/opt/google/chrome/chrome',
+    '/snap/bin/chromium',
+  ]
+  const macCandidates = [
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+    '/Applications/Chromium.app/Contents/MacOS/Chromium',
+  ]
+  const platformCandidates = process.platform === 'win32'
+    ? windowsCandidates
+    : process.platform === 'darwin'
+      ? macCandidates
+      : linuxCandidates
+  const candidates = [configured, ...platformCandidates].filter((value) => typeof value === 'string' && value.length > 0)
+  const found = candidates.find((candidate) => existsSync(candidate))
+  if (found) return found
+  throw new Error(
+    `未找到 Chrome/Chromium 可执行文件（平台: ${process.platform}）。` +
+    `请设置 CHROME_PATH；已检查: ${candidates.join(', ') || '(无候选路径)'}`,
+  )
+}
+
+const CHROME = findChromeExecutable()
 const MOCK_PORT = 5200
 const DEV_PORT = 5201
 const MOCK_URL = `http://127.0.0.1:${MOCK_PORT}`
