@@ -7,7 +7,7 @@
     {
       "binding": "DB",
       "database_name": "tianmeng-cloud-save",
-      "database_id": "REPLACE_WITH_D1_DATABASE_ID",
+      "database_id": "5ad55f0d-d282-4992-8843-54ba8e24c1f0",
       "migrations_dir": "migrations"
     }
   ]
