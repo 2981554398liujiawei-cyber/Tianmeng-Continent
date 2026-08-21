@@ -178,15 +178,27 @@ try {
   console.error(error)
   process.exitCode = 1
 } finally {
+  // Windows 上 child.kill() 是异步 SIGTERM，SQLite/D1 句柄随进程真正退出才释放。
+  // 先等所有 wrangler dev 子进程退出（含孙进程退出留出的时间），再清理临时目录。
   for (const child of processes) child.kill()
-  await Promise.all(processes.map((child) => child.exitCode !== null ? undefined : new Promise((resolve) => {
+  await Promise.all(processes.map((child) => new Promise((resolve) => {
+    if (child.exitCode !== null || child.signalCode !== null) return resolve()
     child.once('exit', resolve)
-    setTimeout(resolve, 5_000)
+    setTimeout(resolve, 10_000)
   })))
-  try {
-    rmSync(persistence, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 })
-  } catch (error) {
-    console.error(`Failed to clean temporary Local D1 state: ${error}`)
+  // 多给一拍让 WAL/句柄完全释放，避免 EPERM 竞态。
+  await new Promise((resolve) => setTimeout(resolve, 1_000))
+  let cleaned = false
+  for (let attempt = 1; attempt <= 15 && !cleaned; attempt += 1) {
+    try {
+      rmSync(persistence, { recursive: true, force: true, maxRetries: 2, retryDelay: 100 })
+      cleaned = true
+    } catch {
+      await new Promise((resolve) => setTimeout(resolve, 1_000))
+    }
+  }
+  if (!cleaned) {
+    console.error(`Failed to clean temporary Local D1 state (EPERM persists after retries): ${persistence}`)
     process.exitCode = 1
   }
 }

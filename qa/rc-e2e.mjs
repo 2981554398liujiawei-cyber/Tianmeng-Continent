@@ -30,7 +30,9 @@ function runSuite(suite) {
 
   return new Promise((resolve, reject) => {
     console.log(`\n===== RC suite start: ${suite.name} =====`)
-    const child = spawn(process.execPath, [suite.script], {
+    // script 字段可含参数（如 'qa/p2-006-balance.mjs --phase after'）；Windows 下不能把整串当一个模块路径，
+    // 按空白拆分后传给 node（本项目脚本路径不含空格）。
+    const child = spawn(process.execPath, suite.script.split(/\s+/).filter(Boolean), {
       cwd: root,
       env,
       stdio: 'inherit',

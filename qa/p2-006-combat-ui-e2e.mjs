@@ -392,6 +392,61 @@ try {
     return el ? el.scrollWidth > el.clientWidth : false
   })
   check('CUI13: 390px 无横向溢出', !overflowX)
+
+  // ============ CUI14-CUI17：390 移动端详细日志抽屉（TM-P2-006-R1） ============
+  // 先打一次普通攻击让详细日志有回合分组（CUI11-13 未攻击，此时日志为空；无伙伴回合），
+  // 攻击后内容稳定，作为 drawer 开/关对比基准（对比同一内容状态，排除内容增长干扰）。
+  await clickButton('普通攻击')
+  await sleep(600)
+  const barBeforeDrawer = await actionBarTopY()
+  await clickButton('详细战斗日志')
+  await page.waitForSelector('[data-testid="combat-detail-drawer"]', { timeout: 3000 })
+  check('CUI14: 390px 点「详细战斗日志」打开抽屉', (await page.$('[data-testid="combat-detail-drawer"]')) !== null)
+  const drawerText = await page.evaluate(() => document.querySelector('[data-testid="combat-detail-drawer"]')?.textContent || '')
+  check('CUI14: 抽屉含按回合分组的详细日志', /回合 \d+/.test(drawerText))
+  // drawer 打开时行动栏仍可见且 top 不位移（不遮挡永久导航）
+  const barWithDrawer = await actionBarTopY()
+  check('CUI15: 抽屉打开时行动栏在视口内', barWithDrawer !== null && barWithDrawer.bottom <= barWithDrawer.vh + 1)
+  check('CUI15: 抽屉打开时行动栏未位移', barBeforeDrawer !== null && barWithDrawer !== null && Math.abs(barBeforeDrawer.top - barWithDrawer.top) <= 2, barWithDrawer ? `top ${Math.round(barBeforeDrawer?.top ?? 0)}→${Math.round(barWithDrawer.top)}` : 'bar=null')
+  // ESC 关闭 → 回战斗（summary feed 仍在、行动栏原位）
+  await page.keyboard.press('Escape')
+  await sleep(300)
+  check('CUI16: ESC 关闭抽屉', (await page.$('[data-testid="combat-detail-drawer"]')) === null)
+  check('CUI16: 关闭后回战斗（主播报区仍在）', (await page.$('[data-testid="combat-summary-feed"]')) !== null)
+  const barAfterEsc = await actionBarTopY()
+  check('CUI16: ESC 关闭后行动栏未位移', barBeforeDrawer !== null && barAfterEsc !== null && Math.abs(barBeforeDrawer.top - barAfterEsc.top) <= 2)
+  // 关闭按钮也能关
+  await clickButton('详细战斗日志')
+  await page.waitForSelector('[data-testid="combat-detail-drawer"]', { timeout: 3000 })
+  await clickButton('关闭')
+  await sleep(300)
+  check('CUI17: 关闭按钮关闭抽屉', (await page.$('[data-testid="combat-detail-drawer"]')) === null)
+
+  // ============ CUI-R1：StrictMode 下「抢得先手」只插入一次（TM-P2-006-R1 回归） ============
+  // 敌人先手确定性 RNG：玩家 D20=1（(8+1)/2=4.5）< 敌人 D20=20（(12+20)/2=16）→ 敌人先手。
+  // StrictMode 双调用 effect 曾导致「抢得先手」日志插入两次、回合计数多加；修复后应恰好 1 次。
+  await loadAndEnter(fixture())
+  await page.evaluate(() => {
+    let idx = 0
+    Math.random = () => {
+      idx += 1
+      return idx % 2 === 1 ? 0.01 : 0.99
+    }
+  })
+  await enterCombat()
+  await sleep(700) // 等 ENEMY_FIRST_STRIKE_DELAY_MS(400) + 敌人反击完成
+  const firstStrikeCount = await page.evaluate(() => {
+    const text = document.querySelector('[data-testid="combat-summary-feed"]')?.textContent || ''
+    return (text.match(/抢得先手/g) || []).length
+  })
+  check('CUI-R1: StrictMode 下「抢得先手」仅插入 1 次', firstStrikeCount === 1, `count=${firstStrikeCount}`)
+  const roundGroupCount = await page.evaluate(() => {
+    const text = document.querySelector('[data-testid="combat-detail-log"]')?.textContent || ''
+    return (text.match(/回合 (\d+)/g) || []).length
+  })
+  check('CUI-R1: 回合分组未被 StrictMode 重复计数', roundGroupCount === 1, `rounds=${roundGroupCount}`)
+  if ((await bodyText()).includes('返回冒险')) await clickButton('返回冒险')
+
   if ((await bodyText()).includes('返回冒险')) await clickButton('返回冒险')
 
   check('全程无 JS exception（390）', true)

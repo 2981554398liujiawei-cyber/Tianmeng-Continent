@@ -180,11 +180,19 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onEscape, onE
 
   // TM-P2-002 D：敌人先手 → 进入正常回合前先执行一次敌人攻击（仅一次）
   // TM-P2-002-R1 A：攻击进行期间封锁玩家操作（enemyFirstStriking）；timer 由 cleanup 清理
+  // TM-P2-006-R1：React StrictMode 双调用 effect（setup→cleanup→setup）会把 pushEvent/nextRound
+  // 执行两次，导致"抢得先手"日志重复插入、回合计数多加一次。用 ref 放行一次副作用；
+  // timer 部分每次 setup 重建（cleanup 清 timer1，setup2 建 timer2），保证敌人先手攻击仍恰好执行一次。
+  // 修复副作用来源，不得禁用 StrictMode。
+  const enemyFirstStrikeLoggedRef = useRef(false)
   useEffect(() => {
     if (initiativeWinner !== 'enemy') return
     setEnemyFirstStriking(true)
-    nextRound()
-    pushEvent('initiative', 'enemy', `${enemy.name}抢得先手。`)
+    if (!enemyFirstStrikeLoggedRef.current) {
+      enemyFirstStrikeLoggedRef.current = true
+      nextRound()
+      pushEvent('initiative', 'enemy', `${enemy.name}抢得先手。`)
+    }
     let cancelled = false
     const timer = window.setTimeout(() => {
       if (cancelled) return
@@ -461,22 +469,68 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onEscape, onE
     return groups
   })()
 
+  // TM-P2-006-R1：详细日志正文（右侧栏 + 移动端抽屉复用）
+  const renderDetailLogBody = () =>
+    roundGroups.length === 0 ? (
+      <p className="text-sm text-bone-500">尚无记录。</p>
+    ) : (
+      <div className="flex flex-col gap-3">
+        {roundGroups.map((group) => (
+          <div key={`round-${group.round}`} className="rounded border border-ink-700 bg-ink-950/50 p-3">
+            <p className="mb-2 text-xs font-bold text-bone-500">回合 {group.round}</p>
+            <div className="flex flex-col gap-2">
+              {group.items.map((ev) => (
+                <div key={ev.id}>
+                  <p className="text-sm text-bone-200">{ev.summary}</p>
+                  {ev.detail.length > 0 && (
+                    <div className="mt-1 pl-3 text-xs leading-relaxed text-bone-500">
+                      {ev.detail.map((line, i) => (
+                        <p key={i}>{line}</p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    )
+
   // ---- V4：行动栏 tray 状态（技能 / 物品；仅页面本地 UI 状态）----
   const [actionTray, setActionTray] = useState<'skill' | 'item' | null>(null)
+
+  // ---- TM-P2-006-R1：移动端详细战斗日志抽屉（xl 用右侧栏常驻；390/平板收进抽屉）。----
+  const [detailDrawerOpen, setDetailDrawerOpen] = useState(false)
+  // ESC 关闭抽屉；关闭后回到战斗（行动栏仍在原位，不位移）
+  useEffect(() => {
+    if (!detailDrawerOpen) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setDetailDrawerOpen(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [detailDrawerOpen])
 
   const actionsLocked = phase !== 'active' || enemyFirstStriking || awaitingCompanionAction
 
   return (
     <div className="combat-page mx-auto flex h-full w-full max-w-[1600px] flex-col px-4 py-3">
       {/* 顶部薄标题栏 */}
-      <header className="mb-3 flex items-center justify-between border-b border-ink-600 pb-2">
+      <header className="mb-3 flex items-center justify-between gap-3 border-b border-ink-600 pb-2">
         <p className="text-sm tracking-widest text-bone-500">
           战斗 · <span className="text-gold-300">{enemy.name}</span>
           <span className="ml-2 text-bone-500">Lv.{enemy.level}</span>
         </p>
-        <p className="text-xs text-bone-500">
-          {phase === 'active' ? (enemyFirstStriking ? '敌方先手' : '战斗进行中') : phase === 'victory' ? '胜利' : '失败'}
-        </p>
+        <div className="flex items-center gap-3">
+          <p className="text-xs text-bone-500">
+            {phase === 'active' ? (enemyFirstStriking ? '敌方先手' : '战斗进行中') : phase === 'victory' ? '胜利' : '失败'}
+          </p>
+          {/* TM-P2-006-R1：移动端详细日志入口（xl 右侧栏常驻，按钮隐藏） */}
+          <Button variant="ghost" className="xl:hidden" onClick={() => setDetailDrawerOpen(true)}>
+            详细战斗日志
+          </Button>
+        </div>
       </header>
 
       {/* 上：战况（玩家 / 敌人 / 伙伴三面板） */}
@@ -599,39 +653,16 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onEscape, onE
           )}
         </div>
 
-        {/* 右侧：详细战斗日志（detail log，按回合分组） */}
-        <div data-testid="combat-detail-log" className="combat-log min-h-0 overflow-y-auto rounded border border-ink-600 bg-ink-900/50 p-4">
+        {/* 右侧：详细战斗日志（detail log，按回合分组；xl 常驻，移动端收进抽屉） */}
+        <div data-testid="combat-detail-log" className="combat-log hidden min-h-0 overflow-y-auto rounded border border-ink-600 bg-ink-900/50 p-4 xl:block">
           <p className="mb-3 text-xs tracking-widest text-bone-500">详细战斗日志</p>
-          {roundGroups.length === 0 ? (
-            <p className="text-sm text-bone-500">尚无记录。</p>
-          ) : (
-            <div className="flex flex-col gap-3">
-              {roundGroups.map((group) => (
-                <div key={`round-${group.round}`} className="rounded border border-ink-700 bg-ink-950/50 p-3">
-                  <p className="mb-2 text-xs font-bold text-bone-500">回合 {group.round}</p>
-                  <div className="flex flex-col gap-2">
-                    {group.items.map((ev) => (
-                      <div key={ev.id}>
-                        <p className="text-sm text-bone-200">{ev.summary}</p>
-                        {ev.detail.length > 0 && (
-                          <div className="mt-1 pl-3 text-xs leading-relaxed text-bone-500">
-                            {ev.detail.map((line, i) => (
-                              <p key={i}>{line}</p>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+          {renderDetailLogBody()}
         </div>
       </section>
 
-      {/* 下：固定行动栏（V4 P0：fixed action bar；技能/物品 tray；逃跑） */}
-      <footer className="mt-3 border-t border-ink-600 pt-3">
+      {/* 下：固定行动栏（V4 P0：fixed action bar；技能/物品 tray；逃跑）。
+          relative z-[60]：移动端详细日志抽屉（z-50）打开时仍完整可见、可点击。 */}
+      <footer className="relative z-[60] mt-3 border-t border-ink-600 pt-3">
         {phase === 'active' && !awaitingCompanionAction && (
           <div className="flex flex-col items-center gap-3">
             <div className="flex flex-wrap items-center justify-center gap-2">
@@ -800,6 +831,35 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onEscape, onE
           </div>
         )}
       </footer>
+
+      {/* TM-P2-006-R1：移动端详细战斗日志抽屉（bottom-24 露出固定行动栏；ESC/遮罩/关闭按钮可关） */}
+      {detailDrawerOpen && (
+        <div
+          data-testid="combat-detail-drawer"
+          role="dialog"
+          aria-modal="true"
+          aria-label="详细战斗日志"
+          className="fixed inset-x-0 bottom-24 top-0 z-50"
+        >
+          {/* 遮罩：点击关闭 */}
+          <button
+            type="button"
+            aria-label="关闭详细战斗日志"
+            className="absolute inset-0 h-full w-full bg-ink-950/60"
+            onClick={() => setDetailDrawerOpen(false)}
+          />
+          {/* 面板：底部抽屉（底部留出行动栏高度；内容独立滚动） */}
+          <div className="absolute inset-x-0 bottom-0 top-16 flex flex-col rounded-t-lg border border-ink-600 bg-ink-900 p-4 shadow-2xl">
+            <div className="mb-3 flex items-center justify-between">
+              <p className="text-xs tracking-widest text-bone-500">详细战斗日志</p>
+              <Button variant="ghost" onClick={() => setDetailDrawerOpen(false)}>
+                关闭（Esc）
+              </Button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto">{renderDetailLogBody()}</div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
