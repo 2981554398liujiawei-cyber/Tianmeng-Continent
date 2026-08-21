@@ -13,6 +13,7 @@ import { spawn } from 'node:child_process'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 const CHROME = process.env.CHROME_PATH || 'C:/Program Files/Google/Chrome/Application/chrome.exe'
 const MOCK_PORT = 5200
@@ -21,6 +22,7 @@ const MOCK_URL = `http://127.0.0.1:${MOCK_PORT}`
 const APP_URL = `http://localhost:${DEV_PORT}/`
 const PASS_A = `E2E-CLOUD-TEST-${Math.random().toString(36).slice(2, 10).toUpperCase()}`
 const PASS_V3 = `E2E-CLOUD-TEST-V3-${Math.random().toString(36).slice(2, 8).toUpperCase()}`
+const PASS_CONFLICT = `E2E-CLOUD-CONFLICT-${Math.random().toString(36).slice(2, 8).toUpperCase()}`
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const results = []
@@ -36,8 +38,8 @@ const mockProc = spawn(process.execPath, ['qa/cloud-save-mock-server.mjs'], {
   stdio: 'inherit',
 })
 mockProc.on('exit', (code) => console.log(`[cloud-e2e] mock server exited code=${code}`))
-const devProc = spawn('npx', ['vite', '--port', String(DEV_PORT), '--strictPort'], {
-  shell: true,
+const viteBin = fileURLToPath(new URL('../node_modules/vite/bin/vite.js', import.meta.url))
+const devProc = spawn(process.execPath, [viteBin, '--port', String(DEV_PORT), '--strictPort'], {
   env: { ...process.env, VITE_CLOUD_SAVE_ENDPOINT: MOCK_URL },
   stdio: 'inherit',
 })
@@ -348,6 +350,89 @@ try {
   const cloudSlot = afterV4.json.payload?.savesExport?.slots?.slot1
   check('C25: 迁移后保存 → 云端已是 V5 且 revision 2', afterV4.json.revision === 2 && cloudSlot?.version === 5 && cloudSlot?.gameState?.companions !== undefined && Number.isSafeInteger(cloudSlot?.gameState?.player?.adventureXp))
 
+  // ============ C2 解锁冲突保护：divergent 必须显式选择，identical 忽略 exportedAt ============
+  const cloudConflictPayload = structuredClone(afterForce.json.payload)
+  cloudConflictPayload.savesExport.exportedAt = '2026-08-21T09:00:00.000Z'
+  cloudConflictPayload.savesExport.slots.slot1.gameState.player.name = '云端冲突角色'
+  cloudConflictPayload.savesExport.slots.slot1.gameState.player.level = 4
+  cloudConflictPayload.savesExport.slots.slot1.gameState.world.currentLocationId = 'qingshi_village'
+  cloudConflictPayload.savesExport.slots.slot1.savedAt = '2026-08-21T09:00:00.000Z'
+  const conflictCreated = await cloudRequest({ action: 'save', passphrase: PASS_CONFLICT, expectedRevision: 0, payload: cloudConflictPayload })
+  check('C30: C2 云端冲突基线创建成功（revision 1）', conflictCreated.status === 200 && conflictCreated.json.revision === 1)
+
+  const localConflictPayload = structuredClone(cloudConflictPayload)
+  localConflictPayload.savesExport.exportedAt = '2026-08-21T10:00:00.000Z'
+  localConflictPayload.savesExport.slots.slot1.gameState.player.name = '本机较新角色'
+  localConflictPayload.savesExport.slots.slot1.gameState.player.level = 5
+  localConflictPayload.savesExport.slots.slot1.gameState.world.currentLocationId = 'tianlong_city'
+  localConflictPayload.savesExport.slots.slot1.savedAt = '2026-08-21T10:00:00.000Z'
+
+  const ctxE = await browser.createBrowserContext()
+  const pageE = await ctxE.newPage()
+  await pageE.setViewport({ width: 1280, height: 900 })
+  pageE.on('pageerror', (e) => jsErrors.push('E:' + String(e)))
+  await pageE.goto(APP_URL, { waitUntil: 'networkidle0' })
+  await pageE.evaluate((payload) => {
+    const slot = payload.savesExport.slots.slot1
+    localStorage.setItem('tianmeng_continent_save_slot_slot1', JSON.stringify(slot))
+    localStorage.setItem('tianmeng_continent_saves_index', JSON.stringify({
+      version: 2,
+      lastSavedSlot: 'slot1',
+      slots: {
+        slot1: {
+          playerName: slot.gameState.player.name,
+          profession: slot.gameState.player.profession,
+          level: slot.gameState.player.level,
+          locationId: slot.gameState.world.currentLocationId,
+          savedAt: slot.savedAt,
+        },
+        slot2: null, slot3: null, slot4: null, slot5: null,
+      },
+    }))
+  }, localConflictPayload)
+  await pageE.reload({ waitUntil: 'networkidle0' })
+  await typePassphrase(pageE, PASS_CONFLICT)
+  body = await bodyText(pageE)
+  check('C31: divergent 解锁不覆盖本机并停留在冲突页', body.includes('本机/云端存档冲突') && (await localSlot1Name(pageE)) === '本机较新角色')
+  check('C32: 冲突页显示双方最新摘要（角色/等级/地点/保存时间）', body.includes('本机最新存档') && body.includes('云端最新存档') && body.includes('本机较新角色') && body.includes('云端冲突角色') && body.includes('天龙城') && body.includes('青石村') && body.includes('2026-08-21T10:00:00.000Z') && body.includes('2026-08-21T09:00:00.000Z'))
+  check('C33: 冲突页显示双选择按钮', body.includes('使用云端存档') && body.includes('使用本机存档覆盖云端'))
+
+  await clickByText(pageE, '使用云端存档')
+  await sleep(700)
+  body = await bodyText(pageE)
+  check('C34: 选择云端后显式导入并完成解锁', body.includes('继续游戏') && (await localSlot1Name(pageE)) === '云端冲突角色')
+
+  // 本机与云端 durable 内容相同，但下一次 exportSaves 会生成不同 exportedAt；不得误报冲突。
+  await pageE.reload({ waitUntil: 'networkidle0' })
+  await typePassphrase(pageE, PASS_CONFLICT)
+  body = await bodyText(pageE)
+  check('C35: 仅 exportedAt 不同不误判冲突，可安全连接', body.includes('继续游戏') && !body.includes('本机/云端存档冲突'))
+
+  // 再把本机改成较新 divergent 版本，验证 force 路径的二次确认与 revision 更新。
+  await pageE.evaluate(() => {
+    const key = 'tianmeng_continent_save_slot_slot1'
+    const slot = JSON.parse(localStorage.getItem(key))
+    slot.gameState.player.name = '本机覆盖角色'
+    slot.gameState.player.level = 6
+    slot.gameState.world.currentLocationId = 'tianlong_city'
+    slot.savedAt = '2026-08-21T11:00:00.000Z'
+    localStorage.setItem(key, JSON.stringify(slot))
+  })
+  await pageE.reload({ waitUntil: 'networkidle0' })
+  await typePassphrase(pageE, PASS_CONFLICT)
+  body = await bodyText(pageE)
+  check('C36: 本机再次 divergent 时仍进入冲突页且本机保持', body.includes('本机/云端存档冲突') && (await localSlot1Name(pageE)) === '本机覆盖角色')
+  await clickByText(pageE, '使用本机存档覆盖云端')
+  body = await bodyText(pageE)
+  const beforeUnlockForce = await cloudRequest({ action: 'load', passphrase: PASS_CONFLICT })
+  check('C37: 本机覆盖云端先二次确认，首次点击不更新 revision', body.includes('确认使用本机存档覆盖云端') && body.includes('云端现有进度将被本机存档替换') && beforeUnlockForce.json.revision === 1)
+  await clickByText(pageE, '确认使用本机存档覆盖云端')
+  await sleep(700)
+  const afterUnlockForce = await cloudRequest({ action: 'load', passphrase: PASS_CONFLICT })
+  body = await bodyText(pageE)
+  check('C38: 二次确认后 force 成功并完成解锁', body.includes('继续游戏') && afterUnlockForce.json.payload?.savesExport?.slots?.slot1?.gameState?.player?.name === '本机覆盖角色')
+  check('C39: 解锁 force_save 后云 revision 更新（1→2）', afterUnlockForce.json.revision === 2, `revision=${afterUnlockForce.json.revision}`)
+
   // ============ 24 服务器不可达 → 本地降级 ============
   mockProc.kill()
   await sleep(600)
@@ -358,12 +443,15 @@ try {
   await pageD.goto(APP_URL, { waitUntil: 'networkidle0' })
   await sleep(500)
   await typePassphrase(pageD, PASS_A)
-  // 客户端请求超时上限为 12s；离线断言需等待错误状态落地，避免把“仍在请求”误判为失败。
-  await sleep(12_500)
+  // 客户端请求超时上限为 12s；按 UI 条件等待，给事件循环留出余量，避免边界时序误报。
+  await pageD.waitForFunction(
+    () => document.body.textContent.includes('云存档暂时无法连接') && document.body.textContent.includes('仅使用本机存档进入'),
+    { timeout: 15_000 },
+  )
   body = await bodyText(pageD)
   check('C26: 服务器不可达 → 云存档暂时无法连接 + 本地降级入口', body.includes('云存档暂时无法连接') && body.includes('仅使用本机存档进入'))
   await clickByText(pageD, '仅使用本机存档进入')
-  await sleep(500)
+  await pageD.waitForFunction(() => document.body.textContent.includes('新游戏') && document.body.textContent.includes('仅本机模式（不会跨设备同步）'), { timeout: 5_000 })
   body = await bodyText(pageD)
   check('C27: 降级进入主菜单（当前不会跨设备同步）', body.includes('新游戏') && body.includes('仅本机模式（不会跨设备同步）'))
   await clickByText(pageD, '新游戏')

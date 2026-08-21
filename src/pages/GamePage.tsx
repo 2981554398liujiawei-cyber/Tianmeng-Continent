@@ -30,7 +30,7 @@ import type {
 import type { QuestStatus } from '../game/types'
 import { getCurrentObjective } from '../game/rules/objective'
 import { getPlayerArmor } from '../game/rules/combat'
-import { MERCHANT_OFFERS } from '../game/rules/merchant'
+import { BLACKSMITH_MERCHANT_ID, getMerchantOffers, WANGCAI_MERCHANT_ID } from '../game/rules/merchant'
 
 /** D20 检定结果中文（TM-P0-016） */
 const CHECK_OUTCOME_LABELS: Record<D20CheckResult['outcome'], string> = {
@@ -769,7 +769,7 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
                         const def = getItem(it.itemId)
                         return (
                           <p key={it.itemId} className="mt-1">
-                            {def?.name ?? it.itemId} ×{it.quantity}
+                            {def?.name ?? '异常物品（无法识别）'} ×{it.quantity}
                           </p>
                         )
                       })}
@@ -1378,19 +1378,20 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
             <section className="order-4 rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
               <h3 className="mb-3 text-sm font-bold tracking-wider text-bone-500">王财的货摊</h3>
               <div className="flex flex-col gap-2">
-                {MERCHANT_OFFERS.map((offer) => {
+                {getMerchantOffers(WANGCAI_MERCHANT_ID).map((offer) => {
                   const item = getItem(offer.itemId)
                   if (!item) return null
+                  const professionAllowed = item.type !== 'armor' || item.allowedProfessions?.includes(player.profession) === true
                   const canAfford = Number.isSafeInteger(player.gold) && player.gold >= offer.price
                   return (
                     <div key={offer.itemId} className="flex items-center justify-between gap-3 rounded border border-ink-600 bg-ink-900/40 p-3">
                       <div>
                         <p className="font-bold text-bone-100">{item.name}</p>
-                        <p className="mt-1 text-xs text-bone-500">{item.description} 护甲 +{item.armorDefenseBonus ?? 0} · 价格：{offer.price} 金币</p>
+                        <p className="mt-1 text-xs text-bone-500">{item.description}{item.type === 'armor' ? ` 护甲 +${item.armorDefenseBonus ?? 0}` : ''} · 价格：{offer.price} 金币</p>
                       </div>
                       <div className="flex flex-col items-end gap-1">
-                        <Button variant="primary" disabled={!canAfford} onClick={() => buyMerchantItem(offer.itemId)}>购买</Button>
-                        {!canAfford && <span className="text-xs text-red-300">金币不足</span>}
+                        <Button variant="primary" disabled={!canAfford || !professionAllowed} onClick={() => buyMerchantItem(WANGCAI_MERCHANT_ID, offer.itemId)}>购买</Button>
+                        {!professionAllowed ? <span className="text-xs text-red-300">职业无法使用</span> : !canAfford && <span className="text-xs text-red-300">金币不足</span>}
                       </div>
                     </div>
                   )
@@ -1427,6 +1428,32 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
                   </div>
                 )
               })()}
+            </section>
+          )}
+
+          {getNpc(BLACKSMITH_MERCHANT_ID)?.locationId === world.currentLocationId && (
+            <section className="order-4 rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
+              <h3 className="mb-3 text-sm font-bold tracking-wider text-bone-500">铁匠的货架</h3>
+              <div className="flex flex-col gap-2">
+                {getMerchantOffers(BLACKSMITH_MERCHANT_ID).map((offer) => {
+                  const item = getItem(offer.itemId)
+                  if (!item) return null
+                  const professionAllowed = item.type !== 'armor' || item.allowedProfessions?.includes(player.profession) === true
+                  const canAfford = Number.isSafeInteger(player.gold) && player.gold >= offer.price
+                  return (
+                    <div key={offer.itemId} className="flex items-center justify-between gap-3 rounded border border-ink-600 bg-ink-900/40 p-3">
+                      <div>
+                        <p className="font-bold text-bone-100">{item.name}</p>
+                        <p className="mt-1 text-xs text-bone-500">{item.description} 护甲 +{item.armorDefenseBonus ?? 0} · 价格：{offer.price} 金币</p>
+                      </div>
+                      <div className="flex flex-col items-end gap-1">
+                        <Button variant="primary" disabled={!canAfford || !professionAllowed} onClick={() => buyMerchantItem(BLACKSMITH_MERCHANT_ID, offer.itemId)}>购买</Button>
+                        {!professionAllowed ? <span className="text-xs text-red-300">职业无法使用</span> : !canAfford && <span className="text-xs text-red-300">金币不足</span>}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
             </section>
           )}
 
@@ -1662,7 +1689,7 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
                 if (status === 'undiscovered') {
                   return (
                     <div key={quest.id} className="flex items-center justify-between gap-4">
-                      <p>{giver?.name ?? quest.giverNpcId}似乎有事相托。</p>
+                      <p>{giver?.name ?? '异常人物（无法识别）'}似乎有事相托。</p>
                       <Button variant="ghost" onClick={() => discoverQuest(quest.id)}>
                         查看委托
                       </Button>
@@ -1674,7 +1701,7 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
                     <div key={quest.id}>
                       <p className="font-bold text-bone-100">{quest.title}</p>
                       <p className="mt-1 leading-relaxed">{quest.summary}</p>
-                      <p className="mt-1 text-xs text-bone-500">发布者：{giver?.name ?? quest.giverNpcId}</p>
+                      <p className="mt-1 text-xs text-bone-500">发布者：{giver?.name ?? '异常人物（无法识别）'}</p>
                       <div className="mt-2">
                         <Button variant="primary" onClick={() => acceptQuest(quest.id)}>
                           接受任务
@@ -1801,7 +1828,7 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
                         <span className="shrink-0 text-xs text-gold-300">{QUEST_STATUS_LABELS[qs.status]}</span>
                       </div>
                       <p className="mt-1 text-xs leading-relaxed text-bone-500">
-                        {def?.summary ?? `${qs.questId}（缺失任务定义）`}
+                        {def?.summary ?? '异常任务（无法识别）'}
                       </p>
                       {/* TM-P0-018：任务固定金币奖励（读 QuestDefinition.goldReward，不复制常量） */}
                       {def?.goldReward !== undefined && (

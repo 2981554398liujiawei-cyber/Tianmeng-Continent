@@ -600,7 +600,7 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
                   const rarity = def?.rarity ? `（${RARITY_LABELS[def.rarity]}）` : ''
                   return (
                     <p key={it.itemId} className="mt-1">
-                      {def?.name ?? it.itemId} ×{it.quantity}
+                      {def?.name ?? '异常物品（无法识别）'} ×{it.quantity}
                       {rarity}
                     </p>
                   )

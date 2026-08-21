@@ -170,7 +170,7 @@ export default function SaveSlotsPage({ mode, onBack, onSaved, onLoaded }: SaveS
         {SLOT_IDS.map((slotId, index) => {
           const summary = slots[slotId]
           const isEmpty = summary === null
-          const locationName = summary ? (getLocation(summary.locationId)?.name ?? summary.locationId) : ''
+          const locationName = summary ? (getLocation(summary.locationId)?.name ?? '异常地点（无法识别）') : ''
           return (
             <div
               key={slotId}

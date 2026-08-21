@@ -59,18 +59,28 @@ async function enterGame() {
 
 try {
   await ready()
-  for (const [width, height] of [[390, 844], [1024, 768], [1440, 900]]) {
+  for (const [width, height] of [[1920, 1080], [1600, 900], [1366, 768], [1024, 768], [390, 844]]) {
     await page.setViewport({ width, height })
     await enterGame()
     const metrics = await page.evaluate(() => ({
       innerWidth: window.innerWidth,
       docWidth: document.documentElement.scrollWidth,
       bodyWidth: document.body.scrollWidth,
-      clipped: [...document.querySelectorAll('body *')].some((el) => { const r = el.getBoundingClientRect(); return r.right > window.innerWidth + 1 || r.left < -1 })
+      outerHeight: document.scrollingElement.scrollHeight,
+      clientHeight: document.scrollingElement.clientHeight,
+      clipped: [...document.querySelectorAll('body *')].some((el) => { const r = el.getBoundingClientRect(); return r.right > window.innerWidth + 1 || r.left < -1 }),
+      criticalInView: ['header', '[data-testid="player-column"]', '[data-testid="quest-column"]'].every((selector) => {
+        const el = document.querySelector(selector)
+        if (!el) return false
+        const r = el.getBoundingClientRect()
+        return r.top >= -1 && r.left >= -1 && r.right <= window.innerWidth + 1 && r.top < window.innerHeight
+      }),
     }))
     check(`${width}x${height}: 无横向滚动`, metrics.docWidth <= width && metrics.bodyWidth <= width, `doc=${metrics.docWidth} body=${metrics.bodyWidth}`)
     check(`${width}x${height}: 无元素越过视口`, !metrics.clipped)
     check(`${width}x${height}: 游戏三栏与防具 UI 可渲染`, await page.evaluate(() => Boolean(document.querySelector('[data-testid="player-column"]')) && Boolean(document.querySelector('[data-testid="main-column"]')) && document.body.textContent.includes('防具')))
+    check(`${width}x${height}: header/player/current objective 均在首屏`, metrics.criticalInView)
+    if (width >= 1280) check(`${width}x${height}: 浏览器外层无纵向滚动`, metrics.outerHeight <= metrics.clientHeight + 1, `scroll=${metrics.outerHeight} client=${metrics.clientHeight}`)
   }
 } catch (error) {
   check('布局脚本执行无异常', false, String(error))

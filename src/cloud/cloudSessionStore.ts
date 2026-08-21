@@ -21,7 +21,20 @@ export interface CloudSyncResult {
   revision: number
 }
 
+export interface CloudSaveSummary {
+  playerName: string
+  level: number
+  locationId: string
+  savedAt: string
+}
+
+export interface CloudUnlockConflict {
+  local: CloudSaveSummary | null
+  cloud: CloudSaveSummary | null
+}
+
 interface CloudSessionStore extends CloudSession {
+  unlockConflict: CloudUnlockConflict | null
   /** 解锁：输入口令 → load 云存档 →（存在则导入本地）→ connected */
   unlock: (passphrase: string) => Promise<'connected' | 'error' | 'invalid'>,
   /** 仅本机模式（未配置/服务器不可达降级；24 节：明确显示不会跨设备同步） */
@@ -56,17 +69,38 @@ export const useCloudSession = create<CloudSessionStore>()((set, get) => ({
   revision: 0,
   passphrase: null,
   syncStatus: 'idle',
+  unlockConflict: null,
 
   unlock: async (rawPassphrase) => {
     const passphrase = normalizePassphrase(rawPassphrase)
     if (!passphrase) return 'invalid'
-    set({ status: 'loading', passphrase })
+    set({ status: 'loading', passphrase, unlockConflict: null })
     const res = await callCloudSave({ action: 'load', passphrase })
     if (!res.ok || !('exists' in res)) {
       set({ status: 'error', passphrase: null })
       return 'error'
     }
     if (res.exists && res.payload) {
+      if (hasAnySave()) {
+        const localPayload = exportCurrentSaves()
+        if (!cloudVaultsContainSameSaves(localPayload, res.payload)) {
+          // Both sides contain valid but different saves.  Unlocking establishes the
+          // session, but must never choose a winner: the existing conflict actions
+          // remain the only paths that may load cloud or force-overwrite it.
+          set({
+            status: 'locked', revision: res.revision, passphrase, syncStatus: 'conflict',
+            unlockConflict: {
+              local: getLatestCloudSaveSummary(localPayload),
+              cloud: getLatestCloudSaveSummary(res.payload),
+            },
+          })
+          return 'connected'
+        }
+        // exportSaves() generates a fresh exportedAt on every call.  Matching save
+        // contents are already connected safely and do not need a destructive import.
+        set({ status: 'connected', revision: res.revision, passphrase, syncStatus: 'synced', unlockConflict: null })
+        return 'connected'
+      }
       // 云端为该口令的主档 → 导入本地（导入前备份，失败回滚；不破坏本机已有合法档）
       const imported = importCloudPayloadToLocal(res.payload)
       if (!imported) {
@@ -88,7 +122,7 @@ export const useCloudSession = create<CloudSessionStore>()((set, get) => ({
   },
 
   enterLocalOnly: () => {
-    set({ status: 'connected', revision: 0, passphrase: null, syncStatus: 'offline' })
+    set({ status: 'connected', revision: 0, passphrase: null, syncStatus: 'offline', unlockConflict: null })
   },
 
   createEmptyVault: async () => {
@@ -134,7 +168,7 @@ export const useCloudSession = create<CloudSessionStore>()((set, get) => ({
       return 'error'
     }
     useGameStore.getState().refreshSlots()
-    set({ revision: res.revision, syncStatus: 'synced' })
+    set({ status: 'connected', revision: res.revision, syncStatus: 'synced', unlockConflict: null })
     return 'connected'
   },
 
@@ -144,7 +178,7 @@ export const useCloudSession = create<CloudSessionStore>()((set, get) => ({
     const payload = exportCurrentSaves()
     const res = await callCloudSave({ action: 'force_save', passphrase, payload })
     if (res.ok) {
-      set({ revision: res.revision, syncStatus: 'synced' })
+      set({ status: 'connected', revision: res.revision, syncStatus: 'synced', unlockConflict: null })
       return 'synced'
     }
     set({ syncStatus: 'cloud_failed' })
@@ -220,6 +254,67 @@ export function isCloudVaultPayloadShape(value: unknown): value is CloudVaultPay
   if (typeof s.exportedAt !== 'string') return false
   if (typeof s.slots !== 'object' || s.slots === null) return false
   return true
+}
+
+/**
+ * Compare the durable save identity of two vaults. `exportedAt` describes the
+ * transport/export operation, so it is deliberately excluded; slot `savedAt`,
+ * game state, slot occupancy, and Continue semantics all remain significant.
+ */
+export function cloudVaultsContainSameSaves(a: unknown, b: unknown): boolean {
+  if (!isCloudVaultPayloadShape(a) || !isCloudVaultPayloadShape(b)) return false
+  return deepEqualJson(
+    {
+      cloudVersion: a.cloudVersion,
+      version: a.savesExport.version,
+      lastSavedSlot: a.savesExport.lastSavedSlot,
+      slots: a.savesExport.slots,
+    },
+    {
+      cloudVersion: b.cloudVersion,
+      version: b.savesExport.version,
+      lastSavedSlot: b.savesExport.lastSavedSlot,
+      slots: b.savesExport.slots,
+    },
+  )
+}
+
+/** Read the newest slot's display fields defensively from local or cloud payloads. */
+export function getLatestCloudSaveSummary(payload: unknown): CloudSaveSummary | null {
+  if (!isCloudVaultPayloadShape(payload)) return null
+  let latest: CloudSaveSummary | null = null
+  let latestTime = -1
+  for (const slot of Object.values(payload.savesExport.slots)) {
+    if (typeof slot !== 'object' || slot === null) continue
+    const record = slot as Record<string, unknown>
+    const state = record.gameState
+    if (typeof record.savedAt !== 'string' || typeof state !== 'object' || state === null) continue
+    const player = (state as Record<string, unknown>).player
+    const world = (state as Record<string, unknown>).world
+    if (typeof player !== 'object' || player === null || typeof world !== 'object' || world === null) continue
+    const p = player as Record<string, unknown>
+    const w = world as Record<string, unknown>
+    const time = Date.parse(record.savedAt)
+    if (typeof p.name !== 'string' || typeof p.level !== 'number' || typeof w.currentLocationId !== 'string' || !Number.isFinite(time) || time <= latestTime) continue
+    latestTime = time
+    latest = { playerName: p.name, level: p.level, locationId: w.currentLocationId, savedAt: record.savedAt }
+  }
+  return latest
+}
+
+function deepEqualJson(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true
+  if (typeof a !== 'object' || a === null || typeof b !== 'object' || b === null) return false
+  if (Array.isArray(a) || Array.isArray(b)) {
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false
+    return a.every((value, index) => deepEqualJson(value, b[index]))
+  }
+  const aRecord = a as Record<string, unknown>
+  const bRecord = b as Record<string, unknown>
+  const aKeys = Object.keys(aRecord).sort()
+  const bKeys = Object.keys(bRecord).sort()
+  return aKeys.length === bKeys.length &&
+    aKeys.every((key, index) => key === bKeys[index] && deepEqualJson(aRecord[key], bRecord[key]))
 }
 
 export type { CloudSyncStatus }

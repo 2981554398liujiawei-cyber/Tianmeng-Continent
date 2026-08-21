@@ -6,6 +6,7 @@ import { getNpc, getQuest } from '../content'
 import { SKILLS } from '../content/skills'
 import type { QuestStatus } from '../types/quest'
 import type { GameState } from '../types/game'
+import { SAVE_SLOT_KEY_PREFIX } from '../utils/storage'
 
 function createMockStorage(): Storage {
   const store = new Map<string, string>()
@@ -62,25 +63,70 @@ describe('金币操作', () => {
   })
 })
 
-describe('TM-P2-005 王财商店', () => {
-  it('在王财处购买防具，金币与库存原子更新', () => {
+describe('TM-P2-005-R1 商店闭环', () => {
+  it('在王财处购买防具，金币与库存数量原子更新', () => {
     useGameStore.getState().setCurrentLocation('tianlong_city')
+    useGameStore.setState((state) => ({ gameState: state.gameState ? { ...state.gameState, player: { ...state.gameState.player, gold: 100 } } : null }))
     const before = useGameStore.getState().gameState!
-    expect(useGameStore.getState().buyMerchantItem('hardened_leather_armor')).toBe(true)
+    expect(useGameStore.getState().buyMerchantItem('merchant_wangcai', 'hardened_leather_armor')).toBe(true)
+    expect(useGameStore.getState().buyMerchantItem('merchant_wangcai', 'hardened_leather_armor')).toBe(true)
     const after = useGameStore.getState().gameState!
-    expect(after.player.gold).toBe(before.player.gold - 30)
-    expect(after.inventory.find((entry) => entry.itemId === 'hardened_leather_armor')?.quantity).toBe(1)
+    expect(after.player.gold).toBe(before.player.gold - 60)
+    expect(after.inventory.find((entry) => entry.itemId === 'hardened_leather_armor')?.quantity).toBe(2)
   })
 
-  it('错误地点、未知商品、余额不足均拒绝且不变', () => {
-    const before = JSON.stringify(useGameStore.getState().gameState)
-    expect(useGameStore.getState().buyMerchantItem('chainmail_armor')).toBe(false)
-    expect(JSON.stringify(useGameStore.getState().gameState)).toBe(before)
+  it('商人与地点不匹配、未知商品、余额不足均拒绝且保持引用', () => {
+    const initial = useGameStore.getState().gameState
+    expect(useGameStore.getState().buyMerchantItem('merchant_wangcai', 'chainmail_armor')).toBe(false)
+    expect(useGameStore.getState().gameState).toBe(initial)
     useGameStore.getState().setCurrentLocation('tianlong_city')
+    const atCity = useGameStore.getState().gameState
+    expect(useGameStore.getState().buyMerchantItem('blacksmith', 'traveler_cloth_armor')).toBe(false)
+    expect(useGameStore.getState().buyMerchantItem('merchant_wangcai', 'no_such_item')).toBe(false)
+    expect(useGameStore.getState().gameState).toBe(atCity)
     useGameStore.setState((state) => ({ gameState: state.gameState ? { ...state.gameState, player: { ...state.gameState.player, gold: 0 } } : null }))
-    const poor = JSON.stringify(useGameStore.getState().gameState)
-    expect(useGameStore.getState().buyMerchantItem('chainmail_armor')).toBe(false)
-    expect(JSON.stringify(useGameStore.getState().gameState)).toBe(poor)
+    const poor = useGameStore.getState().gameState
+    expect(useGameStore.getState().buyMerchantItem('merchant_wangcai', 'chainmail_armor')).toBe(false)
+    expect(useGameStore.getState().gameState).toBe(poor)
+  })
+
+  it('王财以 8 金币出售天龙桂花糕', () => {
+    useGameStore.getState().setCurrentLocation('tianlong_city')
+    expect(useGameStore.getState().buyMerchantItem('merchant_wangcai', 'tianlong_osmanthus_cake')).toBe(true)
+    expect(gold()).toBe(42)
+    expect(inv()?.find((entry) => entry.itemId === 'tianlong_osmanthus_cake')?.quantity).toBe(1)
+  })
+
+  it('异常重复库存条目拒绝，不扣金币也不自动修复', () => {
+    useGameStore.getState().setCurrentLocation('tianlong_city')
+    useGameStore.setState((state) => ({
+      gameState: state.gameState ? { ...state.gameState, inventory: [...state.gameState.inventory, { itemId: 'tianlong_osmanthus_cake', quantity: 1 }, { itemId: 'tianlong_osmanthus_cake', quantity: 1 }] } : null,
+    }))
+    const before = useGameStore.getState().gameState
+    expect(useGameStore.getState().buyMerchantItem('merchant_wangcai', 'tianlong_osmanthus_cake')).toBe(false)
+    expect(useGameStore.getState().gameState).toBe(before)
+  })
+
+  it('铁匠与王财报价不串店', () => {
+    useGameStore.getState().setCurrentLocation('qingshi_village')
+    expect(useGameStore.getState().buyMerchantItem('blacksmith', 'traveler_cloth_armor')).toBe(true)
+    const before = JSON.stringify(useGameStore.getState().gameState)
+    expect(useGameStore.getState().buyMerchantItem('blacksmith', 'arcane_robe')).toBe(false)
+    expect(JSON.stringify(useGameStore.getState().gameState)).toBe(before)
+  })
+
+  it.each([4, 5])('旧 V%i 槽位读取后可继续购买', (version) => {
+    const oldState = createInitialGameState()
+    oldState.world.currentLocationId = 'tianlong_city'
+    oldState.player.gold = 100
+    localStorage.setItem(`${SAVE_SLOT_KEY_PREFIX}slot1`, JSON.stringify({
+      version,
+      savedAt: '2026-08-21T00:00:00.000Z',
+      gameState: oldState,
+    }))
+    expect(useGameStore.getState().loadSlot('slot1')).toBe(true)
+    expect(useGameStore.getState().buyMerchantItem('merchant_wangcai', 'traveler_cloth_armor')).toBe(true)
+    expect(gold()).toBe(88)
   })
 })
 
@@ -2584,37 +2630,37 @@ describe('TM-P1-011：第一次里程碑升级 Lv.2（完成《草原狼影》�
     })
   }
 
-  it('B. 正常完成：Lv1→Lv2、HP 22/22→24/24、MP 6/6→7/7、XP 40→100、金币 85→110、任务 completed（同一原子更新）', () => {
+  it('B. 正常完成：Lv1→Lv2、HP 22/22→22/24、MP 6/6→6/7、XP 40→100、金币 85→110、任务 completed（同一原子更新）', () => {
     completeWolfQuest()
     expect(p().level).toBe(1)
     expect(gold()).toBe(85)
     expect(useGameStore.getState().completeQuest('quest_grassland_wolf')).toBe(true)
     expect(wolfQuest()?.status).toBe('completed')
     expect(p().level).toBe(2)
-    expect(p().hp).toBe(24)
+    expect(p().hp).toBe(22)
     expect(p().maxHp).toBe(24)
-    expect(p().mp).toBe(7)
+    expect(p().mp).toBe(6)
     expect(p().maxMp).toBe(7)
     expect(p().adventureXp).toBe(100)
     expect(gold()).toBe(110)
   })
 
-  it('C. 受伤状态随等级成长：HP 10/22、MP 2/6 → 12/24、3/7', () => {
+  it('C. 受伤状态不治疗：HP 10/22、MP 2/6 → 10/24、2/7', () => {
     completeWolfQuest()
     setPlayerState({ hp: 10, mp: 2 })
     useGameStore.getState().completeQuest('quest_grassland_wolf')
-    expect(p().hp).toBe(12)
+    expect(p().hp).toBe(10)
     expect(p().maxHp).toBe(24)
-    expect(p().mp).toBe(3)
+    expect(p().mp).toBe(2)
     expect(p().maxMp).toBe(7)
     expect(p().level).toBe(2)
   })
 
-  it('D. HP0 仅获得等级成长：HP 0/22 → 2/24', () => {
+  it('D. HP0 不复活：HP 0/22 → 0/24', () => {
     completeWolfQuest()
     setPlayerState({ hp: 0 })
     useGameStore.getState().completeQuest('quest_grassland_wolf')
-    expect(p().hp).toBe(2)
+    expect(p().hp).toBe(0)
     expect(p().maxHp).toBe(24)
     expect(p().level).toBe(2)
   })

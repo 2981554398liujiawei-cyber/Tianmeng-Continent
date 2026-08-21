@@ -39,6 +39,18 @@ const clickByText = async (text) => {
   await sleep(400)
 }
 
+const buyOsmanthusCake = async () => {
+  await page.evaluate(() => {
+    const itemName = [...document.querySelectorAll('p')].find((p) => p.textContent.trim() === '天龙桂花糕')
+    if (!itemName) throw new Error('未找到商品卡: 天龙桂花糕')
+    const card = itemName.closest('div.flex.items-center.justify-between')
+    const button = card && [...card.querySelectorAll('button')].find((b) => b.textContent.trim() === '购买')
+    if (!button) throw new Error('天龙桂花糕商品卡内未找到购买按钮')
+    button.click()
+  })
+  await sleep(400)
+}
+
 const bodyText = () => page.evaluate(() => document.body.textContent)
 
 /** TM-P2-005：云口令页出现「仅本机模式」时点击进入（未配置云端端点的降级入口） */
@@ -253,9 +265,9 @@ try {
   // ================= 赠礼（桂花糕 liked +2） =================
   body = await bodyText()
   check('P2-004-31: 天龙城桂花糕铺可购买（8 金币）', body.includes('桂花糕铺') && body.includes('桂花糕'))
-  await clickByText('购买')
+  await buyOsmanthusCake()
   await sleep(300)
-  await clickByText('购买') // 买 2 个：1 个赠礼消耗，1 个留给刷新保持检查
+  await buyOsmanthusCake() // 买 2 个：1 个赠礼消耗，1 个留给刷新保持检查
   await sleep(300)
   body = await bodyText()
   const affBeforeGift = await readAffection()

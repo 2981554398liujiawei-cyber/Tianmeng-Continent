@@ -8,7 +8,7 @@
 import { describe, expect, it } from 'vitest'
 import { createEmptyCloudVaultPayload, CLOUD_SAVE_FORMAT_VERSION } from './cloudSaveTypes'
 import { normalizePassphrase, validatePassphrase } from './cloudSaveApi'
-import { isCloudVaultPayloadShape, importCloudPayloadToLocal } from './cloudSessionStore'
+import { cloudVaultsContainSameSaves, getLatestCloudSaveSummary, isCloudVaultPayloadShape, importCloudPayloadToLocal } from './cloudSessionStore'
 // QA handler is a Node-only .mjs module; its runtime is covered by the cloud E2E.
 // @ts-expect-error no browser-side declaration is emitted for the Node QA helper.
 import { createMockCloudStore, handleCloudRequest } from '../../qa/cloud-save-mock-handler.mjs'
@@ -68,6 +68,57 @@ describe('TM-P2-005：云信封构造与形状（9/18/62 节）', () => {
     expect(isCloudVaultPayloadShape({ cloudVersion: 2, savesExport: {} })).toBe(false)
     expect(isCloudVaultPayloadShape({ cloudVersion: 1 })).toBe(false)
     expect(isCloudVaultPayloadShape({ cloudVersion: 1, savesExport: { version: 'x' } })).toBe(false)
+  })
+})
+
+describe('TM-P2-005-R1：云解锁存档身份比较', () => {
+  it('相同档忽略导出时间，可安全连接', () => {
+    const local = createEmptyCloudVaultPayload()
+    const cloud = structuredClone(local)
+    cloud.savesExport.exportedAt = '2099-01-01T00:00:00.000Z'
+    expect(cloudVaultsContainSameSaves(local, cloud)).toBe(true)
+  })
+
+  it('本机槽位更新时判为 divergent，不能视为相同档', () => {
+    const cloud = createEmptyCloudVaultPayload()
+    const local = structuredClone(cloud)
+    local.savesExport.slots.slot1 = {
+      version: 5,
+      savedAt: '2099-01-01T00:00:00.000Z',
+      gameState: { marker: 'local-newer' },
+    }
+    local.savesExport.lastSavedSlot = 'slot1'
+    expect(cloudVaultsContainSameSaves(local, cloud)).toBe(false)
+  })
+
+  it('云端与本机各自变化时判为 divergent', () => {
+    const local = createEmptyCloudVaultPayload()
+    const cloud = structuredClone(local)
+    local.savesExport.slots.slot1 = { marker: 'local' }
+    cloud.savesExport.slots.slot1 = { marker: 'cloud' }
+    expect(cloudVaultsContainSameSaves(local, cloud)).toBe(false)
+  })
+
+  it('Continue 槽位不同也不是相同档', () => {
+    const local = createEmptyCloudVaultPayload()
+    const cloud = structuredClone(local)
+    local.savesExport.lastSavedSlot = 'slot1'
+    expect(cloudVaultsContainSameSaves(local, cloud)).toBe(false)
+  })
+
+  it('摘要选择 savedAt 最新槽并返回角色、等级、地点、保存时间', () => {
+    const payload = createEmptyCloudVaultPayload()
+    payload.savesExport.slots.slot1 = {
+      savedAt: '2026-01-01T00:00:00.000Z',
+      gameState: { player: { name: '旧角色', level: 2 }, world: { currentLocationId: 'old_place' } },
+    }
+    payload.savesExport.slots.slot4 = {
+      savedAt: '2026-08-21T00:00:00.000Z',
+      gameState: { player: { name: '天梦行者', level: 5 }, world: { currentLocationId: 'tianlong_city' } },
+    }
+    expect(getLatestCloudSaveSummary(payload)).toEqual({
+      playerName: '天梦行者', level: 5, locationId: 'tianlong_city', savedAt: '2026-08-21T00:00:00.000Z',
+    })
   })
 })
 

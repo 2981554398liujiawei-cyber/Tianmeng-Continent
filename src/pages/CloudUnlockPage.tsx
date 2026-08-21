@@ -11,6 +11,7 @@ import Button from '../components/Button'
 import { useCloudSession } from '../cloud/cloudSessionStore'
 import { isCloudConfigured, normalizePassphrase, validatePassphrase } from '../cloud/cloudSaveApi'
 import { hasAnySave } from '../game/utils/storage'
+import { getLocation } from '../game/content'
 
 interface CloudUnlockPageProps {
   /** 解锁成功（含仅本机模式）后进入主菜单 */
@@ -24,12 +25,16 @@ export default function CloudUnlockPage({ onUnlocked }: CloudUnlockPageProps) {
   const enterLocalOnly = useCloudSession((s) => s.enterLocalOnly)
   const createEmptyVault = useCloudSession((s) => s.createEmptyVault)
   const uploadLocalAsVault = useCloudSession((s) => s.uploadLocalAsVault)
+  const unlockConflict = useCloudSession((s) => s.unlockConflict)
+  const resolveConflictByLoading = useCloudSession((s) => s.resolveConflictByLoading)
+  const resolveConflictByOverwrite = useCloudSession((s) => s.resolveConflictByOverwrite)
 
   const [passphrase, setPassphrase] = useState('')
   const [showPassphrase, setShowPassphrase] = useState(false)
   const [inputError, setInputError] = useState<string | null>(null)
   const [serverError, setServerError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [confirmLocalOverwrite, setConfirmLocalOverwrite] = useState(false)
 
   // 云端无档 + 本机有档 → 迁移选择（TM-P2-005 15.1/16 节）
   const cloudEmptyWithLocalSave = status === 'connected' && revision === 0 && hasAnySave()
@@ -59,6 +64,7 @@ export default function CloudUnlockPage({ onUnlocked }: CloudUnlockPageProps) {
     }
     // 云端无档 + 本机有档：留在口令页展示迁移面板（上传本机存档 / 创建空白云存档）
     const session = useCloudSession.getState()
+    if (session.unlockConflict) return
     if (session.revision === 0 && hasAnySave()) return
     onUnlocked()
   }
@@ -113,6 +119,49 @@ export default function CloudUnlockPage({ onUnlocked }: CloudUnlockPageProps) {
         <p className="mt-3 text-center text-xs text-bone-500">存档将同步到云端</p>
       </section>
 
+      {unlockConflict && (
+        <section className="w-full rounded border border-red-500/50 bg-red-950/20 p-5" aria-live="polite">
+          <h2 className="text-lg font-bold text-red-200">本机/云端存档冲突</h2>
+          <p className="mt-2 text-sm text-bone-300">两边的存档内容不同。请选择要保留的版本，本机存档不会被自动覆盖。</p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <SaveSummary title="本机最新存档" summary={unlockConflict.local} />
+            <SaveSummary title="云端最新存档" summary={unlockConflict.cloud} />
+          </div>
+          <div className="mt-4 flex flex-col gap-2">
+            {!confirmLocalOverwrite ? (
+              <>
+                <Button variant="primary" disabled={busy} onClick={async () => {
+                  setBusy(true)
+                  const ok = await resolveConflictByLoading()
+                  setBusy(false)
+                  if (ok) onUnlocked()
+                  else setServerError('云存档暂时无法连接。')
+                }}>
+                  使用云端存档
+                </Button>
+                <Button variant="danger" disabled={busy} onClick={() => setConfirmLocalOverwrite(true)}>
+                  使用本机存档覆盖云端
+                </Button>
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-red-200">确认后，云端现有进度将被本机存档替换。</p>
+                <Button variant="danger" disabled={busy} onClick={async () => {
+                  setBusy(true)
+                  const ok = await resolveConflictByOverwrite()
+                  setBusy(false)
+                  if (ok) onUnlocked()
+                  else setServerError('云存档暂时无法连接。')
+                }}>
+                  确认使用本机存档覆盖云端
+                </Button>
+                <Button variant="ghost" disabled={busy} onClick={() => setConfirmLocalOverwrite(false)}>取消</Button>
+              </>
+            )}
+          </div>
+        </section>
+      )}
+
       {/* 云端无档 + 本机有档：迁移体验（TM-P2-005 15.1/16 节） */}
       {cloudEmptyWithLocalSave && (
         <section className="w-full rounded border border-gold-600/40 bg-gold-900/20 p-5">
@@ -162,6 +211,25 @@ export default function CloudUnlockPage({ onUnlocked }: CloudUnlockPageProps) {
           </Button>
         </section>
       )}
+    </div>
+  )
+}
+
+function SaveSummary({ title, summary }: {
+  title: string
+  summary: { playerName: string; level: number; locationId: string; savedAt: string } | null
+}) {
+  return (
+    <div className="rounded border border-ink-600 bg-ink-900/60 p-3 text-sm">
+      <h3 className="font-semibold text-gold-300">{title}</h3>
+      {summary ? (
+        <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-bone-300">
+          <dt>角色</dt><dd>{summary.playerName}</dd>
+          <dt>等级</dt><dd>{summary.level}</dd>
+          <dt>地点</dt><dd>{getLocation(summary.locationId)?.name ?? '地点数据异常'}</dd>
+          <dt>保存时间</dt><dd>{summary.savedAt}</dd>
+        </dl>
+      ) : <p className="mt-2 text-bone-500">无有效存档</p>}
     </div>
   )
 }
