@@ -93,6 +93,27 @@ describe('TM-P2-002 G：五槽位相互独立', () => {
   })
 })
 
+describe('TM-P2-005：V4 → V5 迁移与 XP 保留', () => {
+  it('旧 V4 没有 adventureXp 时迁移为 V5，并按旧等级保留最低 XP', () => {
+    const state = createInitialGameState()
+    state.player.level = 3
+    // @ts-expect-error 模拟 V4 槽位没有 adventureXp
+    delete state.player.adventureXp
+    const legacyV4 = { version: 4, savedAt: '2026-01-01T00:00:00.000Z', gameState: state }
+    const payload = JSON.stringify({
+      version: SAVE_VERSION,
+      exportedAt: '2026-01-01T00:00:00.000Z',
+      lastSavedSlot: 'slot1',
+      slots: { slot1: legacyV4, slot2: null, slot3: null, slot4: null, slot5: null },
+    })
+    expect(importSaves(payload)).toBe(true)
+    const migrated = loadSlot('slot1')
+    expect(migrated?.version).toBe(SLOT_FORMAT_VERSION)
+    expect(migrated?.gameState.player.level).toBe(3)
+    expect(migrated?.gameState.player.adventureXp).toBe(250)
+  })
+})
+
 describe('TM-P2-002 H：V1 单档自动迁移', () => {
   const writeLegacy = (gameState: unknown, version = LEGACY_SAVE_VERSION) => {
     localStorage.setItem(LEGACY_SAVE_KEY, JSON.stringify({ version, savedAt: '2026-01-01T00:00:00.000Z', gameState }))

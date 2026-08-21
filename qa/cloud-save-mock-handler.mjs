@@ -85,7 +85,7 @@ export function handleCloudRequest(store, body) {
   if (typeof rawPassphrase !== 'string') {
     return invalid('口令长度必须为 8–128 个字符')
   }
-  const normalized = rawPassphrase.trim()
+  const normalized = rawPassphrase.trim().normalize('NFKC')
   if (normalized.length < PASSPHRASE_MIN_LENGTH || normalized.length > PASSPHRASE_MAX_LENGTH) {
     return invalid('口令长度必须为 8–128 个字符')
   }

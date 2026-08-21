@@ -80,12 +80,12 @@ export default function SaveSlotsPage({ mode, onBack, onSaved, onLoaded }: SaveS
   const resolveConflictByOverwrite = useCloudSession((s) => s.resolveConflictByOverwrite)
 
   /** 本地操作成功后：云同步（14 节：本地成功优先；云失败不阻塞、本地档保留） */
-  const afterLocalSave = async () => {
+  const afterLocalSave = async (navigateOnSuccess = true) => {
     setSyncNote(null)
     const result = await syncAfterLocalSave()
     if (result.outcome === 'synced' || result.outcome === 'not_configured') {
       setSyncNote('synced')
-      onSaved()
+      if (navigateOnSuccess) onSaved()
       return
     }
     if (result.outcome === 'conflict') {
@@ -104,7 +104,7 @@ export default function SaveSlotsPage({ mode, onBack, onSaved, onLoaded }: SaveS
     setPendingDelete(null)
     // TM-P2-005 28 节：本地删除 → 导出当前五槽 → 云同步（刷新后不复活被删槽位）
     const ok = deleteSlot(slotId)
-    if (ok) void afterLocalSave()
+    if (ok) void afterLocalSave(false)
   }
 
   const handleExport = () => {
@@ -300,9 +300,13 @@ export default function SaveSlotsPage({ mode, onBack, onSaved, onLoaded }: SaveS
                   <Button
                     variant="primary"
                     onClick={async () => {
-                      await resolveConflictByLoading()
-                      setShowConflict(false)
-                      setSyncNote('synced')
+                      const synced = await resolveConflictByLoading()
+                      if (synced) {
+                        setShowConflict(false)
+                        setSyncNote('synced')
+                      } else {
+                        setSyncNote('cloud_failed')
+                      }
                     }}
                   >
                     读取云端最新版
@@ -319,9 +323,13 @@ export default function SaveSlotsPage({ mode, onBack, onSaved, onLoaded }: SaveS
                   <Button
                     variant="danger"
                     onClick={async () => {
-                      await resolveConflictByOverwrite()
-                      setShowConflict(false)
-                      setSyncNote('synced')
+                      const synced = await resolveConflictByOverwrite()
+                      if (synced) {
+                        setShowConflict(false)
+                        setSyncNote('synced')
+                      } else {
+                        setSyncNote('cloud_failed')
+                      }
                     }}
                   >
                     确认覆盖云端

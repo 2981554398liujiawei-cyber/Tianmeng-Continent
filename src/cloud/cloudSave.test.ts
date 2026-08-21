@@ -20,6 +20,10 @@ describe('TM-P2-005：口令标准化与校验（7.2/19 节）', () => {
     expect(normalizePassphrase('MySave')).not.toBe('mysave')
   })
 
+  it('normalize：前后端统一使用 NFKC（全角字符折叠）', () => {
+    expect(normalizePassphrase('  ＴＭ－Ｐ２－００５  ')).toBe('TM-P2-005')
+  })
+
   it('空口令拒绝', () => {
     expect(validatePassphrase('')).not.toBeNull()
     expect(validatePassphrase('   ')).not.toBeNull()

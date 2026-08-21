@@ -228,6 +228,14 @@ try {
   check('C13: A 再保存（expectedRevision=3）→ revision=4', afterA2.json.ok && afterA2.json.revision === 4, `revision=${afterA2.json.revision}`)
 
   // ============ 45 force overwrite（二次确认） ============
+  await saveToSlot1(pageB) // B 仍持有旧 revision，先显式读取 A 的最新版
+  body = await bodyText(pageB)
+  if (body.includes('云端存档已在另一台设备更新')) {
+    await clickByText(pageB, '读取云端最新版')
+    await sleep(800)
+    await clickByText(pageB, '返回')
+    await sleep(400)
+  }
   await saveToSlot1(pageB) // B: 4 → 5
   const afterB2 = await cloudRequest({ action: 'load', passphrase: PASS_A })
   await saveToSlot1(pageA) // A 持有 4 → 冲突
@@ -321,7 +329,7 @@ try {
     if (!raw) return null
     return JSON.parse(raw)
   })
-  check('C23: 迁移后本地已是 V4（companions/relationships/party/restCount）', localV4 && localV4.version === 4 && localV4.gameState.companions && localV4.gameState.relationships && localV4.gameState.party && localV4.gameState.world.restCount === 0)
+  check('C23: 迁移后本地已是 V5（companions/relationships/party/restCount/XP）', localV4 && localV4.version === 5 && localV4.gameState.companions && localV4.gameState.relationships && localV4.gameState.party && localV4.gameState.world.restCount === 0 && Number.isSafeInteger(localV4.gameState.player.adventureXp))
   // 黄金兔冻结保持
   const golden = localV4?.gameState?.quests?.find((q) => q.questId === 'quest_golden_rabbit_search')
   check(
@@ -338,7 +346,7 @@ try {
   await saveToSlot1(pageC)
   const afterV4 = await cloudRequest({ action: 'load', passphrase: PASS_V3 })
   const cloudSlot = afterV4.json.payload?.savesExport?.slots?.slot1
-  check('C25: 迁移后保存 → 云端已是 V4 且 revision 2', afterV4.json.revision === 2 && cloudSlot?.version === 4 && cloudSlot?.gameState?.companions !== undefined)
+  check('C25: 迁移后保存 → 云端已是 V5 且 revision 2', afterV4.json.revision === 2 && cloudSlot?.version === 5 && cloudSlot?.gameState?.companions !== undefined && Number.isSafeInteger(cloudSlot?.gameState?.player?.adventureXp))
 
   // ============ 24 服务器不可达 → 本地降级 ============
   mockProc.kill()
@@ -350,6 +358,8 @@ try {
   await pageD.goto(APP_URL, { waitUntil: 'networkidle0' })
   await sleep(500)
   await typePassphrase(pageD, PASS_A)
+  // 客户端请求超时上限为 12s；离线断言需等待错误状态落地，避免把“仍在请求”误判为失败。
+  await sleep(12_500)
   body = await bodyText(pageD)
   check('C26: 服务器不可达 → 云存档暂时无法连接 + 本地降级入口', body.includes('云存档暂时无法连接') && body.includes('仅使用本机存档进入'))
   await clickByText(pageD, '仅使用本机存档进入')

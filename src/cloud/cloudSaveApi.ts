@@ -1,8 +1,8 @@
 /**
  * 云存档 API 客户端（TM-P2-005 11/20/37/58 节）。
- *  - 纯原生 fetch，不引入 Supabase JS client。
+ *  - 纯原生 fetch，不引入第三方云端 SDK。
  *  - 唯一客户端公开配置：VITE_CLOUD_SAVE_ENDPOINT（构建时注入；未配置 = 云层不可用）。
- *  - 前端 bundle 绝不包含 VAULT_HMAC_SECRET / SUPABASE_SERVICE_ROLE_KEY（服务器端才存在）。
+ *  - 前端 bundle 绝不包含 SAVE_PEPPER（服务器端才存在）。
  *  - passphrase 只出现在 HTTPS body 中；禁止 console / URL / localStorage / telemetry。
  */
 import {
@@ -36,9 +36,10 @@ export function normalizePassphrase(raw: string): string {
  * 返回 null 表示合法；否则返回错误信息。
  */
 export function validatePassphrase(passphrase: string): string | null {
-  if (passphrase.length === 0) return '口令不能为空。'
-  if (passphrase.length < PASSPHRASE_MIN_LENGTH) return `口令至少 ${PASSPHRASE_MIN_LENGTH} 个字符。`
-  if (passphrase.length > PASSPHRASE_MAX_LENGTH) return `口令最多 ${PASSPHRASE_MAX_LENGTH} 个字符。`
+  const normalized = normalizePassphrase(passphrase)
+  if (normalized.length === 0) return '口令不能为空。'
+  if ([...normalized].length < PASSPHRASE_MIN_LENGTH) return `口令至少 ${PASSPHRASE_MIN_LENGTH} 个字符。`
+  if ([...normalized].length > PASSPHRASE_MAX_LENGTH) return `口令最多 ${PASSPHRASE_MAX_LENGTH} 个字符。`
   return null
 }
 
@@ -58,10 +59,11 @@ export async function callCloudSave(req: CloudSaveRequest, endpointOverride?: st
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
   try {
+    const normalizedRequest = { ...req, passphrase: normalizePassphrase(req.passphrase) } as CloudSaveRequest
     const res = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(req),
+      body: JSON.stringify(normalizedRequest),
       signal: controller.signal,
     })
     let data: unknown = null

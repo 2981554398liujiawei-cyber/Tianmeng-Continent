@@ -15,7 +15,9 @@ export default function MainMenu({ hasSave, onNewGame, onContinue, onOpenSaves, 
   const cloudStatus = useCloudSession((s) => s.status)
   const syncStatus = useCloudSession((s) => s.syncStatus)
   const cloudLabel =
-    syncStatus === 'cloud_failed'
+    syncStatus === 'offline'
+      ? '☁ 仅本机模式（不会跨设备同步）'
+      : syncStatus === 'cloud_failed'
       ? '⚠ 本地已保存，云同步失败'
       : syncStatus === 'conflict'
         ? '⚠ 云端存档已在另一台设备更新'

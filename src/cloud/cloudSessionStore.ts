@@ -6,7 +6,7 @@
  *  - 本地失败不因云端失败而丢失（14 节）：调用方先保证本地操作成功，再调 sync 上传。
  */
 import { create } from 'zustand'
-import { callCloudSave, isCloudConfigured } from './cloudSaveApi'
+import { callCloudSave, isCloudConfigured, normalizePassphrase } from './cloudSaveApi'
 import {
   createEmptyCloudVaultPayload,
   type CloudSession,
@@ -37,9 +37,9 @@ interface CloudSessionStore extends CloudSession {
   /** 保存生命周期后的同步（save/delete/import 已成功写本地 → 上传当前五槽） */
   syncAfterLocalSave: () => Promise<CloudSyncResult>
   /** 同步冲突后由用户选择：读取云端最新版 */
-  resolveConflictByLoading: () => Promise<void>
+  resolveConflictByLoading: () => Promise<boolean>
   /** 同步冲突后由用户选择：强制覆盖云端（二次确认后调用） */
-  resolveConflictByOverwrite: () => Promise<void>
+  resolveConflictByOverwrite: () => Promise<boolean>
   resetSyncStatus: () => void
 }
 
@@ -58,7 +58,7 @@ export const useCloudSession = create<CloudSessionStore>()((set, get) => ({
   syncStatus: 'idle',
 
   unlock: async (rawPassphrase) => {
-    const passphrase = rawPassphrase.trim()
+    const passphrase = normalizePassphrase(rawPassphrase)
     if (!passphrase) return 'invalid'
     set({ status: 'loading', passphrase })
     const res = await callCloudSave({ action: 'load', passphrase })
@@ -175,12 +175,17 @@ export const useCloudSession = create<CloudSessionStore>()((set, get) => ({
   resolveConflictByLoading: async () => {
     set({ syncStatus: 'syncing' })
     const ok = await get().loadCloudLatest()
-    if (ok !== 'connected') set({ syncStatus: 'cloud_failed' })
+    if (ok !== 'connected') {
+      set({ syncStatus: 'cloud_failed' })
+      return false
+    }
+    return true
   },
 
   resolveConflictByOverwrite: async () => {
     set({ syncStatus: 'syncing' })
-    await get().forceOverwriteCloud()
+    const result = await get().forceOverwriteCloud()
+    return result === 'synced'
   },
 
   resetSyncStatus: () => set({ syncStatus: 'idle' }),

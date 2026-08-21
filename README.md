@@ -697,7 +697,7 @@ src/
 
 ## Cloud Save
 
-输入同一个云存档口令即可在多个设备继续游玩；云存档数据存储在 Supabase（Postgres），独立于 GitHub Pages 网站部署——重新发布网站不影响任何云存档，口令不变存档即不丢。
+输入同一个云存档口令即可在多个设备继续游玩；云存档由 Cloudflare Worker + D1 提供，独立于静态网站部署——重新发布网站不影响任何云存档，口令不变存档即不丢。
 
 ## Save Compatibility
 
