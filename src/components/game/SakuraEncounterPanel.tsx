@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import type { Character } from '../../game/types/character'
 import Button from '../Button'
 import { useGameStore, type SakuraMeetChoice, type SakuraContractChoice } from '../../game/state/gameStore'
 import { getProfessionName } from '../../game/content/professions'
@@ -30,6 +31,7 @@ import {
 interface SakuraEncounterPanelProps {
   /** 进入残灾战斗（App 入口校验；仅 guest 阶段使用） */
   onEngage: (enemyId: string) => void
+  onLevelUp: (before: Character, after: Character) => void
 }
 
 const PROFESSION_LINES: Record<string, { label: string; text: string }> = {
@@ -63,7 +65,7 @@ const CONTRACT_CHOICES: { choice: SakuraContractChoice; label: string }[] = [
   { choice: 'joke', label: '可以。不过这样你可真成我的宠物了。' },
 ]
 
-export default function SakuraEncounterPanel({ onEngage }: SakuraEncounterPanelProps) {
+export default function SakuraEncounterPanel({ onEngage, onLevelUp }: SakuraEncounterPanelProps) {
   const gameState = useGameStore((s) => s.gameState)
   const startSakuraEncounter = useGameStore((s) => s.startSakuraEncounter)
   const enterSakuraDomain = useGameStore((s) => s.enterSakuraDomain)
@@ -139,7 +141,10 @@ export default function SakuraEncounterPanel({ onEngage }: SakuraEncounterPanelP
   }
 
   const handleContract = (choice: SakuraContractChoice) => {
+    const before = useGameStore.getState().gameState?.player
     const result = acceptSakuraContract(choice)
+    const after = useGameStore.getState().gameState?.player
+    if (result && result.outcome === 'recruited' && before && after) onLevelUp(before, after)
     if (result && result.outcome === 'recruited') {
       const parts: string[] = []
       if (result.affectionDelta !== 0) parts.push(`好感 ${result.affectionDelta > 0 ? '+' : ''}${result.affectionDelta}`)

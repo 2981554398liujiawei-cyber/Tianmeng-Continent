@@ -533,6 +533,41 @@ describe('TM-P2-002-R1 G：兼容 514f3e2 已产生的无版本 V2 存档', () =
   })
 })
 
+describe('TM-P2-005：V5 XP 保真与 V1/V2/V3/V4 → V5 迁移', () => {
+  it('读取当前 V5 时 XP、等级和资源保持 bit-for-bit', () => {
+    const state = createInitialGameState()
+    state.player.adventureXp = 137
+    state.player.level = 2
+    state.player.hp = 7
+    state.player.maxHp = 31
+    state.player.mp = 2
+    state.player.maxMp = 11
+    const raw = { version: SLOT_FORMAT_VERSION, savedAt: '2026-01-01T08:00:00.000Z', gameState: state }
+    localStorage.setItem('tianmeng_continent_save_slot_slot1', JSON.stringify(raw))
+    expect(loadSlot('slot1')?.gameState).toEqual(state)
+  })
+
+  it.each([undefined, 2, 3, 4] as const)('旧格式 %s 可严格迁移为 V5，并补齐 XP/当前字段', (version) => {
+    const state = createInitialGameState()
+    state.quests = [{ questId: 'quest_grassland_wolf', status: 'completed', stage: 0, flags: {} }]
+    if (version !== 3 && version !== 4) delete (state.player as Partial<typeof state.player>).learnedSkillIds
+    if (version !== 4) {
+      delete (state as Partial<typeof state>).companions
+      delete (state as Partial<typeof state>).relationships
+      delete (state as Partial<typeof state>).party
+      delete (state.world as Partial<typeof state.world>).restCount
+    }
+    delete (state.player as Partial<typeof state.player>).adventureXp
+    const entry = version === undefined ? { savedAt: '2026-01-01T08:00:00.000Z', gameState: state } : { version, savedAt: '2026-01-01T08:00:00.000Z', gameState: state }
+    localStorage.setItem('tianmeng_continent_save_slot_slot1', JSON.stringify(entry))
+    expect(migrateSave()).toBe(true)
+    const migrated = JSON.parse(localStorage.getItem('tianmeng_continent_save_slot_slot1')!)
+    expect(migrated.version).toBe(SLOT_FORMAT_VERSION)
+    expect(migrated.gameState.player.adventureXp).toBe(60)
+    expect(loadSlot('slot1')?.gameState.player.adventureXp).toBe(60)
+  })
+})
+
 // ================= TM-P2-002-R2：索引一致性 / 真正最近档 / 迁移 raw 边界 =================
 
 /** 写一个合法外壳但内容可控的 index raw（模拟部分污染的缓存） */

@@ -692,8 +692,8 @@ describe('TM-P0-011：完成《村外异动》解锁兔王巢穴', () => {
     const before = useGameStore.getState().gameState!
     useGameStore.getState().completeQuest('quest_village_monsters')
     const after = useGameStore.getState().gameState!
-    // TM-P0-018：完成《村外异动》现在有固定 20 金币奖励，player 仅 gold 变化
-    expect(after.player).toEqual({ ...before.player, gold: before.player.gold + 20 })
+    // TM-P2-005：任务完成同时结算固定 XP 与金币
+    expect(after.player).toEqual({ ...before.player, adventureXp: before.player.adventureXp + 20, gold: before.player.gold + 20 })
     expect(after.inventory).toEqual(before.inventory)
     expect(after.equipment).toEqual(before.equipment)
     expect(after.world.currentLocationId).toBe(before.world.currentLocationId)
@@ -2596,13 +2596,13 @@ describe('TM-P1-011：第一次里程碑升级 Lv.2（完成《草原狼影》�
     expect(p().level).toBe(2)
   })
 
-  it('E. 非 Lv.1 拒绝：level=2 时 completeQuest false 且任务/金币/等级/HP/MP 全不变', () => {
+  it('E. 已有较高等级仍可完成任务：XP 继续累计且不重复升级资源', () => {
     completeWolfQuest()
     setPlayerState({ level: 2 })
     const snapshot = JSON.stringify(useGameStore.getState().gameState)
-    expect(useGameStore.getState().completeQuest('quest_grassland_wolf')).toBe(false)
-    expect(JSON.stringify(useGameStore.getState().gameState)).toBe(snapshot)
-    expect(wolfQuest()?.status).toBe('completable')
+    expect(useGameStore.getState().completeQuest('quest_grassland_wolf')).toBe(true)
+    expect(JSON.stringify(useGameStore.getState().gameState)).not.toBe(snapshot)
+    expect(wolfQuest()?.status).toBe('completed')
   })
 
   it('F. 非法资源状态拒绝：hp>maxHp / maxHp 溢出（MAX_SAFE_INTEGER）→ false 且 GameState 完全不变', () => {
@@ -4154,7 +4154,7 @@ describe('TM-P1-021：首条正式支线《采药受阻》（药师发布）', (
     const goldBefore = beforePlayer.gold
     useGameStore.getState().completeQuest('quest_apothecary_herb_route')
     const after = useGameStore.getState().gameState!
-    expect(after.player).toEqual({ ...beforePlayer, gold: goldBefore + 10 })
+    expect(after.player).toEqual({ ...beforePlayer, adventureXp: beforePlayer.adventureXp + 25, gold: goldBefore + 10 })
     expect(after.inventory).toEqual(beforeInventory)
     expect(after.equipment).toEqual(beforeEquipment)
     expect(after.world).toEqual(beforeWorld)
@@ -4326,7 +4326,7 @@ describe('TM-P1-022：第二条支线《矿洞余患》（铁匠发布）', () =
     const goldBefore = useGameStore.getState().gameState!.player.gold
     useGameStore.getState().completeQuest('quest_blacksmith_mine_remnant')
     const after = useGameStore.getState().gameState!
-    expect(after.player).toEqual({ ...mid.player, gold: goldBefore + 10 })
+    expect(after.player).toEqual({ ...mid.player, adventureXp: mid.player.adventureXp + 25, gold: goldBefore + 10 })
     expect(after.inventory).toEqual(mid.inventory)
     expect(after.equipment).toEqual(mid.equipment)
     expect(after.world).toEqual(travelWorld)
@@ -6804,7 +6804,7 @@ describe('TM-P2-001 D6：完成《北门失联》（generic 提交，金币 +30�
     seedCompletable()
     useGameStore.getState().completeQuest('quest_north_gate_missing_patrol')
     expect(northQuest()?.status).toBe('completed')
-    expect(useGameStore.getState().gameState?.player.level).toBe(1) // 不升级、不建经验系统
+    expect(useGameStore.getState().gameState?.player.level).toBe(2)
   })
 })
 

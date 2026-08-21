@@ -8,7 +8,7 @@ import { useGameStore, VILLAGE_ELDER_POST_QUEST_EVENT_ID } from '../game/state/g
 import { getProfessionName, ATTRIBUTE_KEYS, ATTRIBUTE_LABELS } from '../game/content/professions'
 import { getEnemy, getItem, getLocation, getNpc, getQuest, NPCS, QUESTS } from '../game/content'
 import { CHECK_DC, type D20CheckResult } from '../game/rules/d20'
-import { LEVEL_2_MAX_HP_GAIN, LEVEL_2_MAX_MP_GAIN } from '../game/rules/character'
+import type { Character } from '../game/types/character'
 import { formatLuckCheckLog, LUCK_OUTCOME_LABELS } from '../game/rules/luck'
 import { getUsableSkills } from '../game/rules/skill'
 import {
@@ -128,17 +128,24 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
   // TM-P0-016：本次调查的即时检定结果（仅 UI 本地状态；离开矿洞清空）
   const [lastMineInvestigation, setLastMineInvestigation] = useState<D20CheckResult | null>(null)
   // TM-P1-012：Lv.2 里程碑升级提示（仅 UI 本地状态；只由「本次《草原狼影》提交成功」这一 UI 事件触发，不进入 GameState/存档，不按 level 自动判断）
-  const [showLevelUpNotice, setShowLevelUpNotice] = useState(false)
+  const [showLevelUpNotice, setShowLevelUpNotice] = useState<{ from: number; to: number; maxHpGain: number; maxMpGain: number } | null>(null)
   /** TM-P1-023：天龙城离村二次确认（UI 本地状态，不写 GameState；确认后才调用 Store action） */
   const [showTianlongDepartureConfirm, setShowTianlongDepartureConfirm] = useState(false)
   /** TM-P2-001 B3：手机角色详情展开（仅 UI 本地状态；桌面端始终完整显示） */
   const [showCharacterDetails, setShowCharacterDetails] = useState(false)
 
-  /** TM-P1-012：任务提交 handler——completeQuest 成功且为《草原狼影》时显示升级提示（最小局部逻辑，不建通知系统） */
+  const handleProgression = (before: Character, after: Character) => {
+    if (after.level > before.level) {
+      setShowLevelUpNotice({ from: before.level, to: after.level, maxHpGain: after.maxHp - before.maxHp, maxMpGain: after.maxMp - before.maxMp })
+    }
+  }
+
   const handleCompleteQuest = (questId: string) => {
+    const before = useGameStore.getState().gameState?.player
     const completed = completeQuest(questId)
-    if (completed && questId === 'quest_grassland_wolf') {
-      setShowLevelUpNotice(true)
+    const after = useGameStore.getState().gameState?.player
+    if (completed && before && after) {
+      handleProgression(before, after)
     }
   }
 
@@ -384,11 +391,11 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
       {showLevelUpNotice && (
         <section className="mb-6 rounded border border-gold-500/60 bg-gold-900/30 p-5 text-sm">
           <h3 className="text-lg font-bold text-gold-300">等级提升！</h3>
-          <p className="mt-2 text-bone-200">你已达到 Lv.2。</p>
+          <p className="mt-2 text-bone-200">你的等级从 Lv.{showLevelUpNotice.from} 提升至 Lv.{showLevelUpNotice.to}。</p>
           <p className="mt-1 text-bone-300">
-            最大生命 +{LEVEL_2_MAX_HP_GAIN}，最大灵力 +{LEVEL_2_MAX_MP_GAIN}。
+            最大生命 +{showLevelUpNotice.maxHpGain}，最大灵力 +{showLevelUpNotice.maxMpGain}。
           </p>
-          <Button className="mt-3" variant="primary" onClick={() => setShowLevelUpNotice(false)}>
+          <Button className="mt-3" variant="primary" onClick={() => setShowLevelUpNotice(null)}>
             知道了
           </Button>
         </section>
@@ -548,7 +555,7 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
           {/* TM-P2-004：Sakura 剧情面板（樱雨→神域→初见→检定→合作→战斗→契约→入队；一次性持久化，刷新/读档不重掷） */}
           {getSakuraSceneStage(gameState) !== 'hidden' && (
             <div className="order-2">
-              <SakuraEncounterPanel onEngage={onEngage} />
+              <SakuraEncounterPanel onEngage={onEngage} onLevelUp={handleProgression} />
             </div>
           )}
 
@@ -1942,7 +1949,7 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
                       )}
                       {canSubmit && (
                         <div className="mt-2">
-                          {/* TM-P1-012：提交成功（仅《草原狼影》）触发升级提示 */}
+                          {/* 完成任意任务后的通用升级反馈 */}
                           <Button variant="primary" onClick={() => handleCompleteQuest(qs.questId)}>
                             提交任务
                           </Button>

@@ -6,7 +6,7 @@ import { canTransitionQuestStatus } from '../rules/quest'
 import { getEnemy, getItem, getLocation, getNpc, getQuest } from '../content'
 import { performD20Check, CHECK_DC, type D20CheckResult } from '../rules/d20'
 import { KNIGHT_POWER_STRIKE_MP_COST, MAGE_SPELL_MP_COST, WARRIOR_SUPPRESS_STRIKE_MP_COST } from '../rules/combat'
-import { LEVEL_2_MAX_HP_GAIN, LEVEL_2_MAX_MP_GAIN, getLevelFromXp } from '../rules/character'
+import { applyAdventureXpReward } from '../rules/progression'
 import { checkEquipItem } from '../rules/equipment'
 import { rollLoot } from '../rules/loot'
 import type { LootGrant } from '../types/loot'
@@ -687,22 +687,13 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
         }
       }
       const xpReward = getQuest(questId)?.adventureXpReward ?? 0
-      const oldXp = next.player.adventureXp ?? 0
-      const newXp = oldXp + xpReward
-      if (!Number.isSafeInteger(oldXp) || oldXp < 0 || !Number.isSafeInteger(newXp)) return {}
-      if (!Number.isSafeInteger(next.player.hp) || next.player.hp < 0 || next.player.hp > next.player.maxHp || !Number.isSafeInteger(next.player.maxHp) || next.player.maxHp < 0 || !Number.isSafeInteger(next.player.mp) || next.player.mp < 0 || next.player.mp > next.player.maxMp || !Number.isSafeInteger(next.player.maxMp) || next.player.maxMp < 0) return {}
-      const oldLevel = Math.max(1, next.player.level)
-      const newLevel = Math.max(oldLevel, getLevelFromXp(newXp))
-      const levelGain = newLevel - oldLevel
+      const progression = applyAdventureXpReward(next.player, xpReward)
+      if (!progression) return {}
       changed = true
       // 任务完成 + 金币奖励 +（《村外异动》）兔王巢穴解锁 + 村长信任：同一原子更新
       const player = reward !== undefined ? { ...next.player, gold: next.player.gold + reward } : next.player
       // TM-P1-011：里程碑升级（仅《草原狼影》）：Lv1→Lv2、maxHp+2、maxMp+1；当前 hp/mp 保持不变（受伤不治疗、HP0 不复活）
-      const playerAfterLevel = { ...player, adventureXp: newXp, level: newLevel,
-        maxHp: player.maxHp + levelGain * LEVEL_2_MAX_HP_GAIN,
-        maxMp: player.maxMp + levelGain * LEVEL_2_MAX_MP_GAIN,
-        hp: player.hp + levelGain * LEVEL_2_MAX_HP_GAIN,
-        mp: player.mp + levelGain * LEVEL_2_MAX_MP_GAIN }
+      const playerAfterLevel = { ...progression.player, gold: player.gold }
       if (questId === 'quest_village_monsters') {
         // TM-P1-002：《村外异动》专属关系奖励——村长信任 +1（仅本任务；懒创建 NpcState；locationId 读注册表）
         const existing = next.world.npcStates.village_elder
@@ -2230,10 +2221,20 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
       // 《落樱越界》契约接受 → completed（TM-P2-004 第 118 节；状态机不允许 in_progress→completed 直跳，先 completable 再 completed）
       let gsWithQuest = applyQuestTransition(st.gameState, 'quest_sakura_boundary', 'completable') ?? st.gameState
       gsWithQuest = applyQuestTransition(gsWithQuest, 'quest_sakura_boundary', 'completed') ?? gsWithQuest
+      // Sakura's boundary quest uses the same completion reward path as every
+      // other quest.  If an already-completed legacy state reaches this action,
+      // the reward is zero, so accepting the contract cannot duplicate XP.
+      const boundaryWasCompleted = st.gameState.quests.find((q) => q.questId === 'quest_sakura_boundary')?.status === 'completed'
+      const progression = applyAdventureXpReward(
+        gsWithQuest.player,
+        boundaryWasCompleted ? 0 : (getQuest('quest_sakura_boundary')?.adventureXpReward ?? 0),
+      )
+      if (!progression) return {}
       result = { outcome: 'recruited', affectionDelta, trustDelta }
       return {
         gameState: {
           ...gsWithQuest,
+          player: progression.player,
           companions: { ...st.gameState.companions, [SAKURA_COMPANION_ID]: companion },
           relationships,
           party,

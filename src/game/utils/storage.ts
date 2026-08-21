@@ -351,6 +351,10 @@ function historicalQuestXp(gs: GameState): number {
 }
 
 function withV5Fields(gs: GameState): GameState {
+  // V4 may already carry XP.  It is historical data, not a hint to recompute
+  // the character: preserve it and all derived resources exactly.  Only old
+  // records which never had XP receive the deterministic legacy reconstruction.
+  if (Number.isSafeInteger(gs.player.adventureXp) && gs.player.adventureXp >= 0) return gs
   const oldLevel = Math.max(1, Number.isInteger(gs.player.level) ? gs.player.level : 1)
   const preserved = getXpThresholdForLevel(oldLevel)
   const xp = Math.max(historicalQuestXp(gs), preserved)
@@ -547,11 +551,17 @@ export function loadSlot(slotId: SlotId): SaveSlot | null {
     const p = parsed as { version?: number; savedAt: string; gameState: GameState }
     // TM-P2-003 A/R1：旧版本（undefined/2）读时补 learnedSkillIds（内存级；不写回——持久迁移由 migrateSave/importSaves 负责）
     // TM-P2-004 V4：读时补 companions/relationships/party/restCount（内存级；持久迁移同由 migrateSave 负责）
+    // V5 is the canonical current format.  Return its payload untouched:
+    // loading must be bit-for-bit lossless for XP and all other fields.
+    if (p.version === SLOT_FORMAT_VERSION && isCurrentGameState(p.gameState)) {
+      return { version: SLOT_FORMAT_VERSION, savedAt: p.savedAt, gameState: p.gameState }
+    }
     let gs = p.gameState
     if (!Array.isArray(gs.player.learnedSkillIds)) {
       gs.player.learnedSkillIds = defaultSkillsForProfession(gs.player.profession)
     }
     gs = withV5Fields(withV4Fields(gs))
+    if (!isCurrentGameState(gs)) return null
     return { version: SLOT_FORMAT_VERSION, savedAt: p.savedAt, gameState: gs }
   } catch (err) {
     console.error(`[存档] 槽位 ${slotId} 读取失败（数据损坏），已安全回退；其余槽位不受影响`, err)
@@ -651,11 +661,13 @@ export function migrateLegacySave(): boolean {
   // TM-P2-003-R2 D：真正历史 V1 存档没有 learnedSkillIds——写当前格式前必须按职业补全，
   // 否则 loadSlot 的严格校验会失败导致迁移回滚（旧 V1 自动迁移断裂）。
   // TM-P2-004 V4：同时补 companions/relationships/party/restCount。
-  const gs = withV4Fields(legacy.gameState)
+  const migratedState = withV4Fields(legacy.gameState)
+  const gs = withV5Fields(migratedState)
   if (!Array.isArray(gs.player.learnedSkillIds)) {
     gs.player.learnedSkillIds = defaultSkillsForProfession(gs.player.profession)
   }
   const slot: SaveSlot = { version: SLOT_FORMAT_VERSION, savedAt: legacy.savedAt, gameState: gs }
+  if (!isCurrentGameState(gs)) return false
   try {
     storage.setItem(slotKey('slot1'), JSON.stringify(slot))
   } catch (err) {
@@ -712,10 +724,8 @@ export function migrateSave(): boolean {
             gs.player.learnedSkillIds = defaultSkillsForProfession(gs.player.profession)
           }
           gs = withV5Fields(withV4Fields(gs))
-          storage.setItem(
-            slotKey(id),
-            JSON.stringify({ version: SLOT_FORMAT_VERSION, savedAt: parsed.savedAt, gameState: gs }),
-          )
+          if (!isCurrentGameState(gs)) continue
+          storage.setItem(slotKey(id), JSON.stringify({ version: SLOT_FORMAT_VERSION, savedAt: parsed.savedAt, gameState: gs }))
           changed = true
           continue
         }
@@ -726,24 +736,21 @@ export function migrateSave(): boolean {
             gs.player.learnedSkillIds = defaultSkillsForProfession(gs.player.profession)
           }
           gs = withV5Fields(withV4Fields(gs))
-          storage.setItem(
-            slotKey(id),
-            JSON.stringify({ version: SLOT_FORMAT_VERSION, savedAt: parsed.savedAt, gameState: gs }),
-          )
+          if (!isCurrentGameState(gs)) continue
+          storage.setItem(slotKey(id), JSON.stringify({ version: SLOT_FORMAT_VERSION, savedAt: parsed.savedAt, gameState: gs }))
           changed = true
           continue
         }
         // Step 4（TM-P2-004）：schema 3 → 4 —— 补 companions/relationships/party/restCount（黄金兔冻结档原样迁移）
         if (parsed.version === 3 && isGameState(parsed.gameState)) {
           const gs = withV5Fields(withV4Fields(parsed.gameState))
-          storage.setItem(
-            slotKey(id),
-            JSON.stringify({ version: SLOT_FORMAT_VERSION, savedAt: parsed.savedAt, gameState: gs }),
-          )
+          if (!isCurrentGameState(gs)) continue
+          storage.setItem(slotKey(id), JSON.stringify({ version: SLOT_FORMAT_VERSION, savedAt: parsed.savedAt, gameState: gs }))
           changed = true
         }
         if (parsed.version === 4 && isGameState(parsed.gameState)) {
           const gs = withV5Fields(withV4Fields(parsed.gameState))
+          if (!isCurrentGameState(gs)) continue
           storage.setItem(slotKey(id), JSON.stringify({ version: SLOT_FORMAT_VERSION, savedAt: parsed.savedAt, gameState: gs }))
           changed = true
         }
