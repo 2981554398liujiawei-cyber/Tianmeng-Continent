@@ -8,7 +8,7 @@ import { useGameStore, VILLAGE_ELDER_POST_QUEST_EVENT_ID } from '../game/state/g
 import { getProfessionName, ATTRIBUTE_KEYS, ATTRIBUTE_LABELS } from '../game/content/professions'
 import { getEnemy, getItem, getLocation, getNpc, getQuest, NPCS, QUESTS } from '../game/content'
 import { CHECK_DC, type D20CheckResult } from '../game/rules/d20'
-import { LEVEL_2_MAX_HP_GAIN, LEVEL_2_MAX_MP_GAIN } from '../game/rules/character'
+import type { Character } from '../game/types/character'
 import { formatLuckCheckLog, LUCK_OUTCOME_LABELS } from '../game/rules/luck'
 import { getUsableSkills } from '../game/rules/skill'
 import {
@@ -28,6 +28,9 @@ import type {
   SakuraFirstRestChoice,
 } from '../game/state/gameStore'
 import type { QuestStatus } from '../game/types'
+import { getCurrentObjective } from '../game/rules/objective'
+import { getPlayerArmor } from '../game/rules/combat'
+import { BLACKSMITH_MERCHANT_ID, getMerchantOffers, WANGCAI_MERCHANT_ID } from '../game/rules/merchant'
 
 /** D20 检定结果中文（TM-P0-016） */
 const CHECK_OUTCOME_LABELS: Record<D20CheckResult['outcome'], string> = {
@@ -92,6 +95,7 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
   const [towerClaimResult, setTowerClaimResult] = useState<NorthTowerClaimResult>(null)
   const [traderResult, setTraderResult] = useState<OldTraderResult>(null)
   const buyHealingPotion = useGameStore((s) => s.buyHealingPotion)
+  const buyMerchantItem = useGameStore((s) => s.buyMerchantItem)
   const sellIronOre = useGameStore((s) => s.sellIronOre)
   const restAtVillage = useGameStore((s) => s.restAtVillage)
   const respondToVillageElderAfterQuest = useGameStore((s) => s.respondToVillageElderAfterQuest)
@@ -126,17 +130,24 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
   // TM-P0-016：本次调查的即时检定结果（仅 UI 本地状态；离开矿洞清空）
   const [lastMineInvestigation, setLastMineInvestigation] = useState<D20CheckResult | null>(null)
   // TM-P1-012：Lv.2 里程碑升级提示（仅 UI 本地状态；只由「本次《草原狼影》提交成功」这一 UI 事件触发，不进入 GameState/存档，不按 level 自动判断）
-  const [showLevelUpNotice, setShowLevelUpNotice] = useState(false)
+  const [showLevelUpNotice, setShowLevelUpNotice] = useState<{ from: number; to: number; maxHpGain: number; maxMpGain: number } | null>(null)
   /** TM-P1-023：天龙城离村二次确认（UI 本地状态，不写 GameState；确认后才调用 Store action） */
   const [showTianlongDepartureConfirm, setShowTianlongDepartureConfirm] = useState(false)
   /** TM-P2-001 B3：手机角色详情展开（仅 UI 本地状态；桌面端始终完整显示） */
   const [showCharacterDetails, setShowCharacterDetails] = useState(false)
 
-  /** TM-P1-012：任务提交 handler——completeQuest 成功且为《草原狼影》时显示升级提示（最小局部逻辑，不建通知系统） */
+  const handleProgression = (before: Character, after: Character) => {
+    if (after.level > before.level) {
+      setShowLevelUpNotice({ from: before.level, to: after.level, maxHpGain: after.maxHp - before.maxHp, maxMpGain: after.maxMp - before.maxMp })
+    }
+  }
+
   const handleCompleteQuest = (questId: string) => {
+    const before = useGameStore.getState().gameState?.player
     const completed = completeQuest(questId)
-    if (completed && questId === 'quest_grassland_wolf') {
-      setShowLevelUpNotice(true)
+    const after = useGameStore.getState().gameState?.player
+    if (completed && before && after) {
+      handleProgression(before, after)
     }
   }
 
@@ -312,8 +323,12 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
   // 当前装备武器（左栏手机概览 + 装备区共用）
   const equippedWeaponDef = gameState.equipment.weapon ? getItem(gameState.equipment.weapon) : undefined
   const equippedWeaponName = gameState.equipment.weapon
-    ? (equippedWeaponDef?.name ?? `未知武器（${gameState.equipment.weapon}）`)
+    ? (equippedWeaponDef?.name ?? '物品数据异常')
     : '未装备'
+  const equippedArmorDef = gameState.equipment.armor ? getItem(gameState.equipment.armor) : undefined
+  const equippedArmorName = gameState.equipment.armor ? (equippedArmorDef?.name ?? '物品数据异常') : '未装备'
+  const playerArmor = getPlayerArmor(player.attributes.con, equippedArmorDef?.type === 'armor' ? equippedArmorDef.armorDefenseBonus ?? 0 : 0)
+  const objective = getCurrentObjective(gameState)
 
   const handleTravel = (targetId: string) => {
     // TM-P0-005：正式游戏移动只走 travelToLocation（Store 内部校验）
@@ -358,7 +373,7 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
       .filter((entry): entry is { targetId: string; target: NonNullable<ReturnType<typeof getLocation>> } => entry.target !== undefined) ?? []
 
   return (
-    <div className="mx-auto min-h-screen w-full max-w-[1600px] px-4 py-6">
+    <div className="game-page mx-auto min-h-screen w-full max-w-[1600px] px-4 py-6">
       {/* 顶栏：天梦大陆 / 当前地点 + 保存 / 主菜单 */}
       <header className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-ink-600 pb-4">
         <div>
@@ -378,11 +393,11 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
       {showLevelUpNotice && (
         <section className="mb-6 rounded border border-gold-500/60 bg-gold-900/30 p-5 text-sm">
           <h3 className="text-lg font-bold text-gold-300">等级提升！</h3>
-          <p className="mt-2 text-bone-200">你已达到 Lv.2。</p>
+          <p className="mt-2 text-bone-200">你的等级从 Lv.{showLevelUpNotice.from} 提升至 Lv.{showLevelUpNotice.to}。</p>
           <p className="mt-1 text-bone-300">
-            最大生命 +{LEVEL_2_MAX_HP_GAIN}，最大灵力 +{LEVEL_2_MAX_MP_GAIN}。
+            最大生命 +{showLevelUpNotice.maxHpGain}，最大灵力 +{showLevelUpNotice.maxMpGain}。
           </p>
-          <Button className="mt-3" variant="primary" onClick={() => setShowLevelUpNotice(false)}>
+          <Button className="mt-3" variant="primary" onClick={() => setShowLevelUpNotice(null)}>
             知道了
           </Button>
         </section>
@@ -453,12 +468,14 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
                   <span className="text-bone-100">{equippedWeaponDef.name}</span>
                 ) : gameState.equipment.weapon ? (
                   <span className="text-bone-100">
-                    未知武器 <span className="text-bone-500">（{gameState.equipment.weapon}）</span>
+                    物品数据异常
                   </span>
                 ) : (
                   <span className="text-bone-500">未装备</span>
                 )}
               </p>
+              <p className="mt-1">防具：<span className="text-bone-100">{equippedArmorName}</span></p>
+              <p className="mt-1">护甲等级：<span className="text-bone-100">{playerArmor}</span></p>
             </section>
 
             {/* TM-P2-003-R3 B：背包从 GamePage 抽到 InventoryPanel（数据驱动武器入口，不再 hardcode iron_sword） */}
@@ -470,6 +487,10 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
               onEquipWeapon={(itemId) => equipWeapon(itemId)}
               onUnequipWeapon={() => unequipWeapon()}
               onUseHealingPotion={() => useHealingPotion()}
+              equippedArmorId={gameState.equipment.armor}
+              onEquipItem={(itemId) => useGameStore.getState().equipItem(itemId)}
+              onUnequipArmor={() => useGameStore.getState().unequipSlot('armor')}
+              profession={player.profession}
             />
           </div>
         </section>
@@ -480,17 +501,19 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
           className="order-3 flex flex-col gap-6 md:col-start-1 md:row-start-1 md:row-span-2 xl:col-start-2 xl:row-start-1"
         >
           {/* 当前区域（地点描述；手机第 3 位） */}
-          <section className="order-1 rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
+          <section
+            data-current-location-id={world.currentLocationId}
+            className="order-1 rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300"
+          >
             <p className="mb-2 text-bone-500">当前位置</p>
             {location ? (
               <>
                 <h3 className="text-lg font-bold text-bone-100">{location.name}</h3>
                 <p className="mt-2 leading-relaxed">{location.description}</p>
-                <p className="mt-2 text-xs text-bone-500">{location.id}</p>
               </>
             ) : (
               // TM-P0-005：未知当前位置安全边界——不崩溃、不提供移动按钮
-              <p className="text-bone-300">未知地点（{world.currentLocationId}）</p>
+              <p className="text-bone-300">地点数据异常</p>
             )}
           </section>
 
@@ -537,7 +560,7 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
           {/* TM-P2-004：Sakura 剧情面板（樱雨→神域→初见→检定→合作→战斗→契约→入队；一次性持久化，刷新/读档不重掷） */}
           {getSakuraSceneStage(gameState) !== 'hidden' && (
             <div className="order-2">
-              <SakuraEncounterPanel onEngage={onEngage} />
+              <SakuraEncounterPanel onEngage={onEngage} onLevelUp={handleProgression} />
             </div>
           )}
 
@@ -687,11 +710,11 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
                   {towerClaimResult?.outcome === 'claimed' && (
                     <div className="mt-3 rounded bg-ink-950/60 p-3">
                       <p className="text-bone-200">你当时获得了：</p>
-                      {towerClaimResult.items.map((it) => {
+                      {towerClaimResult.items.map((it, index) => {
                         const def = getItem(it.itemId)
                         return (
-                          <p key={it.itemId} className="mt-1">
-                            {def?.name ?? it.itemId} ×{it.quantity}
+                          <p key={rewardItemKey(it.itemId, index)} className="mt-1">
+                            {def?.name ?? '物品数据异常'} ×{it.quantity}
                           </p>
                         )
                       })}
@@ -742,11 +765,11 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
                   {towerClaimResult?.outcome === 'claimed' ? (
                     <div className="mt-3">
                       <p className="text-bone-200">你获得了：</p>
-                      {towerClaimResult.items.map((it) => {
+                      {towerClaimResult.items.map((it, index) => {
                         const def = getItem(it.itemId)
                         return (
-                          <p key={it.itemId} className="mt-1">
-                            {def?.name ?? it.itemId} ×{it.quantity}
+                          <p key={rewardItemKey(it.itemId, index)} className="mt-1">
+                            {def?.name ?? '异常物品（无法识别）'} ×{it.quantity}
                           </p>
                         )
                       })}
@@ -1351,6 +1374,32 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
             </section>
           )}
 
+          {getNpc('merchant_wangcai')?.locationId === world.currentLocationId && (
+            <section className="order-4 rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
+              <h3 className="mb-3 text-sm font-bold tracking-wider text-bone-500">王财的货摊</h3>
+              <div className="flex flex-col gap-2">
+                {getMerchantOffers(WANGCAI_MERCHANT_ID).map((offer) => {
+                  const item = getItem(offer.itemId)
+                  if (!item) return null
+                  const professionAllowed = item.type !== 'armor' || item.allowedProfessions?.includes(player.profession) === true
+                  const canAfford = Number.isSafeInteger(player.gold) && player.gold >= offer.price
+                  return (
+                    <div key={offer.itemId} className="flex items-center justify-between gap-3 rounded border border-ink-600 bg-ink-900/40 p-3">
+                      <div>
+                        <p className="font-bold text-bone-100">{item.name}</p>
+                        <p className="mt-1 text-xs text-bone-500">{item.description}{item.type === 'armor' ? ` 护甲 +${item.armorDefenseBonus ?? 0}` : ''} · 价格：{offer.price} 金币</p>
+                      </div>
+                      <div className="flex flex-col items-end gap-1">
+                        <Button variant="primary" disabled={!canAfford || !professionAllowed} onClick={() => buyMerchantItem(WANGCAI_MERCHANT_ID, offer.itemId)}>购买</Button>
+                        {!professionAllowed ? <span className="text-xs text-red-300">职业无法使用</span> : !canAfford && <span className="text-xs text-red-300">金币不足</span>}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </section>
+          )}
+
           {/* TM-P0-021：铁匠收购 —— 仅当前地点存在铁匠时显示（读 NPC 注册表） */}
           {getNpc('blacksmith')?.locationId === world.currentLocationId && (
             <section className="order-4 rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
@@ -1379,6 +1428,32 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
                   </div>
                 )
               })()}
+            </section>
+          )}
+
+          {getNpc(BLACKSMITH_MERCHANT_ID)?.locationId === world.currentLocationId && (
+            <section className="order-4 rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
+              <h3 className="mb-3 text-sm font-bold tracking-wider text-bone-500">铁匠的货架</h3>
+              <div className="flex flex-col gap-2">
+                {getMerchantOffers(BLACKSMITH_MERCHANT_ID).map((offer) => {
+                  const item = getItem(offer.itemId)
+                  if (!item) return null
+                  const professionAllowed = item.type !== 'armor' || item.allowedProfessions?.includes(player.profession) === true
+                  const canAfford = Number.isSafeInteger(player.gold) && player.gold >= offer.price
+                  return (
+                    <div key={offer.itemId} className="flex items-center justify-between gap-3 rounded border border-ink-600 bg-ink-900/40 p-3">
+                      <div>
+                        <p className="font-bold text-bone-100">{item.name}</p>
+                        <p className="mt-1 text-xs text-bone-500">{item.description} 护甲 +{item.armorDefenseBonus ?? 0} · 价格：{offer.price} 金币</p>
+                      </div>
+                      <div className="flex flex-col items-end gap-1">
+                        <Button variant="primary" disabled={!canAfford || !professionAllowed} onClick={() => buyMerchantItem(BLACKSMITH_MERCHANT_ID, offer.itemId)}>购买</Button>
+                        {!professionAllowed ? <span className="text-xs text-red-300">职业无法使用</span> : !canAfford && <span className="text-xs text-red-300">金币不足</span>}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
             </section>
           )}
 
@@ -1614,7 +1689,7 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
                 if (status === 'undiscovered') {
                   return (
                     <div key={quest.id} className="flex items-center justify-between gap-4">
-                      <p>{giver?.name ?? quest.giverNpcId}似乎有事相托。</p>
+                      <p>{giver?.name ?? '异常人物（无法识别）'}似乎有事相托。</p>
                       <Button variant="ghost" onClick={() => discoverQuest(quest.id)}>
                         查看委托
                       </Button>
@@ -1626,7 +1701,7 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
                     <div key={quest.id}>
                       <p className="font-bold text-bone-100">{quest.title}</p>
                       <p className="mt-1 leading-relaxed">{quest.summary}</p>
-                      <p className="mt-1 text-xs text-bone-500">发布者：{giver?.name ?? quest.giverNpcId}</p>
+                      <p className="mt-1 text-xs text-bone-500">发布者：{giver?.name ?? '异常人物（无法识别）'}</p>
                       <div className="mt-2">
                         <Button variant="primary" onClick={() => acceptQuest(quest.id)}>
                           接受任务
@@ -1648,6 +1723,16 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
         >
           {/* 当前目标（主线/支线摘要；手机第 2 位） */}
           {(() => {
+            if (objective) {
+              return (
+                <section className="rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
+                  <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">当前目标</h3>
+                  <p className="font-bold text-bone-100">《{objective.title}》</p>
+                  <p className="mt-2 text-bone-200">{objective.objective}</p>
+                  {objective.locationHint && <p className="mt-1 text-xs text-bone-500">地点提示：{objective.locationHint}</p>}
+                </section>
+              )
+            }
             const activeQuests = gameState.quests.filter(
               (q) => q.status === 'in_progress' || q.status === 'completable',
             )
@@ -1743,7 +1828,7 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
                         <span className="shrink-0 text-xs text-gold-300">{QUEST_STATUS_LABELS[qs.status]}</span>
                       </div>
                       <p className="mt-1 text-xs leading-relaxed text-bone-500">
-                        {def?.summary ?? `${qs.questId}（缺失任务定义）`}
+                        {def?.summary ?? '异常任务（无法识别）'}
                       </p>
                       {/* TM-P0-018：任务固定金币奖励（读 QuestDefinition.goldReward，不复制常量） */}
                       {def?.goldReward !== undefined && (
@@ -1921,7 +2006,7 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
                       )}
                       {canSubmit && (
                         <div className="mt-2">
-                          {/* TM-P1-012：提交成功（仅《草原狼影》）触发升级提示 */}
+                          {/* 完成任意任务后的通用升级反馈 */}
                           <Button variant="primary" onClick={() => handleCompleteQuest(qs.questId)}>
                             提交任务
                           </Button>
@@ -1937,4 +2022,8 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
       </div>
     </div>
   )
+}
+/** React-only identity for reward rows; duplicate loot entries remain separate and visible. */
+export function rewardItemKey(itemId: string, index: number): string {
+  return `${itemId}-${index}`
 }

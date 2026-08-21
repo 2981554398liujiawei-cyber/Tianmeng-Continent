@@ -40,4 +40,12 @@
     font-family: var(--font-serif-cn);
     min-height: 100vh;
   }
+  @media (min-width: 1280px) {
+    html, body { overflow: hidden; }
+    .game-page { height: 100vh; overflow: hidden; }
+    .game-page > .grid { height: calc(100vh - 110px); min-height: 0; }
+    .game-page > .grid > section { min-height: 0; overflow-y: auto; }
+    .combat-page { height: 100vh; min-height: 0; overflow: hidden; }
+    .combat-page .combat-log { min-height: 0; max-height: 32vh; overflow-y: auto; }
+  }
 }

@@ -1,0 +1,53 @@
+Tianmeng Continent final QA evidence ledger
+Implementation commit: 46b21a0fcc5beb9fd426f2e11eff691234d92880
+Final automated gate: PASS
+
+[E3 FINAL] npm test
+exit_code=0
+result=PASS
+tests=1261/1261
+
+[INDEPENDENT FINAL CARD] npm run build
+exit_code=0
+result=PASS
+modules_transformed=68
+wall_seconds=1.19
+vite_build_seconds=0.135
+artifacts=dist/index.html, dist/assets/index-BPRU2VIP.css, dist/assets/index-CcfP6Lyt.js
+
+[E3 FINAL] npm run qa:cloud
+exit_code=0
+result=PASS
+assertions=67/67
+
+[E3 FINAL] npm run qa:worker
+exit_code=0
+result=PASS
+assertions=18/18
+cases=W1-W15 + S1-S3
+
+[E3 FINAL] npm run qa:rc
+exit_code=0
+result=PASS
+assertions=517/517
+
+[INDEPENDENT FINAL CARD] npm run preview -- --host 127.0.0.1 --port 5198
+ready=true
+url=http://127.0.0.1:5198/
+
+[INDEPENDENT FINAL CARD] npm run qa:prod
+exit_code=0
+result=PASS
+assertions=6/6
+wall_seconds=3.55
+checks=title visible; new game visible; continue visible; developer console hidden; developer console button absent; no save-state writes
+
+[INDEPENDENT FINAL CARD] preview cleanup
+result=PASS
+postcondition=no TCP listener on port 5198
+
+[NOT_RUN] blind onboarding screenshots / premise gate / two-minute comprehension
+reason=No new ordered normal-speed cold-start frames or clean-context adjudicator were produced in this task.
+
+[NOT_RUN] core-fantasy observational adjudication / signature frames
+reason=No new normal-speed subjective playtest or clean trigger-time frame capture was performed; automated assertions are not substituted for visual evidence.

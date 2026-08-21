@@ -5,7 +5,9 @@ import DevStatePage from '../pages/DevStatePage'
 import CharacterCreationPage from '../pages/CharacterCreationPage'
 import CombatPage from '../pages/CombatPage'
 import SaveSlotsPage from '../pages/SaveSlotsPage'
+import CloudUnlockPage from '../pages/CloudUnlockPage'
 import { useGameStore } from '../game/state/gameStore'
+import { useCloudSession } from '../cloud/cloudSessionStore'
 import { checkEnemyEncounter } from '../game/rules/encounter'
 import type { CharacterCreationInput } from '../game/types'
 
@@ -13,6 +15,8 @@ type Screen = 'main' | 'create' | 'game' | 'dev' | 'combat' | 'saves'
 type SavesMode = 'save' | 'load'
 
 export default function App() {
+  // TM-P2-005 22 节：启动第一屏是云口令页，解锁（或仅本机模式）后才显示主菜单
+  const cloudUnlocked = useCloudSession((s) => s.status === 'connected')
   const [screen, setScreen] = useState<Screen>('main')
   const [savesMode, setSavesMode] = useState<SavesMode>('save')
   const [combatEnemyId, setCombatEnemyId] = useState<string | null>(null)
@@ -107,6 +111,10 @@ export default function App() {
 
   if (screen === 'dev') {
     return <DevStatePage onBackToMenu={() => setScreen('main')} />
+  }
+
+  if (!cloudUnlocked) {
+    return <CloudUnlockPage onUnlocked={() => setScreen('main')} />
   }
 
   return (

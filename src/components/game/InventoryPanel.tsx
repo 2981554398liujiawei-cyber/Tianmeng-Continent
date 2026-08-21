@@ -18,6 +18,15 @@ export interface InventoryPanelProps {
   onEquipWeapon: (itemId: string) => boolean
   onUnequipWeapon: () => boolean
   onUseHealingPotion: () => boolean
+  equippedArmorId: string | null
+  onEquipItem: (itemId: string) => boolean
+  onUnequipArmor: () => boolean
+  profession: string
+}
+
+/** React-only identity: duplicate itemId entries remain separate inventory rows. */
+export function inventoryEntryKey(itemId: string, index: number): string {
+  return `${itemId}-${index}`
 }
 
 export default function InventoryPanel({
@@ -28,6 +37,7 @@ export default function InventoryPanel({
   onEquipWeapon,
   onUnequipWeapon,
   onUseHealingPotion,
+  equippedArmorId, onEquipItem, onUnequipArmor, profession,
 }: InventoryPanelProps) {
   return (
     <section className="rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
@@ -36,7 +46,7 @@ export default function InventoryPanel({
         <p className="text-bone-500">背包空空如也。</p>
       ) : (
         <div className="flex flex-col gap-2">
-          {inventory.map((entry) => {
+          {inventory.map((entry, index) => {
             const def = getItem(entry.itemId)
             // TM-P2-003-R3 A：武器判断只看 ItemDefinition.type === 'weapon'（数据驱动，不再 hardcode iron_sword）
             const isWeapon = def?.type === 'weapon'
@@ -46,7 +56,7 @@ export default function InventoryPanel({
             const canUse = isPotion && playerHp > 0 && playerHp < playerMaxHp
             return (
               <div
-                key={entry.itemId}
+                key={inventoryEntryKey(entry.itemId, index)}
                 className="flex items-center justify-between gap-3 rounded border border-ink-600 bg-ink-900/40 p-3"
               >
                 <div>
@@ -55,7 +65,7 @@ export default function InventoryPanel({
                     <span className="text-xs font-normal text-bone-500">×{entry.quantity}</span>
                   </p>
                   <p className="mt-1 text-xs text-bone-500">
-                    {def ? def.description : `（缺失物品定义：${entry.itemId}）`}
+                    {def ? def.description : '物品数据异常'}
                   </p>
                 </div>
                 <div className="flex flex-col items-end gap-1">
@@ -67,6 +77,15 @@ export default function InventoryPanel({
                       {isEquipped ? '卸下' : '装备'}
                     </Button>
                   )}
+                  {def?.type === 'armor' && (() => {
+                    const allowed = !def.allowedProfessions || def.allowedProfessions.includes(profession as never)
+                    const equipped = equippedArmorId === entry.itemId
+                    return <>
+                      <span className="text-xs text-bone-500">护甲 +{def.armorDefenseBonus ?? 0}</span>
+                      {!allowed && <span className="text-xs text-red-300">当前职业无法装备</span>}
+                      <Button variant="primary" disabled={!allowed} onClick={() => (equipped ? onUnequipArmor() : onEquipItem(entry.itemId))}>{equipped ? '卸下' : '装备'}</Button>
+                    </>
+                  })()}
                   {isPotion && (
                     <>
                       <Button variant="primary" disabled={!canUse} onClick={() => onUseHealingPotion()}>

@@ -1,0 +1,53 @@
+{
+  "status": "AUTOMATED_PASS_WITH_OBSERVATIONAL_NOT_RUN",
+  "source": {
+    "commit": "46b21a0fcc5beb9fd426f2e11eff691234d92880",
+    "implementationTreeClean": true,
+    "note": "Only QA evidence files and an unrelated shared .gitignore change were present while evidence was updated."
+  },
+  "environment": {
+    "os": "Windows",
+    "shell": "PowerShell",
+    "node": "v24.14.0",
+    "npm": "11.9.0",
+    "ciNode": "22",
+    "targetRuntime": "browser production build",
+    "testedRuntime": "Vite preview at http://127.0.0.1:5198 with Chrome/Puppeteer"
+  },
+  "verify": {
+    "command": "npm run qa:rc",
+    "executed": true,
+    "exitCode": 0,
+    "durationSeconds": null,
+    "log": "qa/evidence/verify.log",
+    "result": "PASS 517/517",
+    "source": "E3 final result"
+  },
+  "suites": [
+    { "id": "unit", "runner": "npm test", "executed": true, "exitCode": 0, "result": "PASS", "passed": 1261, "total": 1261, "source": "E3" },
+    { "id": "build", "runner": "npm run build", "executed": true, "exitCode": 0, "result": "PASS", "modules": 68, "durationSeconds": 1.19, "source": "independent final evidence card" },
+    { "id": "cloud-contract", "runner": "npm run qa:cloud", "executed": true, "exitCode": 0, "result": "PASS", "passed": 67, "total": 67, "source": "E3" },
+    { "id": "worker-local-d1", "runner": "npm run qa:worker", "executed": true, "exitCode": 0, "result": "PASS", "passed": 18, "total": 18, "cases": "W1-W15 + S1-S3", "source": "E3" },
+    { "id": "release-regression", "runner": "npm run qa:rc", "executed": true, "exitCode": 0, "result": "PASS", "passed": 517, "total": 517, "source": "E3" },
+    { "id": "production-smoke", "runner": "npm run qa:prod", "executed": true, "exitCode": 0, "result": "PASS", "passed": 6, "total": 6, "durationSeconds": 3.55, "source": "independent final evidence card" }
+  ],
+  "productionPreview": {
+    "command": "npm run preview -- --host 127.0.0.1 --port 5198",
+    "url": "http://127.0.0.1:5198/",
+    "ready": true,
+    "cleanedUp": true,
+    "postCheck": "No TCP listener on port 5198"
+  },
+  "completeRun": {
+    "status": "PASS_BY_RC_AUTOMATION",
+    "state": "qa:rc 517/517 covers clean start, core actions, designed outcomes and persistence/restart scenarios",
+    "runtime": "Puppeteer browser suites aggregated by qa:rc",
+    "visual": "NOT_RUN: no new blind or signature-frame screenshots captured by this evidence card"
+  },
+  "checkpoints": [],
+  "subjectiveVerdicts": {
+    "firstTimeOnboarding": "NOT_RUN: no new ordered cold-start screenshots or clean-context adjudicator",
+    "coreFantasy": "NOT_RUN: no new normal-speed observational playtest",
+    "signatureFrames": "NOT_RUN: no newly captured clean trigger-time frames"
+  }
+}

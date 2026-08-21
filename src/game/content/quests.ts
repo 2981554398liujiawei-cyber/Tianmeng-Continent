@@ -10,6 +10,7 @@ export interface QuestDefinition {
   giverNpcId: string
   /** 任务完成固定金币奖励（TM-P0-018）；缺省 0 */
   goldReward?: number
+  adventureXpReward?: number
 }
 
 export const QUESTS: Record<string, QuestDefinition> = {
@@ -18,7 +19,7 @@ export const QUESTS: Record<string, QuestDefinition> = {
     title: '村外异动',
     summary: '青石村附近的野兽出现异常魔化迹象，村长需要冒险者调查村外情况。',
     giverNpcId: 'village_elder',
-    goldReward: 20,
+    goldReward: 20, adventureXpReward: 20,
   },
   // TM-P1-005：第二个正式任务（复用既有矿洞/魔化鼠/铁匠内容；解锁由 Store 窄前置守住）
   quest_mine_cleanup: {
@@ -26,7 +27,7 @@ export const QUESTS: Record<string, QuestDefinition> = {
     title: '矿洞清理',
     summary: '废弃矿洞里的魔化鼠让进出变得危险，铁匠希望你先把这处威胁清理掉。',
     giverNpcId: 'blacksmith',
-    goldReward: 15,
+    goldReward: 15, adventureXpReward: 20,
   },
   // TM-P1-010：第三个正式任务（复用既有 corrupted_wolf 敌人；仅矿洞清理完成后可发现；奖励走 generic goldReward，无关系/世界副作用）
   quest_grassland_wolf: {
@@ -34,7 +35,7 @@ export const QUESTS: Record<string, QuestDefinition> = {
     title: '草原狼影',
     summary: '矿洞的威胁暂时平息后，村长提到草原上出现了魔化狼的踪迹，希望你前去处理。',
     giverNpcId: 'village_elder',
-    goldReward: 25,
+    goldReward: 25, adventureXpReward: 60,
   },
   // TM-P1-017：第四正式主线任务（第二段主线入口；本卡只建立目标不新增地图——summary 表达目的地未知的自然剧情态，不编造地点；无 goldReward，本卡不允许完成该任务）
   quest_golden_rabbit_search: {
@@ -49,7 +50,7 @@ export const QUESTS: Record<string, QuestDefinition> = {
     title: '采药受阻',
     summary: '村外魔化野兽让采药变得不安全。药师希望你去村外草原查看采药区域的情况。',
     giverNpcId: 'apothecary',
-    goldReward: 10,
+    goldReward: 10, adventureXpReward: 25,
   },
   // TM-P1-022：第二条正式支线（铁匠发布；复用废弃矿洞/魔化鼠/战斗系统；仅《矿洞清理》完成后可发现；无专属 flag/action，胜利窄分支推进 + generic 提交 goldReward 10）
   quest_blacksmith_mine_remnant: {
@@ -57,14 +58,14 @@ export const QUESTS: Record<string, QuestDefinition> = {
     title: '矿洞余患',
     summary: '矿洞清理后，铁匠仍担心里面还有魔化鼠活动，希望你再去废弃矿洞确认一次。',
     giverNpcId: 'blacksmith',
-    goldReward: 10,
+    goldReward: 10, adventureXpReward: 25,
   },
   // TM-P1-024：第五正式主线《商人王财的麻烦》（武馆骑士队长马科发布；无 goldReward、本卡不允许完成任务；入口直接复用 localQuests，不建额外发现 prerequisite）
   quest_wangcai_trouble: {
     id: 'quest_wangcai_trouble',
     title: '商人王财的麻烦',
     summary: '骑士队长马科请你找到商人王财，了解他最近在黑石塔附近遇到的麻烦。',
-    giverNpcId: 'knight_captain_make',
+    giverNpcId: 'knight_captain_make', adventureXpReward: 100,
   },
   // TM-P2-001 D2：Phase 2 新主线《北门失联》（马科发布；仅《商人王财的麻烦》完成后可发现；奖励 30 gold；不升级、不建经验系统）
   quest_north_gate_missing_patrol: {
@@ -72,13 +73,13 @@ export const QUESTS: Record<string, QuestDefinition> = {
     title: '北门失联',
     summary: '一支前往天龙城北门外巡查的骑士小队迟迟没有返回。马科希望你先去北门附近寻找他们留下的踪迹。',
     giverNpcId: 'knight_captain_make',
-    goldReward: 30,
+    goldReward: 30, adventureXpReward: 100,
   },
   // TM-P2-004 第 28 节：《落樱越界》（伙伴招募/世界奇遇任务；不是 Sakura 的攻略任务）
   quest_sakura_boundary: {
     id: 'quest_sakura_boundary',
     title: '落樱越界',
     summary: '天龙城附近出现了不合时节的樱雨。花瓣背后的空间裂隙似乎连接着一个正在崩塌的陌生神域。',
-    giverNpcId: 'sakura_yuko',
+    giverNpcId: 'sakura_yuko', adventureXpReward: 100,
   },
 }

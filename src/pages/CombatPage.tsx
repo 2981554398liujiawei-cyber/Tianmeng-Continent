@@ -107,7 +107,7 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
   if (!enemy) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-6">
-        <p className="text-bone-300">未知敌人（{enemyId}），无法进入战斗。</p>
+        <p className="text-bone-300">敌人数据异常，无法进入战斗。</p>
         <Button onClick={onExitToMenu}>返回主菜单</Button>
       </div>
     )
@@ -353,7 +353,7 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
   })()
 
   return (
-    <div className="mx-auto flex min-h-screen w-full max-w-3xl flex-col gap-6 px-4 py-6">
+    <div className="combat-page mx-auto flex min-h-screen w-full max-w-3xl flex-col gap-6 px-4 py-6">
       <header className="border-b border-ink-600 pb-4 text-center">
         <h2 className="text-xl font-bold tracking-widest text-gold-300">战斗</h2>
       </header>
@@ -388,21 +388,17 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
           <p>
             敏捷 <span className="tabular-nums text-bone-100">{playerAgility}</span>
           </p>
-          <div className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1">
-            {ATTRIBUTE_KEYS.map((key) => (
-              <div key={key} className="flex justify-between">
-                <span className="text-bone-500">{ATTRIBUTE_LABELS[key]}</span>
-                <span className="tabular-nums text-bone-300">{player.attributes[key]}</span>
-              </div>
-            ))}
-          </div>
+          <p className="mt-1">
+            当前防具：{' '}
+            {equippedArmor ? <span className="text-bone-100">{equippedArmor.name}</span> : gameState.equipment.armor ? <span className="text-bone-100">物品数据异常</span> : <span className="text-bone-500">未装备</span>}
+          </p>
           <p className="mt-2">
             当前武器：{' '}
             {equippedWeapon ? (
               <span className="text-bone-100">{equippedWeapon.name}</span>
             ) : gameState.equipment.weapon ? (
               <span className="text-bone-100">
-                未知武器 <span className="text-bone-500">（{gameState.equipment.weapon}）</span>
+                物品数据异常
               </span>
             ) : (
               <span className="text-bone-500">未装备</span>
@@ -466,7 +462,7 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
       </div>
 
       {(lastPlayerAttack || lastEnemyAttack || lastPotionHeal !== null || lastCompanionAction !== null) && (
-        <section className="rounded border border-ink-600 bg-ink-900/50 p-4 text-sm leading-relaxed text-bone-300">
+        <section className="combat-log rounded border border-ink-600 bg-ink-900/50 p-4 text-sm leading-relaxed text-bone-300">
           {lastPlayerAttack && (
             <div>
               <p className="text-bone-500">{actionLabel}</p>
@@ -599,12 +595,12 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
             {victoryLoot && (
               <div className="rounded border border-gold-500/40 bg-ink-900/40 p-4 text-left text-sm text-bone-300">
                 <p className="text-bone-500">掉落：</p>
-                {victoryLoot.items.map((it) => {
+                {victoryLoot.items.map((it, index) => {
                   const def = getItem(it.itemId)
                   const rarity = def?.rarity ? `（${RARITY_LABELS[def.rarity]}）` : ''
                   return (
-                    <p key={it.itemId} className="mt-1">
-                      {def?.name ?? it.itemId} ×{it.quantity}
+                    <p key={combatLootItemKey(it.itemId, index)} className="mt-1">
+                      {def?.name ?? '异常物品（无法识别）'} ×{it.quantity}
                       {rarity}
                     </p>
                   )
@@ -635,6 +631,11 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
       </footer>
     </div>
   )
+}
+
+/** React-only identity for victory loot rows; duplicate itemId drops remain separate. */
+export function combatLootItemKey(itemId: string, index: number): string {
+  return `${itemId}-${index}`
 }
 
 /** 读取玩家敏捷（在 gameState 可能为 null 的惰性初始化场景下安全取值） */

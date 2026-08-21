@@ -1,9 +1,32 @@
 import { useState } from 'react'
 import Button from '../components/Button'
 import { useGameStore } from '../game/state/gameStore'
+import { useCloudSession } from '../cloud/cloudSessionStore'
 import { getLocation, getProfessionName } from '../game/content'
 import type { ProfessionId } from '../game/types'
 import { SLOT_IDS, type SlotId } from '../game/utils/storage'
+
+export type LocalSyncStatus = 'synced' | 'offline' | 'cloud_failed' | null
+type LocalSyncOperation = 'save' | 'delete' | 'import' | 'retry'
+
+export function LocalSyncNote({ status, onRetry }: { status: LocalSyncStatus; onRetry: () => void }) {
+  if (status === null) return null
+  if (status === 'synced') return <p className="mt-2 text-xs text-gold-300">本地已保存+云端已同步</p>
+  if (status === 'offline') return <p className="mt-2 text-xs text-bone-500">本地已保存 · 云同步未启用</p>
+  return (
+    <p className="mt-2 text-xs text-red-300">
+      云同步失败
+      <button type="button" className="ml-2 text-gold-300 underline underline-offset-2" onClick={onRetry}>
+        重试同步
+      </button>
+    </p>
+  )
+}
+
+/** 只有一次性的保存动作可以在同步成功后离开；删除、导入和重试均留在存档列表。 */
+export function shouldNavigateAfterSync(operation: LocalSyncOperation): boolean {
+  return operation === 'save'
+}
 
 interface SaveSlotsPageProps {
   /** save：游戏内保存（点击槽位保存后返回）；load：主菜单读取（点击槽位读取后进入游戏） */
@@ -58,7 +81,9 @@ export default function SaveSlotsPage({ mode, onBack, onSaved, onLoaded }: SaveS
       }
       setPendingOverwrite(null)
       const ok = saveGame(slotId)
-      if (ok) onSaved()
+      if (ok) {
+        void syncLocalMutation('save')
+      }
       return
     }
     // load 模式：仅有效槽可读取
@@ -68,13 +93,45 @@ export default function SaveSlotsPage({ mode, onBack, onSaved, onLoaded }: SaveS
     }
   }
 
+  // ---- TM-P2-005：正式存档生命周期（save/delete/import）后同步云端 ----
+  const [syncNote, setSyncNote] = useState<LocalSyncStatus>(null)
+  const [showConflict, setShowConflict] = useState(false)
+  const [confirmForce, setConfirmForce] = useState(false)
+  const syncAfterLocalSave = useCloudSession((s) => s.syncAfterLocalSave)
+  const resolveConflictByLoading = useCloudSession((s) => s.resolveConflictByLoading)
+  const resolveConflictByOverwrite = useCloudSession((s) => s.resolveConflictByOverwrite)
+
+  /** 本地操作成功后：云同步（14 节：本地成功优先；云失败不阻塞、本地档保留） */
+  const syncLocalMutation = async (operation: LocalSyncOperation) => {
+    setSyncNote(null)
+    const result = await syncAfterLocalSave()
+    if (result.outcome === 'synced') {
+      setSyncNote('synced')
+      if (shouldNavigateAfterSync(operation)) onSaved()
+      return
+    }
+    if (result.outcome === 'not_configured') {
+      setSyncNote('offline')
+      if (shouldNavigateAfterSync(operation)) onSaved()
+      return
+    }
+    if (result.outcome === 'conflict') {
+      setShowConflict(true)
+      return
+    }
+    // cloud_failed：本地已保存，留在页面提示并允许重试（59 节）
+    setSyncNote('cloud_failed')
+  }
+
   const handleDelete = (slotId: SlotId) => {
     if (pendingDelete !== slotId) {
       setPendingDelete(slotId)
       return
     }
     setPendingDelete(null)
-    deleteSlot(slotId)
+    // TM-P2-005 28 节：本地删除 → 导出当前五槽 → 云同步（刷新后不复活被删槽位）
+    const ok = deleteSlot(slotId)
+    if (ok) void syncLocalMutation('delete')
   }
 
   const handleExport = () => {
@@ -112,7 +169,11 @@ export default function SaveSlotsPage({ mode, onBack, onSaved, onLoaded }: SaveS
     setImportResult(null)
     const ok = importSaves(importText.trim())
     setImportResult(ok ? 'ok' : 'fail')
-    if (ok) setImportText('')
+    if (ok) {
+      setImportText('')
+      // TM-P2-005 26 节：Import 成功 → 云同步
+      void syncLocalMutation('import')
+    }
   }
 
   return (
@@ -120,13 +181,14 @@ export default function SaveSlotsPage({ mode, onBack, onSaved, onLoaded }: SaveS
       <header className="text-center">
         <h1 className="text-3xl font-bold tracking-[0.3em] text-gold-300">天梦大陆</h1>
         <p className="mt-1 text-sm tracking-[0.5em] text-bone-500">{mode === 'save' ? '保存游戏' : '读取存档'}</p>
+        <LocalSyncNote status={syncNote} onRetry={() => void syncLocalMutation('retry')} />
       </header>
 
       <div className="flex flex-col gap-3">
         {SLOT_IDS.map((slotId, index) => {
           const summary = slots[slotId]
           const isEmpty = summary === null
-          const locationName = summary ? (getLocation(summary.locationId)?.name ?? summary.locationId) : ''
+          const locationName = summary ? (getLocation(summary.locationId)?.name ?? '异常地点（无法识别）') : ''
           return (
             <div
               key={slotId}
@@ -239,6 +301,66 @@ export default function SaveSlotsPage({ mode, onBack, onSaved, onLoaded }: SaveS
           返回
         </Button>
       </footer>
+
+      {/* TM-P2-005 12.1 节：revision 冲突对话框（不自动 merge；绝不静默覆盖） */}
+      {showConflict && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-950/80 px-4">
+          <div className="w-full max-w-md rounded border border-gold-600/50 bg-ink-900 p-6">
+            <h3 className="text-lg font-bold text-gold-300">云端存档已在另一台设备更新。</h3>
+            <p className="mt-2 text-sm text-bone-300">
+              {confirmForce
+                ? '这会覆盖另一台设备的新进度。'
+                : '本页面的云端存档版本落后于服务器。读取云端最新版会放弃本页面的未同步改动。'}
+            </p>
+            <div className="mt-5 flex flex-col gap-2">
+              {!confirmForce ? (
+                <>
+                  <Button
+                    variant="primary"
+                    onClick={async () => {
+                      const synced = await resolveConflictByLoading()
+                      if (synced) {
+                        setShowConflict(false)
+                        setSyncNote('synced')
+                      } else {
+                        setSyncNote('cloud_failed')
+                      }
+                    }}
+                  >
+                    读取云端最新版
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    onClick={() => setConfirmForce(true)}
+                  >
+                    用当前存档覆盖云端
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button
+                    variant="danger"
+                    onClick={async () => {
+                      const synced = await resolveConflictByOverwrite()
+                      if (synced) {
+                        setShowConflict(false)
+                        setSyncNote('synced')
+                      } else {
+                        setSyncNote('cloud_failed')
+                      }
+                    }}
+                  >
+                    确认覆盖云端
+                  </Button>
+                  <Button variant="ghost" onClick={() => setConfirmForce(false)}>
+                    取消
+                  </Button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

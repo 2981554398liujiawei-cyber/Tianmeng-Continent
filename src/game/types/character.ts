@@ -15,6 +15,7 @@ export interface Character {
   name: string
   gender: Gender
   level: number
+  adventureXp: number
   profession: ProfessionId
   attributes: Attributes
   hp: number

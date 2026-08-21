@@ -690,3 +690,15 @@ src/
 ## 后续规划（V1 目标范围）
 
 角色创建、D20 检定、场景节点探索、回合制战斗、技能与职业、装备与物品、背包、任务系统、NPC 与关系、商店与金币、世界状态、存档读档（已完成基线）、AI 接口预留。详见任务卡 TM-P0-001 §3。
+
+## Play
+
+公网地址：https://2981554398liujiawei-cyber.github.io/Tianmeng-Continent/
+
+## Cloud Save
+
+输入同一个云存档口令即可在多个设备继续游玩；云存档由 Cloudflare Worker + D1 提供，独立于静态网站部署——重新发布网站不影响任何云存档，口令不变存档即不丢。
+
+## Save Compatibility
+
+旧 SaveSlot 通过 migration chain 自动升级（V1 → V2 → V3 → V4）；云层只是 transport/storage 容器，不承载存档兼容性——兼容性的唯一权威是 `src/game/utils/storage.ts` 的 migration chain。

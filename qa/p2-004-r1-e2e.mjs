@@ -45,6 +45,19 @@ const clickByText = async (text) => {
 
 const bodyText = () => page.evaluate(() => document.body.textContent)
 
+/** TM-P2-005：云口令页出现「仅本机模式」时点击进入（未配置云端端点的降级入口） */
+const enterLocalModeIfNeeded = async () => {
+  try {
+    const clicked = await page.evaluate(() => {
+      const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.includes('仅本机模式'))
+      if (btn) { btn.click(); return true }
+      return false
+    })
+    if (clicked) await sleep(500)
+    return clicked
+  } catch { return false }
+}
+
 const setRandom = (v) =>
   page.evaluate((x) => {
     Math.random = () => x
@@ -66,14 +79,7 @@ const readSakuraMp = async () => {
 }
 
 const readLocationId = () =>
-  page.evaluate(() => {
-    const label = [...document.querySelectorAll('p')].find((el) => el.textContent.trim() === '当前位置')
-    if (!label) return null
-    const section = label.closest('section')
-    if (!section) return null
-    const idEl = [...section.querySelectorAll('p')].find((el) => /^[a-z0-9_]+$/.test(el.textContent.trim()))
-    return idEl ? idEl.textContent.trim() : null
-  })
+  page.evaluate(() => document.querySelector('[data-current-location-id]')?.getAttribute('data-current-location-id') || null)
 
 /** 基础合法角色：骑士 Lv.4（hp 不满）；北门失联 completed（Sakura 触发条件 fallback） */
 function sakuraFixtureState() {
@@ -118,6 +124,7 @@ const injectSaveAndContinue = async (gameState) => {
   }, slot)
   await page.reload({ waitUntil: 'networkidle0' })
   await sleep(500)
+  await enterLocalModeIfNeeded()
   const body = await bodyText()
   if (!body.includes('继续游戏')) throw new Error('注入存档后未出现继续游戏入口')
   await clickByText('继续游戏')
@@ -145,6 +152,7 @@ try {
   // ================= 走到 guest（樱雨 → 神域 → 初见 → 职业 → MND → 并肩） =================
   await page.goto(URL, { waitUntil: 'networkidle0' })
   await sleep(400)
+  await enterLocalModeIfNeeded()
   await injectSaveAndContinue(sakuraFixtureState())
   let body = await bodyText()
   check('R1-01: Continue 后到达天龙城且樱雨入口出现', (await readLocationId()) === 'tianlong_city' && body.includes('查看异象'))
@@ -235,6 +243,7 @@ try {
   // ================= 刷新退出第一场战斗 → 神域残灾威胁仍在 =================
   await page.reload({ waitUntil: 'networkidle0' })
   await sleep(500)
+  await enterLocalModeIfNeeded()
   await clickByText('继续游戏')
   await sleep(500)
   body = await bodyText()

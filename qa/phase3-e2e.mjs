@@ -36,6 +36,19 @@ const clickByText = async (text) => {
 }
 const bodyText = () => page.evaluate(() => document.body.textContent)
 
+/** TM-P2-005：云口令页出现「仅本机模式」时点击进入（未配置云端端点的降级入口） */
+const enterLocalModeIfNeeded = async () => {
+  try {
+    const clicked = await page.evaluate(() => {
+      const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.includes('仅本机模式'))
+      if (btn) { btn.click(); return true }
+      return false
+    })
+    if (clicked) await sleep(500)
+    return clicked
+  } catch { return false }
+}
+
 // TM-P2-002：五槽位保存（slot1；覆盖需二次确认）——验证持久化用
 const saveToSlot1 = async () => {
   await clickByText('保存游戏')
@@ -59,6 +72,7 @@ try {
   // 0. 幂等重置：清掉本卡可选场景 flags（基于 phase2 完成存档；保留北门任务/狼击败状态）
   await page.goto(URL, { waitUntil: 'networkidle0' })
   await sleep(400)
+  await enterLocalModeIfNeeded()
   await page.evaluate(() => {
     const raw = localStorage.getItem('tianmeng_continent_save_slot_slot1')
     if (!raw) return
@@ -75,6 +89,7 @@ try {
   })
   await page.reload({ waitUntil: 'networkidle0' })
   await sleep(500)
+  await enterLocalModeIfNeeded()
   body = await bodyText()
   if (!body.includes('继续游戏')) throw new Error('缺少 Phase 1+2 存档，请先串行运行 phase1 + phase2')
   await clickByText('继续游戏')

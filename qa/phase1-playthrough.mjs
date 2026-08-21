@@ -70,6 +70,19 @@ const clickLabel = async (text) => {
 
 const bodyText = () => page.evaluate(() => document.body.textContent)
 
+/** TM-P2-005：云口令页出现「仅本机模式」时点击进入（未配置云端端点的降级入口） */
+const enterLocalModeIfNeeded = async () => {
+  try {
+    const clicked = await page.evaluate(() => {
+      const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.includes('仅本机模式'))
+      if (btn) { btn.click(); return true }
+      return false
+    })
+    if (clicked) await sleep(500)
+    return clicked
+  } catch { return false }
+}
+
 // ---- TM-P2-002：五槽位存档辅助 ----
 const SAVE_KEYS = [
   'tianmeng_continent_save',
@@ -163,14 +176,7 @@ const engageEnemy = async (enemyName) => {
 
 // 读取「当前位置」区域的地点 ID（确定性读取，避免模糊文本）
 const readLocationId = () =>
-  page.evaluate(() => {
-    const label = [...document.querySelectorAll('p')].find((el) => el.textContent.trim() === '当前位置')
-    if (!label) return null
-    const section = label.closest('section')
-    if (!section) return null
-    const idEl = [...section.querySelectorAll('p')].find((el) => /^[a-z0-9_]+$/.test(el.textContent.trim()))
-    return idEl ? idEl.textContent.trim() : null
-  })
+  page.evaluate(() => document.querySelector('[data-current-location-id]')?.getAttribute('data-current-location-id') || null)
 
 const readGold = async () => {
   const m = (await bodyText()).match(/金币\s*(\d+)/)
@@ -249,9 +255,11 @@ try {
 
   // 0. 清空存档：从空存档开始（必须无 localStorage 残留）
   await page.goto(URL, { waitUntil: 'networkidle0' })
+  await enterLocalModeIfNeeded()
   await clearAllSaves()
   await page.reload({ waitUntil: 'networkidle0' })
   await sleep(500)
+  await enterLocalModeIfNeeded()
   body = await bodyText()
   check('清空存档后主菜单显示「天梦大陆」', body.includes('天梦大陆'))
   check('空存档时「继续游戏」禁用', (await continueDisabled()) === true)
@@ -281,7 +289,7 @@ try {
   await page.waitForFunction(() => document.body.textContent.includes('冒险日志'), { timeout: 10000 }).catch(() => {})
   body = await bodyText()
   check('创建完成进入游戏页（冒险日志）', body.includes('冒险日志'))
-  check('进入青石村（qingshi_village）', body.includes('qingshi_village'))
+  check('进入青石村（qingshi_village）', (await readLocationId()) === 'qingshi_village')
   check('初始金币 50', (await readGold()) === 50, `金币=${await readGold()}`)
 
   // 2. 村长《村外异动》：接受 → 村外草原战魔化兔 → 提交（金币 +20）
@@ -542,7 +550,7 @@ try {
   await clickByText('前往天龙城')
   await sleep(500)
   body = await bodyText()
-  check('到达天龙城（tianlong_city）', body.includes('tianlong_city') && body.includes('天龙王朝的皇城'))
+  check('到达天龙城（tianlong_city）', (await readLocationId()) === 'tianlong_city' && body.includes('天龙王朝的皇城'))
   await assertNoPlaceholders('continuity：天龙城无占位符')
   check('离村后《追寻黄金兔子王》仍进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
   check('离村后兔子的路径仍 ×1', body.includes('兔子的路径 ×1'))

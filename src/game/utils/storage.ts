@@ -1,11 +1,13 @@
 import type { GameState, Character, Inventory, Equipment, WorldState } from '../types'
 import { PROFESSION_IDS } from '../types/character'
 import { defaultSkillsForProfession } from '../content/skills'
+import { getQuest } from '../content'
 import { QUEST_STATUSES } from '../types/quest'
 import type { CompanionState, PartyState } from '../types/companion'
 import type { RelationshipState, RelationshipStage } from '../types/relationship'
 // TM-P2-004-R1 C：Party 上限单一来源（rules/companion 纯规则，无循环依赖）
 import { MAX_ACTIVE_COMPANIONS } from '../rules/companion'
+import { getLevelFromXp, getXpThresholdForLevel } from '../rules/character'
 
 /** 旧 V1 单槽存档 key（TM-P2-002 H：迁移源；迁移成功前不删除） */
 export const LEGACY_SAVE_KEY = 'tianmeng_continent_save'
@@ -20,7 +22,7 @@ export const LEGACY_SAVE_VERSION = 1
  *  3（TM-P2-003 A）：player 增加 learnedSkillIds（技能注册表）。
  *  4（TM-P2-004）：GameState 增加 companions / relationships / party / world.restCount（Schema V4）。
  *  兼容 514f3e2 无版本 V2 槽与 2.x/3 版本槽（迁移链补齐 version / learnedSkillIds / V4 字段）。 */
-export const SLOT_FORMAT_VERSION = 4
+export const SLOT_FORMAT_VERSION = 5
 
 export const SLOT_IDS = ['slot1', 'slot2', 'slot3', 'slot4', 'slot5'] as const
 export type SlotId = (typeof SLOT_IDS)[number]
@@ -106,6 +108,7 @@ function isCharacter(value: unknown): value is Character {
   if (!isNonNegativeInteger(value.hp) || !isNonNegativeInteger(value.maxHp)) return false
   if (!isNonNegativeInteger(value.mp) || !isNonNegativeInteger(value.maxMp)) return false
   if (!isNonNegativeInteger(value.gold)) return false
+  if (value.adventureXp !== undefined && !isNonNegativeInteger(value.adventureXp)) return false
   // TM-P2-003 A：learnedSkillIds 可选（旧 schema 无此字段仍合法；迁移链负责补全）
   if (
     value.learnedSkillIds !== undefined &&
@@ -286,9 +289,7 @@ export function isGameState(value: unknown): value is GameState {
 
 /** 当前 v4 格式 GameState 判定（TM-P2-004 第 96 节：必须带完整 V4 字段 + 交叉引用合法；
  * 新保存只允许此校验通过——防止 saveSlot 写出自身无法读取的 v4） */
-export function isCurrentGameState(value: unknown): value is GameState {
-  if (!isGameState(value)) return false
-  const gs = value as GameState
+function hasCurrentSchemaFields(gs: GameState): boolean {
   const skills = gs.player.learnedSkillIds
   if (!Array.isArray(skills) || !skills.every((id) => typeof id === 'string')) return false
   if (gs.companions === undefined || gs.relationships === undefined || gs.party === undefined) return false
@@ -299,18 +300,31 @@ export function isCurrentGameState(value: unknown): value is GameState {
   return true
 }
 
+/** Current V5 is authoritative and strict. Malformed level/XP is rejected, never migrated or repaired. */
+export function validateCurrentV5GameState(value: unknown): value is GameState {
+  if (!isGameState(value)) return false
+  const gs = value as GameState
+  if (!Number.isSafeInteger(gs.player.level) || gs.player.level < 1 || gs.player.level > 15) return false
+  if (!Number.isSafeInteger(gs.player.adventureXp) || gs.player.adventureXp < 0) return false
+  if (gs.player.adventureXp < getXpThresholdForLevel(gs.player.level)) return false
+  return hasCurrentSchemaFields(gs)
+}
+
+/** Backward-compatible public name for callers that validate the current schema. */
+export const isCurrentGameState = validateCurrentV5GameState
+
 /** 合法槽位存档判定（TM-P2-003-R1 D：版本感知——可迁移格式 version undefined(514f3e2)/2(9ddb5db)/3(TM-P2-003)/4(当前) 均合法；
  * 其中 version 4 必须携带完整 V4 字段（companions/relationships/party/restCount），缺失判 malformed；旧版本允许缺失（迁移链补全）） */
 export function isValidSaveSlot(raw: unknown): raw is SaveSlot {
   if (!isRecord(raw)) return false
   const v = raw.version
-  if (v !== undefined && v !== 2 && v !== 3 && v !== SLOT_FORMAT_VERSION) return false
+  if (v !== undefined && v !== 2 && v !== 3 && v !== 4 && v !== SLOT_FORMAT_VERSION) return false
   if (typeof raw.savedAt !== 'string') return false
   if (!isGameState(raw.gameState)) return false
-  // v4 严格：必须已带完整 V4 字段（TM-P2-004 第 96 节）
-  if (v === SLOT_FORMAT_VERSION && !isCurrentGameState(raw.gameState)) {
-    return false
-  }
+  // V4 requires its complete schema, but its XP is legacy migration input and is not authoritative.
+  if (v === 4 && !hasCurrentSchemaFields(raw.gameState as GameState)) return false
+  // Only source version 5 is subject to the strict current level/XP invariant.
+  if (v === SLOT_FORMAT_VERSION && !validateCurrentV5GameState(raw.gameState)) return false
   return true
 }
 
@@ -339,6 +353,31 @@ export function withV4Fields(gs: GameState): GameState {
     relationships,
     party,
     world: { ...gs.world, restCount },
+  }
+}
+
+function historicalQuestXp(gs: GameState): number {
+  return gs.quests.reduce((sum, q) => q.status === 'completed' ? sum + (getQuest(q.questId)?.adventureXpReward ?? 0) : sum, 0)
+}
+
+/** Reconstruct V5 progression for source versions V1-V4. Legacy adventureXp is never authoritative. */
+export function migrateLegacyGameStateToV5(gs: GameState): GameState {
+  const oldLevel = Math.max(1, Number.isInteger(gs.player.level) ? gs.player.level : 1)
+  const preserved = getXpThresholdForLevel(oldLevel)
+  const xp = Math.max(historicalQuestXp(gs), preserved)
+  const level = Math.max(oldLevel, getLevelFromXp(xp))
+  const missingLevels = Math.max(0, level - oldLevel)
+  return {
+    ...gs,
+    player: {
+      ...gs.player,
+      adventureXp: xp,
+      level,
+      maxHp: gs.player.maxHp + missingLevels * 2,
+      maxMp: gs.player.maxMp + missingLevels,
+      hp: gs.player.hp + missingLevels * 2,
+      mp: gs.player.mp + missingLevels,
+    },
   }
 }
 
@@ -519,11 +558,17 @@ export function loadSlot(slotId: SlotId): SaveSlot | null {
     const p = parsed as { version?: number; savedAt: string; gameState: GameState }
     // TM-P2-003 A/R1：旧版本（undefined/2）读时补 learnedSkillIds（内存级；不写回——持久迁移由 migrateSave/importSaves 负责）
     // TM-P2-004 V4：读时补 companions/relationships/party/restCount（内存级；持久迁移同由 migrateSave 负责）
+    // V5 is the canonical current format.  Return its payload untouched:
+    // loading must be bit-for-bit lossless for XP and all other fields.
+    if (p.version === SLOT_FORMAT_VERSION && isCurrentGameState(p.gameState)) {
+      return { version: SLOT_FORMAT_VERSION, savedAt: p.savedAt, gameState: p.gameState }
+    }
     let gs = p.gameState
     if (!Array.isArray(gs.player.learnedSkillIds)) {
       gs.player.learnedSkillIds = defaultSkillsForProfession(gs.player.profession)
     }
-    gs = withV4Fields(gs)
+    gs = migrateLegacyGameStateToV5(withV4Fields(gs))
+    if (!isCurrentGameState(gs)) return null
     return { version: SLOT_FORMAT_VERSION, savedAt: p.savedAt, gameState: gs }
   } catch (err) {
     console.error(`[存档] 槽位 ${slotId} 读取失败（数据损坏），已安全回退；其余槽位不受影响`, err)
@@ -623,11 +668,13 @@ export function migrateLegacySave(): boolean {
   // TM-P2-003-R2 D：真正历史 V1 存档没有 learnedSkillIds——写当前格式前必须按职业补全，
   // 否则 loadSlot 的严格校验会失败导致迁移回滚（旧 V1 自动迁移断裂）。
   // TM-P2-004 V4：同时补 companions/relationships/party/restCount。
-  const gs = withV4Fields(legacy.gameState)
+  const migratedState = withV4Fields(legacy.gameState)
+  const gs = migrateLegacyGameStateToV5(migratedState)
   if (!Array.isArray(gs.player.learnedSkillIds)) {
     gs.player.learnedSkillIds = defaultSkillsForProfession(gs.player.profession)
   }
   const slot: SaveSlot = { version: SLOT_FORMAT_VERSION, savedAt: legacy.savedAt, gameState: gs }
+  if (!isCurrentGameState(gs)) return false
   try {
     storage.setItem(slotKey('slot1'), JSON.stringify(slot))
   } catch (err) {
@@ -683,11 +730,9 @@ export function migrateSave(): boolean {
           if (!Array.isArray(gs.player.learnedSkillIds)) {
             gs.player.learnedSkillIds = defaultSkillsForProfession(gs.player.profession)
           }
-          gs = withV4Fields(gs)
-          storage.setItem(
-            slotKey(id),
-            JSON.stringify({ version: SLOT_FORMAT_VERSION, savedAt: parsed.savedAt, gameState: gs }),
-          )
+          gs = migrateLegacyGameStateToV5(withV4Fields(gs))
+          if (!isCurrentGameState(gs)) continue
+          storage.setItem(slotKey(id), JSON.stringify({ version: SLOT_FORMAT_VERSION, savedAt: parsed.savedAt, gameState: gs }))
           changed = true
           continue
         }
@@ -697,21 +742,23 @@ export function migrateSave(): boolean {
           if (!Array.isArray(gs.player.learnedSkillIds)) {
             gs.player.learnedSkillIds = defaultSkillsForProfession(gs.player.profession)
           }
-          gs = withV4Fields(gs)
-          storage.setItem(
-            slotKey(id),
-            JSON.stringify({ version: SLOT_FORMAT_VERSION, savedAt: parsed.savedAt, gameState: gs }),
-          )
+          gs = migrateLegacyGameStateToV5(withV4Fields(gs))
+          if (!isCurrentGameState(gs)) continue
+          storage.setItem(slotKey(id), JSON.stringify({ version: SLOT_FORMAT_VERSION, savedAt: parsed.savedAt, gameState: gs }))
           changed = true
           continue
         }
         // Step 4（TM-P2-004）：schema 3 → 4 —— 补 companions/relationships/party/restCount（黄金兔冻结档原样迁移）
         if (parsed.version === 3 && isGameState(parsed.gameState)) {
-          const gs = withV4Fields(parsed.gameState)
-          storage.setItem(
-            slotKey(id),
-            JSON.stringify({ version: SLOT_FORMAT_VERSION, savedAt: parsed.savedAt, gameState: gs }),
-          )
+          const gs = migrateLegacyGameStateToV5(withV4Fields(parsed.gameState))
+          if (!isCurrentGameState(gs)) continue
+          storage.setItem(slotKey(id), JSON.stringify({ version: SLOT_FORMAT_VERSION, savedAt: parsed.savedAt, gameState: gs }))
+          changed = true
+        }
+        if (parsed.version === 4 && isGameState(parsed.gameState)) {
+          const gs = migrateLegacyGameStateToV5(withV4Fields(parsed.gameState))
+          if (!isCurrentGameState(gs)) continue
+          storage.setItem(slotKey(id), JSON.stringify({ version: SLOT_FORMAT_VERSION, savedAt: parsed.savedAt, gameState: gs }))
           changed = true
         }
       } catch {
@@ -726,11 +773,12 @@ export function migrateSave(): boolean {
 
 /** 将单个槽位条目迁移到当前格式（version 4 + learnedSkillIds + V4 字段）；旧版本原地升级，v4 直接返回 */
 function migrateSlotEntryToCurrent(entry: SaveSlot): SaveSlot {
+  if (entry.version === SLOT_FORMAT_VERSION) return entry
   let gs = entry.gameState
   if (!Array.isArray(gs.player.learnedSkillIds)) {
     gs.player.learnedSkillIds = defaultSkillsForProfession(gs.player.profession)
   }
-  gs = withV4Fields(gs)
+  gs = migrateLegacyGameStateToV5(withV4Fields(gs))
   return { version: SLOT_FORMAT_VERSION, savedAt: entry.savedAt, gameState: gs }
 }
 

@@ -6,7 +6,9 @@ import { canTransitionQuestStatus } from '../rules/quest'
 import { getEnemy, getItem, getLocation, getNpc, getQuest } from '../content'
 import { performD20Check, CHECK_DC, type D20CheckResult } from '../rules/d20'
 import { KNIGHT_POWER_STRIKE_MP_COST, MAGE_SPELL_MP_COST, WARRIOR_SUPPRESS_STRIKE_MP_COST } from '../rules/combat'
-import { LEVEL_2_MAX_HP_GAIN, LEVEL_2_MAX_MP_GAIN } from '../rules/character'
+import { applyAdventureXpReward } from '../rules/progression'
+import { checkEquipItem } from '../rules/equipment'
+import { canBuyMerchantItem, getMerchantOffer } from '../rules/merchant'
 import { rollLoot } from '../rules/loot'
 import type { LootGrant } from '../types/loot'
 import { checkSkillUse } from '../rules/skill'
@@ -97,6 +99,8 @@ interface GameStoreState {
   exportSaves: () => string
   /** 导入五槽位 JSON：完整校验，非法不覆盖（TM-P2-002 I） */
   importSaves: (json: string) => boolean
+  /** TM-P2-005：云导入/外部写入后刷新槽位索引（不触碰 gameState 内存态） */
+  refreshSlots: () => void
 
   // 状态修改（数据流验证用最小动作集）
   /** 开发验证入口：直接设置地点（正式游戏页面禁止调用，仅开发者控制台使用，TM-P0-005） */
@@ -132,8 +136,12 @@ interface GameStoreState {
   equipWeapon: (itemId: string) => boolean
   /** 卸下武器：weapon → null，inventory 不变（TM-P0-013） */
   unequipWeapon: () => boolean
+  equipItem: (itemId: string) => boolean
+  unequipSlot: (slot: 'weapon' | 'armor' | 'accessory') => boolean
   /** 在药师处购买治疗药水：gold 扣减与药水增加原子完成；不治疗、不自动保存（TM-P0-014） */
   buyHealingPotion: () => boolean
+  /** TM-P2-005-R1：在指定商人处购买其注册报价中的一件物品。 */
+  buyMerchantItem: (merchantId: string, itemId: string) => boolean
   /** 在铁匠处出售铁矿石：gold 增加与铁矿石减少原子完成；不自动保存（TM-P0-021） */
   sellIronOre: () => boolean
   /** 青石村休整：HP/MP 恢复至最大值；免费、只改 hp/mp、不自动保存（TM-P0-022） */
@@ -345,6 +353,11 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
     const ok = storageImportSaves(json)
     set({ hasSave: hasAnySave(), slots: loadIndexSummary(), lastSavedSlot: loadIndexLast() })
     return ok
+  },
+
+  // TM-P2-005：云导入/外部写入后刷新槽位索引（不触碰 gameState 内存态）
+  refreshSlots: () => {
+    set({ hasSave: hasAnySave(), slots: loadIndexSummary(), lastSavedSlot: loadIndexLast() })
   },
 
 
@@ -676,42 +689,14 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
           return {}
         }
       }
-      // TM-P1-011 安全预检（《草原狼影》专属里程碑升级）：level===1 且资源字段合法、新上限不溢出；否则整次拒绝（含金币与任务保持 completable）
-      if (questId === 'quest_grassland_wolf') {
-        const p = next.player
-        const maxHpNext = p.maxHp + LEVEL_2_MAX_HP_GAIN
-        const maxMpNext = p.maxMp + LEVEL_2_MAX_MP_GAIN
-        if (
-          p.level !== 1 ||
-          !Number.isSafeInteger(p.hp) ||
-          p.hp < 0 ||
-          !Number.isSafeInteger(p.maxHp) ||
-          p.maxHp < 0 ||
-          p.hp > p.maxHp ||
-          !Number.isSafeInteger(p.mp) ||
-          p.mp < 0 ||
-          !Number.isSafeInteger(p.maxMp) ||
-          p.maxMp < 0 ||
-          p.mp > p.maxMp ||
-          !Number.isSafeInteger(maxHpNext) ||
-          !Number.isSafeInteger(maxMpNext)
-        ) {
-          return {}
-        }
-      }
+      const xpReward = getQuest(questId)?.adventureXpReward ?? 0
+      const progression = applyAdventureXpReward(next.player, xpReward)
+      if (!progression) return {}
       changed = true
       // 任务完成 + 金币奖励 +（《村外异动》）兔王巢穴解锁 + 村长信任：同一原子更新
       const player = reward !== undefined ? { ...next.player, gold: next.player.gold + reward } : next.player
       // TM-P1-011：里程碑升级（仅《草原狼影》）：Lv1→Lv2、maxHp+2、maxMp+1；当前 hp/mp 保持不变（受伤不治疗、HP0 不复活）
-      const playerAfterLevel =
-        questId === 'quest_grassland_wolf'
-          ? {
-              ...player,
-              level: 2,
-              maxHp: player.maxHp + LEVEL_2_MAX_HP_GAIN,
-              maxMp: player.maxMp + LEVEL_2_MAX_MP_GAIN,
-            }
-          : player
+      const playerAfterLevel = { ...progression.player, gold: player.gold }
       if (questId === 'quest_village_monsters') {
         // TM-P1-002：《村外异动》专属关系奖励——村长信任 +1（仅本任务；懒创建 NpcState；locationId 读注册表）
         const existing = next.world.npcStates.village_elder
@@ -726,7 +711,7 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
         return {
           gameState: {
             ...next,
-            player,
+            player: playerAfterLevel,
             world: {
               ...next.world,
               flags: { ...next.world.flags, rabbit_lair_unlocked: true },
@@ -737,7 +722,7 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
       }
       return reward !== undefined
         ? { gameState: { ...next, player: playerAfterLevel } }
-        : { gameState: next }
+        : { gameState: { ...next, player: playerAfterLevel } }
     })
     return changed
   },
@@ -1141,6 +1126,28 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
     return equipped
   },
 
+  equipItem: (itemId) => {
+    let ok = false
+    set((s) => {
+      const state = s.gameState
+      const check = checkEquipItem(state, itemId)
+      if (!state || !check.allowed || !check.slot) return {}
+      ok = true
+      return { gameState: { ...state, equipment: { ...state.equipment, [check.slot]: itemId } } }
+    })
+    return ok
+  },
+
+  unequipSlot: (slot) => {
+    let ok = false
+    set((s) => {
+      if (!s.gameState || s.gameState.equipment[slot] === null) return {}
+      ok = true
+      return { gameState: { ...s.gameState, equipment: { ...s.gameState.equipment, [slot]: null } } }
+    })
+    return ok
+  },
+
   unequipWeapon: () => {
     let unequipped = false
     set((s) => {
@@ -1189,6 +1196,28 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
           inventory,
         },
       }
+    })
+    return bought
+  },
+
+  buyMerchantItem: (merchantId, itemId) => {
+    let bought = false
+    set((s) => {
+      const state = s.gameState
+      const offer = getMerchantOffer(merchantId, itemId)
+      if (!offer || !canBuyMerchantItem(state, merchantId, itemId) || !state) return {}
+      const matchingEntries = state.inventory
+        .map((entry, index) => ({ entry, index }))
+        .filter(({ entry }) => entry.itemId === itemId)
+      if (matchingEntries.length > 1) return {}
+      const idx = matchingEntries[0]?.index ?? -1
+      const current = idx >= 0 ? (matchingEntries[0]?.entry.quantity ?? 0) : 0
+      if (!Number.isSafeInteger(current) || current < 0 || !Number.isSafeInteger(current + 1)) return {}
+      const inventory = idx >= 0
+        ? state.inventory.map((entry, i) => (i === idx ? { ...entry, quantity: current + 1 } : entry))
+        : [...state.inventory, { itemId, quantity: 1 }]
+      bought = true
+      return { gameState: { ...state, player: { ...state.player, gold: state.player.gold - offer.price }, inventory } }
     })
     return bought
   },
@@ -2217,10 +2246,20 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
       // 《落樱越界》契约接受 → completed（TM-P2-004 第 118 节；状态机不允许 in_progress→completed 直跳，先 completable 再 completed）
       let gsWithQuest = applyQuestTransition(st.gameState, 'quest_sakura_boundary', 'completable') ?? st.gameState
       gsWithQuest = applyQuestTransition(gsWithQuest, 'quest_sakura_boundary', 'completed') ?? gsWithQuest
+      // Sakura's boundary quest uses the same completion reward path as every
+      // other quest.  If an already-completed legacy state reaches this action,
+      // the reward is zero, so accepting the contract cannot duplicate XP.
+      const boundaryWasCompleted = st.gameState.quests.find((q) => q.questId === 'quest_sakura_boundary')?.status === 'completed'
+      const progression = applyAdventureXpReward(
+        gsWithQuest.player,
+        boundaryWasCompleted ? 0 : (getQuest('quest_sakura_boundary')?.adventureXpReward ?? 0),
+      )
+      if (!progression) return {}
       result = { outcome: 'recruited', affectionDelta, trustDelta }
       return {
         gameState: {
           ...gsWithQuest,
+          player: progression.player,
           companions: { ...st.gameState.companions, [SAKURA_COMPANION_ID]: companion },
           relationships,
           party,

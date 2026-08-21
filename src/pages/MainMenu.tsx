@@ -1,4 +1,5 @@
 import Button from '../components/Button'
+import { useCloudSession } from '../cloud/cloudSessionStore'
 
 interface MainMenuProps {
   hasSave: boolean
@@ -10,6 +11,22 @@ interface MainMenuProps {
 }
 
 export default function MainMenu({ hasSave, onNewGame, onContinue, onOpenSaves, onOpenDev }: MainMenuProps) {
+  // TM-P2-005 25 节：主菜单只显示简洁云状态（不把菜单做成数据库管理器）
+  const cloudStatus = useCloudSession((s) => s.status)
+  const syncStatus = useCloudSession((s) => s.syncStatus)
+  const cloudLabel =
+    syncStatus === 'offline'
+      ? '☁ 仅本机模式（不会跨设备同步）'
+      : syncStatus === 'cloud_failed'
+      ? '⚠ 本地已保存，云同步失败'
+      : syncStatus === 'conflict'
+        ? '⚠ 云端存档已在另一台设备更新'
+        : syncStatus === 'syncing'
+          ? '☁ 同步中…'
+          : cloudStatus === 'connected'
+            ? '☁ 云存档已连接'
+            : '☁ 仅本机模式（不会跨设备同步）'
+
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-8 px-4">
       <header className="text-center">
@@ -18,6 +35,7 @@ export default function MainMenu({ hasSave, onNewGame, onContinue, onOpenSaves, 
         </h1>
         <p className="mt-3 text-sm tracking-[0.5em] text-bone-500">TIANMENG CONTINENT</p>
         <p className="mt-6 text-base text-bone-300">文字叙事驱动的 D20 奇幻冒险</p>
+        <p className="mt-2 text-xs text-bone-500">{cloudLabel}</p>
       </header>
 
       <nav className="flex w-64 flex-col gap-3">

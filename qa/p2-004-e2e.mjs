@@ -39,7 +39,32 @@ const clickByText = async (text) => {
   await sleep(400)
 }
 
+const buyOsmanthusCake = async () => {
+  await page.evaluate(() => {
+    const heading = [...document.querySelectorAll('h3')].find((node) => node.textContent.trim() === '桂花糕铺')
+    const shop = heading?.closest('section')
+    if (!shop || !shop.textContent.includes('天龙桂花糕')) throw new Error('未找到商品卡: 天龙桂花糕')
+    const button = [...shop.querySelectorAll('button')].find((b) => b.textContent.trim() === '购买')
+    if (!button) throw new Error('天龙桂花糕商品卡内未找到购买按钮')
+    button.click()
+  })
+  await sleep(400)
+}
+
 const bodyText = () => page.evaluate(() => document.body.textContent)
+
+/** TM-P2-005：云口令页出现「仅本机模式」时点击进入（未配置云端端点的降级入口） */
+const enterLocalModeIfNeeded = async () => {
+  try {
+    const clicked = await page.evaluate(() => {
+      const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.includes('仅本机模式'))
+      if (btn) { btn.click(); return true }
+      return false
+    })
+    if (clicked) await sleep(500)
+    return clicked
+  } catch { return false }
+}
 
 const setRandom = (v) =>
   page.evaluate((x) => {
@@ -59,6 +84,7 @@ const injectSaveAndContinue = async (gameState) => {
   }, slot)
   await page.reload({ waitUntil: 'networkidle0' })
   await sleep(500)
+  await enterLocalModeIfNeeded()
   const body = await bodyText()
   if (!body.includes('继续游戏')) throw new Error('注入存档后未出现继续游戏入口')
   await clickByText('继续游戏')
@@ -76,14 +102,7 @@ const readTrust = async () => {
 }
 
 const readLocationId = () =>
-  page.evaluate(() => {
-    const label = [...document.querySelectorAll('p')].find((el) => el.textContent.trim() === '当前位置')
-    if (!label) return null
-    const section = label.closest('section')
-    if (!section) return null
-    const idEl = [...section.querySelectorAll('p')].find((el) => /^[a-z0-9_]+$/.test(el.textContent.trim()))
-    return idEl ? idEl.textContent.trim() : null
-  })
+  page.evaluate(() => document.querySelector('[data-current-location-id]')?.getAttribute('data-current-location-id') || null)
 
 /** 基础合法角色：骑士 Lv.4（hp 不满 → 休整按钮可用）；北门失联 completed（Sakura 触发条件 fallback） */
 function sakuraFixtureState() {
@@ -144,10 +163,22 @@ const saveToSlot1 = async () => {
   await sleep(300)
 }
 
+const readSavedAdventureXp = () =>
+  page.evaluate(() => {
+    const raw = localStorage.getItem('tianmeng_continent_save_slot_slot1')
+    if (!raw) return null
+    try {
+      return JSON.parse(raw).gameState.player.adventureXp ?? null
+    } catch {
+      return null
+    }
+  })
+
 try {
   // ================= 注入 V4 fixture → Continue → 天龙城 =================
   await page.goto(URL, { waitUntil: 'networkidle0' })
   await sleep(400)
+  await enterLocalModeIfNeeded()
   await injectSaveAndContinue(sakuraFixtureState())
   let body = await bodyText()
   check('P2-004-1: Continue 后到达天龙城（tianlong_city）', (await readLocationId()) === 'tianlong_city')
@@ -214,6 +245,8 @@ try {
   await clickByText('可以，但契约必须由你自己决定。')
   body = await bodyText()
   check('P2-004-21: 神契已缔结（正式成为神契宠物）', body.includes('神契已缔结'))
+  check('D2-01: 接受神契后用户可见任务完成提示', body.includes('任务完成：《落樱越界》'))
+  check('D2-02: 接受神契后用户可见固定阅历奖励', body.includes('冒险阅历 +100'))
   check('P2-004-22: 《落樱越界》已完成', body.includes('落樱越界') && body.includes('已完成'))
   check('P2-004-23: 回天龙城（sakura_domain_fragment 已离场）', (await readLocationId()) === 'tianlong_city')
 
@@ -245,9 +278,9 @@ try {
   // ================= 赠礼（桂花糕 liked +2） =================
   body = await bodyText()
   check('P2-004-31: 天龙城桂花糕铺可购买（8 金币）', body.includes('桂花糕铺') && body.includes('桂花糕'))
-  await clickByText('购买')
+  await buyOsmanthusCake()
   await sleep(300)
-  await clickByText('购买') // 买 2 个：1 个赠礼消耗，1 个留给刷新保持检查
+  await buyOsmanthusCake() // 买 2 个：1 个赠礼消耗，1 个留给刷新保持检查
   await sleep(300)
   body = await bodyText()
   const affBeforeGift = await readAffection()
@@ -276,18 +309,29 @@ try {
 
   // ================= 存档刷新保持（V4 持久化） =================
   await saveToSlot1()
+  const xpAfterFirstSave = await readSavedAdventureXp()
   await sleep(300)
   await page.evaluate(() => {
     Math.random = () => 0.5
   })
   await page.reload({ waitUntil: 'networkidle0' })
   await sleep(500)
+  await enterLocalModeIfNeeded()
   await clickByText('继续游戏')
   await sleep(500)
   body = await bodyText()
   check('P2-004-39: 刷新后 Continue → 剧情状态保持（神契宠物同行）', body.includes('同行伙伴') && body.includes('神契宠物') && body.includes('Lv.4'))
   check('P2-004-40: 刷新后红颜录好感/信任保持（>5）', (await readAffection()) > 5 && (await readTrust()) > 5)
   check('P2-004-41: 刷新后不重复初见/不重复契约（无神域入口）', !body.includes('踏入裂隙') && !body.includes('神域崩塌'))
+  check('D2-03: 刷新 Continue 后奖励提示不再次显示', !body.includes('任务完成：《落樱越界》') && !body.includes('冒险阅历 +100'))
+  await saveToSlot1()
+  const xpAfterRepeatSave = await readSavedAdventureXp()
+  body = await bodyText()
+  check(
+    'D2-04: 重复路径不可再次接受神契且不重复发奖',
+    !body.includes('可以，但契约必须由你自己决定。') && xpAfterFirstSave !== null && xpAfterRepeatSave === xpAfterFirstSave,
+    `first=${xpAfterFirstSave} repeat=${xpAfterRepeatSave}`,
+  )
   // 赠礼周期已恢复：再次赠礼成功（新休整周期）
   body = await bodyText()
   check('P2-004-42: 刷新后桂花糕仍在背包（可再赠）', body.includes('桂花糕 ×1'))
