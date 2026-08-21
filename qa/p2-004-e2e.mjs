@@ -90,14 +90,7 @@ const readTrust = async () => {
 }
 
 const readLocationId = () =>
-  page.evaluate(() => {
-    const label = [...document.querySelectorAll('p')].find((el) => el.textContent.trim() === '当前位置')
-    if (!label) return null
-    const section = label.closest('section')
-    if (!section) return null
-    const idEl = [...section.querySelectorAll('p')].find((el) => /^[a-z0-9_]+$/.test(el.textContent.trim()))
-    return idEl ? idEl.textContent.trim() : null
-  })
+  page.evaluate(() => document.querySelector('[data-current-location-id]')?.getAttribute('data-current-location-id') || null)
 
 /** 基础合法角色：骑士 Lv.4（hp 不满 → 休整按钮可用）；北门失联 completed（Sakura 触发条件 fallback） */
 function sakuraFixtureState() {

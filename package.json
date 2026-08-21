@@ -15,7 +15,7 @@
     "qa:cloud": "node qa/p2-005-cloud-e2e.mjs",
     "qa:p2-005-layout": "node qa/p2-005-layout-e2e.mjs",
     "qa:p2-004": "node qa/p2-004-e2e.mjs && node qa/p2-004-r1-e2e.mjs",
-    "qa:rc": "npm run build && node qa/p2-004-r1-e2e.mjs && node qa/p2-004-e2e.mjs && node qa/p2-005-cloud-e2e.mjs"
+    "qa:rc": "npm run build && node qa/p2-004-r1-e2e.mjs && node qa/p2-004-e2e.mjs && node qa/p2-005-cloud-e2e.mjs && node qa/p2-005-full-journey-e2e.mjs && node qa/responsive-e2e.mjs"
   },
   "dependencies": {
     "react": "^19.2.8",

@@ -501,7 +501,10 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
           className="order-3 flex flex-col gap-6 md:col-start-1 md:row-start-1 md:row-span-2 xl:col-start-2 xl:row-start-1"
         >
           {/* 当前区域（地点描述；手机第 3 位） */}
-          <section className="order-1 rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
+          <section
+            data-current-location-id={world.currentLocationId}
+            className="order-1 rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300"
+          >
             <p className="mb-2 text-bone-500">当前位置</p>
             {location ? (
               <>

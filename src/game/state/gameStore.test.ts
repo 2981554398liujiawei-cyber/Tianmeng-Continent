@@ -2584,36 +2584,37 @@ describe('TM-P1-011：第一次里程碑升级 Lv.2（完成《草原狼影》�
     })
   }
 
-  it('B. 正常完成：Lv1→Lv2、HP 22/22→22/24、MP 6/6→6/7、金币 85→110、任务 completed（同一原子更新）', () => {
+  it('B. 正常完成：Lv1→Lv2、HP 22/22→24/24、MP 6/6→7/7、XP 40→100、金币 85→110、任务 completed（同一原子更新）', () => {
     completeWolfQuest()
     expect(p().level).toBe(1)
     expect(gold()).toBe(85)
     expect(useGameStore.getState().completeQuest('quest_grassland_wolf')).toBe(true)
     expect(wolfQuest()?.status).toBe('completed')
     expect(p().level).toBe(2)
-    expect(p().hp).toBe(22)
+    expect(p().hp).toBe(24)
     expect(p().maxHp).toBe(24)
-    expect(p().mp).toBe(6)
+    expect(p().mp).toBe(7)
     expect(p().maxMp).toBe(7)
+    expect(p().adventureXp).toBe(100)
     expect(gold()).toBe(110)
   })
 
-  it('C. 受伤状态不治疗：HP 10/22、MP 2/6 → 10/24、2/7', () => {
+  it('C. 受伤状态随等级成长：HP 10/22、MP 2/6 → 12/24、3/7', () => {
     completeWolfQuest()
     setPlayerState({ hp: 10, mp: 2 })
     useGameStore.getState().completeQuest('quest_grassland_wolf')
-    expect(p().hp).toBe(10)
+    expect(p().hp).toBe(12)
     expect(p().maxHp).toBe(24)
-    expect(p().mp).toBe(2)
+    expect(p().mp).toBe(3)
     expect(p().maxMp).toBe(7)
     expect(p().level).toBe(2)
   })
 
-  it('D. HP0 不复活：HP 0/22 → 0/24', () => {
+  it('D. HP0 仅获得等级成长：HP 0/22 → 2/24', () => {
     completeWolfQuest()
     setPlayerState({ hp: 0 })
     useGameStore.getState().completeQuest('quest_grassland_wolf')
-    expect(p().hp).toBe(0)
+    expect(p().hp).toBe(2)
     expect(p().maxHp).toBe(24)
     expect(p().level).toBe(2)
   })
