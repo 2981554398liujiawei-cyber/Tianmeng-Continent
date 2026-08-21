@@ -47,8 +47,9 @@ describe('TM-P0-004：默认创建兼容（无 input）', () => {
     expect(state.inventory).toEqual([
       { itemId: 'iron_sword', quantity: 1 },
       { itemId: 'healing_potion', quantity: 2 },
+      { itemId: 'traveler_cloth_armor', quantity: 1 },
     ])
-    expect(state.equipment).toEqual({ weapon: null, armor: null, accessory: null })
+    expect(state.equipment).toEqual({ weapon: null, armor: 'traveler_cloth_armor', accessory: null })
     expect(state.quests).toEqual([])
     expect(state.world.currentLocationId).toBe('qingshi_village')
     expect(state.world.flags).toEqual({})
@@ -71,7 +72,7 @@ describe('TM-P0-004：自定义角色创建', () => {
     expect(state.player.level).toBe(1)
     expect(state.player.gold).toBe(50)
     // 初始资源基线不变
-    expect(state.inventory).toHaveLength(2)
+    expect(state.inventory).toHaveLength(3)
     expect(state.quests).toEqual([])
   })
 

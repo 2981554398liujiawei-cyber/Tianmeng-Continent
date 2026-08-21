@@ -46,6 +46,7 @@ const DEFAULT_PLAYER: Character = {
   name: '石头城',
   gender: 'male',
   level: 1,
+  adventureXp: 0,
   profession: 'knight',
   attributes: {
     str: 14,
@@ -75,6 +76,7 @@ function buildPlayer(input?: CharacterCreationInput): Character {
     name: input.name.trim(),
     gender: input.gender,
     level: 1,
+    adventureXp: 0,
     profession: input.profession,
     attributes,
     hp: maxHp,
@@ -96,10 +98,11 @@ export function createInitialGameState(input?: CharacterCreationInput): GameStat
     inventory: [
       { itemId: 'iron_sword', quantity: 1 },
       { itemId: 'healing_potion', quantity: 2 },
+      { itemId: 'traveler_cloth_armor', quantity: 1 },
     ],
     equipment: {
       weapon: null,
-      armor: null,
+      armor: 'traveler_cloth_armor',
       accessory: null,
     },
     quests: [],

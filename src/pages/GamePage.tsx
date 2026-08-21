@@ -28,6 +28,8 @@ import type {
   SakuraFirstRestChoice,
 } from '../game/state/gameStore'
 import type { QuestStatus } from '../game/types'
+import { getCurrentObjective } from '../game/rules/objective'
+import { getPlayerArmor } from '../game/rules/combat'
 
 /** D20 检定结果中文（TM-P0-016） */
 const CHECK_OUTCOME_LABELS: Record<D20CheckResult['outcome'], string> = {
@@ -312,8 +314,12 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
   // 当前装备武器（左栏手机概览 + 装备区共用）
   const equippedWeaponDef = gameState.equipment.weapon ? getItem(gameState.equipment.weapon) : undefined
   const equippedWeaponName = gameState.equipment.weapon
-    ? (equippedWeaponDef?.name ?? `未知武器（${gameState.equipment.weapon}）`)
+    ? (equippedWeaponDef?.name ?? '物品数据异常')
     : '未装备'
+  const equippedArmorDef = gameState.equipment.armor ? getItem(gameState.equipment.armor) : undefined
+  const equippedArmorName = gameState.equipment.armor ? (equippedArmorDef?.name ?? '物品数据异常') : '未装备'
+  const playerArmor = getPlayerArmor(player.attributes.con, equippedArmorDef?.type === 'armor' ? equippedArmorDef.armorDefenseBonus ?? 0 : 0)
+  const objective = getCurrentObjective(gameState)
 
   const handleTravel = (targetId: string) => {
     // TM-P0-005：正式游戏移动只走 travelToLocation（Store 内部校验）
@@ -358,7 +364,7 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
       .filter((entry): entry is { targetId: string; target: NonNullable<ReturnType<typeof getLocation>> } => entry.target !== undefined) ?? []
 
   return (
-    <div className="mx-auto min-h-screen w-full max-w-[1600px] px-4 py-6">
+    <div className="game-page mx-auto min-h-screen w-full max-w-[1600px] px-4 py-6">
       {/* 顶栏：天梦大陆 / 当前地点 + 保存 / 主菜单 */}
       <header className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-ink-600 pb-4">
         <div>
@@ -453,12 +459,14 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
                   <span className="text-bone-100">{equippedWeaponDef.name}</span>
                 ) : gameState.equipment.weapon ? (
                   <span className="text-bone-100">
-                    未知武器 <span className="text-bone-500">（{gameState.equipment.weapon}）</span>
+                    物品数据异常
                   </span>
                 ) : (
                   <span className="text-bone-500">未装备</span>
                 )}
               </p>
+              <p className="mt-1">防具：<span className="text-bone-100">{equippedArmorName}</span></p>
+              <p className="mt-1">护甲等级：<span className="text-bone-100">{playerArmor}</span></p>
             </section>
 
             {/* TM-P2-003-R3 B：背包从 GamePage 抽到 InventoryPanel（数据驱动武器入口，不再 hardcode iron_sword） */}
@@ -470,6 +478,10 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
               onEquipWeapon={(itemId) => equipWeapon(itemId)}
               onUnequipWeapon={() => unequipWeapon()}
               onUseHealingPotion={() => useHealingPotion()}
+              equippedArmorId={gameState.equipment.armor}
+              onEquipItem={(itemId) => useGameStore.getState().equipItem(itemId)}
+              onUnequipArmor={() => useGameStore.getState().unequipSlot('armor')}
+              profession={player.profession}
             />
           </div>
         </section>
@@ -486,11 +498,10 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
               <>
                 <h3 className="text-lg font-bold text-bone-100">{location.name}</h3>
                 <p className="mt-2 leading-relaxed">{location.description}</p>
-                <p className="mt-2 text-xs text-bone-500">{location.id}</p>
               </>
             ) : (
               // TM-P0-005：未知当前位置安全边界——不崩溃、不提供移动按钮
-              <p className="text-bone-300">未知地点（{world.currentLocationId}）</p>
+              <p className="text-bone-300">地点数据异常</p>
             )}
           </section>
 
@@ -1648,6 +1659,16 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
         >
           {/* 当前目标（主线/支线摘要；手机第 2 位） */}
           {(() => {
+            if (objective) {
+              return (
+                <section className="rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
+                  <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">当前目标</h3>
+                  <p className="font-bold text-bone-100">《{objective.title}》</p>
+                  <p className="mt-2 text-bone-200">{objective.objective}</p>
+                  {objective.locationHint && <p className="mt-1 text-xs text-bone-500">地点提示：{objective.locationHint}</p>}
+                </section>
+              )
+            }
             const activeQuests = gameState.quests.filter(
               (q) => q.status === 'in_progress' || q.status === 'completable',
             )

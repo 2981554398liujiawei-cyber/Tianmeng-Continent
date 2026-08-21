@@ -23,6 +23,8 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
+      - name: Cloud local contract smoke
+        run: npm run qa:cloud
       # TM-P2-003-R3 H：生产浏览器 Smoke 门禁——真实构建 + preview + Puppeteer 验证主菜单
       # （preview 后台启动；循环 fetch 等待就绪，不用 wait-on / sleep 硬等；
       #  Chrome 可执行路径取自 runner 真实命令，不写死 /usr/bin/google-chrome）

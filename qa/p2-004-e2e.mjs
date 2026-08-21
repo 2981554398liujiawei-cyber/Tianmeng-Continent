@@ -41,6 +41,19 @@ const clickByText = async (text) => {
 
 const bodyText = () => page.evaluate(() => document.body.textContent)
 
+/** TM-P2-005：云口令页出现「仅本机模式」时点击进入（未配置云端端点的降级入口） */
+const enterLocalModeIfNeeded = async () => {
+  try {
+    const clicked = await page.evaluate(() => {
+      const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.includes('仅本机模式'))
+      if (btn) { btn.click(); return true }
+      return false
+    })
+    if (clicked) await sleep(500)
+    return clicked
+  } catch { return false }
+}
+
 const setRandom = (v) =>
   page.evaluate((x) => {
     Math.random = () => x
@@ -59,6 +72,7 @@ const injectSaveAndContinue = async (gameState) => {
   }, slot)
   await page.reload({ waitUntil: 'networkidle0' })
   await sleep(500)
+  await enterLocalModeIfNeeded()
   const body = await bodyText()
   if (!body.includes('继续游戏')) throw new Error('注入存档后未出现继续游戏入口')
   await clickByText('继续游戏')
@@ -148,6 +162,7 @@ try {
   // ================= 注入 V4 fixture → Continue → 天龙城 =================
   await page.goto(URL, { waitUntil: 'networkidle0' })
   await sleep(400)
+  await enterLocalModeIfNeeded()
   await injectSaveAndContinue(sakuraFixtureState())
   let body = await bodyText()
   check('P2-004-1: Continue 后到达天龙城（tianlong_city）', (await readLocationId()) === 'tianlong_city')
@@ -282,6 +297,7 @@ try {
   })
   await page.reload({ waitUntil: 'networkidle0' })
   await sleep(500)
+  await enterLocalModeIfNeeded()
   await clickByText('继续游戏')
   await sleep(500)
   body = await bodyText()

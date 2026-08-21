@@ -107,7 +107,7 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
   if (!enemy) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-6">
-        <p className="text-bone-300">未知敌人（{enemyId}），无法进入战斗。</p>
+        <p className="text-bone-300">敌人数据异常，无法进入战斗。</p>
         <Button onClick={onExitToMenu}>返回主菜单</Button>
       </div>
     )
@@ -353,7 +353,7 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
   })()
 
   return (
-    <div className="mx-auto flex min-h-screen w-full max-w-3xl flex-col gap-6 px-4 py-6">
+    <div className="combat-page mx-auto flex min-h-screen w-full max-w-3xl flex-col gap-6 px-4 py-6">
       <header className="border-b border-ink-600 pb-4 text-center">
         <h2 className="text-xl font-bold tracking-widest text-gold-300">战斗</h2>
       </header>
@@ -388,21 +388,13 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
           <p>
             敏捷 <span className="tabular-nums text-bone-100">{playerAgility}</span>
           </p>
-          <div className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1">
-            {ATTRIBUTE_KEYS.map((key) => (
-              <div key={key} className="flex justify-between">
-                <span className="text-bone-500">{ATTRIBUTE_LABELS[key]}</span>
-                <span className="tabular-nums text-bone-300">{player.attributes[key]}</span>
-              </div>
-            ))}
-          </div>
           <p className="mt-2">
             当前武器：{' '}
             {equippedWeapon ? (
               <span className="text-bone-100">{equippedWeapon.name}</span>
             ) : gameState.equipment.weapon ? (
               <span className="text-bone-100">
-                未知武器 <span className="text-bone-500">（{gameState.equipment.weapon}）</span>
+                物品数据异常
               </span>
             ) : (
               <span className="text-bone-500">未装备</span>
@@ -466,7 +458,7 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
       </div>
 
       {(lastPlayerAttack || lastEnemyAttack || lastPotionHeal !== null || lastCompanionAction !== null) && (
-        <section className="rounded border border-ink-600 bg-ink-900/50 p-4 text-sm leading-relaxed text-bone-300">
+        <section className="combat-log rounded border border-ink-600 bg-ink-900/50 p-4 text-sm leading-relaxed text-bone-300">
           {lastPlayerAttack && (
             <div>
               <p className="text-bone-500">{actionLabel}</p>

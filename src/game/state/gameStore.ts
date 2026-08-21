@@ -6,7 +6,8 @@ import { canTransitionQuestStatus } from '../rules/quest'
 import { getEnemy, getItem, getLocation, getNpc, getQuest } from '../content'
 import { performD20Check, CHECK_DC, type D20CheckResult } from '../rules/d20'
 import { KNIGHT_POWER_STRIKE_MP_COST, MAGE_SPELL_MP_COST, WARRIOR_SUPPRESS_STRIKE_MP_COST } from '../rules/combat'
-import { LEVEL_2_MAX_HP_GAIN, LEVEL_2_MAX_MP_GAIN } from '../rules/character'
+import { LEVEL_2_MAX_HP_GAIN, LEVEL_2_MAX_MP_GAIN, getLevelFromXp } from '../rules/character'
+import { checkEquipItem } from '../rules/equipment'
 import { rollLoot } from '../rules/loot'
 import type { LootGrant } from '../types/loot'
 import { checkSkillUse } from '../rules/skill'
@@ -97,6 +98,8 @@ interface GameStoreState {
   exportSaves: () => string
   /** 导入五槽位 JSON：完整校验，非法不覆盖（TM-P2-002 I） */
   importSaves: (json: string) => boolean
+  /** TM-P2-005：云导入/外部写入后刷新槽位索引（不触碰 gameState 内存态） */
+  refreshSlots: () => void
 
   // 状态修改（数据流验证用最小动作集）
   /** 开发验证入口：直接设置地点（正式游戏页面禁止调用，仅开发者控制台使用，TM-P0-005） */
@@ -132,6 +135,8 @@ interface GameStoreState {
   equipWeapon: (itemId: string) => boolean
   /** 卸下武器：weapon → null，inventory 不变（TM-P0-013） */
   unequipWeapon: () => boolean
+  equipItem: (itemId: string) => boolean
+  unequipSlot: (slot: 'weapon' | 'armor' | 'accessory') => boolean
   /** 在药师处购买治疗药水：gold 扣减与药水增加原子完成；不治疗、不自动保存（TM-P0-014） */
   buyHealingPotion: () => boolean
   /** 在铁匠处出售铁矿石：gold 增加与铁矿石减少原子完成；不自动保存（TM-P0-021） */
@@ -345,6 +350,11 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
     const ok = storageImportSaves(json)
     set({ hasSave: hasAnySave(), slots: loadIndexSummary(), lastSavedSlot: loadIndexLast() })
     return ok
+  },
+
+  // TM-P2-005：云导入/外部写入后刷新槽位索引（不触碰 gameState 内存态）
+  refreshSlots: () => {
+    set({ hasSave: hasAnySave(), slots: loadIndexSummary(), lastSavedSlot: loadIndexLast() })
   },
 
 
@@ -676,42 +686,23 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
           return {}
         }
       }
-      // TM-P1-011 安全预检（《草原狼影》专属里程碑升级）：level===1 且资源字段合法、新上限不溢出；否则整次拒绝（含金币与任务保持 completable）
-      if (questId === 'quest_grassland_wolf') {
-        const p = next.player
-        const maxHpNext = p.maxHp + LEVEL_2_MAX_HP_GAIN
-        const maxMpNext = p.maxMp + LEVEL_2_MAX_MP_GAIN
-        if (
-          p.level !== 1 ||
-          !Number.isSafeInteger(p.hp) ||
-          p.hp < 0 ||
-          !Number.isSafeInteger(p.maxHp) ||
-          p.maxHp < 0 ||
-          p.hp > p.maxHp ||
-          !Number.isSafeInteger(p.mp) ||
-          p.mp < 0 ||
-          !Number.isSafeInteger(p.maxMp) ||
-          p.maxMp < 0 ||
-          p.mp > p.maxMp ||
-          !Number.isSafeInteger(maxHpNext) ||
-          !Number.isSafeInteger(maxMpNext)
-        ) {
-          return {}
-        }
-      }
+      const xpReward = getQuest(questId)?.adventureXpReward ?? 0
+      const oldXp = next.player.adventureXp ?? 0
+      const newXp = oldXp + xpReward
+      if (!Number.isSafeInteger(oldXp) || oldXp < 0 || !Number.isSafeInteger(newXp)) return {}
+      if (!Number.isSafeInteger(next.player.hp) || next.player.hp < 0 || next.player.hp > next.player.maxHp || !Number.isSafeInteger(next.player.maxHp) || next.player.maxHp < 0 || !Number.isSafeInteger(next.player.mp) || next.player.mp < 0 || next.player.mp > next.player.maxMp || !Number.isSafeInteger(next.player.maxMp) || next.player.maxMp < 0) return {}
+      const oldLevel = Math.max(1, next.player.level)
+      const newLevel = Math.max(oldLevel, getLevelFromXp(newXp))
+      const levelGain = newLevel - oldLevel
       changed = true
       // 任务完成 + 金币奖励 +（《村外异动》）兔王巢穴解锁 + 村长信任：同一原子更新
       const player = reward !== undefined ? { ...next.player, gold: next.player.gold + reward } : next.player
       // TM-P1-011：里程碑升级（仅《草原狼影》）：Lv1→Lv2、maxHp+2、maxMp+1；当前 hp/mp 保持不变（受伤不治疗、HP0 不复活）
-      const playerAfterLevel =
-        questId === 'quest_grassland_wolf'
-          ? {
-              ...player,
-              level: 2,
-              maxHp: player.maxHp + LEVEL_2_MAX_HP_GAIN,
-              maxMp: player.maxMp + LEVEL_2_MAX_MP_GAIN,
-            }
-          : player
+      const playerAfterLevel = { ...player, adventureXp: newXp, level: newLevel,
+        maxHp: player.maxHp + levelGain * LEVEL_2_MAX_HP_GAIN,
+        maxMp: player.maxMp + levelGain * LEVEL_2_MAX_MP_GAIN,
+        hp: player.hp + levelGain * LEVEL_2_MAX_HP_GAIN,
+        mp: player.mp + levelGain * LEVEL_2_MAX_MP_GAIN }
       if (questId === 'quest_village_monsters') {
         // TM-P1-002：《村外异动》专属关系奖励——村长信任 +1（仅本任务；懒创建 NpcState；locationId 读注册表）
         const existing = next.world.npcStates.village_elder
@@ -726,7 +717,7 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
         return {
           gameState: {
             ...next,
-            player,
+            player: playerAfterLevel,
             world: {
               ...next.world,
               flags: { ...next.world.flags, rabbit_lair_unlocked: true },
@@ -737,7 +728,7 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
       }
       return reward !== undefined
         ? { gameState: { ...next, player: playerAfterLevel } }
-        : { gameState: next }
+        : { gameState: { ...next, player: playerAfterLevel } }
     })
     return changed
   },
@@ -1139,6 +1130,28 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
       }
     })
     return equipped
+  },
+
+  equipItem: (itemId) => {
+    let ok = false
+    set((s) => {
+      const state = s.gameState
+      const check = checkEquipItem(state, itemId)
+      if (!state || !check.allowed || !check.slot) return {}
+      ok = true
+      return { gameState: { ...state, equipment: { ...state.equipment, [check.slot]: itemId } } }
+    })
+    return ok
+  },
+
+  unequipSlot: (slot) => {
+    let ok = false
+    set((s) => {
+      if (!s.gameState || s.gameState.equipment[slot] === null) return {}
+      ok = true
+      return { gameState: { ...s.gameState, equipment: { ...s.gameState.equipment, [slot]: null } } }
+    })
+    return ok
   },
 
   unequipWeapon: () => {

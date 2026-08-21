@@ -70,6 +70,19 @@ const clickLabel = async (text) => {
 
 const bodyText = () => page.evaluate(() => document.body.textContent)
 
+/** TM-P2-005：云口令页出现「仅本机模式」时点击进入（未配置云端端点的降级入口） */
+const enterLocalModeIfNeeded = async () => {
+  try {
+    const clicked = await page.evaluate(() => {
+      const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.includes('仅本机模式'))
+      if (btn) { btn.click(); return true }
+      return false
+    })
+    if (clicked) await sleep(500)
+    return clicked
+  } catch { return false }
+}
+
 // ---- TM-P2-002：五槽位存档辅助 ----
 const SAVE_KEYS = [
   'tianmeng_continent_save',
@@ -249,9 +262,11 @@ try {
 
   // 0. 清空存档：从空存档开始（必须无 localStorage 残留）
   await page.goto(URL, { waitUntil: 'networkidle0' })
+  await enterLocalModeIfNeeded()
   await clearAllSaves()
   await page.reload({ waitUntil: 'networkidle0' })
   await sleep(500)
+  await enterLocalModeIfNeeded()
   body = await bodyText()
   check('清空存档后主菜单显示「天梦大陆」', body.includes('天梦大陆'))
   check('空存档时「继续游戏」禁用', (await continueDisabled()) === true)

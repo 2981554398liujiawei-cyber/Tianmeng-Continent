@@ -1,11 +1,13 @@
 import type { GameState, Character, Inventory, Equipment, WorldState } from '../types'
 import { PROFESSION_IDS } from '../types/character'
 import { defaultSkillsForProfession } from '../content/skills'
+import { getQuest } from '../content'
 import { QUEST_STATUSES } from '../types/quest'
 import type { CompanionState, PartyState } from '../types/companion'
 import type { RelationshipState, RelationshipStage } from '../types/relationship'
 // TM-P2-004-R1 C：Party 上限单一来源（rules/companion 纯规则，无循环依赖）
 import { MAX_ACTIVE_COMPANIONS } from '../rules/companion'
+import { getLevelFromXp, getXpThresholdForLevel } from '../rules/character'
 
 /** 旧 V1 单槽存档 key（TM-P2-002 H：迁移源；迁移成功前不删除） */
 export const LEGACY_SAVE_KEY = 'tianmeng_continent_save'
@@ -20,7 +22,7 @@ export const LEGACY_SAVE_VERSION = 1
  *  3（TM-P2-003 A）：player 增加 learnedSkillIds（技能注册表）。
  *  4（TM-P2-004）：GameState 增加 companions / relationships / party / world.restCount（Schema V4）。
  *  兼容 514f3e2 无版本 V2 槽与 2.x/3 版本槽（迁移链补齐 version / learnedSkillIds / V4 字段）。 */
-export const SLOT_FORMAT_VERSION = 4
+export const SLOT_FORMAT_VERSION = 5
 
 export const SLOT_IDS = ['slot1', 'slot2', 'slot3', 'slot4', 'slot5'] as const
 export type SlotId = (typeof SLOT_IDS)[number]
@@ -106,6 +108,7 @@ function isCharacter(value: unknown): value is Character {
   if (!isNonNegativeInteger(value.hp) || !isNonNegativeInteger(value.maxHp)) return false
   if (!isNonNegativeInteger(value.mp) || !isNonNegativeInteger(value.maxMp)) return false
   if (!isNonNegativeInteger(value.gold)) return false
+  if (value.adventureXp !== undefined && !isNonNegativeInteger(value.adventureXp)) return false
   // TM-P2-003 A：learnedSkillIds 可选（旧 schema 无此字段仍合法；迁移链负责补全）
   if (
     value.learnedSkillIds !== undefined &&
@@ -289,6 +292,7 @@ export function isGameState(value: unknown): value is GameState {
 export function isCurrentGameState(value: unknown): value is GameState {
   if (!isGameState(value)) return false
   const gs = value as GameState
+  if (!Number.isSafeInteger(gs.player.adventureXp) || gs.player.adventureXp < 0) return false
   const skills = gs.player.learnedSkillIds
   if (!Array.isArray(skills) || !skills.every((id) => typeof id === 'string')) return false
   if (gs.companions === undefined || gs.relationships === undefined || gs.party === undefined) return false
@@ -304,11 +308,11 @@ export function isCurrentGameState(value: unknown): value is GameState {
 export function isValidSaveSlot(raw: unknown): raw is SaveSlot {
   if (!isRecord(raw)) return false
   const v = raw.version
-  if (v !== undefined && v !== 2 && v !== 3 && v !== SLOT_FORMAT_VERSION) return false
+  if (v !== undefined && v !== 2 && v !== 3 && v !== 4 && v !== SLOT_FORMAT_VERSION) return false
   if (typeof raw.savedAt !== 'string') return false
   if (!isGameState(raw.gameState)) return false
   // v4 严格：必须已带完整 V4 字段（TM-P2-004 第 96 节）
-  if (v === SLOT_FORMAT_VERSION && !isCurrentGameState(raw.gameState)) {
+  if ((v === 4 || v === SLOT_FORMAT_VERSION) && !isCurrentGameState(v === 4 ? { ...(raw.gameState as GameState), player: { ...(raw.gameState as GameState).player, adventureXp: (raw.gameState as GameState).player.adventureXp ?? 0 } } : raw.gameState)) {
     return false
   }
   return true
@@ -339,6 +343,30 @@ export function withV4Fields(gs: GameState): GameState {
     relationships,
     party,
     world: { ...gs.world, restCount },
+  }
+}
+
+function historicalQuestXp(gs: GameState): number {
+  return gs.quests.reduce((sum, q) => q.status === 'completed' ? sum + (getQuest(q.questId)?.adventureXpReward ?? 0) : sum, 0)
+}
+
+function withV5Fields(gs: GameState): GameState {
+  const oldLevel = Math.max(1, Number.isInteger(gs.player.level) ? gs.player.level : 1)
+  const preserved = getXpThresholdForLevel(oldLevel)
+  const xp = Math.max(historicalQuestXp(gs), preserved)
+  const level = Math.max(oldLevel, getLevelFromXp(xp))
+  const missingLevels = Math.max(0, level - oldLevel)
+  return {
+    ...gs,
+    player: {
+      ...gs.player,
+      adventureXp: xp,
+      level,
+      maxHp: gs.player.maxHp + missingLevels * 2,
+      maxMp: gs.player.maxMp + missingLevels,
+      hp: gs.player.hp + missingLevels * 2,
+      mp: gs.player.mp + missingLevels,
+    },
   }
 }
 
@@ -523,7 +551,7 @@ export function loadSlot(slotId: SlotId): SaveSlot | null {
     if (!Array.isArray(gs.player.learnedSkillIds)) {
       gs.player.learnedSkillIds = defaultSkillsForProfession(gs.player.profession)
     }
-    gs = withV4Fields(gs)
+    gs = withV5Fields(withV4Fields(gs))
     return { version: SLOT_FORMAT_VERSION, savedAt: p.savedAt, gameState: gs }
   } catch (err) {
     console.error(`[存档] 槽位 ${slotId} 读取失败（数据损坏），已安全回退；其余槽位不受影响`, err)
@@ -683,7 +711,7 @@ export function migrateSave(): boolean {
           if (!Array.isArray(gs.player.learnedSkillIds)) {
             gs.player.learnedSkillIds = defaultSkillsForProfession(gs.player.profession)
           }
-          gs = withV4Fields(gs)
+          gs = withV5Fields(withV4Fields(gs))
           storage.setItem(
             slotKey(id),
             JSON.stringify({ version: SLOT_FORMAT_VERSION, savedAt: parsed.savedAt, gameState: gs }),
@@ -697,7 +725,7 @@ export function migrateSave(): boolean {
           if (!Array.isArray(gs.player.learnedSkillIds)) {
             gs.player.learnedSkillIds = defaultSkillsForProfession(gs.player.profession)
           }
-          gs = withV4Fields(gs)
+          gs = withV5Fields(withV4Fields(gs))
           storage.setItem(
             slotKey(id),
             JSON.stringify({ version: SLOT_FORMAT_VERSION, savedAt: parsed.savedAt, gameState: gs }),
@@ -707,11 +735,16 @@ export function migrateSave(): boolean {
         }
         // Step 4（TM-P2-004）：schema 3 → 4 —— 补 companions/relationships/party/restCount（黄金兔冻结档原样迁移）
         if (parsed.version === 3 && isGameState(parsed.gameState)) {
-          const gs = withV4Fields(parsed.gameState)
+          const gs = withV5Fields(withV4Fields(parsed.gameState))
           storage.setItem(
             slotKey(id),
             JSON.stringify({ version: SLOT_FORMAT_VERSION, savedAt: parsed.savedAt, gameState: gs }),
           )
+          changed = true
+        }
+        if (parsed.version === 4 && isGameState(parsed.gameState)) {
+          const gs = withV5Fields(withV4Fields(parsed.gameState))
+          storage.setItem(slotKey(id), JSON.stringify({ version: SLOT_FORMAT_VERSION, savedAt: parsed.savedAt, gameState: gs }))
           changed = true
         }
       } catch {
@@ -730,7 +763,7 @@ function migrateSlotEntryToCurrent(entry: SaveSlot): SaveSlot {
   if (!Array.isArray(gs.player.learnedSkillIds)) {
     gs.player.learnedSkillIds = defaultSkillsForProfession(gs.player.profession)
   }
-  gs = withV4Fields(gs)
+  gs = withV5Fields(withV4Fields(gs))
   return { version: SLOT_FORMAT_VERSION, savedAt: entry.savedAt, gameState: gs }
 }
 

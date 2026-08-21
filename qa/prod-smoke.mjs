@@ -25,9 +25,23 @@ const browser = await puppeteer.launch({
 const page = await browser.newPage()
 await page.setViewport({ width: 1366, height: 768 })
 
+/** TM-P2-005：云口令页出现「仅本机模式」时点击进入（未配置云端端点的降级入口） */
+const enterLocalModeIfNeeded = async () => {
+  try {
+    const clicked = await page.evaluate(() => {
+      const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.includes('仅本机模式'))
+      if (btn) { btn.click(); return true }
+      return false
+    })
+    if (clicked) await sleep(500)
+    return clicked
+  } catch { return false }
+}
+
 try {
   await page.goto(URL, { waitUntil: 'networkidle0' })
   await sleep(800)
+  await enterLocalModeIfNeeded()
   const body = await page.evaluate(() => document.body.textContent)
 
   // TM-P0-023：生产主菜单只保留正式玩家入口

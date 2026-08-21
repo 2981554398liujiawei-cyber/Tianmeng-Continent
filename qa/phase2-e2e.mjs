@@ -51,6 +51,19 @@ const clickByText = async (text) => {
 
 const bodyText = () => page.evaluate(() => document.body.textContent)
 
+/** TM-P2-005：云口令页出现「仅本机模式」时点击进入（未配置云端端点的降级入口） */
+const enterLocalModeIfNeeded = async () => {
+  try {
+    const clicked = await page.evaluate(() => {
+      const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.includes('仅本机模式'))
+      if (btn) { btn.click(); return true }
+      return false
+    })
+    if (clicked) await sleep(500)
+    return clicked
+  } catch { return false }
+}
+
 // ---- TM-P2-002：五槽位存档辅助 ----
 const SAVE_KEYS = [
   'tianmeng_continent_save',
@@ -153,6 +166,7 @@ try {
   // 0. 前提：Phase 1 完成存档必须存在（先跑 phase1-playthrough.mjs）
   await page.goto(URL, { waitUntil: 'networkidle0' })
   await sleep(500)
+  await enterLocalModeIfNeeded()
   body = await bodyText()
   const hasPhase1Save = (await continueDisabled()) === false
   check('Phase 1 完成存档存在（Continue 可用）', hasPhase1Save)

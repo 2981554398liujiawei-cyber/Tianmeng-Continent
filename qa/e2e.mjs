@@ -45,6 +45,19 @@ const clickLabel = async (text) => {
 
 const bodyText = () => page.evaluate(() => document.body.textContent)
 
+/** TM-P2-005：云口令页出现「仅本机模式」时点击进入（未配置云端端点的降级入口） */
+const enterLocalModeIfNeeded = async () => {
+  try {
+    const clicked = await page.evaluate(() => {
+      const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.includes('仅本机模式'))
+      if (btn) { btn.click(); return true }
+      return false
+    })
+    if (clicked) await sleep(500)
+    return clicked
+  } catch { return false }
+}
+
 // ---- TM-P2-002：五槽位存档辅助 ----
 const SAVE_KEYS = [
   'tianmeng_continent_save',
@@ -196,6 +209,7 @@ try {
   // B.1 主菜单
   await page.goto(URL, { waitUntil: 'networkidle0' })
   await sleep(500)
+  await enterLocalModeIfNeeded()
   let body = await bodyText()
   check('主菜单显示「天梦大陆」', body.includes('天梦大陆'))
   check('主菜单显示「新游戏」', body.includes('新游戏'))
@@ -488,6 +502,7 @@ try {
   await clickByText('保存存档')
   await page.reload({ waitUntil: 'networkidle0' })
   await sleep(500)
+  await enterLocalModeIfNeeded()
   body = await bodyText()
   check('刷新后回到主菜单', body.includes('天梦大陆'))
   await clickByText('继续游戏')
@@ -1198,6 +1213,7 @@ try {
   await clearAllSaves()
   await page.reload({ waitUntil: 'networkidle0' })
   await sleep(500)
+  await enterLocalModeIfNeeded()
   await clickByText('新游戏')
   await createQuickKnight()
   await clickByText('村外草原')
@@ -2902,6 +2918,7 @@ try {
     )
     await page.reload({ waitUntil: 'networkidle0' })
     await sleep(400)
+    await enterLocalModeIfNeeded()
     const continueDisabledAfter = await continueDisabled()
     if (continueDisabledAfter) {
       // 非法存档（如 quantity=0）被 loadGame 拒绝 → 无法进入游戏页 → UI 层面自然不存在离村入口（比「入口隐藏」更强）
@@ -2938,6 +2955,7 @@ try {
         })(), departureSaveBackup)
   await page.reload({ waitUntil: 'networkidle0' })
   await sleep(400)
+  await enterLocalModeIfNeeded()
   await clickByText('继续游戏')
   await sleep(300)
   body = await bodyText()
@@ -3370,6 +3388,7 @@ try {
     )
     await page.reload({ waitUntil: 'networkidle0' })
     await sleep(400)
+    await enterLocalModeIfNeeded()
     const continueDisabledAfter = await continueDisabled()
     if (continueDisabledAfter) {
       // 存档被 loadGame 拒绝 → 无法进入游戏页 → UI 层面自然无入口（更强保证）
@@ -3426,6 +3445,7 @@ try {
         })(), towerSaveBackup)
   await page.reload({ waitUntil: 'networkidle0' })
   await sleep(400)
+  await enterLocalModeIfNeeded()
   await clickByText('继续游戏')
   await sleep(300)
   body = await bodyText()
@@ -3634,6 +3654,7 @@ try {
   })
   await page.reload()
   await sleep(600)
+  await enterLocalModeIfNeeded()
   await clickByText('继续游戏')
   await sleep(300)
   await clickByText('天龙城')
@@ -3788,6 +3809,7 @@ try {
   })
   await page.reload()
   await sleep(600)
+  await enterLocalModeIfNeeded()
   await clickByText('继续游戏')
   await sleep(300)
   body = await bodyText()
@@ -3812,6 +3834,7 @@ try {
   }, floor2ClearedSave)
   await page.reload()
   await sleep(600)
+  await enterLocalModeIfNeeded()
   await clickByText('继续游戏')
   await sleep(300)
   body = await bodyText()
@@ -3852,6 +3875,7 @@ try {
   })
   await page.reload()
   await sleep(600)
+  await enterLocalModeIfNeeded()
   // A. Continue → 二层只出现骷髅战士 Lv.5（僵尸/黑法师均消失；入口区清场剧情保留）
   await clickByText('继续游戏')
   await sleep(300)
@@ -3986,6 +4010,7 @@ try {
     }, mutateBody, floor3UnlockLegalSave)
     await page.reload()
     await sleep(600)
+    await enterLocalModeIfNeeded()
     await clickByText('继续游戏')
     await sleep(300)
     return await bodyText()
@@ -4015,6 +4040,7 @@ try {
   }, floor3UnlockLegalSave)
   await page.reload()
   await sleep(600)
+  await enterLocalModeIfNeeded()
   await clickByText('继续游戏')
   await sleep(300)
   body = await bodyText()
@@ -4199,6 +4225,7 @@ try {
     }, necklaceLegalSave, mutateBody)
     await page.reload()
     await sleep(600)
+    await enterLocalModeIfNeeded()
     await clickByText('继续游戏')
     await sleep(300)
     await clickByText('交谈')
@@ -4400,6 +4427,7 @@ try {
   })
   await page.reload({ waitUntil: 'networkidle0' })
   await sleep(500)
+  await enterLocalModeIfNeeded()
   body = await bodyText()
   check('R1: player 内部损坏坏档刷新不白屏', body.includes('天梦大陆'))
   check('R1: player 内部损坏坏档时「继续游戏」禁用', (await continueDisabled()) === true)
@@ -4410,6 +4438,7 @@ try {
   })
   await page.reload({ waitUntil: 'networkidle0' })
   await sleep(500)
+  await enterLocalModeIfNeeded()
   body = await bodyText()
   check('损坏 JSON 刷新不白屏（主菜单可见）', body.includes('天梦大陆'))
   check('损坏 JSON 时「继续游戏」禁用', (await continueDisabled()) === true)
@@ -4421,6 +4450,7 @@ try {
   await clearAllSaves()
   await page.reload({ waitUntil: 'networkidle0' })
   await sleep(500)
+  await enterLocalModeIfNeeded()
   await clickByText('新游戏')
   await createQuickKnight()
   // 保存角色档（R1-12 注入用）
@@ -4495,6 +4525,7 @@ try {
   })
   await page.reload({ waitUntil: 'networkidle0' })
   await sleep(500)
+  await enterLocalModeIfNeeded()
   await clickByText('继续游戏')
   await sleep(300)
   body = await bodyText()
@@ -4523,6 +4554,7 @@ try {
   await clearAllSaves()
   await page.reload({ waitUntil: 'networkidle0' })
   await sleep(500)
+  await enterLocalModeIfNeeded()
 
 } catch (err) {
   check('脚本执行无异常', false, err.message)

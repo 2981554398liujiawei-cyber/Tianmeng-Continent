@@ -40,6 +40,19 @@ const clickByText = async (text) => {
 
 const bodyText = () => page.evaluate(() => document.body.textContent)
 
+/** TM-P2-005：云口令页出现「仅本机模式」时点击进入（未配置云端端点的降级入口） */
+const enterLocalModeIfNeeded = async () => {
+  try {
+    const clicked = await page.evaluate(() => {
+      const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.includes('仅本机模式'))
+      if (btn) { btn.click(); return true }
+      return false
+    })
+    if (clicked) await sleep(500)
+    return clicked
+  } catch { return false }
+}
+
 /** 在包含指定物品名的背包行中点击指定文本的按钮（如 装备/卸下）；名称精确匹配（startsWith，避免「铁剑」误中「精制铁剑」行） */
 const clickInRow = async (rowContains, btnText) => {
   const ok = await page.evaluate(
@@ -96,6 +109,7 @@ const injectSaveAndContinue = async (gameState) => {
   }, slot)
   await page.reload({ waitUntil: 'networkidle0' })
   await sleep(500)
+  await enterLocalModeIfNeeded()
   const body = await bodyText()
   if (!body.includes('继续游戏')) throw new Error('注入存档后未出现继续游戏入口')
   await clickByText('继续游戏')
@@ -134,6 +148,7 @@ try {
   // ================= Part A：双武器装备/卸下/切换闭环 =================
   await page.goto(URL, { waitUntil: 'networkidle0' })
   await sleep(400)
+  await enterLocalModeIfNeeded()
   const stateA = baseKnightState()
   stateA.inventory = [
     { itemId: 'iron_sword', quantity: 1 },
@@ -175,6 +190,7 @@ try {
   // ================= Part B：真实 Luck 奖励链（北门旧哨塔 → 大成功 → 精制铁剑 → 装备） =================
   await page.goto(URL, { waitUntil: 'networkidle0' })
   await sleep(400)
+  await enterLocalModeIfNeeded()
   const stateB = baseKnightState()
   stateB.world = {
     currentLocationId: 'tianlong_north_gate',

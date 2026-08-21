@@ -2551,6 +2551,7 @@ describe('TM-P1-011：第一次里程碑升级 Lv.2（完成《草原狼影》�
     useGameStore.getState().travelToLocation('village_grassland')
     useGameStore.getState().resolveCombatVictory('corrupted_wolf')
     useGameStore.getState().travelToLocation('qingshi_village')
+    // P2-005：前两项主线已提供 40 冒险阅历，草原狼 +60 正好达到 Lv2。
   }
 
   /** 覆盖玩家资源状态（hp/mp/level/maxHp/maxMp） */

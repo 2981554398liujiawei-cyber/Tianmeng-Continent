@@ -19,6 +19,7 @@ export interface ItemDefinition {
   weaponDamageBonus?: number
   /** 装备后护甲加成（仅 armor 可使用，TM-P2-002 A；当前内容暂无护甲物品，接口预留） */
   armorDefenseBonus?: number
+  allowedProfessions?: import('../types/character').ProfessionId[]
   /** 礼物标签（仅 gift 类型可使用；TM-P2-004 第 65 节——赠礼按标签匹配关系档案 likedGiftTags） */
   giftTags?: string[]
 }
@@ -32,6 +33,25 @@ export const ITEMS: Record<string, ItemDefinition> = {
     description: '村镇铁匠铺打造的寻常铁剑，虽不锋利，胜在可靠。',
     value: 30,
     weaponDamageBonus: 2,
+  },
+  traveler_cloth_armor: {
+    id: 'traveler_cloth_armor', name: '旅行布衣', type: 'armor', value: 12,
+    armorDefenseBonus: 1, description: '常见的厚布旅行服，虽挡不住重击，却多少能减轻擦伤。',
+  },
+  hardened_leather_armor: {
+    id: 'hardened_leather_armor', name: '硬皮甲', type: 'armor', value: 30,
+    armorDefenseBonus: 2, description: '经过硬化处理的皮甲，轻便而可靠。',
+    allowedProfessions: ['warrior', 'knight', 'ranger'],
+  },
+  chainmail_armor: {
+    id: 'chainmail_armor', name: '锁子甲', type: 'armor', value: 55,
+    armorDefenseBonus: 3, description: '环环相扣的金属甲片，能有效抵挡利刃。',
+    allowedProfessions: ['warrior', 'knight'],
+  },
+  arcane_robe: {
+    id: 'arcane_robe', name: '灵纹法袍', type: 'armor', value: 40,
+    armorDefenseBonus: 2, description: '绣有灵纹的法袍，布料间流转着微弱魔力。',
+    allowedProfessions: ['mage'],
   },
   healing_potion: {
     id: 'healing_potion',

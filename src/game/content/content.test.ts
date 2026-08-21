@@ -388,7 +388,7 @@ describe('TM-P0-002-R1：关键内容身份锁', () => {
     // TM-P2-004：+《落樱越界》（9）
     expect(Object.keys(QUESTS)).toHaveLength(9)
     // TM-P2-003 C：新增黑鬃狼牙（common）/黑鬃狼皮（uncommon）/精制铁剑（uncommon，+3）；TM-P2-004：+桂花糕（10）
-    expect(Object.keys(ITEMS)).toHaveLength(10)
+    expect(Object.keys(ITEMS)).toHaveLength(14)
     expect(getEnemy('golden_rabbit_king')).toBeUndefined()
     // TM-P1-028/029：骷髅战士、骷髅女妖已注册（本卡新增）
     expect(getEnemy('skeleton_warrior')).toBeDefined()
