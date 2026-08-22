@@ -1,9 +1,12 @@
 import { useState } from 'react'
 import Button from '../components/Button'
 import SakuraEncounterPanel from '../components/game/SakuraEncounterPanel'
+import MountStablePanel from '../components/game/MountStablePanel'
 import { useGameStore, VILLAGE_ELDER_POST_QUEST_EVENT_ID } from '../game/state/gameStore'
-import { getEnemy, getItem, getLocation, getNpc, NPCS, QUESTS } from '../game/content'
+import { getEnemy, getEncounter, getItem, getLocation, getNpc, allEncounterMembers, NPCS, QUESTS } from '../game/content'
 import { CHECK_DC, type D20CheckResult } from '../game/rules/d20'
+import { checkEncounter, singleEnemyIdOf } from '../game/rules/encounter'
+import type { EncounterDefinition } from '../game/types/encounter'
 import type { Character } from '../game/types/character'
 import { formatLuckCheckLog } from '../game/rules/luck'
 import { getUsableSkills } from '../game/rules/skill'
@@ -26,6 +29,7 @@ import type {
 import PlayerSidebar from './game/PlayerSidebar'
 import TaskActivitySidebar from './game/TaskActivitySidebar'
 import NpcInteractionPanel, { type NearbyQuestInfo, type NpcShopExtras } from './game/NpcInteractionPanel'
+import { canExploreMountTrail, MOUNT_TRAIL_REWARD_GOLD } from '../game/rules/mount'
 import { useCloudSession } from '../cloud/cloudSessionStore'
 import Modal from '../components/Modal'
 import { getQuest as getQuestDef } from '../game/content'
@@ -38,10 +42,22 @@ const CHECK_OUTCOME_LABELS: Record<D20CheckResult['outcome'], string> = {
   critical_failure: '大失败',
 }
 
+/** 遭遇成员摘要（TM-P2-007 §17：威胁入口卡片显示成员构成；variants 用「或」分隔；不泄露内部 ID） */
+function encounterMembersSummary(def: EncounterDefinition): string {
+  if (def.fixedMembers) {
+    return def.fixedMembers
+      .map((m) => `${getEnemy(m.enemyId)?.name ?? m.enemyId}${m.count > 1 ? `×${m.count}` : ''}`)
+      .join('、')
+  }
+  return (def.variants ?? [])
+    .map((v) => v.members.map((m) => `${getEnemy(m.enemyId)?.name ?? m.enemyId}${m.count > 1 ? `×${m.count}` : ''}`).join('+'))
+    .join(' 或 ')
+}
+
 interface GamePageProps {
   onBackToMenu: () => void
-  /** TM-P0-008：进入战斗（App 负责正式入口校验） */
-  onEngage: (enemyId: string) => void
+  /** TM-P0-008：进入战斗（App/Store 负责正式入口校验；TM-P2-007 改为 Encounter 入口） */
+  onEngage: (encounterId: string) => void
   /** TM-P2-002 G：打开五槽位保存页面 */
   onOpenSaves: () => void
 }
@@ -97,6 +113,12 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
   const unlockBlackStoneTowerFloor3 = useGameStore((s) => s.unlockBlackStoneTowerFloor3)
   const returnKuidongNecklaceToWangcai = useGameStore((s) => s.returnKuidongNecklaceToWangcai)
   const restAtTianlongMartialHall = useGameStore((s) => s.restAtTianlongMartialHall)
+  // TM-P2-007 §19：坐骑购买/装备/卸下 actions
+  const buyMount = useGameStore((s) => s.buyMount)
+  const equipMount = useGameStore((s) => s.equipMount)
+  const unequipMount = useGameStore((s) => s.unequipMount)
+  // TM-P2-007 §21：城郊古驿道 optional 检定 action
+  const exploreMountTrail = useGameStore((s) => s.exploreMountTrail)
   const investigateNorthGateTrail = useGameStore((s) => s.investigateNorthGateTrail)
   // TM-P2-004：Sakura / 伙伴 / 关系 / 休整 actions
   const startSakuraEncounter = useGameStore((s) => s.startSakuraEncounter)
@@ -117,6 +139,10 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
   const [showTianlongDepartureConfirm, setShowTianlongDepartureConfirm] = useState(false)
   // TM-P2-006：任务完成奖励反馈（金币 / 冒险阅历；仅 UI 本地状态）
   const [questRewardNotice, setQuestRewardNotice] = useState<{ questTitle: string; gold: number; xp: number } | null>(null)
+  // TM-P2-007 §19：天龙城马厩面板（仅 UI 本地状态）
+  const [mountStableOpen, setMountStableOpen] = useState(false)
+  // TM-P2-007 §21：城郊古驿道 optional 检定结果（仅 UI 本地状态；一次性，flag 固化）
+  const [lastMountTrail, setLastMountTrail] = useState<D20CheckResult | null>(null)
   // 云同步状态（顶部薄系统栏轻量信息）
   const cloudStatus = useCloudSession((s) => s.status)
   const cloudSyncStatus = useCloudSession((s) => s.syncStatus)
@@ -247,13 +273,6 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
   const northGateWolfDefeated = northGateQuest?.flags.north_gate_wolf_defeated === true
   const northGateTrailFlag = northGateQuest?.flags.north_gate_trail_checked
   const northGateTrailPending = northGateTrailFlag === undefined || northGateTrailFlag === false
-  const northGateWolfFlag = northGateQuest?.flags.north_gate_wolf_defeated
-  const northGateWolfOk = northGateWolfFlag !== true && (typeof northGateWolfFlag === 'undefined' || typeof northGateWolfFlag === 'boolean')
-  const northGateWolfVisible =
-    world.currentLocationId === 'tianlong_north_gate' &&
-    northGateQuestInProgress &&
-    northGateTrailChecked &&
-    northGateWolfOk
   const northGateInvestigateVisible =
     world.currentLocationId === 'tianlong_north_gate' && northGateQuestInProgress && northGateTrailPending
 
@@ -272,6 +291,12 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
   const handleInvestigateMine = () => {
     const result = investigateAbandonedMine()
     if (result) setLastMineInvestigation(result)
+  }
+
+  /** TM-P2-007 §21：城郊古驿道 optional 检定（store action 负责合法性；UI 只展示结果） */
+  const handleExploreMountTrail = () => {
+    const result = exploreMountTrail()
+    if (result) setLastMountTrail(result)
   }
 
   const activeNpc = activeNpcId ? getNpc(activeNpcId) : undefined
@@ -950,6 +975,60 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
               </section>
             )}
 
+            {/* 马厩（TM-P2-007 §19：天龙城购买/管理坐骑） */}
+            {world.currentLocationId === 'tianlong_city' && (
+              <section className="rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
+                <h3 className="mb-3 text-sm font-bold tracking-wider text-bone-500">马厩</h3>
+                <p className="mb-3 text-bone-300">天龙城的马厩里饲养着骏马。买下一匹可提升能力，并加快旅途。</p>
+                <Button variant="primary" data-testid="open-mount-stable-entry" onClick={() => setMountStableOpen(true)}>
+                  造访马厩
+                </Button>
+              </section>
+            )}
+
+            {/* 城郊古驿道（TM-P2-007 §21：fast_travel 坐骑才出现的 optional 检定；不影响主线，未连接 Golden Rabbit） */}
+            {world.currentLocationId === 'tianlong_city' &&
+              (canExploreMountTrail(gameState) || world.flags.mount_trail_explored !== undefined) && (
+                <section className="rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
+                  <h3 className="mb-3 text-sm font-bold tracking-wider text-bone-500">城郊古驿道</h3>
+                  {(() => {
+                    const done = world.flags.mount_trail_explored
+                    return (
+                      <>
+                        {lastMountTrail && (
+                          <div className="mb-3 rounded border border-gold-500/40 bg-ink-900/60 p-3">
+                            <p className="text-bone-300">
+                              D20 {lastMountTrail.roll} + 敏捷修正 {lastMountTrail.attributeModifier} ={' '}
+                              {lastMountTrail.total}
+                            </p>
+                            <p className="text-bone-500">DC {lastMountTrail.dc}</p>
+                            <p className="font-bold text-gold-300">结果：{CHECK_OUTCOME_LABELS[lastMountTrail.outcome]}</p>
+                            <p className="mt-1 text-bone-300">
+                              {lastMountTrail.success
+                                ? `你在驿站的旧柜里找到一笔酬金，收获 ${MOUNT_TRAIL_REWARD_GOLD} 金。`
+                                : '小路尽头空无一人，你原路折返。'}
+                            </p>
+                          </div>
+                        )}
+                        {done === 'found' && <p className="text-xs text-bone-500">探索已完成</p>}
+                        {done === 'nothing' && <p className="text-xs text-bone-500">探索已完成</p>}
+                        {done === undefined && (
+                          <>
+                            <p className="mb-2 text-bone-300">你骑上快马，沿着城郊古驿道疾驰，发现一条通往废弃驿站的小路。</p>
+                            <p className="mb-3 text-xs text-bone-500">
+                              敏捷检定 · DC {CHECK_DC.moderate}（当前敏捷 {player.attributes.agi}）
+                            </p>
+                            <Button variant="primary" data-testid="explore-mount-trail" onClick={handleExploreMountTrail}>
+                              策马探索
+                            </Button>
+                          </>
+                        )}
+                      </>
+                    )
+                  })()}
+                </section>
+              )}
+
             {/* 黑石塔二层解锁入口 */}
             {world.currentLocationId === 'black_stone_tower_floor1' &&
               towerQuestInProgress &&
@@ -1146,126 +1225,41 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
 
             {/* 附近威胁 */}
             {(() => {
-              const configuredEnemies = location?.enemyIds ?? []
-              if (configuredEnemies.length === 0) return null
-              const visibleEnemies = configuredEnemies
-                .map((enemyId) => getEnemy(enemyId))
-                .filter((threat): threat is NonNullable<typeof threat> => {
-                  if (!threat) return false
-                  if (threat.id === 'corrupted_wolf') {
-                    const wolfQuest = gameState.quests.find((q) => q.questId === 'quest_grassland_wolf')
-                    if (wolfQuest?.status !== 'in_progress') return false
-                  }
-                  if (threat.id === 'dudu_rabbit') {
-                    const hasPath = gameState.inventory.some((e) => e.itemId === 'rabbit_path')
-                    if (hasPath) return false
-                  }
-                  if (threat.id === 'skeleton_soldier') {
-                    const defeated = wangcaiQuest?.flags.floor1_soldier_defeated
-                    const defeatedOk = defeated !== true && (typeof defeated === 'undefined' || typeof defeated === 'boolean')
-                    if (!towerQuestInProgress || !wangcaiBriefed || !towerUnlocked || !defeatedOk) return false
-                  }
-                  if (threat.id === 'skeleton_captain') {
-                    const captainFlag = wangcaiQuest?.flags.floor1_captain_defeated
-                    const captainOk = captainFlag !== true && (typeof captainFlag === 'undefined' || typeof captainFlag === 'boolean')
-                    if (!towerQuestInProgress || !wangcaiBriefed || !towerUnlocked || floor1SoldierDefeated !== true || !captainOk) return false
-                  }
-                  if (threat.id === 'tower_zombie') {
-                    const zombieFlag = wangcaiQuest?.flags.floor2_zombie_defeated
-                    const zombieOk = zombieFlag !== true && (typeof zombieFlag === 'undefined' || typeof zombieFlag === 'boolean')
-                    if (
-                      !towerQuestInProgress ||
-                      !wangcaiBriefed ||
-                      !towerUnlocked ||
-                      !towerFloor2Unlocked ||
-                      floor1SoldierDefeated !== true ||
-                      floor1CaptainDefeated !== true ||
-                      !zombieOk
-                    ) {
-                      return false
-                    }
-                  }
-                  if (threat.id === 'black_mage') {
-                    const mageFlag = wangcaiQuest?.flags.floor2_black_mage_defeated
-                    const mageOk = mageFlag !== true && (typeof mageFlag === 'undefined' || typeof mageFlag === 'boolean')
-                    if (
-                      !towerQuestInProgress ||
-                      !wangcaiBriefed ||
-                      !towerUnlocked ||
-                      !towerFloor2Unlocked ||
-                      floor1SoldierDefeated !== true ||
-                      floor1CaptainDefeated !== true ||
-                      floor2ZombieDefeated !== true ||
-                      !mageOk
-                    ) {
-                      return false
-                    }
-                  }
-                  if (threat.id === 'skeleton_warrior') {
-                    const warriorFlag = wangcaiQuest?.flags.floor2_skeleton_warrior_defeated
-                    const warriorOk = warriorFlag !== true && (typeof warriorFlag === 'undefined' || typeof warriorFlag === 'boolean')
-                    if (
-                      !towerQuestInProgress ||
-                      !wangcaiBriefed ||
-                      !towerUnlocked ||
-                      !towerFloor2Unlocked ||
-                      floor1SoldierDefeated !== true ||
-                      floor1CaptainDefeated !== true ||
-                      floor2ZombieDefeated !== true ||
-                      floor2BlackMageDefeated !== true ||
-                      !warriorOk
-                    ) {
-                      return false
-                    }
-                  }
-                  if (threat.id === 'skeleton_witch') {
-                    const witchFlag = wangcaiQuest?.flags.floor3_skeleton_witch_defeated
-                    const witchOk = witchFlag !== true && (typeof witchFlag === 'undefined' || typeof witchFlag === 'boolean')
-                    if (
-                      !towerQuestInProgress ||
-                      !wangcaiBriefed ||
-                      !towerUnlocked ||
-                      !towerFloor2Unlocked ||
-                      !towerFloor3Unlocked ||
-                      floor1SoldierDefeated !== true ||
-                      floor1CaptainDefeated !== true ||
-                      floor2ZombieDefeated !== true ||
-                      floor2BlackMageDefeated !== true ||
-                      floor2SkeletonWarriorDefeated !== true ||
-                      !witchOk
-                    ) {
-                      return false
-                    }
-                  }
-                  if (threat.id === 'black_mane_wolf') {
-                    if (!northGateWolfVisible) return false
-                  }
-                  if (threat.id === 'sakura_calamity_fragment') {
-                    if (world.flags.sakura_guest !== true) return false
-                    if (world.flags.sakura_calamity_defeated === true) return false
-                    if (world.currentLocationId !== 'sakura_domain_fragment') return false
-                  }
-                  return true
-                })
-              if (visibleEnemies.length === 0) return null
+              const configuredEncounters = location?.encounters ?? []
+              if (configuredEncounters.length === 0) return null
+              // TM-P2-007 §7.4：可见性直接委托 checkEncounter 权威守卫（注册 / 地点挂载 / 前置 / defeated），
+              // 不再复制敌人专属过滤分支，与战斗入口校验 100% 一致。
+              const visibleEncounters = configuredEncounters
+                .map((encounterId) => getEncounter(encounterId))
+                .filter((def): def is NonNullable<typeof def> => (def ? checkEncounter(gameState, def.id).allowed : false))
+              if (visibleEncounters.length === 0) return null
               return (
                 <section className="rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
                   <h3 className="mb-3 text-sm font-bold tracking-wider text-bone-500">附近威胁</h3>
                   <div className="flex flex-col gap-3">
-                    {visibleEnemies.map((threat) => {
+                    {visibleEncounters.map((def) => {
                       const cannotFight = player.hp <= 0
+                      const singleEnemyId = singleEnemyIdOf(def)
+                      const singleEnemy = singleEnemyId ? getEnemy(singleEnemyId) : undefined
                       return (
-                        <div key={threat.id} className="rounded border border-ink-600 bg-ink-900/40 p-3">
+                        <div key={def.id} className="rounded border border-ink-600 bg-ink-900/40 p-3">
                           <div className="flex items-center justify-between gap-3">
                             <div>
                               <p className="font-bold text-bone-100">
-                                {threat.name} <span className="text-xs font-normal text-bone-500">· Lv.{threat.level}</span>
+                                {def.name}
+                                {singleEnemy && (
+                                  <span className="text-xs font-normal text-bone-500"> · Lv.{singleEnemy.level}</span>
+                                )}
                               </p>
-                              <p className="mt-1 text-xs text-bone-500">
-                                HP {threat.maxHp} · 护甲 {threat.armor}
-                              </p>
+                              {singleEnemy ? (
+                                <p className="mt-1 text-xs text-bone-500">
+                                  HP {singleEnemy.maxHp} · 护甲 {singleEnemy.armor}
+                                </p>
+                              ) : (
+                                <p className="mt-1 text-xs text-bone-500">{encounterMembersSummary(def)}</p>
+                              )}
                             </div>
-                            <Button variant="primary" disabled={cannotFight} onClick={() => onEngage(threat.id)}>
+                            <Button variant="primary" disabled={cannotFight} onClick={() => onEngage(def.id)}>
                               迎战
                             </Button>
                           </div>
@@ -1495,6 +1489,19 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
           }
         />
       )}
+
+      {/* 马厩面板（TM-P2-007 §19：购买/装备/卸下） */}
+      <MountStablePanel
+        open={mountStableOpen}
+        onClose={() => setMountStableOpen(false)}
+        ownedMountIds={gameState.ownedMountIds}
+        equippedMountId={gameState.equippedMountId}
+        gold={player.gold}
+        locationId={world.currentLocationId}
+        onBuy={buyMount}
+        onEquip={equipMount}
+        onUnequip={unequipMount}
+      />
     </div>
   )
 }
