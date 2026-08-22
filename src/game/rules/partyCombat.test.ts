@@ -187,6 +187,14 @@ describe('rollInitiativeQueue（§9.3 先手排序）', () => {
     expect(() => rollInitiativeQueue([makePlayer()], () => -0.1)).toThrow(RangeError)
     expect(() => rollInitiativeQueue([], seqRng(0))).toThrow(RangeError)
   })
+
+  it('PC12b 先手队列不凭空增减单位（§61：坐骑等非单位不会被注入队列）', () => {
+    const input = [makePlayer(), makeSakura(), ...makeEnemyCombatants({ enemyId: 'corrupted_wolf', count: 1 })]
+    const turns = rollInitiativeQueue(input, seqRng(0.99, 0.99, 0.99))
+    // 队列严格 = 输入 combatants 全排列：不新增（坐骑/外挂单位）也不丢弃
+    expect(turns).toHaveLength(input.length)
+    expect(new Set(turns.map((t) => t.combatant.instanceId))).toEqual(new Set(input.map((c) => c.instanceId)))
+  })
 })
 
 describe('回合推进（§9.4 死亡跳过 / round）', () => {
