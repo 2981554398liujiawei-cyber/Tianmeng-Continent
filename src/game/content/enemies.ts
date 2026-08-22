@@ -1,7 +1,11 @@
 /**
  * 敌人定义（TM-P0-002 + TM-P0-007）：内容身份 + V1 战斗平衡基线。
  * TM-P2-006 After：attackPower 全表上调（平衡审计 P1/P2 修复），Combat V3 公式冻结不动。
+ * TM-P2-007 After：新增 dropTable 引用（Loot V2 统一掉落入口）。
  */
+import type { DropTable } from '../types/loot'
+import { DROP_TABLES } from './lootTables'
+
 export interface EnemyDefinition {
   id: string
   name: string
@@ -21,6 +25,8 @@ export interface EnemyDefinition {
   adventureXpReward?: number
   /** TM-P2-006：是否可逃跑（默认 true；强制剧情战 / Boss / 特殊封闭空间可设 false） */
   canEscape?: boolean
+  /** TM-P2-007：Loot V2 掉落表（guaranteed / random / lucky；无表则无掉落） */
+  dropTable?: DropTable
 }
 
 export const ENEMIES: Record<string, EnemyDefinition> = {
@@ -35,6 +41,7 @@ export const ENEMIES: Record<string, EnemyDefinition> = {
     attackPower: 16,
     agility: 10,
     adventureXpReward: 10,
+    dropTable: DROP_TABLES.corrupted_rabbit,
   },
   corrupted_rat: {
     id: 'corrupted_rat',
@@ -47,6 +54,7 @@ export const ENEMIES: Record<string, EnemyDefinition> = {
     attackPower: 16,
     agility: 10,
     adventureXpReward: 10,
+    dropTable: DROP_TABLES.corrupted_rat,
   },
   corrupted_wolf: {
     id: 'corrupted_wolf',
@@ -59,6 +67,7 @@ export const ENEMIES: Record<string, EnemyDefinition> = {
     attackPower: 14,
     agility: 12,
     adventureXpReward: 15,
+    dropTable: DROP_TABLES.corrupted_wolf,
   },
   dudu_rabbit: {
     id: 'dudu_rabbit',
@@ -71,6 +80,7 @@ export const ENEMIES: Record<string, EnemyDefinition> = {
     attackPower: 18,
     agility: 10,
     adventureXpReward: 30,
+    dropTable: DROP_TABLES.dudu_rabbit,
   },
   // TM-P1-025：黑石塔一层骷髅士兵（Lv.2 玩家进入第二地区后第一类普通敌人；无技能/状态/抗性/掉落——继续现有普通战斗规则）
   skeleton_soldier: {
@@ -84,6 +94,7 @@ export const ENEMIES: Record<string, EnemyDefinition> = {
     attackPower: 20,
     agility: 8,
     adventureXpReward: 20,
+    dropTable: DROP_TABLES.skeleton_soldier,
   },
   // TM-P1-026：黑石塔一层骷髅队长（一层 Boss——骷髅士兵头领；继续现有普通确定性 D20 战斗；无骨刺/反弹/重斩/击晕/Boss 技能系统/亡灵抗性/特殊 AI/掉落）
   skeleton_captain: {
@@ -97,6 +108,7 @@ export const ENEMIES: Record<string, EnemyDefinition> = {
     attackPower: 14,
     agility: 8,
     adventureXpReward: 30,
+    dropTable: DROP_TABLES.skeleton_captain,
   },
   // TM-P1-027：黑石塔二层入口第一只——僵尸（固定顺序战斗第一场；继续现有普通 D20 战斗；无中毒/吸血/持续伤害/特殊恢复）
   tower_zombie: {
@@ -110,6 +122,7 @@ export const ENEMIES: Record<string, EnemyDefinition> = {
     attackPower: 18,
     agility: 6,
     adventureXpReward: 25,
+    dropTable: DROP_TABLES.tower_zombie,
   },
   // TM-P1-027：黑石塔二层入口第二只——黑法师（僵尸击败后才出现；固定顺序战斗第二场；继续现有普通战斗模型；无盲目/暗属性/黑色火球/暴躁/特殊法术 AI）
   black_mage: {
@@ -123,6 +136,7 @@ export const ENEMIES: Record<string, EnemyDefinition> = {
     attackPower: 14,
     agility: 8,
     adventureXpReward: 30,
+    dropTable: DROP_TABLES.black_mage,
   },
   // TM-P1-028：黑石塔二层深处骷髅战士（入口区清场后出现的第三只；固定顺序战斗第三场；继续现有普通确定性 D20 战斗；无技能系统/重击/格挡/眩晕/亡灵抗性/特殊 AI/掉落）
   skeleton_warrior: {
@@ -136,6 +150,7 @@ export const ENEMIES: Record<string, EnemyDefinition> = {
     attackPower: 18,
     agility: 8,
     adventureXpReward: 40,
+    dropTable: DROP_TABLES.skeleton_warrior,
   },
   // TM-P1-029：黑石塔三层骷髅女妖（三层守卫；继续现有普通确定性 D20 战斗；不因「女妖」二字增加法术系统——无诅咒/恐惧/吸血/灵魂攻击/暗属性/召唤/特殊 AI）
   skeleton_witch: {
@@ -149,6 +164,7 @@ export const ENEMIES: Record<string, EnemyDefinition> = {
     attackPower: 16,
     agility: 8,
     adventureXpReward: 45,
+    dropTable: DROP_TABLES.skeleton_witch,
   },
   // TM-P2-001 D4：Phase 2 新敌人——黑鬃魔狼（北门外荒野；无技能系统，继续普通战斗模型；仅任务进行中+已调查痕迹+未击败时出现）
   black_mane_wolf: {
@@ -162,6 +178,7 @@ export const ENEMIES: Record<string, EnemyDefinition> = {
     attackPower: 16,
     agility: 12,
     adventureXpReward: 25,
+    dropTable: DROP_TABLES.black_mane_wolf,
   },
   // TM-P2-004 第 40 节：残灾之影（樱华神域·破碎边界专属；不是八歧大蛇本体/世界 Boss/九尾妖狐）
   // TM-P2-006 第 35 节：剧情契约链核心战 → canEscape=false（强制战斗）
@@ -177,5 +194,6 @@ export const ENEMIES: Record<string, EnemyDefinition> = {
     agility: 10,
     adventureXpReward: 35,
     canEscape: false,
+    dropTable: DROP_TABLES.sakura_calamity_fragment,
   },
 }

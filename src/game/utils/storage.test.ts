@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createInitialGameState } from '../content/initial'
+import type { GameState } from '../types/game'
 import {
   LEGACY_SAVE_KEY,
   LEGACY_SAVE_VERSION,
@@ -18,6 +19,7 @@ import {
   migrateLegacySave,
   migrateSave,
   saveSlot,
+  withV6Fields,
   type SlotId,
 } from './storage'
 
@@ -604,7 +606,7 @@ describe('TM-P2-005：V5 XP 保真与 V1/V2/V3/V4 → V5 迁移', () => {
     const raw = { version: 4, savedAt: '2026-01-01T08:00:00.000Z', gameState: state }
     localStorage.setItem('tianmeng_continent_save_slot_slot1', JSON.stringify(raw))
     expect(migrateSave()).toBe(true)
-    expect(JSON.parse(localStorage.getItem('tianmeng_continent_save_slot_slot1')!).version).toBe(5)
+    expect(JSON.parse(localStorage.getItem('tianmeng_continent_save_slot_slot1')!).version).toBe(SLOT_FORMAT_VERSION)
     expect(loadSlot('slot1')?.gameState.player.adventureXp).toBe(250)
   })
 
@@ -623,7 +625,7 @@ describe('TM-P2-005：V5 XP 保真与 V1/V2/V3/V4 → V5 迁移', () => {
     localStorage.setItem('tianmeng_continent_save_slot_slot1', JSON.stringify(entry))
     expect(migrateSave()).toBe(true)
     const migrated = JSON.parse(localStorage.getItem('tianmeng_continent_save_slot_slot1')!)
-    expect(migrated.version).toBe(5)
+    expect(migrated.version).toBe(SLOT_FORMAT_VERSION)
     expect(migrated.gameState.player.adventureXp).toBe(60)
     expect(loadSlot('slot1')?.gameState.player.adventureXp).toBe(60)
   })
@@ -807,7 +809,7 @@ describe('TM-P2-003 A：旧 V2 存档迁移 learnedSkillIds', () => {
     migrateSave()
     const raw = JSON.parse(localStorage.getItem('tianmeng_continent_save_slot_slot3')!)
     const gs = raw.gameState
-    expect(raw.version).toBe(5)
+    expect(raw.version).toBe(SLOT_FORMAT_VERSION)
     expect(gs.quests[0]).toEqual(before.quests[0])
     expect(gs.inventory).toEqual(before.inventory)
   })
@@ -1117,7 +1119,7 @@ describe('TM-P2-003-R2 D3：V2 multi-slot 导出导入（含黄金兔冻结）',
     const before = JSON.parse(exportJson).slots.slot1.gameState
     expect(importSaves(exportJson)).toBe(true)
     const s1 = JSON.parse(localStorage.getItem('tianmeng_continent_save_slot_slot1')!)
-    expect(s1.version).toBe(5)
+    expect(s1.version).toBe(SLOT_FORMAT_VERSION)
     expect(s1.gameState.player.learnedSkillIds).toEqual(['knight_power_strike'])
     expect(s1.gameState.player.gold).toBe(111)
     expect(s1.gameState.world.restCount).toBe(0)
@@ -1148,5 +1150,75 @@ describe('TM-P2-003-R2 D3：V2 multi-slot 导出导入（含黄金兔冻结）',
     expect(SLOT_IDS.map((id) => localStorage.getItem(`tianmeng_continent_save_slot_${id}`)).join('|') + '||' + localStorage.getItem(SAVES_INDEX_KEY)).toBe(before)
     expect(loadSlot('slot1')?.gameState.player.gold).toBe(70)
     expect(loadSlot('slot3')).toBeNull()
+  })
+})
+
+describe('TM-P2-007：V6 坐骑/遭遇变体字段保真与迁移', () => {
+  const stateWithMountV6 = () => {
+    const state = stateWithGold(100)
+    state.ownedMountIds = ['fire_stallion']
+    state.equippedMountId = 'fire_stallion'
+    state.world.encounterVariants = { encounter_broken_patrol: 'a' }
+    return state
+  }
+
+  it('saveSlot → loadSlot roundtrip 保留 ownedMountIds / equippedMountId / encounterVariants', () => {
+    const src = stateWithMountV6()
+    expect(saveSlot('slot1', src)).toBe(true)
+    const loaded = loadSlot('slot1')?.gameState
+    expect(loaded?.ownedMountIds).toEqual(['fire_stallion'])
+    expect(loaded?.equippedMountId).toBe('fire_stallion')
+    expect(loaded?.world.encounterVariants).toEqual({ encounter_broken_patrol: 'a' })
+  })
+
+  it('withV6Fields 幂等补三字段：XP / level / 其余数据原样保留（不重算）', () => {
+    const base = stateWithGold(55)
+    base.player.adventureXp = 120
+    base.player.level = 2
+    const gs = base as unknown as GameState
+    const withoutV6 = {
+      ...gs,
+      ownedMountIds: undefined,
+      equippedMountId: undefined,
+      world: { ...gs.world, encounterVariants: undefined },
+    } as unknown as GameState
+
+    const migrated = withV6Fields(withoutV6)
+    expect(migrated.ownedMountIds).toEqual([])
+    expect(migrated.equippedMountId).toBeNull()
+    expect(migrated.world.encounterVariants).toEqual({})
+    expect(migrated.player.adventureXp).toBe(120)
+    expect(migrated.player.level).toBe(2)
+    // 幂等：再跑一次不改变
+    expect(withV6Fields(migrated)).toEqual(migrated)
+  })
+
+  it('V5 export 导入迁移到 V6：补三字段、version 升 6、XP 不重算', () => {
+    const base = stateWithGold(90) as unknown as GameState
+    base.player.adventureXp = 60
+    const v5State = {
+      ...base,
+      ownedMountIds: undefined,
+      equippedMountId: undefined,
+      world: { ...base.world, encounterVariants: undefined },
+    } as unknown as GameState
+    const v5Slot = { version: 5, savedAt: '2026-08-01T08:00:00.000Z', gameState: v5State }
+    const exportJson = JSON.stringify({
+      version: SAVE_VERSION,
+      exportedAt: '2026-08-01T08:00:00.000Z',
+      lastSavedSlot: 'slot1',
+      slots: { slot1: v5Slot, slot2: null, slot3: null, slot4: null, slot5: null },
+    })
+
+    expect(importSaves(exportJson)).toBe(true)
+    const slot = loadSlot('slot1')
+    expect(slot?.version).toBe(SLOT_FORMAT_VERSION)
+    const gs = slot?.gameState
+    expect(gs?.ownedMountIds).toEqual([])
+    expect(gs?.equippedMountId).toBeNull()
+    expect(gs?.world.encounterVariants).toEqual({})
+    // 迁移不重算 XP：保持 V5 原值
+    expect(gs?.player.adventureXp).toBe(60)
+    expect(gs?.player.gold).toBe(90)
   })
 })
