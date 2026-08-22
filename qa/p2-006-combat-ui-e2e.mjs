@@ -61,6 +61,47 @@ async function clickButton(text) {
   return clicked
 }
 
+/** P2-007 适配：等待我方玩家行动阶段出现（行动栏「普通攻击」渲染即玩家回合；战斗结束返回 false） */
+async function waitPlayerTurn(timeoutMs = 12000) {
+  const start = Date.now()
+  while (Date.now() - start < timeoutMs) {
+    const b = await bodyText()
+    if (b.includes('返回冒险')) return false
+    if (b.includes('普通攻击')) return true
+    await sleep(120)
+  }
+  return false
+}
+
+/**
+ * P2-007 适配：点击 target selector 内第一个敌人目标。
+ * 村外草原魔化狼/魔化兔同屏，迎战按钮按敌人名匹配不稳定（祖先链误判），
+ * 玩家普攻选目标改用 selector 定位（「取消」按钮所在容器内第一个按钮 = 敌方目标）。
+ */
+async function clickFirstEnemyTarget() {
+  const clicked = await page.evaluate(() => {
+    const cancel = [...document.querySelectorAll('button')].find((b) => b.textContent?.trim() === '取消')
+    if (!cancel) return false
+    const container = cancel.parentElement
+    if (!container) return false
+    const targetBtn = container.querySelector('button')
+    if (!targetBtn || targetBtn.disabled) return false
+    targetBtn.click()
+    return true
+  })
+  if (clicked) await sleep(500)
+  return clicked
+}
+
+/** P2-007 适配：玩家普攻（行动栏「普通攻击」→ target selector 选第一个敌人） */
+async function playerAttack() {
+  if (!(await clickButton('普通攻击'))) return false
+  await sleep(250)
+  const clicked = await clickFirstEnemyTarget()
+  await sleep(500)
+  return clicked
+}
+
 /**
  * Lv.2 骑士 fixture（确定性 RNG 配套）：STR8 无武器 → 攻击 3、暴击 4 伤/击。
  * 对魔化狼（HP12/甲12/敏12）：玩家 3 击击杀（CUI2 播报 1 击 + CUI4 再 2 击后战斗仍在进行）；
@@ -136,7 +177,10 @@ async function enterCombat(enemyName = '魔化狼') {
     for (const button of buttons) {
       let el = button.parentElement
       for (let depth = 0; el && depth < 4; depth += 1) {
-        if (el.textContent?.includes(name)) {
+        const cls = el.className?.toString() || ''
+        // P2-007 适配：敌人卡容器（rounded border + bg-ink-900，即敌人卡自身）——「附近威胁」列表容器
+        // 同时含魔化兔+魔化狼文本，旧「向上找含名祖先」逻辑会误点第一张卡（魔化兔）；必须定位到卡内文本含目标名。
+        if (cls.includes('rounded border') && cls.includes('bg-ink-900') && el.textContent?.includes(name)) {
           button.click()
           return true
         }
@@ -190,12 +234,13 @@ try {
     const detailText = await page.evaluate(() => document.querySelector('[data-testid="combat-detail-log"]')?.textContent || '')
     check(`CUI1(${width}): 主播报区不含「D20/承伤率/护甲」公式`, !/D20|承伤率|护甲等级/.test(summaryText))
 
-    // CUI2：主区有「谁攻击-命中-伤害」的简洁播报（点一次普通攻击）
-    await clickButton('普通攻击')
+    // CUI2：主区有「谁攻击-命中-伤害」的简洁播报（点一次普通攻击；P2-007 普攻进 target selector 需选敌）
+    await waitPlayerTurn()
+    await playerAttack()
     await sleep(600)
     const afterAttack = await page.evaluate(() => document.querySelector('[data-testid="combat-summary-feed"]')?.textContent || '')
     const afterDetail = await page.evaluate(() => document.querySelector('[data-testid="combat-detail-log"]')?.textContent || '')
-    check(`CUI2(${width}): 主区出现攻击播报（你/命中/伤害）`, /你.*攻击.*命中.*伤害/.test(afterAttack) || /你的攻击命中/.test(afterAttack))
+    check(`CUI2(${width}): 主区出现攻击播报（命中/伤害）`, /攻击命中.*造成 \d+ 点伤害/.test(afterAttack))
     check(`CUI2(${width}): 详细日志含完整公式（命中值=(D20 / 天然20 / 承伤率）`, /命中值 = \(D20|天然20|承伤率/.test(afterDetail))
     check(`CUI2(${width}): 详细日志按回合分组（回合 N）`, /回合 \d+/.test(afterDetail))
 
@@ -207,8 +252,8 @@ try {
     for (let i = 0; i < 2; i += 1) {
       const b = await bodyText()
       if (b.includes('返回冒险')) break
-      if (b.includes('普通攻击')) await clickButton('普通攻击')
-      else break
+      if (!(await waitPlayerTurn())) break
+      await playerAttack()
     }
     barB = await actionBarTopY()
     const stillFighting = (await bodyText()).includes('普通攻击')
@@ -219,7 +264,8 @@ try {
       check(`CUI4(${width}): 多回合后行动栏未位移（战斗已结束，跳过）`, true, 'battle-over-skip')
     }
 
-    // CUI5：技能 tray 开/关
+    // CUI5：技能 tray 开/关（P2-007 玩家行动后轮到敌人，先等回玩家阶段）
+    await waitPlayerTurn()
     if (!(await bodyText()).includes('普通攻击')) {
       check(`CUI5(${width}): 一级行动栏含「技能」（战斗已结束，跳过）`, true, 'battle-over-skip')
     } else {
@@ -253,10 +299,11 @@ try {
   }
 
   // ============ CUI4b：长战斗（10+ 回合）行动栏绝对不位移（P0 硬验收） ============
-  // 确定性策略（真实 RNG 在新平衡下战斗太短且波动）：固定轮换 RNG [玩家 0.5(骰11), 敌人 0.1(骰3)]——
-  //   无武器弱骑士（攻击 3）对魔化狼（HP12/甲12）擦伤 1 伤/击 → 12 回合才击杀；
-  //   狼对玩家擦伤 ~2/击 → 26 HP 可撑 13 回合；命中检定 (8+11)/2=9.5 < 狼敏 12 → 擦伤（不暴击不落空）。
-  //   药水兜底（生命 ≤45% 续命）→ 战斗确定性 ≥ 12 回合，真正验证「日志无限增长时行动栏仍固定」。
+  // 确定性策略（固定常数 RNG，消除遭遇确定对 Math.random 的消耗导致奇偶 idx 偏移）：
+  //   固定 0.1 → 玩家/敌人同 D20=3 → 先手平局 → AGI 高者先（狼 12 > 玩家 8 → 狼先手，waitPlayerTurn 已适配）；
+  //   无武器弱骑士（攻击 3）对魔化狼（HP12/甲12）擦伤 1 伤/击 → 12 回合击杀；
+  //   狼对玩家擦伤 2/击 → 26 HP 可撑 13 回合（实际 12 回合击杀时 HP 余 2，无需药水兜底）。
+  //   命中检定 (8+3)/2=5.5 < 狼敏 12 → 恒擦伤（不暴击不落空），全程确定性 ≥ 12 回合，真正验证「日志无限增长时行动栏仍固定」。
   await page.setViewport({ width: 1366, height: 768 })
   await loadAndEnter({
     ...fixture(),
@@ -268,14 +315,11 @@ try {
       { itemId: 'traveler_cloth_armor', quantity: 1 },
     ],
   })
-  await page.evaluate(() => {
-    let idx = 0
-    Math.random = () => {
-      idx += 1
-      return idx % 2 === 1 ? 0.5 : 0.1
-    }
-  })
+  await page.evaluate(() => { Math.random = () => 0.1 })
   await enterCombat('魔化狼')
+  // 基准位置等第一个玩家回合再记录：进战斗初期先手动画未完成、战斗页布局未稳定（实测此时 footer top 743，
+  // 稳定后 599，直接对比会误判位移）。waitPlayerTurn 保证行动栏渲染完成后再取基准。
+  await waitPlayerTurn()
   const longBarA = await actionBarTopY()
   let longTurns = 0
   let lastActiveTop = longBarA?.top ?? null
@@ -286,19 +330,22 @@ try {
       battleStillActive = false
       break
     }
-    // 生命极低时用药续命（阈值 8%：确定性 RNG 下狼每击仅 2 伤、玩家 12 回合内击杀，正常不会触发；
-    // 仅作为极端兜底，且药水行动不消费骰面——若触发会破坏奇偶对齐，故阈值压到几乎不可能）
+    // 生命极低时用药续命（阈值 2%：确定性 RNG 下狼每击仅 2 伤、玩家 12 回合击杀狼时 HP 恰好余 2——
+    // 阈值若为 8%（26×0.08≈2.08）会误触发：药水展开物品 tray 改变 footer 位置，且替代致命一击导致狼 1 HP 未死。
+    // 故压到 2%（26×0.02=0.52）使玩家 HP 最低 2 永不触发，全程纯普攻确定性 12 回合。）
     const hpLow = await page.evaluate(() => {
       const text = document.body.textContent || ''
       const m = text.match(/生命\s*(\d+)\s*\/\s*(\d+)/)
-      return m ? Number(m[1]) <= Number(m[2]) * 0.08 : false
+      return m ? Number(m[1]) <= Number(m[2]) * 0.02 : false
     })
     if (hpLow) {
+      // P2-007：药水/普攻均为我方回合专属，先等玩家阶段（敌人阶段行动栏隐藏）
+      await waitPlayerTurn()
       await clickButton('物品')
       await sleep(200)
       await clickButton('使用治疗药水')
-    } else if ((await bodyText()).includes('普通攻击')) {
-      await clickButton('普通攻击')
+    } else if (await waitPlayerTurn()) {
+      await playerAttack()
     } else {
       break
     }
@@ -309,8 +356,13 @@ try {
       lastActiveTop = barNow.top
     }
   }
-  // 战斗结束时用最后一次「战斗中」的行动栏位置对比（行动栏在战斗期间绝不位移）
-  const longBarB = battleStillActive ? await actionBarTopY() : lastActiveTop !== null ? { top: lastActiveTop } : null
+  // 循环可能因 longTurns 达到上限而退出（最后一击恰好击杀 → 战斗已结束）：重新检测战斗状态，
+  // 否则 battleStillActive 残留 true 会让 actionBarTopY() 命中胜利面板（footer 被替换）→ 位移断言误判。
+  if (await page.evaluate(() => document.body.textContent.includes('返回冒险'))) battleStillActive = false
+  // 战斗结束时用最后一次「战斗中」的行动栏位置对比（行动栏在战斗期间绝不位移）。
+  // 优先用 lastActiveTop（循环内战斗中 footer 的稳定位置，实测全程 669）：最后一击后、胜利面板渲染前
+  // footer 处于过渡位置（实测 599），循环退出后再读 actionBarTopY() 会命中过渡值而误判位移。
+  const longBarB = lastActiveTop !== null ? { top: lastActiveTop } : battleStillActive ? await actionBarTopY() : null
   const longTurnsReached = longTurns >= 8
   check('CUI4b: 长战斗达到 8+ 回合（日志充分增长）', longTurnsReached, `turns=${longTurns}`)
   check(
@@ -321,28 +373,29 @@ try {
   if ((await bodyText()).includes('返回冒险')) await clickButton('返回冒险')
 
   // ============ CUI8：伙伴回合固定按钮（Sakura） ============
-  // 确定性：固定轮换 RNG [玩家 0.99(骰20 暴击), 敌人 0.1(骰3 擦伤)] → 玩家必先手、普攻 4 伤
-  // （兔子 HP8 必存活）→ 伙伴回合确定性出现，不再受真实 RNG 波动影响。
+  // 确定性（固定常数 RNG，消除遭遇确定对 Math.random 的消耗导致奇偶 idx 偏移）：
+  //   固定 0.1 → 玩家/伙伴/敌人同 D20=3 → 先手平局 → AGI 高者先 → Sakura(16) > 兔(10) → 伙伴先手，
+  //   进战斗即伙伴回合（播报「樱花优子先行动」）。P2-007 行动栏对友方统一渲染：伙伴回合显示
+  //   「技能」tray（含灵力后缀）与「跳过」，普通攻击按钮对伙伴同样存在——故直接在 Sakura 阶段验收，
+  //   不再先执行玩家普攻（那会误触发 Sakura 普攻）。
   await page.setViewport({ width: 1366, height: 768 })
   await loadAndEnter({
     ...sakuraFixture(),
     player: { ...sakuraFixture().player, str: 8, con: 16, agi: 18, hp: 26, maxHp: 26, name: '战斗UI验收' },
     equipment: { weapon: null, armor: 'traveler_cloth_armor', accessory: null },
   })
-  await page.evaluate(() => {
-    let idx = 0
-    Math.random = () => {
-      idx += 1
-      return idx % 2 === 1 ? 0.99 : 0.1
-    }
-  })
+  await page.evaluate(() => { Math.random = () => 0.1 })
   await enterCombat('魔化兔')
-  await clickButton('普通攻击')
-  await sleep(600)
+  await page.waitForFunction(() => document.body.textContent?.includes('樱花优子的回合'), { timeout: 6000 })
   const sakuraBody = await bodyText()
-  check('CUI8: 伙伴回合显示「樱花优子的行动」', sakuraBody.includes('樱花优子的行动'))
-  check('CUI8: 伙伴技能按钮平铺可见（飞斩/魔法盾/轻舞/跳过）',
-    sakuraBody.includes('樱花飞斩') && sakuraBody.includes('樱花魔法盾') && sakuraBody.includes('樱花轻舞') && sakuraBody.includes('跳过'))
+  check('CUI8: 伙伴回合显示「樱花优子的回合」', sakuraBody.includes('樱花优子的回合'))
+  // P2-007：伙伴技能收敛进「技能」tray（带灵力后缀）；打开 tray 验证
+  await clickButton('技能')
+  await page.waitForSelector('[data-testid="combat-skill-tray"]', { timeout: 3000 })
+  const sakuraTray = await page.evaluate(() => document.querySelector('[data-testid="combat-skill-tray"]')?.textContent || '')
+  check('CUI8: 伙伴技能 tray 内含飞斩/魔法盾/轻舞',
+    sakuraTray.includes('樱花飞斩（1 灵力）') && sakuraTray.includes('樱花魔法盾（2 灵力）') && sakuraTray.includes('樱花轻舞（2 灵力）'))
+  check('CUI8: 行动栏含「跳过」（伙伴回合）', sakuraBody.includes('跳过') && (await bodyText()).includes('跳过'))
   // 伙伴按钮在视口内（固定行动栏区域）
   const sakuraBar = await actionBarTopY()
   check('CUI8: 伙伴行动栏在视口内', sakuraBar !== null && sakuraBar.bottom <= sakuraBar.vh + 1)
@@ -363,8 +416,8 @@ try {
     for (let i = 0; i < 12; i += 1) {
       const b = await bodyText()
       if (b.includes('返回冒险')) break
-      if (b.includes('普通攻击')) await clickButton('普通攻击')
-      else break
+      if (!(await waitPlayerTurn())) break
+      await playerAttack()
     }
     check(`CUI9(${width}): 战斗页 outer 无滚动`, await noOuterScroll())
     if ((await bodyText()).includes('返回冒险')) await clickButton('返回冒险')
@@ -396,8 +449,9 @@ try {
   // ============ CUI14-CUI17：390 移动端详细日志抽屉（TM-P2-006-R1） ============
   // 先打一次普通攻击让详细日志有回合分组（CUI11-13 未攻击，此时日志为空；无伙伴回合），
   // 攻击后内容稳定，作为 drawer 开/关对比基准（对比同一内容状态，排除内容增长干扰）。
-  await clickButton('普通攻击')
-  await sleep(600)
+  await waitPlayerTurn()
+  await playerAttack()
+  await sleep(400)
   const barBeforeDrawer = await actionBarTopY()
   await clickButton('详细战斗日志')
   await page.waitForSelector('[data-testid="combat-detail-drawer"]', { timeout: 3000 })
@@ -434,12 +488,12 @@ try {
     }
   })
   await enterCombat()
-  await sleep(700) // 等 ENEMY_FIRST_STRIKE_DELAY_MS(400) + 敌人反击完成
+  await sleep(700) // 敌人先手（玩家 D20=1 + AGI8 < 敌人 D20=20 + AGI12）→ 等敌人行动完成
   const firstStrikeCount = await page.evaluate(() => {
     const text = document.querySelector('[data-testid="combat-summary-feed"]')?.textContent || ''
-    return (text.match(/抢得先手/g) || []).length
+    return (text.match(/战斗开始——.*?先行动/g) || []).length
   })
-  check('CUI-R1: StrictMode 下「抢得先手」仅插入 1 次', firstStrikeCount === 1, `count=${firstStrikeCount}`)
+  check('CUI-R1: StrictMode 下开场播报仅插入 1 次', firstStrikeCount === 1, `count=${firstStrikeCount}`)
   const roundGroupCount = await page.evaluate(() => {
     const text = document.querySelector('[data-testid="combat-detail-log"]')?.textContent || ''
     return (text.match(/回合 (\d+)/g) || []).length

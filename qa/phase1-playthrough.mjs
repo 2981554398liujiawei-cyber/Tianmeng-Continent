@@ -259,6 +259,41 @@ const engageEnemy = async (enemyName) => {
   await sleep(500)
 }
 
+/** P2-007：进入战斗前固定 0.1 RNG（先手检定各单位 D20=3 → 按 AGI 排序，避免原生骰敌人先手暴击秒伤）；保存原始 RNG 供 combatLoop 战斗结束恢复 */
+const enterBattle = async (enemyName) => {
+  await page.evaluate(() => {
+    window.__origRandom = Math.random.bind(Math)
+    Math.random = () => 0.1
+  })
+  if (enemyName) await engageEnemy(enemyName)
+  else await clickByText('迎战')
+  await sleep(500)
+}
+
+/** P2-007 Backpack V2：打开完整背包面板（open-backpack）→ 读取指定物品存在与数量 → 关闭。返回 { ok, present, qty } */
+const checkBackpackItem = async (itemId) => {
+  const opened = await page.evaluate(() => {
+    const btn = document.querySelector('[data-testid="open-backpack"]')
+    if (!btn) return false
+    btn.click()
+    return true
+  })
+  if (!opened) return { ok: false, present: false, qty: 0 }
+  await sleep(400)
+  const result = await page.evaluate((id) => {
+    const qtyEl = document.querySelector(`[data-testid="backpack-qty-${id}"]`)
+    if (!qtyEl) return { present: false, qty: 0 }
+    const m = (qtyEl.textContent ?? '').trim().replace('×', '')
+    return { present: true, qty: Number(m) || 0 }
+  }, itemId)
+  await page.evaluate(() => {
+    const close = [...document.querySelectorAll('[data-testid="backpack-panel"] button')].find((b) => b.textContent?.trim() === '关闭')
+    close?.click()
+  })
+  await sleep(300)
+  return { ok: true, ...result }
+}
+
 // 读取「当前位置」区域的地点 ID（确定性读取，避免模糊文本）
 const readLocationId = () =>
   page.evaluate(() => document.querySelector('[data-current-location-id]')?.getAttribute('data-current-location-id') || null)
@@ -274,73 +309,127 @@ const readAdventureXp = async () => {
   return m ? Number(m[1]) : null
 }
 
+// ---- P2-007 战斗适配辅助 ----
+// 骰序：先手在点击「迎战」时由 enterBattle 固定 0.1 RNG 结算（各单位 D20=3 → 按 AGI 排序）。
+// 本循环每轮玩家行动前注入一次性 RNG：玩家行动 roll → 0.99（D20=20 暴击）；
+// 行动后敌人回合（chooseEnemyTarget 1 次 + performAttack 1 次）第二次调用 → 0（D20=1 大失败，0 伤）。
+const waitPlayerTurn = async (timeoutMs = 10000) => {
+  const start = Date.now()
+  while (Date.now() - start < timeoutMs) {
+    const t = await bodyText()
+    if (t.includes('返回冒险')) return false
+    if (t.includes('普通攻击')) return true
+    await sleep(120)
+  }
+  return false
+}
+
+/** target selector 内选第一个目标（「取消」按钮容器内第一个按钮；单敌场景唯一目标） */
+const clickEnemyTarget = async () => {
+  const clicked = await page.evaluate(() => {
+    const cancel = [...document.querySelectorAll('button')].find((b) => b.textContent?.trim() === '取消')
+    if (!cancel) return false
+    const btn = cancel.parentElement?.querySelector('button')
+    if (!btn || btn.disabled) return false
+    btn.click()
+    return true
+  })
+  await sleep(250)
+  return clicked
+}
+
+/** 普通攻击：点击行动栏按钮 → target selector 选敌 */
+const playerAttack = async () => {
+  const clicked = await page.evaluate(() => {
+    const btn = [...document.querySelectorAll('button')].find((el) => el.textContent?.includes('普通攻击'))
+    if (!btn || btn.disabled) return false
+    btn.click()
+    return true
+  })
+  if (!clicked) return false
+  await sleep(250)
+  return clickEnemyTarget()
+}
+
+/** 技能：展开技能 tray → 点击技能名 → target selector 选敌；技能禁用（MP/oncePerCombat）返回 false 并收起 tray */
+const useSkillIfAvailable = async (skillName) => {
+  const opened = await page.evaluate(() => {
+    const btn = [...document.querySelectorAll('button')].find((b) => b.textContent?.includes('技能'))
+    if (!btn || btn.disabled) return false
+    btn.click()
+    return true
+  })
+  if (!opened) return false
+  await sleep(300)
+  const clickedSkill = await page.evaluate((name) => {
+    const btn = [...document.querySelectorAll('button')].find((b) => b.textContent?.includes(name) && !b.disabled)
+    if (!btn) return false
+    btn.click()
+    return true
+  }, skillName)
+  if (!clickedSkill) {
+    await page.evaluate(() => [...document.querySelectorAll('button')].find((b) => b.textContent?.includes('技能'))?.click())
+    await sleep(200)
+    return false
+  }
+  await sleep(250)
+  return clickEnemyTarget()
+}
+
 // 战斗循环：已点击「迎战」进入战斗页后调用。
-// TM-P2-006 策略（平衡调整后敌人攻击力上调 3→14~20，全暴击 RNG 会让敌人先手+暴击，弱骑士扛不住）：
-//   RNG 改为「奇偶轮换」：玩家行动骰 0.99（天然 20 暴击）、敌人行动骰 0.1（天然 1 大失败）。
-//   对齐依据：CombatPage 每回合骰序 = [先手玩家, 先手敌人, 玩家行动, 敌人反击] = [奇, 偶, 奇, 偶]，
-//   因此玩家永远先手、永远暴击，敌人永远大失败——战斗确定性必胜，纯走剧情/UI 流程。
-//   行动策略：1) 技能（骑士重击，最高伤害）优先；2) 技能不可用（MP 不足）且 HP < 70% → 用药；
-//   3) 兜底普通攻击。药水会触发敌人反击，故为最后手段（本策略下敌人反击=大失败，无伤）。
+// P2-007 策略：先手检定由 enterBattle 固定 0.1 结算；本循环每轮等玩家阶段（普通攻击渲染）→
+// 注入一次性 RNG（玩家暴击 0.99 → 敌人大失败 0）→ 首轮骑士重击（oncePerCombat 每场一次）后续普攻；
+// 低血（<50%）经物品 tray 用药。战斗结束（返回冒险）break 后恢复原始 RNG。
 const combatLoop = async (enemyName, level) => {
   let body = await bodyText()
   check(`进入${enemyName}战斗（Lv.${level}）`, body.includes(enemyName) && body.includes(`Lv.${level}`))
-  await page.evaluate(() => {
-    window.__origRandom = Math.random.bind(Math)
-    let rollIdx = 0
-    Math.random = () => {
-      rollIdx += 1
-      return rollIdx % 2 === 1 ? 0.99 : 0.1
-    }
-  })
+  await page.evaluate(() => { Math.random = () => 0.1 })
+  let skillFirst = true
   for (let i = 0; i < 30; i += 1) {
+    const onPlayerTurn = await waitPlayerTurn()
     const combatBody = await page.evaluate(() => document.body.innerText)
     if (combatBody.includes('返回冒险')) break
-    if (!combatBody.includes('普通攻击')) break
-    // 1) 技能优先（骑士重击压制反击）
-    const skillUsed = await page.evaluate(() => {
-      const open = [...document.querySelectorAll('button')].find((b) => b.textContent.includes('技能'))
-      if (!open || open.disabled) return false
-      open.click()
-      return true
+    if (!onPlayerTurn) break
+    // 一次性 RNG：玩家行动 0.99 暴击 → 敌人回合 0 大失败
+    await page.evaluate(() => {
+      Math.random = () => { Math.random = () => 0; return 0.99 }
     })
-    if (skillUsed) {
-      await sleep(300)
-      const skillClicked = await page.evaluate(() => {
-        const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.includes('骑士重击'))
-        if (btn && !btn.disabled) { btn.click(); return true }
-        return false
-      })
-      if (skillClicked) {
-        await sleep(500)
-        continue
-      }
-      // 技能不可用（MP 不足）：收起 tray
-      await page.evaluate(() => [...document.querySelectorAll('button')].find((b) => b.textContent.includes('技能'))?.click())
-      await sleep(200)
+    let acted = false
+    if (skillFirst) {
+      acted = await useSkillIfAvailable('骑士重击')
+      skillFirst = false
     }
-    // 2) 技能不可用且低血 → 用药（会触发敌人反击，属最后手段）
+    if (acted) continue
+    // 低血（<50%）→ 用药（物品 tray；无 random，敌人回合仍被一次性 RNG 二次调用 0 压制）
     const hp = combatBody.match(/生命\s*(\d+)\s*\/\s*(\d+)/)
-    if (hp && Number(hp[1]) / Number(hp[2]) < 0.7) {
-      await page.evaluate(() => [...document.querySelectorAll('button')].find((b) => b.textContent.includes('物品'))?.click())
-      await sleep(300)
-      const potionClicked = await page.evaluate(() => {
-        const b = [...document.querySelectorAll('button')].find((el) => el.textContent.includes('使用治疗药水'))
-        if (b && !b.disabled) { b.click(); return true }
-        return false
+    if (hp && Number(hp[1]) / Number(hp[2]) < 0.5) {
+      const potionUsed = await page.evaluate(() => {
+        const open = [...document.querySelectorAll('button')].find((b) => b.textContent?.includes('物品'))
+        if (!open || open.disabled) return false
+        open.click()
+        return true
       })
-      if (potionClicked) {
-        await sleep(500)
-        continue
+      if (potionUsed) {
+        await sleep(300)
+        const used = await page.evaluate(() => {
+          const b = [...document.querySelectorAll('button')].find((el) => el.textContent?.includes('使用治疗药水'))
+          if (b && !b.disabled) { b.click(); return true }
+          return false
+        })
+        if (used) {
+          await sleep(600)
+          continue
+        }
+        await page.evaluate(() => [...document.querySelectorAll('button')].find((b) => b.textContent?.includes('物品'))?.click())
+        await sleep(200)
       }
-      await page.evaluate(() => [...document.querySelectorAll('button')].find((b) => b.textContent.includes('物品'))?.click())
-      await sleep(200)
     }
-    // 3) 普通攻击
-    await page.evaluate(() => [...document.querySelectorAll('button')].find((b) => b.textContent.includes('普通攻击'))?.click())
-    await sleep(500)
+    // 兜底普通攻击 → target selector 选敌
+    const attacked = await playerAttack()
+    if (!attacked) break
   }
   await page.evaluate(() => {
-    Math.random = window.__origRandom
+    if (window.__origRandom) Math.random = window.__origRandom
   })
   body = await bodyText()
   check(`击败${enemyName}（战斗胜利）`, body.includes('战斗胜利'), body.includes('战斗失败') ? '战斗失败！' : '')
@@ -441,8 +530,7 @@ try {
   await sleep(500)
   body = await bodyText()
   check('村外草原显示魔化兔（迎战）', body.includes('魔化兔') && body.includes('迎战'))
-  await clickByText('迎战')
-  await sleep(500)
+  await enterBattle()
   await combatLoop('魔化兔', 1)
   const xpR1 = await readAdventureXp()
   check('击败首个敌人（魔化兔）后冒险阅历增加', xpR0 !== null && xpR1 !== null && xpR1 > xpR0, `XP ${xpR0}→${xpR1}`)
@@ -472,8 +560,7 @@ try {
   await sleep(500)
   body = await bodyText()
   check('废弃矿洞显示魔化鼠（迎战）', body.includes('魔化鼠') && body.includes('迎战'))
-  await clickByText('迎战')
-  await sleep(500)
+  await enterBattle()
   await combatLoop('魔化鼠', 1)
   await clickByText('青石村')
   await sleep(500)
@@ -499,7 +586,7 @@ try {
   await sleep(500)
   body = await bodyText()
   check('村外草原出现魔化狼', body.includes('魔化狼') && body.includes('迎战'))
-  await engageEnemy('魔化狼')
+  await enterBattle('魔化狼')
   await combatLoop('魔化狼', 2)
   const xpW = await readAdventureXp()
   check('击败魔化狼后冒险阅历增加', xpW !== null, `XP=${xpW}`)
@@ -536,20 +623,21 @@ try {
   body = await bodyText()
   check('进入兔王巢穴（rabbit_lair）', body.includes('兔王巢穴') && body.includes('魔化兔群的巢穴'))
   check('嘟嘟兔可迎战（HP 24 · 护甲 13）', body.includes('嘟嘟兔') && body.includes('HP 24') && body.includes('护甲 13') && body.includes('迎战'))
-  check('Boss 战前背包无兔子的路径', !body.includes('兔子的路径 ×'))
-  await clickByText('迎战')
-  await sleep(500)
+  const bpPreBoss = await checkBackpackItem('rabbit_path')
+  check('Boss 战前背包无兔子的路径', bpPreBoss.ok && !bpPreBoss.present)
+  await enterBattle()
   await combatLoop('嘟嘟兔', 3)
   const xpD = await readAdventureXp()
   check('击败嘟嘟兔（Boss）后冒险阅历增加', xpD !== null, `XP=${xpD}`)
   body = await bodyText()
-  check('击败嘟嘟兔获得《兔子的路径》×1', body.includes('兔子的路径 ×1'))
+  const rpDudu = await checkBackpackItem('rabbit_path')
+  check('击败嘟嘟兔获得《兔子的路径》×1', rpDudu.ok && rpDudu.present && rpDudu.qty === 1)
   check('展开地图按钮可用', (await buttonDisabled('展开地图')) === false)
   await clickByText('展开地图')
   await sleep(500)
   body = await bodyText()
   check('地图已查看（指向黄金兔子王）', body.includes('地图上的路线最终指向黄金兔子王所在之地。') && body.includes('地图上的标记仍无法对应到任何已知地点。'))
-  check('地图仍保留（兔子的路径 ×1）', body.includes('兔子的路径 ×1'))
+  check('地图仍保留（兔子的路径 ×1）', rpDudu.ok && rpDudu.present && rpDudu.qty === 1)
 
   // 6. 黄金兔子调查：铁匠打听 + 药师打听 → 村长汇报（《追寻黄金兔子王》in_progress）
   await clickByText('村外草原')
@@ -664,8 +752,7 @@ try {
   await sleep(500)
   body = await bodyText()
   check('废弃矿洞魔化鼠可迎战', body.includes('魔化鼠') && body.includes('迎战'))
-  await clickByText('迎战')
-  await sleep(500)
+  await enterBattle()
   await combatLoop('魔化鼠', 1)
   await clickByText('青石村')
   await sleep(500)
@@ -691,7 +778,8 @@ try {
   check('到达天龙城（tianlong_city）', (await readLocationId()) === 'tianlong_city' && body.includes('天龙王朝的皇城'))
   await assertNoPlaceholders('continuity：天龙城无占位符')
   check('离村后《追寻黄金兔子王》仍进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
-  check('离村后兔子的路径仍 ×1', body.includes('兔子的路径 ×1'))
+  const rpAfterLeave = await checkBackpackItem('rabbit_path')
+  check('离村后兔子的路径仍 ×1', rpAfterLeave.ok && rpAfterLeave.present && rpAfterLeave.qty === 1)
   check('离村后无返回青石村按钮', !body.includes('返回青石村'))
 
   // 10. 武馆马科接《商人王财的麻烦》→ 天龙城找王财 → 询问黑石塔附近的遭遇（wangcai_briefed）
@@ -743,8 +831,7 @@ try {
   body = await bodyText()
   check('到达黑石塔一层（black_stone_tower_floor1）', (await readLocationId()) === 'black_stone_tower_floor1')
   check('一层骷髅士兵 Lv.3 可迎战', body.includes('骷髅士兵') && body.includes('Lv.3') && body.includes('迎战'))
-  await clickByText('迎战')
-  await sleep(500)
+  await enterBattle()
   await combatLoop('骷髅士兵', 3)
   body = await bodyText()
   check('骷髅士兵已击败（骷髅队长 Lv.4 出现）', body.includes('大厅中的骷髅士兵已经被击败。') && body.includes('骷髅队长') && body.includes('Lv.4') && body.includes('迎战'))
@@ -755,8 +842,7 @@ try {
   await sleep(500)
   body = await bodyText()
   check('骷髅队长 Lv.4 可迎战', body.includes('骷髅队长') && body.includes('Lv.4') && body.includes('迎战'))
-  await clickByText('迎战')
-  await sleep(500)
+  await enterBattle()
   await combatLoop('骷髅队长', 4)
   body = await bodyText()
   check('骷髅队长已击败（未发现项链）', body.includes('骷髅队长已经倒下。') && body.includes('你检查了骷髅队长与周围，没有发现夔峒项链。') && body.includes('黑石塔上层尚未开启。'))
@@ -777,13 +863,11 @@ try {
   body = await bodyText()
   check('到达黑石塔二层（僵尸 Lv.4）', (await readLocationId()) === 'black_stone_tower_floor2' && body.includes('僵尸') && body.includes('Lv.4') && body.includes('迎战'))
   check('二层只出现僵尸（无黑法师）', !body.includes('黑法师 · Lv.4'))
-  await clickByText('迎战')
-  await sleep(500)
+  await enterBattle()
   await combatLoop('僵尸', 4)
   body = await bodyText()
   check('僵尸已击败（黑法师 Lv.4 出现）', !body.includes('僵尸 · Lv.4') && body.includes('黑法师') && body.includes('Lv.4') && body.includes('迎战'))
-  await clickByText('迎战')
-  await sleep(500)
+  await enterBattle()
   await combatLoop('黑法师', 4)
   body = await bodyText()
   check('黑法师已击败（骷髅战士 Lv.5 出现）', !body.includes('黑法师 · Lv.4') && body.includes('骷髅战士') && body.includes('Lv.5') && body.includes('迎战'))
@@ -796,8 +880,7 @@ try {
   await sleep(500)
   body = await bodyText()
   check('骷髅战士 Lv.5 可迎战', body.includes('骷髅战士') && body.includes('Lv.5') && body.includes('迎战'))
-  await clickByText('迎战')
-  await sleep(500)
+  await enterBattle()
   await combatLoop('骷髅战士', 5)
   body = await bodyText()
   check('骷髅战士已击败（继续向上入口出现）', body.includes('小厅中的骷髅战士已经倒下。') && body.includes('你仔细搜索了周围，依然没有发现王财遗失的夔峒项链。') && body.includes('继续向上'))
@@ -819,8 +902,7 @@ try {
   await sleep(500)
   body = await bodyText()
   check('到达黑石塔三层（骷髅女妖 Lv.5）', (await readLocationId()) === 'black_stone_tower_floor3' && body.includes('骷髅女妖') && body.includes('Lv.5') && body.includes('迎战'))
-  await clickByText('迎战')
-  await sleep(500)
+  await enterBattle()
   await combatLoop('骷髅女妖', 5)
   body = await bodyText()
   check('骷髅女妖已击败', body.includes('骷髅女妖倒在破碎的石柱之间。'))
@@ -837,7 +919,8 @@ try {
   await sleep(500)
   body = await bodyText()
   check('回到天龙城（tianlong_city）', (await readLocationId()) === 'tianlong_city')
-  check('背包持有夔峒项链 ×1', body.includes('夔峒项链 ×1'))
+  const kdOnReturn = await checkBackpackItem('kuidong_necklace')
+  check('背包持有夔峒项链 ×1', kdOnReturn.ok && kdOnReturn.present && kdOnReturn.qty === 1)
   await clickByText('交谈')
   await sleep(500)
   body = await bodyText()
@@ -846,7 +929,8 @@ try {
   await sleep(500)
   body = await bodyText()
   check('王财接过项链（固定剧情）', body.includes('王财接过项链，久久没有说话。') && body.includes('“谢谢你。若不是你，我恐怕再也找不回来了。”'))
-  check('交还后背包不再有夔峒项链', !body.includes('夔峒项链 ×'))
+  const kdAfterReturn = await checkBackpackItem('kuidong_necklace')
+  check('交还后背包不再有夔峒项链', kdAfterReturn.ok && !kdAfterReturn.present)
   await clickExactButton('离开')
   await sleep(350)
   body = await bodyText()
@@ -876,8 +960,10 @@ try {
   check('显示「《追寻黄金兔子王》仍需等待新的线索。」', body.includes('《追寻黄金兔子王》仍需等待新的线索。'))
   check('quest_wangcai_trouble 已完成（右栏已完成区）', (await bodyText()).includes('已完成（'))
   check('《追寻黄金兔子王》仍进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
-  check('兔子的路径 ×1 仍在背包', body.includes('兔子的路径 ×1'))
-  check('背包无夔峒项链', !body.includes('夔峒项链 ×'))
+  const rpFinal = await checkBackpackItem('rabbit_path')
+  check('兔子的路径 ×1 仍在背包', rpFinal.ok && rpFinal.present && rpFinal.qty === 1)
+  const kdFinal = await checkBackpackItem('kuidong_necklace')
+  check('背包无夔峒项链', kdFinal.ok && !kdFinal.present)
   await assertNoPlaceholders('continuity：第一阶段完成后无占位符')
   // 单当前目标：完成后不再出现旧目标/矛盾目标（找项链/交还/去黑石塔/提交均不得残留）
   check('完成后无「交还王财」目标残留', !body.includes('将夔峒项链交还王财'))
@@ -919,8 +1005,10 @@ try {
   check('Continue 后仍显示「第一阶段完成」', body.includes('第一阶段完成') && body.includes('第一阶段主线已经告一段落。') && body.includes('《追寻黄金兔子王》仍需等待新的线索。'))
   check('Continue 后王财任务已完成（右栏已完成区）', (await bodyText()).includes('已完成（'))
   check('Continue 后黄金兔子王仍进行中', body.includes('追寻黄金兔子王') && body.includes('进行中'))
-  check('Continue 后兔子的路径 ×1 保持', body.includes('兔子的路径 ×1'))
-  check('Continue 后背包无夔峒项链', !body.includes('夔峒项链 ×'))
+  const rpAfterContinue = await checkBackpackItem('rabbit_path')
+  check('Continue 后兔子的路径 ×1 保持', rpAfterContinue.ok && rpAfterContinue.present && rpAfterContinue.qty === 1)
+  const kdAfterContinue = await checkBackpackItem('kuidong_necklace')
+  check('Continue 后背包无夔峒项链', kdAfterContinue.ok && !kdAfterContinue.present)
   // 无 dead button：页面按钮集合精确检查
   const deadButtons = await page.evaluate(() => [...document.querySelectorAll('button')].map((b) => b.textContent.trim()))
   check('无「将夔峒项链交还王财」残留按钮', !deadButtons.some((t) => t.includes('交还王财')))

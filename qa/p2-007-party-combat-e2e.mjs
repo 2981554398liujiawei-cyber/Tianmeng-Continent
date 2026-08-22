@@ -484,10 +484,19 @@ async function partC() {
       () => [...document.querySelectorAll('button')].filter((b) => (b.textContent || '').trim() === '骷髅战士').length,
     )
     // §49-8a：combatants 层面 enemy#1 已死 → 存活目标只剩 1 个
-    //   （生产 UI 敌方卡 HP 由 setup.enemies 固定引用渲染、仍显示满血 → 产品 bug 另记）
     check('§49-8a: kill one 后存活目标只剩 1 个', afterKillTargets === 1, `${afterKillTargets} 个目标`)
-    console.log(
-      'PRODUCT-BUG | src/pages/CombatPage.tsx:326,737-744 | 敌方单位卡由 setup.enemies（构建一次固定引用）渲染，战斗内 HP 不随 combatants state 刷新（击杀后敌卡仍显示 20/20）；仅影响显示，伤害/胜负/结算逻辑正确',
+    // P2-007 修复验证：敌方卡 HP 随 combatants 实时刷新（enemyDisplays 取 combatants 实时实例，见
+    // CombatPage.tsx enemyDisplays）——击杀后 enemy#1 灰化显示 0/20、enemy#2 仍 20/20（历史 PRODUCT-BUG 登记已修复）
+    const enemyCardHps = await page.evaluate(() =>
+      [...document.querySelectorAll('[data-testid="combat-enemy-unit"]')].map((el) => {
+        const m = el.textContent.match(/生命\s*(\d+)\s*\/\s*(\d+)/)
+        return m ? `${m[1]}/${m[2]}` : '?'
+      }),
+    )
+    check(
+      '§49-8a: 击杀后敌方卡 HP 实时刷新（0/20 + 20/20）',
+      enemyCardHps.includes('0/20') && enemyCardHps.includes('20/20'),
+      enemyCardHps.join(','),
     )
     await clickTarget('骷髅战士') // enemy#2 → 11
     await sleep(600)

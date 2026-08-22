@@ -217,24 +217,43 @@ try {
   check('P2-004-11: 临时同行（神域崩塌前兆 + 并肩而立）', body.includes('神域崩塌前兆') && body.includes('与你并肩而立'))
   check('P2-004-12: 残灾之影威胁出现（可迎战）', body.includes('残灾之影') && body.includes('迎战'))
 
-  // ================= 残灾战斗（玩家低伤 → 伙伴阶段 → 樱花飞斩暴击击杀） =================
-  setRandom(0.2) // 玩家低伤（roll 4-5）：命中但不击杀 → 进入伙伴阶段
+  // ================= 残灾战斗（Sakura 先手 → 飞斩命中 → 玩家擦伤 → 敌人反击 → 第二轮飞斩暴击击杀） =================
+  // P2-007 轮序：先手 = D20+AGI 最高（setRandom 0.2 → roll=5：Sakura 16+5=21 > 玩家 10+5=15 = 残灾 15，玩家 vs 残灾平局 → 玩家先）
+  setRandom(0.2)
   await clickByText('迎战')
   await sleep(300)
   body = await bodyText()
   check('P2-004-13: 进入残灾战斗（残灾之影 Lv.3）', body.includes('残灾之影') && body.includes('Lv.3'))
   check('P2-004-14: 战斗页出现樱花优子伙伴面板（临时同行）', body.includes('樱花优子') && body.includes('临时同行') && body.includes('灵力'))
-  await clickByText('普通攻击')
-  await sleep(500)
+  check('P2-004-15: Sakura 先手（AGI 最高 → 樱花优子的回合）', body.includes('樱花优子的回合'))
+  // 打开技能 tray 验证三技能按钮（带灵力后缀）
+  await clickByText('技能')
+  await sleep(300)
   body = await bodyText()
-  check('P2-004-15: 玩家行动后进入「樱花优子的行动」阶段', body.includes('樱花优子的行动'))
-  check('P2-004-16: 伙伴技能按钮真实出现（樱花飞斩/魔法盾/轻舞）', body.includes('樱花飞斩') && body.includes('樱花魔法盾') && body.includes('樱花轻舞'))
+  check('P2-004-16: 伙伴技能按钮真实出现（樱花飞斩/魔法盾/轻舞）', body.includes('樱花飞斩（1 灵力）') && body.includes('樱花魔法盾（2 灵力）') && body.includes('樱花轻舞（2 灵力）'))
   check('P2-004-17: 伙伴面板展示封印技能（未恢复）', body.includes('封印') && body.includes('樱花天神舞'))
-  setRandom(0.99) // 樱花飞斩 D20=20 → 暴击击杀
-  await clickByText('樱花飞斩')
-  await sleep(500)
+  // Sakura 先手飞斩命中（tray 已开）：攻击力 9，roll=5 → (16+5)/2=10.5 ≥ 残灾敏 10 → 命中 3 伤，残灾 14→11
+  setRandom(0.2) // 飞斩 roll=5 命中 3 伤；玩家/敌人同 roll=5
+  await clickByText('樱花飞斩（1 灵力）')
+  await sleep(300)
+  await clickByText('残灾之影')
+  await sleep(600)
   body = await bodyText()
   check('P2-004-18: 樱花优子的攻击实际造成伤害（战斗日志）', body.includes('樱花飞斩') && (body.includes('造成') || body.includes('落空')))
+  // 玩家阶段：普攻擦伤（roll=5 → 擦伤 2 伤，残灾 11→9）；敌人反击擦伤玩家（roll=5，残灾打玩家 3 伤）
+  await clickByText('普通攻击')
+  await sleep(300)
+  await clickByText('残灾之影')
+  await sleep(600)
+  // Sakura 阶段：第二轮飞斩暴击（roll=20 → raw 18 → applyArmor(18,11,20)=12 伤）击杀残灾 9 HP
+  setRandom(0.99)
+  await clickByText('技能')
+  await sleep(300)
+  await clickByText('樱花飞斩（1 灵力）')
+  await sleep(300)
+  await clickByText('残灾之影')
+  await sleep(600)
+  body = await bodyText()
   check('P2-004-19: 战斗胜利（残灾被击破）', body.includes('战斗胜利'), body.includes('战斗失败') ? '战斗失败！' : '')
   await clickByText('返回冒险')
   await sleep(500)

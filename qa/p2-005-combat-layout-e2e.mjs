@@ -171,7 +171,8 @@ try {
 
       if (sakura) {
         await clickButton('普通攻击')
-        await page.waitForFunction(() => document.body.textContent?.includes('樱花优子的行动'))
+        await clickButton('残灾之影') // P2-007 普攻进 target selector 选敌
+        await page.waitForFunction(() => document.body.textContent?.includes('樱花优子的回合'))
       }
 
       if (!sakura) {
@@ -208,10 +209,19 @@ try {
         await waitForTrayGone('combat-item-tray')
         check(`${width}x${height} ${stateName}: 物品 tray 收起后消失`, true)
       } else {
-        // Sakura 阶段：伙伴技能按钮仍平铺直接可见（V4 未收入 tray）
-        const labels = ['樱花飞斩', '樱花魔法盾', '樱花轻舞', '跳过']
-        const buttons = await accessibleButtons(labels)
-        for (const button of buttons) {
+        // P2-007：伙伴技能收敛进「技能」tray（带灵力后缀）；「跳过」仍在行动栏平铺
+        await clickBarButton('技能')
+        await waitForTray('combat-skill-tray')
+        const skillButtons = await accessibleButtons(['樱花飞斩（1 灵力）', '樱花魔法盾（2 灵力）', '樱花轻舞（2 灵力）'], '[data-testid="combat-skill-tray"]')
+        for (const button of skillButtons) {
+          const ok = button.present && button.visible && button.inViewport && button.focusable && !button.disabled
+          check(`${width}x${height} ${stateName}: ${button.label} 可见可访问`, ok, JSON.stringify(button))
+        }
+        await clickBarButton('技能')
+        await waitForTrayGone('combat-skill-tray')
+        check(`${width}x${height} ${stateName}: 技能 tray 收起后消失`, true)
+        const skipButtons = await accessibleButtons(['跳过'])
+        for (const button of skipButtons) {
           const ok = button.present && button.visible && button.inViewport && button.focusable && !button.disabled
           check(`${width}x${height} ${stateName}: ${button.label} 可见可访问`, ok, JSON.stringify(button))
         }
