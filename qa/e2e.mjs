@@ -205,6 +205,49 @@ const buttonDisabled = (text) =>
     return btn ? btn.disabled : null
   }, text)
 
+// ---- TM-P2-007：背包操作经 BackpackPanel（打开背包 → 物品行 → 详情 → 按钮 → 返回/关闭）----
+// 左栏背包自 P2-007 起为 compact（前 5 项名称+数量，无行内按钮），装备/使用必须走完整背包面板。
+const openBackpack = async () => {
+  await page.evaluate(() => {
+    const btn = document.querySelector('[data-testid="open-backpack"]')
+    if (!btn) throw new Error('未找到打开背包按钮')
+    btn.click()
+  })
+  await sleep(300)
+}
+const closeBackpack = async () => {
+  await page.evaluate(() => {
+    const dialog = document.querySelector('[data-testid="backpack-panel"]')
+    const btn = dialog ? [...dialog.querySelectorAll('button')].find((b) => b.textContent.trim() === '关闭') : null
+    if (!btn) throw new Error('未找到关闭背包按钮')
+    btn.click()
+  })
+  await sleep(250)
+}
+const backpackRowClick = async (itemId) => {
+  const ok = await page.evaluate((id) => {
+    const row = document.querySelector(`[data-testid="backpack-item-${id}"]`)
+    if (!row) return false
+    row.click()
+    return true
+  }, itemId)
+  if (!ok) throw new Error(`背包中未找到 item ${itemId}`)
+  await sleep(250)
+}
+const backpackDetailState = (action) =>
+  page.evaluate((a) => {
+    const btn = document.querySelector(`[data-testid="backpack-${a}"]`)
+    return btn ? { exists: true, disabled: btn.disabled } : { exists: false, disabled: null }
+  }, action)
+const backpackClick = async (action) => {
+  await page.evaluate((a) => {
+    const btn = document.querySelector(`[data-testid="backpack-${a}"]`)
+    if (!btn) throw new Error(`未找到背包按钮 ${a}`)
+    btn.click()
+  }, action)
+  await sleep(250)
+}
+
 try {
   // B.1 主菜单
   await page.goto(URL, { waitUntil: 'networkidle0' })
@@ -771,9 +814,14 @@ try {
   body = await bodyText()
   check('P010: 背包显示铁剑 ×1', body.includes('铁剑 ×1'))
   check('P010: 背包显示治疗药水 ×2', body.includes('治疗药水 ×2'))
+  // P2-007：描述/使用按钮位于 BackpackPanel 详情，经「打开背包 → 治疗药水行 → 详情」查看
+  await openBackpack()
+  await backpackRowClick('healing_potion')
+  body = await bodyText()
   check('P010: 药水描述读取注册表', body.includes('装在小陶瓶中的淡红药水'))
-  check('P010: 满血时使用按钮禁用', (await buttonDisabled('使用')) === true)
+  check('P010: 满血时使用按钮禁用', (await backpackDetailState('use')).disabled === true)
   check('P010: 满血提示生命已满', body.includes('生命已满'))
+  await closeBackpack()
 
   // V3 确定性受伤：先手（玩家先）+ 序列 [2, 8, 20] → 玩家擦伤1（兔8→7）、敌擦伤1（玩家22→21）、第二击暴击8击杀
   await clickByText('村外草原')
@@ -800,14 +848,17 @@ try {
   body = await bodyText()
   check('P010: 受伤后 HP 21 / 22', body.includes('21 / 22'))
   check('P010: 受伤后治疗药水仍 ×2', body.includes('治疗药水 ×2'))
-  check('P010: 受伤后使用按钮启用', (await buttonDisabled('使用')) === false)
-
-  await clickByText('使用')
-  await sleep(250)
+  // P2-007：经 BackpackPanel 详情使用治疗药水
+  await openBackpack()
+  await backpackRowClick('healing_potion')
+  body = await bodyText()
+  check('P010: 受伤后使用按钮启用', (await backpackDetailState('use')).disabled === false)
+  await backpackClick('use')
   body = await bodyText()
   check('P010: 使用药水后 HP 恢复 22 / 22', body.includes('22 / 22'))
   check('P010: 药水数量减少为 ×1', body.includes('治疗药水 ×1'))
-  check('P010: 满血后使用按钮重新禁用', (await buttonDisabled('使用')) === true)
+  check('P010: 满血后使用按钮重新禁用', (await backpackDetailState('use')).disabled === true)
+  await closeBackpack()
 
   // 存档恢复：用药后手动保存 → Continue → HP/药水保持使用后值
   await saveToSlot1()
@@ -816,7 +867,11 @@ try {
   body = await bodyText()
   check('P010: Continue 后 HP 为使用后值 22 / 22', body.includes('22 / 22'))
   check('P010: Continue 后药水为使用后值 ×1', body.includes('治疗药水 ×1'))
-  check('P010: Continue 后使用按钮仍禁用', (await buttonDisabled('使用')) === true)
+  await openBackpack()
+  await backpackRowClick('healing_potion')
+  body = await bodyText()
+  check('P010: Continue 后使用按钮仍禁用', (await backpackDetailState('use')).disabled === true)
+  await closeBackpack()
   await clickByText('返回主菜单')
 
   // P013：铁剑装备与武器伤害加成（新游戏默认骑士石头城 STR14）
@@ -824,20 +879,29 @@ try {
   await createQuickKnight()
   body = await bodyText()
   check('P013: 初始武器未装备', body.includes('未装备'))
-  check('P013: 背包铁剑 ×1 且显示装备按钮', body.includes('铁剑 ×1') && body.includes('装备'))
-  await clickByText('装备')
-  await sleep(200)
+  check('P013: 背包铁剑 ×1', body.includes('铁剑 ×1'))
+  // P2-007：装备入口位于 BackpackPanel 详情
+  await openBackpack()
+  await backpackRowClick('iron_sword')
   body = await bodyText()
-  check('P013: 装备后武器显示铁剑', body.includes('武器： 铁剑'))
+  check('P013: 铁剑详情提供装备按钮', (await backpackDetailState('equip')).exists === true)
+  await backpackClick('equip')
+  await closeBackpack()
+  body = await bodyText()
+  check('P013: 装备后武器显示铁剑', body.includes('武器：铁剑'))
   check('P013: 装备后铁剑仍 ×1（不消耗背包）', body.includes('铁剑 ×1'))
-  check('P013: 已装备显示卸下按钮', body.includes('卸下'))
+  await openBackpack()
+  await backpackRowClick('iron_sword')
+  body = await bodyText()
+  check('P013: 已装备显示卸下按钮', (await backpackDetailState('unequip')).exists === true)
+  await closeBackpack()
 
   // V3 装备后真实伤害：玩家 roll 20 暴击 → 攻击力8×2=16 → 兔护甲11、承伤率20/31 → ceil(10.3)=11 伤 → 魔化兔 HP8 一击胜利（无反击）
   await clickByText('村外草原')
   await clickByText('迎战')
   await sleep(300)
   body = await bodyText()
-  check('P013: 战斗页玩家区显示武器铁剑', body.includes('武器： 铁剑'))
+  check('P013: 战斗页玩家区显示含铁剑加成的攻击 8', body.includes('攻击 8'))
   await page.evaluate(() => {
     window.__origRandom = Math.random.bind(Math)
     Math.random = () => 0.99 // floor(0.99 * 20) + 1 = 20（暴击）
@@ -853,21 +917,25 @@ try {
   await clickByText('返回冒险')
   await clickByText('青石村')
 
-  // 卸下恢复未装备
-  await clickByText('卸下')
-  await sleep(200)
+  // 卸下恢复未装备（P2-007：经 BackpackPanel 详情）
+  await openBackpack()
+  await backpackRowClick('iron_sword')
+  await backpackClick('unequip')
+  await closeBackpack()
   body = await bodyText()
   check('P013: 卸下后武器恢复未装备', body.includes('未装备'))
   check('P013: 卸下后铁剑仍 ×1', body.includes('铁剑 ×1'))
 
   // 存档恢复：再装备 → 保存 → Continue → 装备状态保留
-  await clickByText('装备')
-  await sleep(200)
+  await openBackpack()
+  await backpackRowClick('iron_sword')
+  await backpackClick('equip')
+  await closeBackpack()
   await saveToSlot1()
   await clickByText('返回主菜单')
   await clickByText('继续游戏')
   body = await bodyText()
-  check('P013: Continue 后武器仍为铁剑', body.includes('武器： 铁剑'))
+  check('P013: Continue 后武器仍为铁剑', body.includes('武器：铁剑'))
   check('P013: Continue 后铁剑仍 ×1', body.includes('铁剑 ×1'))
   await clickByText('返回主菜单')
 

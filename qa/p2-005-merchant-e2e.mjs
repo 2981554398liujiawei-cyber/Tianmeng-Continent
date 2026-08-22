@@ -204,9 +204,20 @@ async function readGold() {
 
 async function inventoryQuantity(itemName) {
   return page.evaluate((name) => {
-    const text = [...document.querySelectorAll('p')].find((el) => el.textContent?.includes(name) && el.textContent.includes('×'))?.textContent || ''
-    const match = text.match(/×(\d+)/)
-    return match ? Number(match[1]) : 0
+    // P2-007：左栏背包为 compact（li 内 name span + 数量 span.tabular-nums），最多 5 项按名称排序。
+    const nameSpan = [...document.querySelectorAll('li span')].find((el) => el.textContent?.trim() === name)
+    if (nameSpan) {
+      const li = nameSpan.closest('li')
+      const qtyText = li?.querySelector('.tabular-nums')?.textContent || ''
+      const m = qtyText.match(/×(\d+)/)
+      if (m) return Number(m[1])
+    }
+    // 回退：任意 p/span 同时含物品名与 ×（事件文案等）
+    const anyEl = [...document.querySelectorAll('p, span')].find(
+      (el) => el.textContent?.includes(name) && el.textContent.includes('×'),
+    )
+    const anyM = anyEl?.textContent?.match(/×(\d+)/)
+    return anyM ? Number(anyM[1]) : 0
   }, itemName)
 }
 

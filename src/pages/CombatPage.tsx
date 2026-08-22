@@ -733,13 +733,16 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
     return `${base} border-ink-600 bg-ink-800/50`
   }
 
-  // 敌方多实例展示名（骷髅战士①/②；生产 UI 不泄露 instanceId）
+  // 敌方多实例展示名（骷髅战士①/②；生产 UI 不泄露 instanceId）。
+  // P2-007 缺陷修复：combatant 取 combatants 实时实例，敌方卡 HP 随战斗刷新（击杀后显示 0/最大）；
+  // 保留 enemyInstances 作顺序/重名后缀基准（构建后敌单位集合稳定）。
   const enemyDisplays = (() => {
     const counts = new Map<string, number>()
     return enemyInstances.map((c) => {
       const n = counts.get(c.sourceId) ?? 0
       counts.set(c.sourceId, n + 1)
-      return { combatant: c, label: n === 0 ? c.name : `${c.name}${instanceDisplaySuffix(n)}` }
+      const live = combatants.find((cc) => cc.instanceId === c.instanceId) ?? c
+      return { combatant: live, label: n === 0 ? live.name : `${live.name}${instanceDisplaySuffix(n)}` }
     })
   })()
 

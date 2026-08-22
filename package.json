@@ -23,6 +23,12 @@
     "qa:p2-006-combat-ui": "node qa/p2-006-combat-ui-e2e.mjs",
     "qa:p2-006-balance": "node qa/p2-006-balance.mjs --phase after",
     "qa:p2-006": "npm run qa:p2-006-game-ui && npm run qa:p2-006-combat-ui && npm run qa:p2-006-balance",
+    "qa:p2-007-backpack": "node qa/p2-007-backpack-loot-e2e.mjs",
+    "qa:p2-007-party-combat": "node qa/p2-007-party-combat-e2e.mjs",
+    "qa:p2-007-mount": "node qa/p2-007-mount-e2e.mjs",
+    "qa:p2-007-save": "node qa/p2-007-save-v6.mjs",
+    "qa:p2-007-layout": "node qa/p2-007-layout-idleak-e2e.mjs",
+    "qa:p2-007": "npm run qa:p2-007-save && npm run qa:p2-007-backpack && npm run qa:p2-007-party-combat && npm run qa:p2-007-mount && npm run qa:p2-007-layout",
     "qa:rc": "npm run build && node qa/rc-e2e.mjs"
   },
   "dependencies": {
