@@ -4,10 +4,10 @@
  * 重要（TM-P2-005 66 节）：
  *  Cloud payload 只是 transport/storage 容器，不承载任何 GameState 兼容性。
  *  游戏存档兼容性属于 src/game/utils/storage.ts（migration chain 唯一权威）。
- *  未来 Save V5：只改 storage.ts 的 migration chain，不改云 vault 身份/契约。
+ *  未来 Save V7：只改 storage.ts 的 migration chain，不改云 vault 身份/契约。
  *
  * 云层版本与 Game Save Slot 版本严格分离（TM-P2-005 10 节）：
- *  - SLOT_FORMAT_VERSION（=4）继续表示 GameState schema；本卡不动它。
+ *  - SLOT_FORMAT_VERSION（当前 6）继续表示 GameState schema；V6 只改 storage.ts migration chain，本文件不动。
  *  - CLOUD_SAVE_FORMAT_VERSION（=1）表示云信封格式。
  */
 

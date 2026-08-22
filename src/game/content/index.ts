@@ -14,6 +14,8 @@ export type { NpcDefinition } from './npcs'
 export { NPCS } from './npcs'
 export type { EnemyDefinition } from './enemies'
 export { ENEMIES } from './enemies'
+export type { EncounterDefinition } from '../types/encounter'
+export { ENCOUNTERS, getEncounter, allEncounterMembers, totalEncounterMemberCount } from './encounters'
 export type { QuestDefinition } from './quests'
 export { QUESTS } from './quests'
 export type { CompanionDefinition } from '../types/companion'
@@ -24,6 +26,8 @@ export {
   sakuraDefaultSkillIds,
   SAKURA_SEALED_SKILLS,
 } from './companions'
+export type { MountDefinition } from '../types/mount'
+export { MOUNTS, MOUNT_PRICES, getMount } from './mounts'
 export type { RelationshipProfile } from '../types/relationship'
 export { RELATIONSHIP_PROFILES, getRelationshipProfile, isRomanceableNpc } from './relationships'
 

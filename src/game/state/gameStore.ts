@@ -3,7 +3,8 @@ import type { CharacterCreationInput, GameState, QuestStatus } from '../types'
 import { createInitialGameState } from '../content/initial'
 import { checkTravel } from '../rules/exploration'
 import { canTransitionQuestStatus } from '../rules/quest'
-import { getEnemy, getItem, getLocation, getNpc, getQuest } from '../content'
+import { getEnemy, getEncounter, getItem, getLocation, getMount, getNpc, getQuest } from '../content'
+import { checkEncounter, currentEncounterVariantId, resolveEncounterVariant, singleEnemyIdOf } from '../rules/encounter'
 import { performD20Check, CHECK_DC, type D20CheckResult } from '../rules/d20'
 import { KNIGHT_POWER_STRIKE_MP_COST, MAGE_SPELL_MP_COST, WARRIOR_SUPPRESS_STRIKE_MP_COST } from '../rules/combat'
 import { applyAdventureXpReward } from '../rules/progression'
@@ -12,8 +13,11 @@ import { checkEquipItem } from '../rules/equipment'
 import { canBuyMerchantItem, getMerchantOffer } from '../rules/merchant'
 import { rollLoot } from '../rules/loot'
 import type { LootGrant } from '../types/loot'
+import { resolveEncounterLoot } from '../rules/partyCombat'
+import type { EncounterLootSummary } from '../rules/partyCombat'
 import { checkSkillUse } from '../rules/skill'
 import { rollLuckCheck, resolveLuckCheck, type LuckCheckResult } from '../rules/luck'
+import { canExploreMountTrail, getEffectiveCharacterAttributes, MOUNT_TRAIL_REWARD_GOLD } from '../rules/mount'
 import { resolveD20Check, rollD20 } from '../rules/d20'
 import {
   canTriggerSakuraEncounter,
@@ -51,6 +55,7 @@ import {
 } from '../rules/relationship'
 import {
   getCompanion,
+  MOUNT_PRICES,
   sakuraDefaultSkillIds,
   SAKURA_COMPANION_ID,
   getRelationshipProfile,
@@ -131,6 +136,27 @@ interface GameStoreState {
   damagePlayer: (amount: number) => boolean
   /** 战斗胜利提交：Store 自校验敌人存在且属于当前地点；《村外异动》进行中在村外草原击败魔化兔 → completable（TM-P0-009） */
   resolveCombatVictory: (enemyId: string) => boolean
+  /** TM-P2-007 §7.4：Encounter 战斗入口（外部 authoritative path）。校验 + weighted variant 首次固化 world.encounterVariants（已固化不 reroll）；通过才允许进 CombatPage */
+  startEncounter: (encounterId: string) => boolean
+  /** TM-P2-007 §6/§15/§16：Encounter 整体胜利结算事务。单敌遭遇委托 resolveCombatVictory（返回 null，loot 展示由 CombatPage 走 grantLoot）；多敌遭遇一次写入 XP sum + loot 聚合 + encounterDefeatFlag，返回聚合的 EncounterLootSummary 供 VictorySummary 展示 */
+  resolveEncounterVictory: (encounterId: string) => EncounterLootSummary | null
+  /** TM-P2-007 §9/§13：多人战斗结束同步——玩家战后 HP/MP、药水消耗与伙伴战后 MP 一次性写入 GameState（伙伴 HP 不持久化：战斗内按 con 派生满血进入） */
+  applyPartyCombatEnd: (input: {
+    playerHp: number
+    playerMp: number
+    potionsUsed: number
+    companion?: { companionId: string; mp: number }
+  }) => boolean
+  /** TM-P2-007 §19：在天龙城马厩购买坐骑。校验顺序：坐骑存在 → 已登记价格 → 位置在天龙城 → 金币足够 → 未拥有；成功扣金并加入 ownedMountIds（不自动装备） */
+  buyMount: (
+    mountId: string,
+  ) => 'bought' | 'locked' | 'unknown' | 'not_in_city' | 'not_enough_gold' | 'already_owned'
+  /** TM-P2-007 §19：装备已拥有的坐骑；未知/未拥有返回 false 且 GameState 不变 */
+  equipMount: (mountId: string) => boolean
+  /** TM-P2-007 §19：卸下当前坐骑；未装备返回 false */
+  unequipMount: () => boolean
+  /** TM-P2-007 §21：城郊古驿道 optional 检定（天龙城 + fast_travel 坐骑 + 一次性）。D20 敏捷检定（使用装备坐骑后的有效敏捷）；成功 +金并写 found，失败写 nothing（不再可探）；不满足条件 → null 且状态不变 */
+  exploreMountTrail: () => D20CheckResult | null
   /** 使用治疗药水：hp = min(maxHp, hp + healAmount)，药水 -1；满血/HP0/无药水返回 false 不变（TM-P0-010） */
   useHealingPotion: () => boolean
   /** 装备武器：仅可装备已拥有的 weapon，装备不消耗 inventory（TM-P0-013） */
@@ -1081,6 +1107,243 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
       return xpState === s.gameState ? {} : { gameState: xpState }
     })
     return ok
+  },
+
+  startEncounter: (encounterId) => {
+    const state = get().gameState
+    if (!state) return false
+    const def = getEncounter(encounterId)
+    if (!def) return false
+    const check = checkEncounter(state, encounterId)
+    if (!check.allowed) return false
+    // weighted：首次 roll 并固化 world.encounterVariants（已固化不 reroll；§7.3 刷新/读档/切地点不重算）
+    if (def.variants) {
+      const existing = state.world.encounterVariants?.[encounterId]
+      if (!existing) {
+        const variantId = resolveEncounterVariant(def, () => Math.random())
+        set((s) => {
+          if (!s.gameState) return {}
+          return {
+            gameState: {
+              ...s.gameState,
+              world: {
+                ...s.gameState.world,
+                encounterVariants: {
+                  ...(s.gameState.world.encounterVariants ?? {}),
+                  [encounterId]: variantId,
+                },
+              },
+            },
+          }
+        })
+      }
+    }
+    return true
+  },
+
+  resolveEncounterVictory: (encounterId) => {
+    const state = get().gameState
+    if (!state) return null
+    const def = getEncounter(encounterId)
+    if (!def) return null
+    // 单敌遭遇：委托现有 resolveCombatVictory（quest flags / 固定战利品 / first-kill XP 全复用）；返回 null（loot 展示由 CombatPage 走 grantLoot）
+    const singleEnemyId = singleEnemyIdOf(def)
+    if (singleEnemyId) {
+      get().resolveCombatVictory(singleEnemyId)
+      return null
+    }
+    // 多敌遭遇：整体胜利事务（§6/§15/§16）——XP sum + loot 聚合 + encounterDefeatFlag 一次性写入
+    const check = checkEncounter(state, encounterId)
+    if (!check.allowed) return null
+    const variantId = currentEncounterVariantId(state, def)
+    const variant = variantId ? def.variants?.find((v) => v.id === variantId) : undefined
+    if (!variant) return null
+    let xp = 0
+    const grants: LootGrant[] = []
+    for (const member of variant.members) {
+      for (let i = 0; i < member.count; i += 1) {
+        // 每个 EnemyInstance 独立结算（§16 pendingLoot；同 enemyId 多实例各算一次 XP）
+        xp += getEnemyFirstKillXp(state, member.enemyId)
+        const grant = rollLoot(member.enemyId, state.player.attributes.lck)
+        if (grant) grants.push(grant)
+      }
+    }
+    let ok = false
+    set((s) => {
+      if (!s.gameState) return {}
+      let gs = s.gameState
+      if (xp > 0) {
+        const progression = applyAdventureXpReward(gs.player, xp)
+        if (progression) gs = { ...gs, player: progression.player }
+      }
+      let inventory = [...gs.inventory]
+      let gold = gs.player.gold
+      for (const grant of grants) {
+        for (const it of grant.items) {
+          const idx = inventory.findIndex((e) => e.itemId === it.itemId)
+          inventory =
+            idx >= 0
+              ? inventory.map((e, i) => (i === idx ? { ...e, quantity: e.quantity + it.quantity } : e))
+              : [...inventory, { itemId: it.itemId, quantity: it.quantity }]
+        }
+        gold += grant.gold
+      }
+      const world = def.encounterDefeatFlag
+        ? { ...gs.world, flags: { ...gs.world.flags, [def.encounterDefeatFlag]: true } }
+        : gs.world
+      ok = true
+      return { gameState: { ...gs, inventory, player: { ...gs.player, gold }, world } }
+    })
+    return ok ? resolveEncounterLoot(grants) : null
+  },
+
+  applyPartyCombatEnd: ({ playerHp, playerMp, potionsUsed, companion }) => {
+    if (
+      !Number.isFinite(playerHp) ||
+      !Number.isFinite(playerMp) ||
+      !Number.isInteger(potionsUsed) ||
+      potionsUsed < 0
+    ) {
+      return false
+    }
+    let ok = false
+    set((s) => {
+      if (!s.gameState) return {}
+      const player = s.gameState.player
+      const hp = Math.min(player.maxHp, Math.max(0, Math.round(playerHp)))
+      const mp = Math.min(player.maxMp, Math.max(0, Math.round(playerMp)))
+      let inventory = s.gameState.inventory
+      if (potionsUsed > 0) {
+        const idx = inventory.findIndex((e) => e.itemId === 'healing_potion')
+        const remaining = (idx >= 0 ? inventory[idx]?.quantity ?? 0 : 0) - potionsUsed
+        if (remaining > 0) {
+          inventory = idx >= 0 ? inventory.map((e, i) => (i === idx ? { ...e, quantity: remaining } : e)) : inventory
+        } else {
+          inventory = inventory.filter((e) => e.itemId !== 'healing_potion')
+        }
+      }
+      let companions = s.gameState.companions
+      if (companion) {
+        const entry = companions[companion.companionId]
+        if (entry) {
+          const companionMp = Math.min(entry.maxMp, Math.max(0, Math.round(companion.mp)))
+          companions = { ...companions, [companion.companionId]: { ...entry, mp: companionMp } }
+        }
+      }
+      ok = true
+      return { gameState: { ...s.gameState, player: { ...player, hp, mp }, inventory, companions } }
+    })
+    return ok
+  },
+
+  buyMount: (mountId) => {
+    let result: 'bought' | 'locked' | 'unknown' | 'not_in_city' | 'not_enough_gold' | 'already_owned' = 'unknown'
+    set((s) => {
+      const state = s.gameState
+      if (!state) return {}
+      // 坐骑必须存在
+      if (!getMount(mountId)) return {}
+      // 必须登记了价格（本阶段只有火焰驹）；未登记 = locked
+      const price = MOUNT_PRICES[mountId]
+      if (!price || price <= 0) {
+        result = 'locked'
+        return {}
+      }
+      // 马厩仅在天龙城可用
+      if (state.world.currentLocationId !== 'tianlong_city') {
+        result = 'not_in_city'
+        return {}
+      }
+      // 已拥有不重复购买
+      if (state.ownedMountIds.includes(mountId)) {
+        result = 'already_owned'
+        return {}
+      }
+      if (state.player.gold < price) {
+        result = 'not_enough_gold'
+        return {}
+      }
+      result = 'bought'
+      // 原子更新：扣金与加入 ownedMountIds 一次完成；购买后不自动装备
+      return {
+        gameState: {
+          ...state,
+          player: { ...state.player, gold: state.player.gold - price },
+          ownedMountIds: [...state.ownedMountIds, mountId],
+        },
+      }
+    })
+    return result
+  },
+
+  equipMount: (mountId) => {
+    let ok = false
+    set((s) => {
+      const state = s.gameState
+      if (!state) return {}
+      if (!getMount(mountId)) return {}
+      if (!state.ownedMountIds.includes(mountId)) return {}
+      ok = true
+      return { gameState: { ...state, equippedMountId: mountId } }
+    })
+    return ok
+  },
+
+  unequipMount: () => {
+    let ok = false
+    set((s) => {
+      const state = s.gameState
+      if (!state || state.equippedMountId === null) return {}
+      ok = true
+      return { gameState: { ...state, equippedMountId: null } }
+    })
+    return ok
+  },
+
+  exploreMountTrail: () => {
+    let result: D20CheckResult | null = null
+    set((s) => {
+      const state = s.gameState
+      if (!state) return {}
+      // 合法性：天龙城 + fast_travel 坐骑 + 一次性（不满足 → null 且状态不变）
+      if (!canExploreMountTrail(state)) return {}
+      // D20 异常安全：角色数据非法抛 RangeError → 返回 null 且状态不变、页面不崩溃
+      let check: D20CheckResult
+      try {
+        check = performD20Check({
+          attributeScore: getEffectiveCharacterAttributes(state.player.attributes, state.equippedMountId).agi,
+          level: state.player.level,
+          dc: CHECK_DC.moderate,
+          proficient: false,
+          situationalModifier: 0,
+        })
+      } catch {
+        return {}
+      }
+      // 原子更新：D20 结算与 flags/gold 写入在同一次 Store 更新中完成
+      result = check
+      return check.success
+        ? {
+            gameState: {
+              ...state,
+              player: { ...state.player, gold: state.player.gold + MOUNT_TRAIL_REWARD_GOLD },
+              world: {
+                ...state.world,
+                flags: { ...state.world.flags, mount_trail_explored: 'found' },
+              },
+            },
+          }
+        : {
+            gameState: {
+              ...state,
+              world: {
+                ...state.world,
+                flags: { ...state.world.flags, mount_trail_explored: 'nothing' },
+              },
+            },
+          }
+    })
+    return result
   },
 
   useHealingPotion: () => {

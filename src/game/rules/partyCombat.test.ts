@@ -1,0 +1,365 @@
+/**
+ * Party Combat V5 纯规则测试（TM-P2-007 §8–16；§42–47 的 PC 用例）。
+ * 覆盖：我方 1–3 / 敌方 1–3 展开、先手排序（tie/稳定序）、死亡跳过与轮次推进、
+ * 敌方目标选择、胜负判定、多人逃跑、遭遇 XP（多实例各计一次/重复 0）、战利品聚合、
+ * V3 公式原样复用、同源多实例展示名。
+ */
+import { describe, expect, it } from 'vitest'
+import { createInitialGameState } from '../content/initial'
+import { resolveAttack } from './combat'
+import type { GameState } from '../types/game'
+import type { QuestStatus } from '../types/quest'
+import type { LootGrant } from '../types/loot'
+import {
+  buildEnemyCombatant,
+  buildEnemyInstances,
+  buildFriendlyCombatant,
+  chooseEnemyTarget,
+  didTurnLoop,
+  instanceDisplaySuffix,
+  isEncounterLost,
+  isEncounterWon,
+  MAX_ENCOUNTER_MEMBERS,
+  nextAliveTurnIndex,
+  resolveEncounterLoot,
+  resolveEncounterXp,
+  resolvePartyEscape,
+  rollInitiativeQueue,
+  updateCombatantHp,
+  type Combatant,
+  type Rng,
+} from './partyCombat'
+
+/** 固定序列 rng：按顺序返回注入值，越界回绕到 0 */
+function seqRng(...values: number[]): Rng {
+  let i = 0
+  return () => values[i++ % values.length] ?? 0
+}
+
+function makePlayer(overrides: Omit<Partial<Combatant>, 'sourceType'> = {}): Combatant {
+  return buildFriendlyCombatant({
+    instanceId: 'player',
+    sourceType: 'player' as const,
+    sourceId: 'player',
+    name: '主角',
+    currentHp: 30,
+    maxHp: 30,
+    currentMp: 10,
+    maxMp: 10,
+    attack: 14,
+    armor: 10,
+    agility: 12,
+    ...overrides,
+  })
+}
+
+function makeSakura(overrides: Omit<Partial<Combatant>, 'sourceType'> = {}): Combatant {
+  return buildFriendlyCombatant({
+    instanceId: 'sakura',
+    sourceType: 'companion' as const,
+    sourceId: 'sakura_yuko',
+    name: '狐媚儿',
+    currentHp: 24,
+    maxHp: 24,
+    currentMp: 12,
+    maxMp: 12,
+    attack: 12,
+    armor: 9,
+    agility: 15,
+    ...overrides,
+  })
+}
+
+function makeEnemyCombatants(...members: { enemyId: string; count: number }[]): Combatant[] {
+  return buildEnemyInstances(members).map(buildEnemyCombatant)
+}
+
+/** 构造带指定任务状态的 GameState fixture（初始 quests 为空，直接注入最小 QuestState） */
+function withQuestStatus(questId: string, status: QuestStatus): GameState {
+  const state = createInitialGameState()
+  const existing = state.quests.find((quest) => quest.questId === questId)
+  if (existing) {
+    existing.status = status
+  } else {
+    state.quests.push({ questId, status, stage: 0, flags: {} })
+  }
+  return state
+}
+
+describe('buildEnemyInstances（§8 敌方 1–3 展开）', () => {
+  it('PC1 单敌 count1 → 1 个实例，满血', () => {
+    const instances = buildEnemyInstances([{ enemyId: 'corrupted_rabbit', count: 1 }])
+    expect(instances).toHaveLength(1)
+    expect(instances[0]!.enemyId).toBe('corrupted_rabbit')
+    expect(instances[0]!.currentHp).toBe(8)
+    expect(instances[0]!.maxHp).toBe(8)
+    expect(instances[0]!.instanceId).toBe('enemy#1')
+  })
+
+  it('PC2 同一 enemyId count2 → 2 个实例，instanceId 区分、enemyId 相同', () => {
+    const instances = buildEnemyInstances([{ enemyId: 'skeleton_warrior', count: 2 }])
+    expect(instances).toHaveLength(2)
+    expect(instances.map((i) => i.enemyId)).toEqual(['skeleton_warrior', 'skeleton_warrior'])
+    expect(instances[0]!.instanceId).not.toBe(instances[1]!.instanceId)
+    expect(instances.map((i) => i.instanceId)).toEqual(['enemy#1', 'enemy#2'])
+  })
+
+  it('PC3 三种敌各 1 → 3 个实例（敌方上限 3）', () => {
+    const instances = buildEnemyInstances([
+      { enemyId: 'corrupted_rabbit', count: 1 },
+      { enemyId: 'corrupted_rat', count: 1 },
+      { enemyId: 'corrupted_wolf', count: 1 },
+    ])
+    expect(instances).toHaveLength(3)
+    expect(instances.map((i) => i.enemyId)).toEqual(['corrupted_rabbit', 'corrupted_rat', 'corrupted_wolf'])
+  })
+
+  it('PC4 总数 >3 拒绝（硬上限 3v3）', () => {
+    expect(() => buildEnemyInstances([{ enemyId: 'corrupted_rabbit', count: 2 }, { enemyId: 'corrupted_rat', count: 2 }])).toThrow(RangeError)
+    expect(MAX_ENCOUNTER_MEMBERS).toBe(3)
+  })
+
+  it('PC5 空成员 / count 为 0 拒绝', () => {
+    expect(() => buildEnemyInstances([])).toThrow(RangeError)
+    expect(() => buildEnemyInstances([{ enemyId: 'corrupted_rabbit', count: 0 }])).toThrow(RangeError)
+  })
+
+  it('PC6 未注册敌人拒绝', () => {
+    expect(() => buildEnemyInstances([{ enemyId: 'not_a_real_enemy', count: 1 }])).toThrow(RangeError)
+  })
+})
+
+describe('buildEnemyCombatant（§9.2 派生战斗单位）', () => {
+  it('PC7 派生 attack/armor/agility 与 EnemyDefinition 基线一致', () => {
+    const combatant = buildEnemyCombatant(buildEnemyInstances([{ enemyId: 'black_mane_wolf', count: 1 }])[0]!)
+    expect(combatant.side).toBe('enemy')
+    expect(combatant.sourceType).toBe('enemy')
+    expect(combatant.sourceId).toBe('black_mane_wolf')
+    expect(combatant.name).toBe('黑鬃魔狼')
+    expect(combatant.attack).toBeGreaterThan(0)
+    expect(combatant.armor).toBeGreaterThan(0)
+    expect(combatant.agility).toBeGreaterThan(0)
+    expect(combatant.currentHp).toBe(combatant.maxHp)
+    expect(combatant.isAlive).toBe(true)
+  })
+})
+
+describe('rollInitiativeQueue（§9.3 先手排序）', () => {
+  it('PC8 D20+AGI 降序：rng 全 0（D20=1）时按敏捷排序', () => {
+    const turns = rollInitiativeQueue([makePlayer(), ...makeEnemyCombatants({ enemyId: 'corrupted_wolf', count: 1 })], seqRng(0, 0))
+    // player agi12 → 13；wolf agi12 → 13；initiative 相同再比 AGI（也相同）→ friendly 优先
+    expect(turns.map((t) => t.combatant.name)).toEqual(['主角', '魔化狼'])
+    expect(turns[0]!.initiative).toBe(13)
+    expect(turns[1]!.initiative).toBe(13)
+  })
+
+  it('PC9 initiative 相同、敏捷不同 → 敏捷高者先', () => {
+    // player agi12 roll13 → 25；sakura agi15 roll10 → 25；同 initiative → 比敏捷（sakura 先）
+    const turns = rollInitiativeQueue([makePlayer(), makeSakura()], seqRng(0.6, 0.45))
+    expect(turns[0]!.combatant.name).toBe('狐媚儿')
+    expect(turns[0]!.initiative).toBe(25)
+    expect(turns[1]!.initiative).toBe(25)
+  })
+
+  it('PC10 initiative 与敏捷都相同 → friendly 优先', () => {
+    // player agi12 roll10 → 22；rabbit agi10 roll12 → 22 但敏捷低；构造 wolf agi12 roll10 → 22
+    const turns = rollInitiativeQueue(
+      [makePlayer(), ...makeEnemyCombatants({ enemyId: 'corrupted_wolf', count: 1 })],
+      seqRng(0.45, 0.45),
+    )
+    expect(turns.map((t) => t.combatant.name)).toEqual(['主角', '魔化狼'])
+  })
+
+  it('PC11 同 side 保持注入原始稳定序（两个同值敌人）', () => {
+    const turns = rollInitiativeQueue(
+      makeEnemyCombatants({ enemyId: 'corrupted_rat', count: 1 }, { enemyId: 'corrupted_wolf', count: 1 }),
+      seqRng(0.45, 0.45),
+    )
+    // rat agi10、wolf agi12 不同敏捷；改用两个同敏捷敌人验证稳定序
+    const twin = makeEnemyCombatants({ enemyId: 'corrupted_rat', count: 1 }, { enemyId: 'corrupted_rat', count: 1 })
+    const twinTurns = rollInitiativeQueue(twin, seqRng(0.45, 0.45))
+    expect(twinTurns.map((t) => t.combatant.instanceId)).toEqual(['enemy#1', 'enemy#2'])
+    void turns
+  })
+
+  it('PC12 非法 rng 值拒绝', () => {
+    expect(() => rollInitiativeQueue([makePlayer()], () => 1.5)).toThrow(RangeError)
+    expect(() => rollInitiativeQueue([makePlayer()], () => -0.1)).toThrow(RangeError)
+    expect(() => rollInitiativeQueue([], seqRng(0))).toThrow(RangeError)
+  })
+})
+
+describe('回合推进（§9.4 死亡跳过 / round）', () => {
+  it('PC13 死亡单位跳过：中间敌人死亡则跳到下一个存活', () => {
+    const turns = rollInitiativeQueue(
+      [makePlayer(), ...makeEnemyCombatants({ enemyId: 'corrupted_rat', count: 1 }, { enemyId: 'corrupted_wolf', count: 1 })],
+      seqRng(0.99, 0.99, 0.99),
+    )
+    // 标记 index1（rat）死亡
+    const dead = updateCombatantHp(turns[1]!.combatant, 0)
+    const withDead = turns.map((t, i) => (i === 1 ? { ...t, combatant: dead } : t))
+    const next = nextAliveTurnIndex(withDead, 0)
+    expect(withDead[next]!.combatant.isAlive).toBe(true)
+    expect(next).not.toBe(1)
+  })
+
+  it('PC14 队列末尾回绕到开头，didTurnLoop 为 true', () => {
+    const turns = rollInitiativeQueue(
+      [makePlayer(), makeSakura(), ...makeEnemyCombatants({ enemyId: 'corrupted_wolf', count: 1 })],
+      seqRng(0.9, 0.9, 0.9),
+    )
+    const last = turns.length - 1
+    const next = nextAliveTurnIndex(turns, last)
+    expect(next).toBe(0)
+    expect(didTurnLoop(last, next)).toBe(true)
+    expect(didTurnLoop(0, 1)).toBe(false)
+  })
+
+  it('PC15 越界索引拒绝', () => {
+    const turns = rollInitiativeQueue([makePlayer()], seqRng(0))
+    expect(() => nextAliveTurnIndex(turns, -1)).toThrow(RangeError)
+    expect(() => nextAliveTurnIndex(turns, 5)).toThrow(RangeError)
+  })
+})
+
+describe('敌方目标选择（§12 AI V1）', () => {
+  it('PC16 rng=0 → 第一个存活目标；接近 1 → 最后一个', () => {
+    const targets = [makePlayer(), makeSakura()]
+    expect(chooseEnemyTarget(targets, () => 0).instanceId).toBe('player')
+    expect(chooseEnemyTarget(targets, () => 0.999).instanceId).toBe('sakura')
+  })
+
+  it('PC17 空目标 / 非我方目标拒绝', () => {
+    expect(() => chooseEnemyTarget([], () => 0)).toThrow(RangeError)
+    const enemy = makeEnemyCombatants({ enemyId: 'corrupted_rabbit', count: 1 })[0]!
+    expect(() => chooseEnemyTarget([enemy], () => 0)).toThrow(RangeError)
+    expect(() => chooseEnemyTarget([makePlayer()], () => 1)).toThrow(RangeError)
+  })
+})
+
+describe('胜负判定（§13）', () => {
+  it('PC18 敌全灭 → won；我方全灭 → lost；双方存活 → 均 false', () => {
+    const all = [...makeEnemyCombatants({ enemyId: 'corrupted_rabbit', count: 1 }), makePlayer()]
+    expect(isEncounterWon(all)).toBe(false)
+    expect(isEncounterLost(all)).toBe(false)
+
+    const won = [updateCombatantHp(all[0]!, 0), all[1]!]
+    expect(isEncounterWon(won)).toBe(true)
+    expect(isEncounterLost(won)).toBe(false)
+
+    const lost = [updateCombatantHp(all[1]!, 0), all[0]!]
+    expect(isEncounterLost(lost)).toBe(true)
+    expect(isEncounterWon(lost)).toBe(false)
+  })
+})
+
+describe('updateCombatantHp（生命不可变更新）', () => {
+  it('PC19 clamp 到 [0, maxHp]，isAlive 跟随', () => {
+    const p = makePlayer()
+    const healed = updateCombatantHp(p, 999)
+    expect(healed.currentHp).toBe(p.maxHp)
+    expect(healed.isAlive).toBe(true)
+    const dead = updateCombatantHp(p, -5)
+    expect(dead.currentHp).toBe(0)
+    expect(dead.isAlive).toBe(false)
+    expect(p.currentHp).toBe(30) // 原对象不变
+  })
+})
+
+describe('多人逃跑（§14）', () => {
+  it('PC20 复用 V1 公式：成功与失败', () => {
+    const friendly = [makePlayer(), makeSakura()] // 最高敏捷 15
+    const enemy = makeEnemyCombatants({ enemyId: 'black_mane_wolf', count: 1 }) // 敏捷待查
+    const roll = 20
+    const result = resolvePartyEscape(friendly, enemy, roll)
+    expect(result.roll).toBe(20)
+    expect(result.success).toBe((15 + 20) / 3 >= result.enemyAgility)
+    const low = resolvePartyEscape(friendly, enemy, 1)
+    expect(low.success).toBe(false)
+  })
+
+  it('PC21 空侧 / 骰面越界拒绝', () => {
+    const enemy = makeEnemyCombatants({ enemyId: 'corrupted_rabbit', count: 1 })
+    expect(() => resolvePartyEscape([], enemy, 10)).toThrow(RangeError)
+    expect(() => resolvePartyEscape([makePlayer()], [], 10)).toThrow(RangeError)
+    expect(() => resolvePartyEscape([makePlayer()], enemy, 25)).toThrow(RangeError)
+    expect(() => resolvePartyEscape([makePlayer()], enemy, 0)).toThrow(RangeError)
+  })
+})
+
+describe('遭遇 XP（§15）', () => {
+  it('PC22 同 enemyId 多实例各计一次（first-kill 语义 ×2）', () => {
+    const state = withQuestStatus('quest_village_monsters', 'in_progress')
+    const instances = buildEnemyInstances([{ enemyId: 'corrupted_rabbit', count: 2 }])
+    // corrupted_rabbit adventureXpReward=10 → 2 实例 = 20
+    expect(resolveEncounterXp(state, instances)).toBe(20)
+  })
+
+  it('PC23 重复遭遇 0 XP；未注册/无奖励敌人 0 XP', () => {
+    const pending = withQuestStatus('quest_village_monsters', 'in_progress')
+    const done = withQuestStatus('quest_village_monsters', 'completed')
+    const instances = buildEnemyInstances([{ enemyId: 'corrupted_rabbit', count: 1 }])
+    expect(resolveEncounterXp(pending, instances)).toBe(10)
+    expect(resolveEncounterXp(done, instances)).toBe(0)
+    expect(resolveEncounterXp(pending, [{ instanceId: 'x', enemyId: 'not_a_real_enemy', currentHp: 0, maxHp: 1 }])).toBe(0)
+  })
+})
+
+describe('遭遇战利品汇总（§16）', () => {
+  it('PC24 多实例 pendingLoot 合并：同物品聚合、金币累加、幸运检定完整保留', () => {
+    const grants: LootGrant[] = [
+      { items: [{ itemId: 'wolf_meat', quantity: 1 }], gold: 0, luckCheck: null },
+      {
+        items: [
+          { itemId: 'wolf_meat', quantity: 2 },
+          { itemId: 'black_fang', quantity: 1 },
+        ],
+        gold: 5,
+        luckCheck: null,
+      },
+      {
+        items: [],
+        gold: 3,
+        luckCheck: { roll: 15, modifier: 1, situational: 0, total: 16, dc: 12, outcome: 'success', success: true },
+      },
+    ]
+    const summary = resolveEncounterLoot(grants)
+    expect(summary.items).toEqual([
+      { itemId: 'wolf_meat', quantity: 3 },
+      { itemId: 'black_fang', quantity: 1 },
+    ])
+    expect(summary.gold).toBe(8)
+    expect(summary.luckChecks).toHaveLength(1)
+    expect(summary.luckChecks[0]!.total).toBe(16)
+  })
+
+  it('PC25 空 grants → 空汇总（胜利但无掉落的合法情形）', () => {
+    const summary = resolveEncounterLoot([])
+    expect(summary.items).toEqual([])
+    expect(summary.gold).toBe(0)
+    expect(summary.luckChecks).toEqual([])
+  })
+})
+
+describe('Combat V3 公式原样复用（冻结）', () => {
+  it('PC26 天然1大失败 / 天然20暴击 / 命中走护甲：由 combat.ts resolveAttack 提供', () => {
+    expect(resolveAttack(1, 12, 10, 14, 10).outcome).toBe('critical_miss')
+    expect(resolveAttack(1, 12, 10, 14, 10).damage).toBe(0)
+    expect(resolveAttack(20, 12, 10, 14, 10).outcome).toBe('critical_hit')
+    const hit = resolveAttack(10, 12, 10, 14, 10)
+    expect(hit.outcome).toBe('hit')
+    expect(hit.damage).toBeGreaterThanOrEqual(1)
+    const glance = resolveAttack(3, 12, 14, 14, 10) // (12+3)/2=7.5 < 14 → 擦伤
+    expect(glance.outcome).toBe('glancing_hit')
+  })
+})
+
+describe('同源多实例展示名（生产 UI 不泄露内部 ID）', () => {
+  it('PC27 index 0 无后缀、1→①、2→②、超 3 回退括号', () => {
+    expect(instanceDisplaySuffix(0)).toBe('')
+    expect(instanceDisplaySuffix(1)).toBe('①')
+    expect(instanceDisplaySuffix(2)).toBe('②')
+    expect(instanceDisplaySuffix(5)).toBe('(6)')
+    expect(() => instanceDisplaySuffix(-1)).toThrow(RangeError)
+  })
+})

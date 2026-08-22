@@ -8,6 +8,8 @@
  *    true 视为已击败（already_defeated），非 boolean 异常值（"yes"/1/'false'）视为损坏（invalid_story_state）。
  */
 import { getEnemy, getLocation } from '../content'
+import { getEncounter, allEncounterMembers } from '../content/encounters'
+import type { EncounterDefinition } from '../types/encounter'
 import type { GameState } from '../types/game'
 import { canFightCalamity, SAKURA_CALAMITY_ENEMY_ID } from './sakura'
 
@@ -19,6 +21,7 @@ export type EncounterBlockReason =
   | 'missing_prerequisite'
   | 'already_defeated'
   | 'invalid_story_state'
+  | 'encounter_not_found'
 
 export interface EncounterCheckResult {
   allowed: boolean
@@ -237,4 +240,98 @@ export function checkEnemyEncounter(gameState: GameState, enemyId: string): Enco
   }
 
   return { allowed: true }
+}
+
+// ---------------------------------------------------------------------------
+// Encounter V2（TM-P2-007 §7）：玩家面对的是「遭遇」而非单个 enemyId。
+//  - checkEncounter：Encounter 权威入口（注册 / 地点挂载 / 单敌委托 / 多敌 defeated 门）。
+//  - resolveEncounterVariant：加权 variant 纯选择（不写状态）。
+//  - currentEncounterVariantId：只读读取已固化的 variant（weighted；已固化不 reroll）。
+//    world.encounterVariants 的首次写入由调用方（gameStore 集成）在 allowed 时负责，规则层只读。
+// ---------------------------------------------------------------------------
+
+/** 单敌遭遇的 enemyId：fixedMembers 恰为 1 名且 count===1 时返回该敌人，否则 undefined */
+export function singleEnemyIdOf(def: EncounterDefinition): string | undefined {
+  if (def.fixedMembers && def.fixedMembers.length === 1 && def.fixedMembers[0]?.count === 1) {
+    return def.fixedMembers[0]?.enemyId
+  }
+  return undefined
+}
+
+/**
+ * Encounter 权威战斗入口守卫（TM-P2-007 §7.4 外部 authoritative path）。
+ * 1. 注册检查：encounter 必须已注册。
+ * 2. 地点挂载：当前 location.encounters 必须包含该 encounter。
+ * 3. defeated / 剧情前置：
+ *    - 单敌遭遇：直接委托 checkEnemyEncounter（完整复用现有特殊敌人 guard 链与 defeated 门）。
+ *    - 多敌 / 加权遭遇：若设置 encounterDefeatFlag，按 world.flags 严格 boolean 语义检查 defeated 门。
+ * 4. 数据完整性：全部成员敌人必须已注册。
+ * 纯函数：不写 Store、不随机。
+ */
+export function checkEncounter(gameState: GameState, encounterId: string): EncounterCheckResult {
+  const def = getEncounter(encounterId)
+  if (!def) return { allowed: false, reason: 'encounter_not_found' }
+
+  const location = getLocation(gameState.world.currentLocationId)
+  if (!location) return { allowed: false, reason: 'location_not_found' }
+  if (!location.encounters?.includes(encounterId)) {
+    return { allowed: false, reason: 'enemy_not_in_location' }
+  }
+
+  // 单敌遭遇：委托现有 checkEnemyEncounter（特殊敌人前置 + defeated 门原样复用）
+  const singleEnemyId = singleEnemyIdOf(def)
+  if (singleEnemyId) {
+    return checkEnemyEncounter(gameState, singleEnemyId)
+  }
+
+  // 多敌 / 加权遭遇：通用 defeated 门（encounterDefeatFlag 位于 world.flags；可选遭遇未设置则跳过）
+  if (def.encounterDefeatFlag) {
+    const flag = gameState.world.flags[def.encounterDefeatFlag]
+    if (isMalformedFlag(flag) || flag === true) {
+      return { allowed: false, reason: flag === true ? 'already_defeated' : 'invalid_story_state' }
+    }
+  }
+
+  // 数据完整性：全部成员敌人已注册
+  for (const member of allEncounterMembers(def)) {
+    if (!getEnemy(member.enemyId)) return { allowed: false, reason: 'enemy_not_found' }
+  }
+
+  return { allowed: true }
+}
+
+/**
+ * 选择 Encounter 生效的 variant id（纯函数；TM-P2-007 §7.3）。
+ *  - weighted：按 weight 加权随机（rng 注入 [0,1)），返回选中的 variantId。
+ *  - fixed：无变体，返回固定 id（def.id）。
+ * 不写状态：world.encounterVariants 的持久化由调用方在首次选择后负责。
+ */
+export function resolveEncounterVariant(def: EncounterDefinition, rng: () => number): string {
+  if (def.fixedMembers) return def.id
+  const variants = def.variants ?? []
+  if (variants.length === 0) {
+    throw new Error(`encounter ${def.id} 既无 fixedMembers 也无 variants`)
+  }
+  const totalWeight = variants.reduce((sum, v) => sum + v.weight, 0)
+  if (!(totalWeight > 0)) {
+    throw new Error(`encounter ${def.id} 权重总和必须 > 0`)
+  }
+  let roll = rng() * totalWeight
+  for (const variant of variants) {
+    roll -= variant.weight
+    if (roll < 0) return variant.id
+  }
+  // 浮点边界兜底：取最后一个变体
+  return variants[variants.length - 1]!.id
+}
+
+/**
+ * 只读读取当前生效的 variant id（TM-P2-007 §7.3「首次生成后写死，刷新/读档/切地点不 reroll」）。
+ *  - weighted：world.encounterVariants[encounterId] 已有值则返回该值；未固化返回 undefined
+ *    （表示「尚未首次 roll」，由调用方负责 roll 并写入，规则层不写）。
+ *  - fixed：无变体，返回固定 id。
+ */
+export function currentEncounterVariantId(gameState: GameState, def: EncounterDefinition): string | undefined {
+  if (!def.variants) return def.id
+  return gameState.world.encounterVariants?.[def.id] ?? undefined
 }

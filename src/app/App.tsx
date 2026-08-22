@@ -8,7 +8,6 @@ import SaveSlotsPage from '../pages/SaveSlotsPage'
 import CloudUnlockPage from '../pages/CloudUnlockPage'
 import { useGameStore } from '../game/state/gameStore'
 import { useCloudSession } from '../cloud/cloudSessionStore'
-import { checkEnemyEncounter } from '../game/rules/encounter'
 import type { CharacterCreationInput } from '../game/types'
 
 type Screen = 'main' | 'create' | 'game' | 'dev' | 'combat' | 'saves'
@@ -19,7 +18,7 @@ export default function App() {
   const cloudUnlocked = useCloudSession((s) => s.status === 'connected')
   const [screen, setScreen] = useState<Screen>('main')
   const [savesMode, setSavesMode] = useState<SavesMode>('save')
-  const [combatEnemyId, setCombatEnemyId] = useState<string | null>(null)
+  const [combatEncounterId, setCombatEncounterId] = useState<string | null>(null)
   const hasSave = useGameStore((s) => s.hasSave)
   const newGame = useGameStore((s) => s.newGame)
   const loadGame = useGameStore((s) => s.loadGame)
@@ -36,43 +35,38 @@ export default function App() {
     setScreen('game')
   }
 
-  const handleEngage = (enemyId: string) => {
-    // TM-P2-003-R3 D：正式战斗入口唯一 authoritative gate 收敛在 rules/encounter.ts
-    // （敌人存在 / 属于当前地点 / 各特殊敌人剧情前置），App 不再承载任何敌人业务规则
-    const state = useGameStore.getState().gameState
-    if (!state) return
+  const handleEngage = (encounterId: string) => {
+    // TM-P2-007 §7.4：Encounter 战斗入口唯一 authoritative gate 收敛在 rules/encounter.ts + Store
+    // （checkEncounter 注册/地点/前置校验 + weighted variant 首次固化），App 不再承载任何敌人业务规则
+    const ok = useGameStore.getState().startEncounter(encounterId)
+    if (!ok) return
 
-    const result = checkEnemyEncounter(state, enemyId)
-    if (!result.allowed) return
-
-    setCombatEnemyId(enemyId)
+    setCombatEncounterId(encounterId)
     setScreen('combat')
   }
 
   const handleVictory = () => {
-    // TM-P0-009：战斗胜利先通过正式 Store action 提交到持久 GameState，再返回游戏页
-    if (combatEnemyId) {
-      useGameStore.getState().resolveCombatVictory(combatEnemyId)
-    }
-    setCombatEnemyId(null)
+    // TM-P2-007 §6：Encounter 整体胜利结算事务（XP sum + loot 聚合 + quest/flag 推进）已由 CombatPage
+    // 在胜利瞬间通过 resolveEncounterVictory 一次性完成；此处按钮仅关闭结算面板并返回冒险（不重复结算）。
+    setCombatEncounterId(null)
     setScreen('game')
   }
 
   // TM-P2-006 第 33 节：逃跑成功 → 直接结束战斗返回冒险（不 resolveCombatVictory：无 defeated / XP / loot / 金币 / kill flag）
   const handleEscape = () => {
-    setCombatEnemyId(null)
+    setCombatEncounterId(null)
     setScreen('game')
   }
 
   const handleDefeat = () => {
     // TM-P0-022-R1：正常战败返回冒险页（保持 HP0 与原战斗地点，可回村休整恢复）；不复活、不自动读档、不自动传送
-    setCombatEnemyId(null)
+    setCombatEncounterId(null)
     setScreen('game')
   }
 
-  // TM-P0-022-R2：防御性异常出口（无 GameState / 未知 enemyId）真正返回主菜单，与正常战败区分
+  // TM-P0-022-R2：防御性异常出口（无 GameState / 未知 encounterId）真正返回主菜单，与正常战败区分
   const handleExitToMenu = () => {
-    setCombatEnemyId(null)
+    setCombatEncounterId(null)
     setScreen('main')
   }
 
@@ -80,10 +74,10 @@ export default function App() {
     return <CharacterCreationPage onConfirm={handleConfirmCreation} onBack={() => setScreen('main')} />
   }
 
-  if (screen === 'combat' && combatEnemyId) {
+  if (screen === 'combat' && combatEncounterId) {
     return (
       <CombatPage
-        enemyId={combatEnemyId}
+        encounterId={combatEncounterId}
         onVictory={handleVictory}
         onDefeat={handleDefeat}
         onEscape={handleEscape}

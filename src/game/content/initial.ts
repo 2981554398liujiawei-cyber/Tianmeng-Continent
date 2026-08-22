@@ -112,10 +112,14 @@ export function createInitialGameState(input?: CharacterCreationInput): GameStat
       completedEvents: [],
       npcStates: {},
       restCount: 0,
+      encounterVariants: {},
     },
     // TM-P2-004 Schema V4：初始空伙伴/关系/队伍
     companions: {},
     relationships: {},
     party: { activeCompanionIds: [] },
+    // TM-P2-007 Schema V6：初始无坐骑
+    ownedMountIds: [],
+    equippedMountId: null,
   }
 }
