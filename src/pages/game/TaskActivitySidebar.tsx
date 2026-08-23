@@ -113,6 +113,17 @@ export default function TaskActivitySidebar({ onCompleteQuest, onViewQuest, onAc
     setSeenClueIds(getDiscoveredClueIds(gameState))
   }, [gameState])
 
+  // TM-P2-009-R1 §2.2：停留在线索 Tab 时，新发现线索实时同步进 seenClueIds（切走任务 Tab 后不再变回未读）
+  const seenClueKeyRef = useRef<string>('')
+  useEffect(() => {
+    if (activeTab !== 'clues' || !gameState) return
+    const discovered = getDiscoveredClueIds(gameState)
+    const key = discovered.join('|')
+    if (key === seenClueKeyRef.current) return
+    seenClueKeyRef.current = key
+    setSeenClueIds(discovered)
+  }, [activeTab, gameState])
+
   if (!gameState) return null
   const { player, world } = gameState
 

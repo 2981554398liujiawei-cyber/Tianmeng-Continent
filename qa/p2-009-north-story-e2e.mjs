@@ -19,8 +19,8 @@
 //
 // 分支场景（独立 fixture）：
 //   - 场景 2（combat 解）：旧驿站 + searched + neutralized → 验证战斗完成后屏障可破
-//   - 场景 3（Sakura 安抚）：barrier-sakura → 只补线索不推进（§13 禁自动解决）
-//   - 场景 4（Mount 侦查）：barrier-mount → 只补线索不推进
+//   - 场景 3（Sakura 路线，TM-P2-009-R1 §2.1）：barrier-sakura → 找到安全路线，真正解决屏障 + 线索魔化诱饵
+//   - 场景 4（Mount 路线，TM-P2-009-R1 §2.1）：barrier-mount → 骑马引开狼群，真正解决屏障 + 线索黑篷车辙
 //   - 场景 5（LCK 解）：barrier-lck 成功 → 线索黑篷车辙 + 推进
 //   - 场景 6（驿站狼群遭遇卡）：未 neutralized → 遭遇卡展示成员构成
 //
@@ -381,30 +381,30 @@ try {
   const leakedCombat = await leakedPrefixes()
   check('NS13: 全程无 Production ID leak（combat 解）', leakedCombat.length === 0, leakedCombat.join(','))
 
-  // ==================== 场景 3：Sakura 安抚（§13 禁自动解决） ====================
+  // ==================== 场景 3：Sakura 路线（TM-P2-009-R1 §2.1：找到安全路线 → 真正解决屏障） ====================
   await loadAndEnterLocal(fWaystation({ sakura: true }))
   section = 3
-  check('NS14c: Sakura 在场时显示「请樱花优子安抚狼群」', (await page.$('[data-testid="barrier-sakura"]')) !== null)
+  check('NS14c: Sakura 在场时显示「请樱花优子寻找安全路线」', (await page.$('[data-testid="barrier-sakura"]')) !== null)
   await clickTestId('barrier-sakura')
-  main = await mainColText()
-  check('NS14c: Sakura 安抚提示「樱花优子没有直接驱散狼群…古怪碎骨」', main.includes('樱花优子没有直接驱散狼群') && main.includes('古怪碎骨'))
-  check('NS14c: Sakura 安抚不自动解决（barrier-mnd 仍保留）', (await page.$('[data-testid="barrier-mnd"]')) !== null)
+  const toastSakura = await toastText()
+  check('NS14c: Sakura 反馈 toast「找到绕过狼群的安全路线」', toastSakura !== null && toastSakura.includes('绕过狼群的安全路线'), `toast=${toastSakura}`)
+  check('NS14c: Sakura 路线真正解决（推进 Stage D，搜救按钮出现）', (await page.$('[data-testid="rescue-survivor"]')) !== null)
   clueSide = await openCluesTabAndText()
-  check('NS14c: Sakura 安抚得线索「魔化诱饵」', clueSide.includes('魔化诱饵'))
+  check('NS14c: Sakura 路线得线索「魔化诱饵」', clueSide.includes('魔化诱饵'))
   await clickTabBack()
   const leakedSakura = await leakedPrefixes()
   check('NS14c: 全程无 Production ID leak（Sakura 解）', leakedSakura.length === 0, leakedSakura.join(','))
 
-  // ==================== 场景 4：Mount 侦查（§13 禁自动解决） ====================
+  // ==================== 场景 4：Mount 路线（TM-P2-009-R1 §2.1：骑马引开狼群后从另一侧进入 → 真正解决屏障） ====================
   await loadAndEnterLocal(fWaystation({ mount: true }))
   section = 4
-  check('NS14d: 装备坐骑时显示「骑马快速侦查（坐骑）」', (await page.$('[data-testid="barrier-mount"]')) !== null)
+  check('NS14d: 装备坐骑时显示「骑马引开狼群后从另一侧进入」', (await page.$('[data-testid="barrier-mount"]')) !== null)
   await clickTestId('barrier-mount')
-  main = await mainColText()
-  check('NS14d: Mount 侦查提示「狼群仍在堵门」', main.includes('你在马上绕到驿站侧面') && main.includes('狼群仍在堵门'))
-  check('NS14d: Mount 侦查不自动解决（barrier-mnd 仍保留）', (await page.$('[data-testid="barrier-mnd"]')) !== null)
+  const toastMount = await toastText()
+  check('NS14d: Mount 反馈 toast「骑马引开狼群后从另一侧进入」', toastMount !== null && toastMount.includes('骑马引开狼群后从另一侧进入'), `toast=${toastMount}`)
+  check('NS14d: Mount 路线真正解决（推进 Stage D，搜救按钮出现）', (await page.$('[data-testid="rescue-survivor"]')) !== null)
   clueSide = await openCluesTabAndText()
-  check('NS14d: Mount 侦查得线索「黑篷车辙」', clueSide.includes('黑篷车辙'))
+  check('NS14d: Mount 路线得线索「黑篷车辙」', clueSide.includes('黑篷车辙'))
   await clickTabBack()
   const leakedMount = await leakedPrefixes()
   check('NS14d: 全程无 Production ID leak（Mount 解）', leakedMount.length === 0, leakedMount.join(','))

@@ -406,7 +406,12 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
     const result = resolveWaystationBarrier(method)
     if (!result || !result.ok) return
     setWaystationBarrier(result)
-    if (result.clueAdded) {
+    // TM-P2-009-R1 §2.1：Sakura/Mount 成功 = 威胁被绕开/引走 → 反馈文案「找到安全路线」「骑马引开狼群后从另一侧进入」
+    if (result.method === 'sakura') {
+      setToast('樱花优子找到了绕过狼群的安全路线')
+    } else if (result.method === 'mount') {
+      setToast('你骑马引开狼群后从另一侧进入了后院')
+    } else if (result.clueAdded) {
       setToast(`获得新线索：${getClue(result.clueAdded)?.title ?? '未知线索'}`)
     } else if ((result.method === 'mnd' || result.method === 'lck') && result.progressed) {
       setToast('你解开了驿站的屏障')
@@ -1468,7 +1473,7 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
                 )
               }
 
-              // Stage C：旧驿站——多解解屏障（战斗 / MND / LCK / Sakura / Mount；战斗/MND/LCK 推进，Sakura/Mount 只补线索不自动解决）
+              // Stage C：旧驿站——多解解屏障（战斗 / MND / LCK / Sakura / Mount；五种路线成功都真正解决屏障并写 neutralized，非战斗路线不授予击杀 XP）
               if (waystationSearched && !barrierResolved && atWaystation) {
                 const wolvesNeutralized = world.flags.waystation_wolf_pack_neutralized === true
                 const checkFailed =
@@ -1509,7 +1514,7 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
                           data-testid="barrier-sakura"
                           onClick={() => handleResolveWaystationBarrier('sakura')}
                         >
-                          请樱花优子安抚狼群
+                          请樱花优子寻找安全路线
                         </Button>
                       )}
                       {mountSearchable && (
@@ -1518,7 +1523,7 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
                           data-testid="barrier-mount"
                           onClick={() => handleResolveWaystationBarrier('mount')}
                         >
-                          骑马快速侦查（坐骑）
+                          骑马引开狼群后从另一侧进入
                         </Button>
                       )}
                     </div>
@@ -1526,10 +1531,10 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
                       <p className="mt-3 text-sm text-bone-400">狼群没有散开，但你可以再试一次。</p>
                     )}
                     {waystationBarrier?.ok === true && waystationBarrier.method === 'mount' && (
-                      <p className="mt-3 text-sm text-bone-400">你在马上绕到驿站侧面，看清了院子里的情况，但狼群仍在堵门。</p>
+                      <p className="mt-3 text-sm text-bone-400">你骑马引开狼群后从另一侧进入了后院。</p>
                     )}
                     {waystationBarrier?.ok === true && waystationBarrier.method === 'sakura' && (
-                      <p className="mt-3 text-sm text-bone-400">樱花优子没有直接驱散狼群，但她注意到了院墙边的古怪碎骨。</p>
+                      <p className="mt-3 text-sm text-bone-400">樱花优子找到了绕过狼群的安全路线。</p>
                     )}
                   </section>
                 )

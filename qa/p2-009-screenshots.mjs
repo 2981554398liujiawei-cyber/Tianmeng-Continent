@@ -170,6 +170,8 @@ function fCompletable() {
         clue_north_broken_banner: true,
         clue_north_black_wagon_tracks: true,
         clue_north_alchemical_bait: true,
+        // TM-P2-009-R1 §2.3：邀请在向马科汇报时写入；completable 前置已含 report，故补齐（预告块依赖此 flag）
+        knight_trial_invited: true,
       },
       completedEvents: [], npcStates: {}, restCount: 0, encounterVariants: {},
     },

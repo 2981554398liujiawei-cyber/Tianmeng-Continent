@@ -803,20 +803,8 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
           },
         }
       }
-      // TM-P2-009 §17：完成《断旗余声》→ 骑士试炼邀请里程碑（world.flags.knight_trial_invited + 活动事件；正式骑士试炼本体不实现）
-      if (questId === 'quest_north_broken_banner') {
-        return {
-          gameState: {
-            ...next,
-            player: playerAfterLevel,
-            world: {
-              ...next.world,
-              flags: { ...next.world.flags, knight_trial_invited: true },
-              completedEvents: [...next.world.completedEvents, KNIGHT_TRIAL_INVITED_EVENT_ID],
-            },
-          },
-        }
-      }
+      // TM-P2-009-R1 §2.3：《断旗余声》正式提交只负责 50 Gold / 120 XP / completed——
+      // 骑士试炼邀请已由 reportNorthBrokenBanner() 在向马科汇报时写入，completeQuest 不重复追加 invitation event。
       return reward !== undefined
         ? { gameState: { ...next, player: playerAfterLevel } }
         : { gameState: { ...next, player: playerAfterLevel } }
@@ -1258,8 +1246,12 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
         }
         gold += grant.gold
       }
+      // TM-P2-009-R1 §2.1：驿站狼群战斗胜利额外写 waystation_wolf_pack_combat=true——
+      // 区分「战斗击杀」与「非战斗绕开」：非战斗路线（MND/LCK/Sakura/Mount）只写 neutralized，不消耗 wild_wolf first-kill（A7）
+      const extraCombatFlags: Record<string, boolean> =
+        encounterId === 'encounter_waystation_wolf_pack' ? { waystation_wolf_pack_combat: true } : {}
       const world = def.encounterDefeatFlag
-        ? { ...gs.world, flags: { ...gs.world.flags, [def.encounterDefeatFlag]: true } }
+        ? { ...gs.world, flags: { ...gs.world.flags, [def.encounterDefeatFlag]: true, ...extraCombatFlags } }
         : gs.world
       ok = true
       return { gameState: { ...gs, inventory, player: { ...gs.player, gold }, world } }
@@ -2590,40 +2582,62 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
         result = { ok: true, method: 'combat', clueAdded: withClue ? 'clue_north_alchemical_bait' : undefined }
         return { gameState: withClue ?? base }
       }
-      // Sakura 观察（§13）：非强制 flavor + 额外线索（魔化诱饵），禁止自动解决任务（不推进 barrier_resolved）
+      // Sakura 路线（TM-P2-009-R1 §2.1）：樱花优子找到绕过狼群的安全路线 → 屏障真正解决（威胁被引开，非击杀）
       if (method === 'sakura') {
         if (!isSakuraPresent(state)) {
           result = { ok: false, reason: 'sakura_not_present' }
           return {}
         }
+        const nextQuests = [...state.quests]
+        nextQuests[questIndex] = { ...quest, flags: { ...quest.flags, north_waystation_barrier_resolved: true } }
         const base = {
           ...state,
-          world: { ...state.world, flags: { ...state.world.flags, waystation_sakura_observation: true } },
+          quests: nextQuests,
+          world: {
+            ...state.world,
+            flags: {
+              ...state.world.flags,
+              waystation_sakura_observation: true,
+              waystation_wolf_pack_neutralized: true,
+            },
+          },
         }
         const withClue = applyClueDiscovery(base, 'clue_north_alchemical_bait')
         result = {
           ok: true,
           method: 'sakura',
           present: true,
+          progressed: true,
           clueAdded: withClue ? 'clue_north_alchemical_bait' : undefined,
         }
         return { gameState: withClue ?? base }
       }
-      // Mount 快速侦查（§13）：装备 fast_travel 坐骑 → 得黑篷车辙线索；optional，不推进 barrier_resolved
+      // Mount 路线（TM-P2-009-R1 §2.1）：骑马引开狼群后从另一侧进入 → 屏障真正解决（威胁被引走，非击杀）
       if (method === 'mount') {
         if (!hasTravelTag(state, 'fast_travel')) {
           result = { ok: false, reason: 'mount_not_present' }
           return {}
         }
         const alreadySearched = state.world.flags.waystation_mount_search === true
+        const nextQuests = [...state.quests]
+        nextQuests[questIndex] = { ...quest, flags: { ...quest.flags, north_waystation_barrier_resolved: true } }
         const base = {
           ...state,
-          world: { ...state.world, flags: { ...state.world.flags, waystation_mount_search: true } },
+          quests: nextQuests,
+          world: {
+            ...state.world,
+            flags: {
+              ...state.world.flags,
+              waystation_mount_search: true,
+              waystation_wolf_pack_neutralized: true,
+            },
+          },
         }
         const withClue = applyClueDiscovery(base, 'clue_north_black_wagon_tracks')
         result = {
           ok: true,
           method: 'mount',
+          progressed: true,
           clueAdded: withClue ? 'clue_north_black_wagon_tracks' : undefined,
           alreadySearched,
         }
@@ -2646,11 +2660,16 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
         result = { ok: true, method, check, progressed: false }
         return {}
       }
-      // 检定成功：原子推进 barrier_resolved=true + 对应线索（MND→魔化诱饵 / LCK→黑篷车辙）
+      // 检定成功（TM-P2-009-R1 §2.1）：原子推进 barrier_resolved=true + neutralized=true（威胁被绕开，非击杀）
+      // + 对应线索（MND→魔化诱饵 / LCK→黑篷车辙）
       const clueId = method === 'mnd' ? 'clue_north_alchemical_bait' : 'clue_north_black_wagon_tracks'
       const nextQuests = [...state.quests]
       nextQuests[questIndex] = { ...quest, flags: { ...quest.flags, north_waystation_barrier_resolved: true } }
-      const base = { ...state, quests: nextQuests }
+      const base = {
+        ...state,
+        quests: nextQuests,
+        world: { ...state.world, flags: { ...state.world.flags, waystation_wolf_pack_neutralized: true } },
+      }
       const withClue = applyClueDiscovery(base, clueId)
       result = { ok: true, method, check, progressed: true, clueAdded: withClue ? clueId : undefined }
       return { gameState: withClue ?? base }
@@ -2737,9 +2756,20 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
       if (reported === true) return {}
       changed = true
       // 原子：写 quest.flags.north_broken_banner_reported=true 且 status→completable（stage 保持 0；无金币/XP/物品副作用、不自动保存）
+      // TM-P2-009-R1 §2.3：向马科汇报当场出现骑士试炼邀请（world.flags.knight_trial_invited + 活动事件；正式骑士试炼本体不实现）
       const nextQuests = [...s.gameState.quests]
       nextQuests[questIndex] = { ...quest, status: 'completable', flags: { ...quest.flags, north_broken_banner_reported: true } }
-      return { gameState: { ...s.gameState, quests: nextQuests } }
+      return {
+        gameState: {
+          ...s.gameState,
+          quests: nextQuests,
+          world: {
+            ...s.gameState.world,
+            flags: { ...s.gameState.world.flags, knight_trial_invited: true },
+            completedEvents: [...s.gameState.world.completedEvents, KNIGHT_TRIAL_INVITED_EVENT_ID],
+          },
+        },
+      }
     })
     return changed
   },
@@ -3416,8 +3446,8 @@ export const WAYSTATION_BARRIER_DC = 12
 export type WaystationBarrierResult =
   | { ok: true; method: 'combat'; clueAdded?: string }
   | { ok: true; method: 'mnd' | 'lck'; check: D20CheckResult; progressed: boolean; clueAdded?: string }
-  | { ok: true; method: 'sakura'; present: true; clueAdded?: string }
-  | { ok: true; method: 'mount'; clueAdded?: string; alreadySearched?: boolean }
+  | { ok: true; method: 'sakura'; present: true; progressed?: boolean; clueAdded?: string }
+  | { ok: true; method: 'mount'; clueAdded?: string; alreadySearched?: boolean; progressed?: boolean }
   | { ok: false; reason: 'locked' | 'sakura_not_present' | 'mount_not_present' | 'already_done' | 'wolves_not_neutralized' }
 
 export type NorthOutskirtsInvestigateResult =

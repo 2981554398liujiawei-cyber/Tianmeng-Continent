@@ -272,6 +272,27 @@ describe('TM-P2-009 S5-S9：Clue 未读状态', () => {
     const cluesTab2 = [...dom.querySelectorAll('[role="tab"]')].find((b) => b.textContent?.includes('线索'))
     expect(cluesTab2?.textContent?.trim()).toBe('线索')
   })
+
+  it('S9b: 硬测试——停留线索 Tab 新发现 → 切任务 Tab → 再看线索 badge 仍 0（TM-P2-009-R1 §2.2）', () => {
+    const dom = renderSidebarDom()
+    const cluesTab = () => [...dom.querySelectorAll('[role="tab"]')].find((b) => b.textContent?.includes('线索'))
+    const questsTab = () => [...dom.querySelectorAll('[role="tab"]')].find((b) => b.textContent?.includes('任务'))
+    // 1. 打开线索 Tab
+    clickIn(dom, cluesTab())
+    // 2. 停留线索 Tab 期间新增 clue → badge=0（S9 已验证）
+    mutateState((s) => {
+      s.world.flags.clue_north_drag_trail = true
+    })
+    expect(cluesTab()?.textContent?.trim()).toBe('线索')
+    // 3. 切到任务 Tab
+    clickIn(dom, questsTab())
+    // 4. 任务 Tab 下线索角标也应已读（seenClueIds 已实时同步，不再变回未读）
+    expect(cluesTab()?.textContent?.trim()).toBe('线索')
+    // 5. 再看线索 Tab → badge 仍 0（无 ● 无数字）
+    clickIn(dom, cluesTab())
+    expect(dom.textContent).not.toContain('●')
+    expect(cluesTab()?.textContent?.trim()).toBe('线索')
+  })
 })
 
 /** TM-P2-009 §6-7：Activity Log 禁止 ID 泄露 + Drawer 上限。 */

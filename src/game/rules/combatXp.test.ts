@@ -222,7 +222,7 @@ describe('TM-P2-006：战斗阅历（Combat XP）规则（XP1-XP13）', () => {
     expect(getEnemyFirstKillXp(gs(), 'wild_wolf')).toBe(0)
   })
 
-  it('XP12. wild_wolf：驿站狼群 neutralized → 0（TM-P2-009 §13 驿站狼群 XP 门）', () => {
+  it('XP12. wild_wolf：驿站狼群非战斗绕开（仅 neutralized，无 combat）→ 仍 15（TM-P2-009-R1 §2.1 A7）', () => {
     useGameStore.setState((state) => {
       if (!state.gameState) return {}
       return {
@@ -231,6 +231,23 @@ describe('TM-P2-006：战斗阅历（Combat XP）规则（XP1-XP13）', () => {
           world: {
             ...state.gameState.world,
             flags: { ...state.gameState.world.flags, waystation_wolf_pack_neutralized: true },
+          },
+        },
+      }
+    })
+    // MND/LCK/Sakura/Mount 成功写 neutralized 只表示威胁被绕开/安抚/引走 → 不消耗 first-kill
+    expect(getEnemyFirstKillXp(gs(), 'wild_wolf')).toBe(15)
+  })
+
+  it('XP12b. wild_wolf：驿站狼群战斗击败（combat 标记）→ 0（TM-P2-009-R1 §2.1）', () => {
+    useGameStore.setState((state) => {
+      if (!state.gameState) return {}
+      return {
+        gameState: {
+          ...state.gameState,
+          world: {
+            ...state.gameState.world,
+            flags: { ...state.gameState.world.flags, waystation_wolf_pack_combat: true },
           },
         },
       }

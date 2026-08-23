@@ -10,6 +10,7 @@ import {
 import { getEnemy, getEncounter } from '../content'
 import { checkEncounter, resolveEncounterVariant, singleEnemyIdOf } from '../rules/encounter'
 import { resolveEscape } from '../rules/escape'
+import { getEnemyFirstKillXp } from '../rules/combatXp'
 
 /**
  * TM-P2-009 §9-19：北线剧情《断旗余声》全流程 store 单测。
@@ -218,7 +219,7 @@ describe('TM-P2-009 Q11-17：Stage C 多解解屏障', () => {
     expect(hasClue(state, 'clue_north_alchemical_bait')).toBe(true)
   })
 
-  it('Q13: mnd 检定成功 → barrier_resolved + 线索「魔化诱饵」', () => {
+  it('Q13: mnd 检定成功 → barrier_resolved + neutralized + 线索「魔化诱饵」', () => {
     stageCReady()
     vi.spyOn(Math, 'random').mockReturnValue(0.9) // roll=19 → mnd 8 → mod -1 → 18 >= DC 12
     const res = useGameStore.getState().resolveWaystationBarrier('mnd')
@@ -227,6 +228,7 @@ describe('TM-P2-009 Q11-17：Stage C 多解解屏障', () => {
     const state = useGameStore.getState().gameState!
     const quest = state.quests.find((q) => q.questId === 'quest_north_broken_banner')!
     expect(quest.flags.north_waystation_barrier_resolved).toBe(true)
+    expect(state.world.flags.waystation_wolf_pack_neutralized).toBe(true)
     expect(hasClue(state, 'clue_north_alchemical_bait')).toBe(true)
     expect(WAYSTATION_BARRIER_DC).toBe(12)
   })
@@ -246,7 +248,7 @@ describe('TM-P2-009 Q11-17：Stage C 多解解屏障', () => {
     expect(retry).toMatchObject({ progressed: true })
   })
 
-  it('Q15: lck 检定成功 → barrier_resolved + 线索「黑篷车辙」', () => {
+  it('Q15: lck 检定成功 → barrier_resolved + neutralized + 线索「黑篷车辙」', () => {
     stageCReady()
     vi.spyOn(Math, 'random').mockReturnValue(0.9)
     const res = useGameStore.getState().resolveWaystationBarrier('lck')
@@ -256,36 +258,74 @@ describe('TM-P2-009 Q11-17：Stage C 多解解屏障', () => {
     expect(hasClue(state, 'clue_north_black_wagon_tracks')).toBe(true)
     const quest = state.quests.find((q) => q.questId === 'quest_north_broken_banner')!
     expect(quest.flags.north_waystation_barrier_resolved).toBe(true)
+    expect(state.world.flags.waystation_wolf_pack_neutralized).toBe(true)
   })
 
-  it('Q16: sakura 在场 → 线索「魔化诱饵」+ 不推进 barrier_resolved（§13 禁止自动解决）', () => {
+  it('Q16: sakura 在场 → 找到安全路线 + barrier_resolved + neutralized + 线索「魔化诱饵」', () => {
     stageCReady()
     sakuraPresent()
     const res = useGameStore.getState().resolveWaystationBarrier('sakura')
     expect(res?.ok).toBe(true)
-    expect(res).toMatchObject({ method: 'sakura', present: true })
+    expect(res).toMatchObject({ method: 'sakura', present: true, progressed: true })
     const state = useGameStore.getState().gameState!
     expect(hasClue(state, 'clue_north_alchemical_bait')).toBe(true)
     expect(state.world.flags.waystation_sakura_observation).toBe(true)
+    expect(state.world.flags.waystation_wolf_pack_neutralized).toBe(true)
     const quest = state.quests.find((q) => q.questId === 'quest_north_broken_banner')!
-    expect(quest.flags.north_waystation_barrier_resolved).toBeUndefined()
+    expect(quest.flags.north_waystation_barrier_resolved).toBe(true)
   })
 
-  it('Q17: mount 装备 → 线索「黑篷车辙」+ 不推进 + 一次性', () => {
+  it('Q17: mount 装备 → 骑马引开 + barrier_resolved + neutralized + 线索「黑篷车辙」+ 一次性', () => {
     stageCReady()
     mountEquipped()
     const res = useGameStore.getState().resolveWaystationBarrier('mount')
     expect(res?.ok).toBe(true)
-    expect(res).toMatchObject({ method: 'mount', clueAdded: 'clue_north_black_wagon_tracks' })
+    expect(res).toMatchObject({ method: 'mount', clueAdded: 'clue_north_black_wagon_tracks', progressed: true })
     const state = useGameStore.getState().gameState!
     expect(hasClue(state, 'clue_north_black_wagon_tracks')).toBe(true)
     expect(state.world.flags.waystation_mount_search).toBe(true)
+    expect(state.world.flags.waystation_wolf_pack_neutralized).toBe(true)
     const quest = state.quests.find((q) => q.questId === 'quest_north_broken_banner')!
-    expect(quest.flags.north_waystation_barrier_resolved).toBeUndefined()
-    // 重复 → alreadySearched + clue 幂等
+    expect(quest.flags.north_waystation_barrier_resolved).toBe(true)
+    // 已解决后再次触发 → already_done（屏障已解，不重复触发）
     const again = useGameStore.getState().resolveWaystationBarrier('mount')
-    expect(again?.ok).toBe(true)
-    expect(again).toMatchObject({ method: 'mount', alreadySearched: true, clueAdded: undefined })
+    expect(again).toEqual({ ok: false, reason: 'already_done' })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// A5-A8：非战斗路线不授予击杀语义（TM-P2-009-R1 §2.1）
+// ---------------------------------------------------------------------------
+describe('TM-P2-009-R1 A5-8：非战斗路线不冒充击杀', () => {
+  it('A5/A6: MND 成功不授予 enemy XP/Loot（player 状态与背包不变）', () => {
+    stageCReady()
+    vi.spyOn(Math, 'random').mockReturnValue(0.9)
+    const before = JSON.stringify(useGameStore.getState().gameState!.player)
+    const beforeInventory = JSON.stringify(useGameStore.getState().gameState!.inventory)
+    useGameStore.getState().resolveWaystationBarrier('mnd')
+    const state = useGameStore.getState().gameState!
+    expect(JSON.stringify(state.player)).toBe(before)
+    expect(JSON.stringify(state.inventory)).toBe(beforeInventory)
+  })
+
+  it('A7: 非战斗路线不消耗 wild_wolf first-kill（getEnemyFirstKillXp 仍 15）', () => {
+    stageCReady()
+    vi.spyOn(Math, 'random').mockReturnValue(0.9)
+    useGameStore.getState().resolveWaystationBarrier('lck')
+    const state = useGameStore.getState().gameState!
+    expect(state.world.flags.waystation_wolf_pack_neutralized).toBe(true)
+    expect(state.world.flags.waystation_wolf_pack_combat).toBeUndefined()
+    expect(getEnemyFirstKillXp(state, 'wild_wolf')).toBe(15)
+  })
+
+  it('A8: 非战斗路线解决后驿站狼群遭遇消失（checkEncounter already_defeated）', () => {
+    stageCReady()
+    vi.spyOn(Math, 'random').mockReturnValue(0.9)
+    useGameStore.getState().resolveWaystationBarrier('mnd')
+    const state = useGameStore.getState().gameState!
+    const r = checkEncounter(state, 'encounter_waystation_wolf_pack')
+    expect(r.allowed).toBe(false)
+    expect(r.reason).toBe('already_defeated')
   })
 })
 
@@ -362,7 +402,7 @@ describe('TM-P2-009 Q21-22：Stage E 问沈拓详情', () => {
 // Q23-Q24：Stage F 回报马科 + 完成特判（§16-17）
 // ---------------------------------------------------------------------------
 describe('TM-P2-009 Q23-24：Stage F 回报与完成', () => {
-  it('Q23: 已问沈拓 + 武馆 → reported + status→completable（stage 保持 0）', () => {
+  it('Q23: 已问沈拓 + 武馆 → reported + status→completable + 当场骑士试炼邀请（TM-P2-009-R1 §2.3）', () => {
     northBrokenBannerInProgress({
       north_broken_banner_make_briefed: true,
       north_waystation_searched: true,
@@ -372,13 +412,17 @@ describe('TM-P2-009 Q23-24：Stage F 回报与完成', () => {
     })
     atLocation('tianlong_martial_hall')
     expect(useGameStore.getState().reportNorthBrokenBanner()).toBe(true)
-    const quest = useGameStore.getState().gameState!.quests.find((q) => q.questId === 'quest_north_broken_banner')!
+    const state = useGameStore.getState().gameState!
+    const quest = state.quests.find((q) => q.questId === 'quest_north_broken_banner')!
     expect(quest.status).toBe('completable')
     expect(quest.flags.north_broken_banner_reported).toBe(true)
     expect(quest.stage).toBe(0)
+    // 向马科汇报当场出现骑士试炼邀请（世界 flag + 活动事件；正式骑士试炼本体不实现）
+    expect(state.world.flags.knight_trial_invited).toBe(true)
+    expect(state.world.completedEvents).toContain(KNIGHT_TRIAL_INVITED_EVENT_ID)
   })
 
-  it('Q24: completeQuest → completed + 50 金 + 120 XP + knight_trial_invited + 事件（引出骑士试炼但不实现）', () => {
+  it('Q24: completeQuest → completed + 50 金 + 120 XP（邀请已在回报时写，正式提交不重复追加）', () => {
     northBrokenBannerInProgress({
       north_broken_banner_make_briefed: true,
       north_waystation_searched: true,
@@ -396,9 +440,9 @@ describe('TM-P2-009 Q23-24：Stage F 回报与完成', () => {
     expect(quest.status).toBe('completed')
     expect(state.player.gold).toBe(beforeGold + 50)
     expect(state.player.adventureXp).toBe(beforeXp + 120)
-    // 里程碑：骑士试炼邀请（只引出下一阶段，不建骑士试炼本体）
+    // 邀请已在 reportNorthBrokenBanner 写入；completeQuest 只负责 50 金/120 XP/completed，不重复追加 invitation event
     expect(state.world.flags.knight_trial_invited).toBe(true)
-    expect(state.world.completedEvents).toContain(KNIGHT_TRIAL_INVITED_EVENT_ID)
+    expect(state.world.completedEvents.filter((e) => e === KNIGHT_TRIAL_INVITED_EVENT_ID)).toHaveLength(1)
   })
 })
 
@@ -473,7 +517,7 @@ describe('TM-P2-009 C1-12：驿站狼群 combat/escape', () => {
     expect(state.world.encounterVariants.encounter_waystation_wolf_pack).toBe('waystation_wolf_pack_fixed')
   })
 
-  it('C9: resolveEncounterVictory → 写 waystation_wolf_pack_neutralized + XP（首次击杀 3×15）+ 掉落聚合', () => {
+  it('C9: resolveEncounterVictory → 写 waystation_wolf_pack_neutralized + combat 标记 + XP（首次击杀 3×15）+ 掉落聚合', () => {
     atLocation(WAYSTATION_ID)
     // 3 只狼均走首次击杀 XP：wild_wolf（2 只，各 15）+ corrupted_wolf（1 只，需《草原狼影》进行中）
     useGameStore.getState().gameState!.quests = [
@@ -486,6 +530,8 @@ describe('TM-P2-009 C1-12：驿站狼群 combat/escape', () => {
     expect(summary).not.toBeNull()
     const state = useGameStore.getState().gameState!
     expect(state.world.flags.waystation_wolf_pack_neutralized).toBe(true)
+    // TM-P2-009-R1 §2.1：战斗击败额外写 combat 标记（供 wild_wolf first-kill 判定；非战斗绕开不写）
+    expect(state.world.flags.waystation_wolf_pack_combat).toBe(true)
     expect(state.player.adventureXp).toBeGreaterThanOrEqual(beforeXp + 45)
   })
 
