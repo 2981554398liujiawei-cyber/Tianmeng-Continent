@@ -68,10 +68,14 @@ function deriveActivityItems(state: GameState): { id: string; category: '任务'
     items.push({ id: 'world-qingshi-stage', category: '世界', text: '青石村阶段完成' })
   }
   // 剧情世界事件（TM-P2-009 §6：只展示已登记事件的用户文案；未知事件宁可隐藏，不泄露内部 event id）
-  for (const eventId of state.world.completedEvents) {
+  // 同一事件可多次触发（如每次完成任务都写入 village_elder_post_quest_response），
+  // 用事件索引保证 React key 唯一，避免相同 eventId 触发重复 key 警告。
+  for (let i = 0; i < state.world.completedEvents.length; i += 1) {
+    const eventId = state.world.completedEvents[i]
+    if (!eventId) continue
     const def = getActivityEvent(eventId)
     if (!def) continue
-    items.push({ id: `event-${eventId}`, category: '世界', text: def.text })
+    items.push({ id: `event-${eventId}-${i}`, category: '世界', text: def.text })
   }
   // 关键道具（战利品/线索）
   const pathDef = getItem('rabbit_path')
