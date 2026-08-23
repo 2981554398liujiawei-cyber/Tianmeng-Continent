@@ -197,7 +197,13 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
     if (introLoggedRef.current) return
     introLoggedRef.current = true
     const first = turns[currentTurnIndex]?.combatant
-    pushEvent('initiative', 'system', first ? `战斗开始——${first.name}先行动。` : '战斗开始。')
+    // TM-P2-009-R1 §3：开场简报保留「XX先行动」；详细日志追加每个单位的 D20 明细
+    // （D20(骰面) + 敏捷N = 总和）。只做可理解性可视化，不改 D20+AGI 公式。
+    const detail =
+      turns.length > 0
+        ? turns.map((t) => `${displayNameForCombatant(t.combatant)}：D20(${t.roll}) + 敏捷${t.combatant.agility} = ${t.initiative}`)
+        : []
+    pushEvent('initiative', 'system', first ? `战斗开始——${first.name}先行动。` : '战斗开始。', detail)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -235,6 +241,15 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
   const enemyInstances = setup.enemies
   const friendlyInstances = setup.friendly
   const companionInfos = setup.companions
+  // TM-P2-009-R1 §3：Initiative 展示名（生产 UI 不泄露 instanceId）——玩家用角色名、伙伴用注册名、
+  // 敌方同 sourceId 多实例用「骷髅战士①/②」后缀（与 enemyDisplays 语义一致，供 Strip / D20 明细复用）。
+  const displayNameForCombatant = (c: Combatant): string => {
+    if (c.sourceType === 'player') return player.name
+    if (c.sourceType === 'companion') return getCompanion(c.sourceId)?.name ?? c.name
+    const siblings = enemyInstances.filter((e) => e.sourceId === c.sourceId)
+    const index = siblings.findIndex((e) => e.instanceId === c.instanceId)
+    return index <= 0 ? c.name : `${c.name}${instanceDisplaySuffix(index)}`
+  }
   const companionInfoFor = (sourceId: string): CompanionCombatInfo | undefined =>
     companionInfos.find((info) => info.companionId === sourceId)
   const canEscape = setup.canEscape
@@ -780,6 +795,24 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
           </Button>
         </div>
       </header>
+
+      {/* TM-P2-009-R1 §3：顶部 Initiative Strip（先手顺序 D20+AGI 可视化；不泄露 instanceId） */}
+      <div
+        data-testid="combat-initiative-strip"
+        aria-label="先手顺序"
+        className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-1 rounded border border-ink-700 bg-ink-900/40 px-3 py-1.5 text-xs text-bone-400"
+      >
+        <span className="font-bold tracking-widest text-bone-500">先手：</span>
+        {turns.map((t, i) => (
+          <span key={t.combatant.instanceId} className="flex items-center gap-1">
+            {i > 0 && <span className="text-bone-600">{'>'}</span>}
+            <span className="whitespace-nowrap">
+              <span className="text-bone-200">{displayNameForCombatant(t.combatant)}</span>{' '}
+              <span className="tabular-nums text-gold-300">{t.initiative}</span>
+            </span>
+          </span>
+        ))}
+      </div>
 
       {/* 上：我方 / 敌方两栏（§17） */}
       <section className="combat-status mb-3 grid gap-3 sm:grid-cols-2">
