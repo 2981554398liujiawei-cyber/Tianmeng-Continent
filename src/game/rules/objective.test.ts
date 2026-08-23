@@ -56,3 +56,77 @@ describe('TM-P2-005 当前目标优先级', () => {
     expect(getCurrentObjective(state)?.questId).toBe('quest_apothecary_herb_route')
   })
 })
+
+describe('TM-P2-008 OBJ1-6：北郊追踪当前目标（§20）', () => {
+  const northOutskirtsQuest = (flags: Record<string, boolean | number | string> = {}, status = 'in_progress') => ({
+    questId: 'quest_north_outskirts',
+    status: status as 'in_progress' | 'completable',
+    stage: 0,
+    flags,
+  })
+
+  it('OBJ1: 未追踪 → 沿足迹继续追踪（北门）', () => {
+    const state = createInitialGameState()
+    state.quests = [northOutskirtsQuest()]
+    const obj = getCurrentObjective(state)
+    expect(obj?.questId).toBe('quest_north_outskirts')
+    expect(obj?.objective).toContain('沿着巡逻队留下的足迹继续追踪')
+    expect(obj?.locationHint).toBe('天龙城北门')
+  })
+
+  it('OBJ2: 已追踪未找到现场 → 前往北郊追踪足迹', () => {
+    const state = createInitialGameState()
+    state.quests = [northOutskirtsQuest({ north_outskirts_trail_tracked: true })]
+    const obj = getCurrentObjective(state)
+    expect(obj?.objective).toContain('前往北郊追踪足迹')
+    expect(obj?.locationHint).toBe('天龙城北郊')
+  })
+
+  it('OBJ3: 已找到现场未调查 → 调查袭击现场', () => {
+    const state = createInitialGameState()
+    state.quests = [northOutskirtsQuest({ north_outskirts_trail_tracked: true, north_outskirts_ambush_found: true })]
+    const obj = getCurrentObjective(state)
+    expect(obj?.objective).toContain('调查袭击现场')
+  })
+
+  it('OBJ4: 已调查未回报 → 返回北门或武馆将发现告诉马科', () => {
+    const state = createInitialGameState()
+    state.quests = [
+      northOutskirtsQuest({
+        north_outskirts_trail_tracked: true,
+        north_outskirts_ambush_found: true,
+        north_outskirts_ambush_investigated: true,
+      }),
+    ]
+    const obj = getCurrentObjective(state)
+    expect(obj?.objective).toContain('将发现告诉马科')
+    expect(obj?.locationHint).toBe('天龙城北门')
+  })
+
+  it('OBJ5: completable → 返回武馆向马科汇报北郊的发现', () => {
+    const state = createInitialGameState()
+    state.quests = [
+      northOutskirtsQuest(
+        {
+          north_outskirts_trail_tracked: true,
+          north_outskirts_ambush_found: true,
+          north_outskirts_ambush_investigated: true,
+          north_outskirts_reported: true,
+        },
+        'completable',
+      ),
+    ]
+    const obj = getCurrentObjective(state)
+    expect(obj?.objective).toContain('返回武馆向马科汇报')
+    expect(obj?.locationHint).toBe('天龙城武馆')
+  })
+
+  it('OBJ6: 北郊优先级高于北门失联（MAIN_QUEST_PRIORITY 最前）', () => {
+    const state = createInitialGameState()
+    state.quests = [
+      { questId: 'quest_north_gate_missing_patrol', status: 'in_progress', stage: 0, flags: {} },
+      northOutskirtsQuest({ north_outskirts_trail_tracked: true }),
+    ]
+    expect(getCurrentObjective(state)?.questId).toBe('quest_north_outskirts')
+  })
+})

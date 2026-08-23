@@ -101,13 +101,25 @@ export const LOCATIONS: Record<string, LocationDefinition> = {
     encounters: ['encounter_skeleton_witch'],
   },
   // TM-P2-001 D1：Phase 2 新地点——天龙城北门（与天龙城双向连接；北门本身无需 requiredFlag，任何时候可参观；任务行动只在正确状态出现）
+  // TM-P2-008 §17：北门与北郊双向连接（北郊 requiredFlag=north_outskirts_unlocked 未解锁时 travel 拒绝）
   tianlong_north_gate: {
     id: 'tianlong_north_gate',
     name: '天龙城北门',
     description: '高大的城门向北方荒野敞开。往来的商旅明显比南城稀少，城墙下能看到巡逻骑士留下的马蹄印。',
-    connections: ['tianlong_city'],
+    connections: ['tianlong_city', 'tianlong_north_outskirts'],
     enemyIds: ['black_mane_wolf'],
     encounters: ['encounter_black_mane_wolf'],
+  },
+  // TM-P2-008 §17：北郊（追踪 Stage A 写 north_outskirts_unlocked 后解锁；连接北门）
+  tianlong_north_outskirts: {
+    id: 'tianlong_north_outskirts',
+    name: '天龙城北郊',
+    description: '荒草与碎石的官道一路向北延伸，两侧是起伏的荒原，风里隐约传来野兽的嚎叫。',
+    requiredFlag: 'north_outskirts_unlocked',
+    connections: ['tianlong_north_gate'],
+    // TM-P2-008 §23：单只落单野狼 + 荒原狼群（狼群首次胜利后不再出现；可选遭遇不阻塞主线）
+    enemyIds: ['wild_wolf'],
+    encounters: ['encounter_wild_wolf', 'encounter_steppe_wolf_pack'],
   },
   // TM-P2-004 第 33/34 节：樱华神域·破碎边界（特殊事件地点；connections=[] 不允许普通 Travel 进入，只能通过 Sakura 特殊事件；完成后返回天龙城）
   sakura_domain_fragment: {

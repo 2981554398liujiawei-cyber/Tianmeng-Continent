@@ -31,6 +31,7 @@ import {
   canReofferContract,
   isFirstRestTalkReady,
   canTriggerSakuraBanter,
+  isSakuraPresent,
   SAKURA_FLAGS,
   SAKURA_MND_DC,
   SAKURA_LUCK_DC,
@@ -230,6 +231,16 @@ interface GameStoreState {
   /** 正式记录一条线索（幂等）：clueId 未注册 → { ok:false } 且 GameState 完全不变；未发现 → 写 world.flags[clueId]=true 返回 { ok:true, added:true, clue }；已发现 → { ok:true, added:false, alreadyKnown:true }（不重复插入，§39） */
   addClue: (clueId: string) => { ok: boolean; added: boolean; alreadyKnown: boolean; clue?: ClueDefinition }
 
+  // ---- TM-P2-008：北郊余波主线《北郊追踪》（§16-29；Stage A-D 用 quest.flags 表达，stage 保持 number）----
+  /** Stage A 追踪（北门）：quest_north_outskirts in_progress + trail_tracked undefined/false 时成功，原子写 quest.flags.north_outskirts_trail_tracked=true + world.flags.north_outskirts_unlocked=true（解锁北郊，§18）+ 记录线索「拖行痕迹」（guaranteed §29）；重复/非 boolean 异常 flag/非法前置全部拒绝且完全不变；无金币/HP/MP/物品/装备副作用、不自动保存 */
+  trackNorthOutskirtsTrail: () => boolean
+  /** Stage B 找到袭击现场（北郊）：quest in_progress + trail_tracked===true + ambush_found undefined/false 时成功，只写 quest.flags.north_outskirts_ambush_found=true（status/stage 不变）；非法前置/异常 flag/重复全部拒绝且完全不变 */
+  searchNorthOutskirtsAmbush: () => boolean
+  /** Stage C 调查多解（北郊）：mnd/lck 检定（DC 12）任一成功 → 写 ambush_investigated=true + 对应线索返回 progressed:true；sakura 在场 → flavor + 额外线索（不自动解决，§22）；检定失败可重试（§29，不软阻断）；前置不满足 → locked 且完全不变 */
+  investigateNorthOutskirtsAmbush: (method: 'mnd' | 'lck' | 'sakura') => NorthOutskirtsInvestigateResult
+  /** Stage D 回报（武馆/北门）：quest in_progress + ambush_investigated===true + reported undefined/false 时成功，写 quest.flags.north_outskirts_reported=true 且 status→completable（stage 保持 0）；非法前置/异常 flag/重复全部拒绝且完全不变 */
+  reportNorthOutskirts: () => boolean
+
   // ---- TM-P2-004：Sakura 剧情 / 伙伴 / 关系 / 休整 ----
   /** 触发反季樱雨（TM-P2-004 第 31 节）：canTriggerSakuraEncounter 纯规则；成功写 sakura_encounter_started=true + 《落樱越界》discover→in_progress */
   startSakuraEncounter: () => boolean
@@ -303,6 +314,11 @@ function applyQuestDiscovery(gameState: GameState, questId: string): GameState |
   if (questId === 'quest_north_gate_missing_patrol') {
     const wangcaiQuest = gameState.quests.find((q) => q.questId === 'quest_wangcai_trouble')
     if (wangcaiQuest?.status !== 'completed') return null
+  }
+  // TM-P2-008 §16：《北郊追踪》窄特判——仅《北门失联》completed 才能发现（北门失联保持原样，老存档可直接接新任务）；不建 prerequisite 系统
+  if (questId === 'quest_north_outskirts') {
+    const northGateQuest = gameState.quests.find((q) => q.questId === 'quest_north_gate_missing_patrol')
+    if (northGateQuest?.status !== 'completed') return null
   }
   const index = gameState.quests.findIndex((q) => q.questId === questId)
   if (index < 0) {
@@ -2267,6 +2283,159 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
     return changed
   },
 
+  // ---- TM-P2-008：北郊余波主线《北郊追踪》（§16-29；Stage A-D 用 quest.flags 表达）----
+
+  trackNorthOutskirtsTrail: () => {
+    let changed = false
+    set((s) => {
+      if (!s.gameState) return {}
+      // Stage A：必须在北门（巡逻队痕迹所在地）
+      if (s.gameState.world.currentLocationId !== 'tianlong_north_gate') return {}
+      const questIndex = s.gameState.quests.findIndex((q) => q.questId === 'quest_north_outskirts')
+      if (questIndex < 0) return {}
+      const quest = s.gameState.quests[questIndex]
+      if (!quest) return {}
+      if (quest.status !== 'in_progress') return {}
+      // trail_tracked 只允许 undefined/false/true；非 boolean 整次拒绝且完全不变（不修复）；已 true 重复调用拒绝
+      const tracked = quest.flags.north_outskirts_trail_tracked
+      if (typeof tracked !== 'undefined' && typeof tracked !== 'boolean') return {}
+      if (tracked === true) return {}
+      changed = true
+      // 原子：写 quest.flags.north_outskirts_trail_tracked=true + world.flags.north_outskirts_unlocked=true（解锁北郊，§18）+ 记录线索「拖行痕迹」（guaranteed §29）
+      const nextQuests = [...s.gameState.quests]
+      nextQuests[questIndex] = { ...quest, flags: { ...quest.flags, north_outskirts_trail_tracked: true } }
+      const base = {
+        ...s.gameState,
+        quests: nextQuests,
+        world: { ...s.gameState.world, flags: { ...s.gameState.world.flags, north_outskirts_unlocked: true } },
+      }
+      const withClue = applyClueDiscovery(base, 'clue_north_drag_trail')
+      return { gameState: withClue ?? base }
+    })
+    return changed
+  },
+
+  searchNorthOutskirtsAmbush: () => {
+    let changed = false
+    set((s) => {
+      if (!s.gameState) return {}
+      // Stage B：必须在北郊（追踪足迹）
+      if (s.gameState.world.currentLocationId !== 'tianlong_north_outskirts') return {}
+      const questIndex = s.gameState.quests.findIndex((q) => q.questId === 'quest_north_outskirts')
+      if (questIndex < 0) return {}
+      const quest = s.gameState.quests[questIndex]
+      if (!quest) return {}
+      if (quest.status !== 'in_progress') return {}
+      // trail_tracked 必须严格 true（未追踪足迹不得提前发现现场）
+      if (quest.flags.north_outskirts_trail_tracked !== true) return {}
+      // ambush_found 只允许 undefined/false/true；非 boolean 整次拒绝；已 true 重复调用拒绝
+      const found = quest.flags.north_outskirts_ambush_found
+      if (typeof found !== 'undefined' && typeof found !== 'boolean') return {}
+      if (found === true) return {}
+      changed = true
+      // 成功只写 quest.flags.north_outskirts_ambush_found=true（status/stage 不变；无奖励、不自动保存）
+      const nextQuests = [...s.gameState.quests]
+      nextQuests[questIndex] = { ...quest, flags: { ...quest.flags, north_outskirts_ambush_found: true } }
+      return { gameState: { ...s.gameState, quests: nextQuests } }
+    })
+    return changed
+  },
+
+  investigateNorthOutskirtsAmbush: (method) => {
+    let result: NorthOutskirtsInvestigateResult | null = null
+    set((s) => {
+      const state = s.gameState
+      if (!state) return {}
+      // Stage C：必须在北郊 + quest in_progress + 现场已找到 + 尚未调查完成
+      if (state.world.currentLocationId !== 'tianlong_north_outskirts') return {}
+      const questIndex = state.quests.findIndex((q) => q.questId === 'quest_north_outskirts')
+      if (questIndex < 0) return {}
+      const quest = state.quests[questIndex]
+      if (!quest) return {}
+      if (quest.status !== 'in_progress') return {}
+      if (quest.flags.north_outskirts_ambush_found !== true) return {}
+      // ambush_investigated 只允许 undefined/false/true；非 boolean 整次拒绝
+      const investigated = quest.flags.north_outskirts_ambush_investigated
+      if (typeof investigated !== 'undefined' && typeof investigated !== 'boolean') return {}
+      if (investigated === true) {
+        result = { ok: false, reason: 'already_done' }
+        return {}
+      }
+      // Sakura 插话（§22）：非强制 flavor + 额外线索，禁止自动解决任务（不推进 ambush_investigated）
+      if (method === 'sakura') {
+        if (!isSakuraPresent(state)) {
+          result = { ok: false, reason: 'sakura_not_present' }
+          return {}
+        }
+        const base = {
+          ...state,
+          world: { ...state.world, flags: { ...state.world.flags, north_outskirts_sakura_observation: true } },
+        }
+        const withClue = applyClueDiscovery(base, 'clue_north_black_mane')
+        result = {
+          ok: true,
+          method: 'sakura',
+          present: true,
+          clueAdded: withClue ? 'clue_north_black_mane' : undefined,
+        }
+        return { gameState: withClue ?? base }
+      }
+      // mnd / lck 检定（DC 12；失败可重试，不软阻断 §29）
+      let check: D20CheckResult
+      try {
+        check = performD20Check({
+          attributeScore: state.player.attributes[method],
+          level: state.player.level,
+          dc: NORTH_OUTSKIRTS_INVESTIGATE_DC,
+          proficient: false,
+          situationalModifier: 0,
+        })
+      } catch {
+        return {}
+      }
+      if (!check.success) {
+        result = { ok: true, method, check, progressed: false }
+        return {}
+      }
+      // 检定成功：原子推进 ambush_investigated=true + 对应线索（MND→拖行痕迹 / LCK→巡逻队徽记）
+      const clueId = method === 'mnd' ? 'clue_north_drag_trail' : 'clue_north_patrol_emblem'
+      const nextQuests = [...state.quests]
+      nextQuests[questIndex] = { ...quest, flags: { ...quest.flags, north_outskirts_ambush_investigated: true } }
+      const base = { ...state, quests: nextQuests }
+      const withClue = applyClueDiscovery(base, clueId)
+      result = { ok: true, method, check, progressed: true, clueAdded: withClue ? clueId : undefined }
+      return { gameState: withClue ?? base }
+    })
+    return result ?? { ok: false, reason: 'locked' }
+  },
+
+  reportNorthOutskirts: () => {
+    let changed = false
+    set((s) => {
+      if (!s.gameState) return {}
+      // Stage D：必须在武馆（马科所在）或北门（§26：北门/武馆都可汇报）
+      const loc = s.gameState.world.currentLocationId
+      if (loc !== 'tianlong_martial_hall' && loc !== 'tianlong_north_gate') return {}
+      const questIndex = s.gameState.quests.findIndex((q) => q.questId === 'quest_north_outskirts')
+      if (questIndex < 0) return {}
+      const quest = s.gameState.quests[questIndex]
+      if (!quest) return {}
+      if (quest.status !== 'in_progress') return {}
+      // 必须先调查袭击现场（Stage C 完成才可回报）
+      if (quest.flags.north_outskirts_ambush_investigated !== true) return {}
+      // reported 只允许 undefined/false/true；非 boolean 整次拒绝；已 true 重复调用拒绝
+      const reported = quest.flags.north_outskirts_reported
+      if (typeof reported !== 'undefined' && typeof reported !== 'boolean') return {}
+      if (reported === true) return {}
+      changed = true
+      // 原子：写 quest.flags.north_outskirts_reported=true 且 status→completable（stage 保持 0；无金币/XP/物品副作用、不自动保存）
+      const nextQuests = [...s.gameState.quests]
+      nextQuests[questIndex] = { ...quest, status: 'completable', flags: { ...quest.flags, north_outskirts_reported: true } }
+      return { gameState: { ...s.gameState, quests: nextQuests } }
+    })
+    return changed
+  },
+
   // ---- TM-P2-004：Sakura 剧情 / 伙伴 / 关系 / 休整 ----
 
   startSakuraEncounter: () => {
@@ -2927,6 +3096,16 @@ export type OldTraderResult = {
   luckCheck: LuckCheckResult
   goldBonus: number
 } | null
+
+// ---- TM-P2-008：北郊余波主线（§20 多解检定 / §22 Sakura 插话）----
+
+/** 北郊袭击现场调查 DC（MND / LCK 检定） */
+export const NORTH_OUTSKIRTS_INVESTIGATE_DC = 12
+
+export type NorthOutskirtsInvestigateResult =
+  | { ok: true; method: 'mnd' | 'lck'; check: D20CheckResult; progressed: boolean; clueAdded?: string }
+  | { ok: true; method: 'sakura'; present: true; clueAdded?: string }
+  | { ok: false; reason: 'locked' | 'sakura_not_present' | 'already_done' }
 
 export type NorthTowerClaimResult =
   | {
