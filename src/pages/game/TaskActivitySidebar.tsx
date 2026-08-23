@@ -341,7 +341,7 @@ export default function TaskActivitySidebar({ onCompleteQuest, onViewQuest, onAc
       {/* ④ 线索 Tab（Clue Journal V1；UI 只显示 title/description/source，杜绝生产 ID 泄漏） */}
       {activeTab === 'clues' && <ClueJournalList gameState={gameState} />}
 
-      {/* ⑤ 日志 Tab（最近记录 + 红颜录 + 伙伴） */}
+      {/* ⑤ 日志 Tab（最近记录 Activity Feed） */}
       {activeTab === 'log' && (
         <div className="flex flex-col gap-4">
           <section className="rounded border border-ink-600 bg-ink-800/50 p-4 text-sm text-bone-300">
@@ -364,12 +364,14 @@ export default function TaskActivitySidebar({ onCompleteQuest, onViewQuest, onAc
               </Button>
             )}
           </section>
-
-          {/* 红颜录 / 伙伴（保留原右栏面板） */}
-          <RelationshipPanel />
-          <CompanionPanel />
         </div>
       )}
+
+      {/* 红颜录 / 伙伴（TM-P2-008 §33-35：长期信息常驻右栏底部，不依赖 Tab 切换；兼容 P2-004 旧面板断言） */}
+      <div className="mt-4 flex flex-col gap-4">
+        <RelationshipPanel />
+        <CompanionPanel />
+      </div>
 
       {/* Activity Drawer（消息中心） */}
       <Drawer open={activityOpen} onClose={() => setActivityOpen(false)} title="消息中心" ariaLabel="消息中心">
