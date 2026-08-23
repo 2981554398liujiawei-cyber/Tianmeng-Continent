@@ -45,8 +45,12 @@ export interface SkillDefinition {
   combat?: {
     /** 伤害公式说明（描述性；实际结算走 combat.ts V3，不在此执行） */
     damageFormula: string
-    /** TM-P2-009-R1 §6：行动消耗类型——action=主行动 / bonus=附赠行动；缺省 action */
-    actionType?: 'action' | 'bonus'
+    /** TM-P2-009-R1 §6/§9：行动消耗类型——action=主行动 / bonus_action=附赠行动；缺省 action */
+    actionType?: 'action' | 'bonus_action'
+    /** TM-P2-009-R1 §9：技能冷却回合数——使用后 N 个自身回合内不可用（0/缺省 = 无冷却） */
+    cooldownTurns?: number
+    /** TM-P2-009-R1 §9：显式目标模式（缺省由 skillTargetMode 按 supportEffect/标签推导） */
+    targetMode?: 'enemy' | 'friendly' | 'self'
     /** 伤害结算元数据（TM-P2-003-R2 B1：rules 按 type 分发；缺省 = 无法结算，拒绝执行） */
     damageResolver?: {
       type: DamageResolverType

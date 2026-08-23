@@ -146,6 +146,37 @@ describe('CombatPage 单敌遭遇渲染', () => {
   })
 })
 
+describe('CombatPage TM-P2-009-R1 §10 敌人技能', () => {
+  beforeEach(() => useGameStore.setState({ gameState: null }))
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.useRealTimers()
+    if (root) {
+      act(() => root?.unmount())
+      root = null
+    }
+    useGameStore.setState({ gameState: null })
+  })
+
+  it('R1-U9 魔化兔真实施用技能（疯狂撕咬）且详细日志显示技能名', () => {
+    vi.useFakeTimers()
+    useGameStore.setState({ gameState: createInitialGameState() })
+    // D20 顺序：玩家 D20=1（ini 10）→ 魔化兔 D20=20（ini 30）→ 魔化兔先手。
+    // 敌人行动内 rng：chooseEnemyTarget=0.99 → 唯一存活我方（玩家）；chooseEnemyAction=0.0 < 0.7 → 技能。
+    vi.spyOn(Math, 'random')
+      .mockReturnValueOnce(0.0)
+      .mockReturnValueOnce(0.99)
+      .mockReturnValueOnce(0.99)
+      .mockReturnValueOnce(0.0)
+      .mockReturnValue(0.5)
+    mountCombat('encounter_corrupted_rabbit')
+    act(() => vi.advanceTimersByTime(500))
+    // 详细日志必须显示技能名（魔化兔唯一技能：疯狂撕咬）
+    expect(bodyText()).toContain('疯狂撕咬')
+    expect(bodyText()).not.toContain('的普通攻击')
+  })
+})
+
 describe('CombatPage 多敌遭遇渲染（3v3）', () => {
   beforeEach(() => useGameStore.setState({ gameState: null }))
   afterEach(() => {

@@ -19,6 +19,7 @@ import type { LuckCheckResult } from './luck'
 import type { GameState } from '../types/game'
 import type { EncounterMember } from '../types/encounter'
 import type { LootGrant } from '../types/loot'
+import type { SkillDefinition } from '../types/skill'
 
 /** 注入随机源：返回 [0,1) 区间的数（测试可注入固定序列） */
 export type Rng = () => number
@@ -235,6 +236,40 @@ export function chooseEnemyTarget(livingTargets: readonly Combatant[], rng: Rng)
   }
   const index = Math.min(livingTargets.length - 1, Math.floor(v * livingTargets.length))
   return livingTargets[index]!
+}
+
+/**
+ * TM-P2-009-R1 §10：敌方行动选择（主动技能 / 普攻）。
+ * usableSkills 必须是已过滤的可用技能（冷却归零 + 非 once-per-combat 已用，见 rules/skill 的
+ * filterUsableEnemySkills）——本函数只做「倾向性选择」，不重复校验。无可用技能 → 恒普攻。
+ * aiProfile 决定用技能倾向（aggressive 0.7 / defensive 0.4 / caster 0.85 / pack 0.55 / boss 0.8；
+ * 缺省按 aggressive）。rng 注入 [0,1)，测试可固定序列。
+ */
+export type EnemyActionChoice = { type: 'attack' } | { type: 'skill'; skillId: string }
+
+const AI_SKILL_RATE: Record<'aggressive' | 'defensive' | 'caster' | 'pack' | 'boss', number> = {
+  aggressive: 0.7,
+  defensive: 0.4,
+  caster: 0.85,
+  pack: 0.55,
+  boss: 0.8,
+}
+
+export function chooseEnemyAction(
+  usableSkills: readonly SkillDefinition[],
+  aiProfile: 'aggressive' | 'defensive' | 'caster' | 'pack' | 'boss' | undefined,
+  rng: Rng,
+): EnemyActionChoice {
+  const v = rng()
+  if (typeof v !== 'number' || !Number.isFinite(v) || v < 0 || v >= 1) {
+    throw new RangeError('rng 必须返回 [0,1) 区间的数')
+  }
+  if (usableSkills.length === 0) return { type: 'attack' }
+  const rate = AI_SKILL_RATE[aiProfile ?? 'aggressive']
+  if (v >= rate) return { type: 'attack' }
+  // v ∈ [0, rate)：在可用技能中等概率挑选一个（rate < 1 时按比例归一到技能数，避免低率画像偏向前几项）
+  const skillIndex = Math.min(usableSkills.length - 1, Math.floor((v / rate) * usableSkills.length))
+  return { type: 'skill', skillId: usableSkills[skillIndex]!.id }
 }
 
 /** 遭遇胜利：敌方全部单位死亡（§13） */

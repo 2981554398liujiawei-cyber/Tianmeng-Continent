@@ -6,6 +6,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { createInitialGameState } from '../content/initial'
+import { SKILLS } from '../content/skills'
 import { resolveAttack } from './combat'
 import type { GameState } from '../types/game'
 import type { QuestStatus } from '../types/quest'
@@ -14,6 +15,7 @@ import {
   buildEnemyCombatant,
   buildEnemyInstances,
   buildFriendlyCombatant,
+  chooseEnemyAction,
   chooseEnemyTarget,
   didTurnLoop,
   friendlyBlockIndices,
@@ -305,6 +307,43 @@ describe('敌方目标选择（§12 AI V1）', () => {
     const enemy = makeEnemyCombatants({ enemyId: 'corrupted_rabbit', count: 1 })[0]!
     expect(() => chooseEnemyTarget([enemy], () => 0)).toThrow(RangeError)
     expect(() => chooseEnemyTarget([makePlayer()], () => 1)).toThrow(RangeError)
+  })
+})
+
+describe('敌方行动选择（TM-P2-009-R1 §10 AI：技能 + 普攻）', () => {
+  const skills = () => [SKILLS['enemy_rabbit_mad_bite']!, SKILLS['enemy_wolf_vicious_pounce']!]
+
+  it('EC1 无可用技能 → 恒普攻（任何画像 / rng）', () => {
+    expect(chooseEnemyAction([], 'aggressive', () => 0)).toEqual({ type: 'attack' })
+    expect(chooseEnemyAction([], 'boss', () => 0.5)).toEqual({ type: 'attack' })
+  })
+
+  it('EC2 aiProfile 决定用技能倾向（aggressive 0.7）', () => {
+    expect(chooseEnemyAction(skills(), 'aggressive', () => 0.5)).toEqual({ type: 'skill', skillId: 'enemy_wolf_vicious_pounce' })
+    expect(chooseEnemyAction(skills(), 'aggressive', () => 0.8)).toEqual({ type: 'attack' })
+  })
+
+  it('EC3 caster / boss 高倾向用技能', () => {
+    expect(chooseEnemyAction(skills(), 'caster', () => 0.8).type).toBe('skill')
+    expect(chooseEnemyAction(skills(), 'boss', () => 0.75).type).toBe('skill')
+    expect(chooseEnemyAction(skills(), 'defensive', () => 0.5).type).toBe('attack')
+    expect(chooseEnemyAction(skills(), 'pack', () => 0.6).type).toBe('attack')
+  })
+
+  it('EC4 缺省画像按 aggressive（undefined）', () => {
+    expect(chooseEnemyAction(skills(), undefined, () => 0.5).type).toBe('skill')
+    expect(chooseEnemyAction(skills(), undefined, () => 0.8).type).toBe('attack')
+  })
+
+  it('EC5 技能在可用技能内等概率挑选（rng 0 → 第一个；接近 rate → 最后一个）', () => {
+    expect(chooseEnemyAction(skills(), 'aggressive', () => 0)).toEqual({ type: 'skill', skillId: 'enemy_rabbit_mad_bite' })
+    expect(chooseEnemyAction(skills(), 'aggressive', () => 0.69)).toEqual({ type: 'skill', skillId: 'enemy_wolf_vicious_pounce' })
+  })
+
+  it('EC6 非法 rng → RangeError', () => {
+    expect(() => chooseEnemyAction(skills(), 'aggressive', () => 1)).toThrow(RangeError)
+    expect(() => chooseEnemyAction(skills(), 'aggressive', () => -0.1)).toThrow(RangeError)
+    expect(() => chooseEnemyAction(skills(), 'aggressive', () => NaN)).toThrow(RangeError)
   })
 })
 

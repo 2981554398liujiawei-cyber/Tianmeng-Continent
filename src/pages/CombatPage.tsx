@@ -12,11 +12,14 @@ import {
   type AttackResult,
 } from '../game/rules/combat'
 import {
+  filterUsableEnemySkills,
   getSkillExecutionInfo,
   getUsableSkills,
   isOncePerCombatUsed,
   markOncePerCombatUsed,
+  resolveEnemySkillRawDamage,
   resolveSkillRawDamage,
+  skillCooldownTurns,
 } from '../game/rules/skill'
 import type { SkillDefinition } from '../game/types/skill'
 import { formatLuckCheckLog } from '../game/rules/luck'
@@ -34,6 +37,7 @@ import {
   type CombatSetup,
 } from '../game/rules/combatSetup'
 import {
+  chooseEnemyAction,
   chooseEnemyTarget,
   friendlyBlockIndices,
   instanceDisplaySuffix,
@@ -84,8 +88,9 @@ interface DefeatedEntry {
   count: number
 }
 
-/** 技能目标模式推导（§11：不按 skillId 硬编码；supportEffect/标签语义决定） */
+/** 技能目标模式推导（TM-P2-007 §11 / TM-P2-009-R1 §9：优先读显式 targetMode，无则按 supportEffect/标签语义回退） */
 function skillTargetMode(skill: SkillDefinition): SkillTargetMode {
+  if (skill.combat?.targetMode) return skill.combat.targetMode
   if (skill.combat?.supportEffect?.type === 'reduce_next_enemy_damage') return 'friendly'
   if (skill.combat?.supportEffect?.type === 'cancel_next_enemy_counter') return 'self'
   if (skill.tags.includes('healing')) return 'friendly'
@@ -140,6 +145,12 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
   const [usedOnceSkillIds, setUsedOnceSkillIds] = useState<ReadonlySet<string>>(new Set())
   /** 伙伴 once-per-combat 按 companionId 隔离（R1：双伙伴各自独立，不串号） */
   const [usedOnceCompanionSkillIds, setUsedOnceCompanionSkillIds] = useState<Record<string, ReadonlySet<string>>>({})
+
+  /** TM-P2-009-R1 §10：敌人技能冷却（enemy instanceId → skillId → 剩余冷却回合；行动开始先递减）。
+   *  ref 同步读写、无需重渲染（敌人冷却不展示给 UI），但必须在每次 executeEnemyTurn 内就地更新。 */
+  const enemySkillCooldownsRef = useRef<Record<string, Record<string, number>>>({})
+  /** TM-P2-009-R1 §10：敌人 once-per-combat 技能使用追踪（按 enemy instanceId 独立） */
+  const enemyUsedOnceSkillIdsRef = useRef<ReadonlySet<string>>(new Set())
 
   /** 护盾——target instanceId → 剩余减伤量 + 施术技能名（敌人命中时消耗；播报用技能名泛化） */
   const [shieldByTarget, setShieldByTarget] = useState<Record<string, { amount: number; skillName: string }>>({})
@@ -305,12 +316,12 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
       : { action: 1, bonus: 1 }
   const resourcesFor = (instanceId: string): { action: number; bonus: number } =>
     turnResources[instanceId] ?? baseResourcesFor(instanceId)
-  const hasResourceOf = (instanceId: string, type: 'action' | 'bonus'): boolean => {
+  const hasResourceOf = (instanceId: string, type: 'action' | 'bonus_action'): boolean => {
     const r = resourcesFor(instanceId)
     return type === 'action' ? r.action > 0 : r.bonus > 0
   }
   /** 消耗资源（当前渲染 state 读取 + 函数式更新；单次操作内闭包值可靠） */
-  const consumeResource = (instanceId: string, type: 'action' | 'bonus'): boolean => {
+  const consumeResource = (instanceId: string, type: 'action' | 'bonus_action'): boolean => {
     if (!hasResourceOf(instanceId, type)) return false
     setTurnResources((prev) => {
       const cur = prev[instanceId] ?? baseResourcesFor(instanceId)
@@ -653,7 +664,7 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
     if (playerCombatant.currentHp <= 0 || playerCombatant.currentHp >= playerCombatant.maxHp) return
     if (!healingPotionAmount || healingPotionAmount <= 0 || healingPotionCount <= 0) return
     // TM-P2-009-R1 §6.1：治疗药水消耗 Bonus Action -1
-    if (!consumeResource(playerCombatant.instanceId, 'bonus')) return
+    if (!consumeResource(playerCombatant.instanceId, 'bonus_action')) return
     const hpBefore = playerCombatant.currentHp
     const next = commitCombatantUpdate((cs) =>
       cs.map((c) =>
@@ -702,8 +713,15 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
     consumeResource(playerCombatant.instanceId, 'action')
   }
 
-  /** 敌方 AI 行动（§12 V1：随机存活我方目标 → 正式攻击） */
+  /** 敌方 AI 行动（§12 V1 + TM-P2-009-R1 §10：技能 + 普攻选择；敌人不占 Action/Bonus） */
   const executeEnemyTurn = (enemy: Combatant) => {
+    // TM-P2-009-R1 §10：该敌人行动开始——自身技能冷却先递减（归 0 的本行动即可用；ref 同步就地更新）
+    const mine = enemySkillCooldownsRef.current[enemy.instanceId]
+    if (mine) {
+      const nextMine: Record<string, number> = {}
+      for (const [skillId, turns] of Object.entries(mine)) nextMine[skillId] = Math.max(0, turns - 1)
+      enemySkillCooldownsRef.current[enemy.instanceId] = nextMine
+    }
     const livingFriendly = combatants.filter((c) => c.side === 'friendly' && c.isAlive)
     if (livingFriendly.length === 0) {
       setPhase('defeat')
@@ -711,8 +729,47 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
       return
     }
     const target = chooseEnemyTarget(livingFriendly, Math.random)
-    const result = performAttack(enemy.agility, target.agility, enemy.attack, target.armor)
-    const detail = formatAttackLog(result, target.name)
+    // TM-P2-009-R1 §10：敌人技能（注册表解析 → 过滤冷却/once → AI 在技能与普攻间选择）
+    const enemyDef = getEnemy(enemy.sourceId)
+    const skillPool = (enemyDef?.skillIds ?? [])
+      .map((id) => getSkill(id))
+      .filter((s): s is SkillDefinition => Boolean(s))
+    const usable = filterUsableEnemySkills(
+      skillPool,
+      enemySkillCooldownsRef.current[enemy.instanceId] ?? {},
+      enemyUsedOnceSkillIdsRef.current,
+    )
+    const choice = chooseEnemyAction(usable, enemyDef?.aiProfile, Math.random)
+    let result: AttackResult
+    let usedSkillName: string | undefined
+    if (choice.type === 'skill') {
+      const skillDef = getSkill(choice.skillId)
+      const rawDamage = resolveEnemySkillRawDamage(choice.skillId, {
+        attackPower: enemy.attack,
+        agility: enemy.agility,
+      })
+      result = performAttack(enemy.agility, target.agility, rawDamage ?? enemy.attack, target.armor)
+      usedSkillName = skillDef?.name
+      const cd = skillCooldownTurns(choice.skillId)
+      if (cd > 0) {
+        enemySkillCooldownsRef.current[enemy.instanceId] = {
+          ...(enemySkillCooldownsRef.current[enemy.instanceId] ?? {}),
+          [choice.skillId]: cd,
+        }
+      }
+      if (skillDef?.combat?.oncePerCombat === true) {
+        const next = new Set(enemyUsedOnceSkillIdsRef.current)
+        next.add(choice.skillId)
+        enemyUsedOnceSkillIdsRef.current = next
+      }
+    } else {
+      result = performAttack(enemy.agility, target.agility, enemy.attack, target.armor)
+    }
+    // TM-P2-009-R1 §10：详细日志必须显示技能名（prepend；普攻无技能名）
+    const detail = usedSkillName
+      ? [`${usedSkillName}`, ...formatAttackLog(result, target.name)]
+      : formatAttackLog(result, target.name)
+    const skillTag = usedSkillName ? `的技能${usedSkillName}` : '的攻击'
     // 盾（命中才消耗；miss 保留）
     const shield = shieldByTarget[target.instanceId]
     let damage = result.damage
@@ -725,11 +782,11 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
       cs.map((c) => (c.instanceId === target.instanceId ? updateCombatantHp(c, c.currentHp - damage) : c)),
     )
     if (result.hit && damage > 0) {
-      pushEvent('enemy_attack', 'enemy', `${enemy.name}的攻击命中${target.name}，造成 ${damage} 点伤害。`, detail)
+      pushEvent('enemy_attack', 'enemy', `${enemy.name}${skillTag}命中${target.name}，造成 ${damage} 点伤害。`, detail)
     } else if (result.hit) {
-      pushEvent('enemy_attack', 'enemy', `${enemy.name}的攻击被${target.name}挡下，没有造成伤害。`, detail)
+      pushEvent('enemy_attack', 'enemy', `${enemy.name}${skillTag}被${target.name}挡下，没有造成伤害。`, detail)
     } else {
-      pushEvent('enemy_attack', 'enemy', `${enemy.name}的攻击落空了。`, detail)
+      pushEvent('enemy_attack', 'enemy', `${enemy.name}${skillTag}落空了。`, detail)
     }
     if (absorbed > 0) {
       pushEvent('shield', 'companion', `${shield?.skillName ?? '魔法盾'}抵消了 ${absorbed} 点伤害。`)

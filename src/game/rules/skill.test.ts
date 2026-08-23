@@ -1,18 +1,22 @@
 import { describe, expect, it } from 'vitest'
 import { getMageSpellDamage } from './combat'
 import {
+  filterUsableEnemySkills,
   getSkillExecutionInfo,
   isOncePerCombatSkill,
   isOncePerCombatUsed,
   isSuppressOnFullHitSkill,
   markOncePerCombatUsed,
+  resolveEnemySkillRawDamage,
   resolveSkillRawDamage,
   getUsableSkills,
   hasLearnedSkill,
+  skillCooldownTurns,
   skillMpCost,
   checkSkillUse,
 } from './skill'
 import { SKILLS } from '../content/skills'
+import { ENEMIES } from '../content/enemies'
 
 const CTX = { str: 14, agi: 10, mnd: 14, weaponDamageBonus: 0, level: 1 }
 
@@ -315,6 +319,131 @@ describe('TM-P2-003-R3 C：getUsableSkills 重复/未知/通用技能解析', ()
     } finally {
       if (original) SKILLS['test_general_skill'] = original
       else delete SKILLS['test_general_skill']
+    }
+  })
+})
+
+// ================= TM-P2-009-R1 §10：敌人技能（resolveEnemySkillRawDamage / filterUsableEnemySkills / cooldown） =================
+
+describe('TM-P2-009-R1 §10：敌人技能结算（EnemySkillContext）', () => {
+  it('attack_power：敌人攻击力 + bonus（疯狂撕咬 / 骨刃斩）', () => {
+    // 魔化兔 attack 16 → 16 + 2 = 18
+    expect(resolveEnemySkillRawDamage('enemy_rabbit_mad_bite', { attackPower: 16, agility: 10 })).toBe(18)
+    // 骷髅士兵 attack 20 → 20 + 2 = 22
+    expect(resolveEnemySkillRawDamage('enemy_bone_blade', { attackPower: 20, agility: 8 })).toBe(22)
+  })
+
+  it('agility_power：敌人敏捷 + bonus（鼠群突袭 / 残影突袭）', () => {
+    expect(resolveEnemySkillRawDamage('enemy_rat_swarm', { attackPower: 16, agility: 10 })).toBe(18)
+    expect(resolveEnemySkillRawDamage('enemy_calamity_lunge', { attackPower: 14, agility: 10 })).toBe(17)
+  })
+
+  it('magic_spell：固定法术基准 6 + bonus（暗影箭 / 黑火球 / 夺魂哭嚎）', () => {
+    expect(resolveEnemySkillRawDamage('enemy_dark_bolt', { attackPower: 14, agility: 8 })).toBe(16)
+    expect(resolveEnemySkillRawDamage('enemy_black_fire', { attackPower: 14, agility: 8 })).toBe(18)
+    expect(resolveEnemySkillRawDamage('enemy_witch_wail', { attackPower: 16, agility: 8 })).toBe(20)
+  })
+
+  it('未知技能 / 无 damageResolver → null（拒绝执行）', () => {
+    expect(resolveEnemySkillRawDamage('not_a_skill', { attackPower: 10, agility: 10 })).toBeNull()
+    // 敌人技能里没有任何 supportEffect-only 条目；用合成技能模拟缺失 resolver
+    const original = SKILLS['test_enemy_no_resolver']
+    SKILLS['test_enemy_no_resolver'] = {
+      id: 'test_enemy_no_resolver',
+      name: '无结算敌人技能',
+      description: '',
+      mpCost: 0,
+      tags: ['physical'],
+      combat: { damageFormula: '无 resolver' },
+    }
+    try {
+      expect(resolveEnemySkillRawDamage('test_enemy_no_resolver', { attackPower: 10, agility: 10 })).toBeNull()
+    } finally {
+      if (original) SKILLS['test_enemy_no_resolver'] = original
+      else delete SKILLS['test_enemy_no_resolver']
+    }
+  })
+})
+
+describe('TM-P2-009-R1 §10：敌人技能可用性过滤（filterUsableEnemySkills）', () => {
+  const pool = () => [
+    SKILLS['enemy_rabbit_mad_bite']!,
+    SKILLS['enemy_wolf_vicious_pounce']!, // cd2
+    SKILLS['sakura_magic_shield']!, // 玩家 once 技能（作 once 过滤样本）
+  ]
+
+  it('无冷却无 once → 全部可用', () => {
+    const usable = filterUsableEnemySkills(pool())
+    expect(usable.map((s) => s.id)).toEqual([
+      'enemy_rabbit_mad_bite',
+      'enemy_wolf_vicious_pounce',
+      'sakura_magic_shield',
+    ])
+  })
+
+  it('冷却中技能被过滤（cooldowns 按 skillId 计数 >0）', () => {
+    const usable = filterUsableEnemySkills(pool(), { enemy_wolf_vicious_pounce: 1 })
+    expect(usable.map((s) => s.id)).toEqual(['enemy_rabbit_mad_bite', 'sakura_magic_shield'])
+  })
+
+  it('once-per-combat 已用技能被过滤（usedOnce Set 语义）', () => {
+    const usable = filterUsableEnemySkills(pool(), {}, new Set(['sakura_magic_shield']))
+    expect(usable.map((s) => s.id)).toEqual(['enemy_rabbit_mad_bite', 'enemy_wolf_vicious_pounce'])
+  })
+
+  it('冷却 0 即可用（递减到 0 后恢复）', () => {
+    const usable = filterUsableEnemySkills(pool(), { enemy_wolf_vicious_pounce: 0 })
+    expect(usable.map((s) => s.id)).toContain('enemy_wolf_vicious_pounce')
+  })
+
+  it('空技能列表 / 全部冷却 → 返回空（AI 回退普攻）', () => {
+    expect(filterUsableEnemySkills([])).toEqual([])
+    const usable = filterUsableEnemySkills(pool(), { enemy_rabbit_mad_bite: 1, enemy_wolf_vicious_pounce: 1 })
+    expect(usable.map((s) => s.id)).toEqual(['sakura_magic_shield'])
+  })
+})
+
+describe('TM-P2-009-R1 §10：技能冷却回合数', () => {
+  it('cd2 技能返回 2；无冷却/未知返回 0', () => {
+    expect(skillCooldownTurns('enemy_wolf_vicious_pounce')).toBe(2)
+    expect(skillCooldownTurns('enemy_rabbit_mad_bite')).toBe(0)
+    expect(skillCooldownTurns('not_a_skill')).toBe(0)
+  })
+})
+
+// ================= TM-P2-009-R1 §10：敌人技能挂载完整性（内容层校验） =================
+
+describe('TM-P2-009-R1 §10：所有可战斗敌人会技能（enemy content 挂载）', () => {
+  it('每个敌人至少 1 个主动技能，且 skillIds 均在技能注册表', () => {
+    for (const enemy of Object.values(ENEMIES)) {
+      expect(enemy.skillIds, `${enemy.id} 应有技能`).toBeDefined()
+      expect(enemy.skillIds!.length, `${enemy.id} 应至少 1 个技能`).toBeGreaterThanOrEqual(1)
+      for (const sid of enemy.skillIds!) {
+        const skill = SKILLS[sid]
+        expect(skill, `技能 ${sid} 应已注册`).toBeDefined()
+        // 敌人技能：无职业、无 MP 消耗（敌人无 MP 系统）
+        expect(skill?.profession, `${sid} 不应有职业`).toBeUndefined()
+        expect(skill?.mpCost, `${sid} MP 消耗应为 0`).toBe(0)
+      }
+      expect(enemy.aiProfile, `${enemy.id} 应有 AI 画像`).toBeDefined()
+    }
+  })
+
+  it('黑法师 / 骷髅女妖 / Boss 至少 2 个技能', () => {
+    const requireTwo = ['black_mage', 'skeleton_witch', 'dudu_rabbit', 'skeleton_captain']
+    for (const id of requireTwo) {
+      expect(ENEMIES[id]!.skillIds!.length, `${id} 应至少 2 个技能`).toBeGreaterThanOrEqual(2)
+    }
+  })
+
+  it('敌人技能均带 damageResolver（结算可用）且冷却语义合法', () => {
+    for (const enemy of Object.values(ENEMIES)) {
+      for (const sid of enemy.skillIds!) {
+        const skill = SKILLS[sid]!
+        expect(skill.combat?.damageResolver, `${sid} 应带 damageResolver`).toBeDefined()
+        const cd = skill.combat?.cooldownTurns ?? 0
+        expect(Number.isInteger(cd) && cd >= 0, `${sid} 冷却应为非负整数`).toBe(true)
+      }
     }
   })
 })
