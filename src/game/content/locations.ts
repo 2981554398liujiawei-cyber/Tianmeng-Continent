@@ -28,16 +28,17 @@ export const LOCATIONS: Record<string, LocationDefinition> = {
     connections: ['qingshi_village', 'rabbit_lair'],
     // TM-P1-010：投放既有 corrupted_wolf（数据零修改）；正式可见性仍由任务状态（仅 in_progress）在 GamePage/App 双守
     enemyIds: ['corrupted_rabbit', 'corrupted_wolf'],
-    // TM-P2-007 §7：Encounter V2 挂载（与 enemyIds 一一对应）
-    encounters: ['encounter_corrupted_rabbit', 'encounter_corrupted_wolf'],
+    // TM-P2-007 §7：Encounter V2 挂载（与 enemyIds 一一对应）；TM-P2-009-R1 §11：+ 魔化兔群（high repeatable）
+    encounters: ['encounter_corrupted_rabbit', 'encounter_corrupted_wolf', 'encounter_grassland_rabbit_pair'],
   },
   abandoned_mine: {
     id: 'abandoned_mine',
     name: '废弃矿洞',
     description: '早已废弃的矿洞，洞口杂草丛生，深处传来若有若无的声响。',
     connections: ['qingshi_village'],
-    enemyIds: ['corrupted_rat'],
-    encounters: ['encounter_corrupted_rat'],
+    enemyIds: ['corrupted_rat', 'cave_bat'],
+    // TM-P2-009-R1 §11：矿洞 3 层威胁（鼠低 / 蝙蝠标准 / 混合高危）
+    encounters: ['encounter_corrupted_rat', 'encounter_cave_bat', 'encounter_mine_mixed'],
   },
   rabbit_lair: {
     id: 'rabbit_lair',
@@ -75,7 +76,8 @@ export const LOCATIONS: Record<string, LocationDefinition> = {
     connections: ['tianlong_city', 'black_stone_tower_floor2'],
     // TM-P1-026：一层普通敌人骷髅士兵 + 一层 Boss 骷髅队长（同一场景节点；不建新大厅 Location）
     enemyIds: ['skeleton_soldier', 'skeleton_captain'],
-    encounters: ['encounter_skeleton_soldier', 'encounter_skeleton_captain'],
+    // TM-P2-009-R1 §11：+ 骷髅士兵巡队（standard repeatable）
+    encounters: ['encounter_skeleton_soldier', 'encounter_skeleton_captain', 'encounter_floor1_soldier_pair'],
   },
   // TM-P1-027/P1-028：黑石塔二层（严格固定顺序战斗：僵尸→黑法师→骷髅战士；深度由剧情阶段控制，本卡不新建「二层深处」Location；三层未开放时移动按钮可见但 disabled）
   black_stone_tower_floor2: {
@@ -98,7 +100,8 @@ export const LOCATIONS: Record<string, LocationDefinition> = {
     requiredFlag: 'black_stone_tower_floor3_unlocked',
     connections: ['black_stone_tower_floor2'],
     enemyIds: ['skeleton_witch'],
-    encounters: ['encounter_skeleton_witch'],
+    // TM-P2-009-R1 §11：+ 女妖与护卫（high repeatable）
+    encounters: ['encounter_skeleton_witch', 'encounter_floor3_witch_escort'],
   },
   // TM-P2-001 D1：Phase 2 新地点——天龙城北门（与天龙城双向连接；北门本身无需 requiredFlag，任何时候可参观；任务行动只在正确状态出现）
   // TM-P2-008 §17：北门与北郊双向连接（北郊 requiredFlag=north_outskirts_unlocked 未解锁时 travel 拒绝）
@@ -119,8 +122,9 @@ export const LOCATIONS: Record<string, LocationDefinition> = {
     // TM-P2-009 §11：北郊连接北郊旧驿站（驿站 requiredFlag 未解锁时 travel 拒绝）
     connections: ['tianlong_north_gate', 'tianlong_north_abandoned_waystation'],
     // TM-P2-008 §23：单只落单野狼 + 荒原狼群（狼群首次胜利后不再出现；可选遭遇不阻塞主线）
-    enemyIds: ['wild_wolf'],
-    encounters: ['encounter_wild_wolf', 'encounter_steppe_wolf_pack'],
+    // TM-P2-009-R1 §11：+ 荒原野猪（low repeatable）+ 黑鬃魔狼伏击（high repeatable）
+    enemyIds: ['wild_wolf', 'wild_boar'],
+    encounters: ['encounter_wild_wolf', 'encounter_steppe_wolf_pack', 'encounter_north_boar', 'encounter_north_mane_pack'],
   },
   // TM-P2-009 §11：北线新地点——北郊旧驿站（《断旗余声》Stage A 写 north_waystation_unlocked 后解锁；连接北郊；驿站狼群遭遇为 Stage C 战斗解）
   tianlong_north_abandoned_waystation: {

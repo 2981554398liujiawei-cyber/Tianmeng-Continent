@@ -297,6 +297,30 @@ export const SKILLS: Record<string, SkillDefinition> = {
       cooldownTurns: 2,
     },
   },
+  // ---- TM-P2-009-R1 §11：新增低复杂度通用敌人技能 ----
+  enemy_bat_swoop: {
+    id: 'enemy_bat_swoop',
+    name: '俯冲扑击',
+    description: '洞穴蝙蝠自黑暗中俯冲而下，尖牙直取敌人。',
+    mpCost: 0,
+    tags: ['physical', 'movement'],
+    combat: {
+      damageFormula: '敌方敏捷 + 5',
+      damageResolver: { type: 'agility_power', bonus: 5 },
+    },
+  },
+  enemy_boar_charge: {
+    id: 'enemy_boar_charge',
+    name: '蛮牛冲撞',
+    description: '荒原野猪低头蓄力，猛然向前冲撞。',
+    mpCost: 0,
+    tags: ['physical', 'force'],
+    combat: {
+      damageFormula: '敌方攻击力 + 3（冷却 2 回合）',
+      damageResolver: { type: 'attack_power', bonus: 3 },
+      cooldownTurns: 2,
+    },
+  },
 }
 
 /** 各职业初始技能（新角色自动获得；TM-P2-003 A） */

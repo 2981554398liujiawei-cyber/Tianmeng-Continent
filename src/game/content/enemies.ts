@@ -253,4 +253,38 @@ export const ENEMIES: Record<string, EnemyDefinition> = {
     skillIds: ['enemy_calamity_lunge'],
     aiProfile: 'aggressive',
   },
+  // TM-P2-009-R1 §11.4：新增低复杂度通用敌人——洞穴蝙蝠（废弃矿洞标准练级怪；Lv1 高敏捷低血量，快攻节奏）
+  cave_bat: {
+    id: 'cave_bat',
+    name: '洞穴蝙蝠',
+    level: 1,
+    description: '盘踞在矿洞深处的巨型蝙蝠，被魔气熏染后格外凶戾。',
+    tags: ['beast'],
+    maxHp: 5,
+    armor: 9,
+    attackPower: 12,
+    agility: 14,
+    adventureXpReward: 8,
+    dropTable: DROP_TABLES.cave_bat,
+    // TM-P2-009-R1 §10：洞穴蝙蝠主动技能
+    skillIds: ['enemy_bat_swoop'],
+    aiProfile: 'aggressive',
+  },
+  // TM-P2-009-R1 §11.4：新增低复杂度通用敌人——荒原野猪（北郊非狼系野兽；Lv2 高血低敏，慢速重装节奏）
+  wild_boar: {
+    id: 'wild_boar',
+    name: '荒原野猪',
+    level: 2,
+    description: '北郊荒野上横冲直撞的野猪，皮糙肉厚，獠牙锋利。',
+    tags: ['beast'],
+    maxHp: 14,
+    armor: 12,
+    attackPower: 15,
+    agility: 8,
+    adventureXpReward: 12,
+    dropTable: DROP_TABLES.wild_boar,
+    // TM-P2-009-R1 §10：荒原野猪主动技能
+    skillIds: ['enemy_boar_charge'],
+    aiProfile: 'aggressive',
+  },
 }

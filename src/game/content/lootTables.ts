@@ -85,6 +85,18 @@ export const DROP_TABLES: Record<string, DropTable> = {
     random: [{ itemId: 'spirit_shard', quantity: [1, 1], baseChance: 0.4 }],
     lucky: [{ itemId: 'spirit_shard', quantity: [1, 1], dc: 12 }],
   },
+  // TM-P2-009-R1 §11.4：洞穴蝙蝠（野兽类低弱怪；复用鼠尾/兽肉材料）
+  cave_bat: {
+    id: 'cave_bat',
+    guaranteed: [{ itemId: 'rat_tail', quantity: [1, 1] }],
+    random: [{ itemId: 'wolf_meat', quantity: [1, 1], baseChance: 0.3 }],
+  },
+  // TM-P2-009-R1 §11.4：荒原野猪（北郊非狼系野兽；兽肉 + 兽皮）
+  wild_boar: {
+    id: 'wild_boar',
+    guaranteed: [{ itemId: 'wolf_meat', quantity: [1, 2] }],
+    random: [{ itemId: 'wolf_pelt', quantity: [1, 1], baseChance: 0.35 }],
+  },
 }
 
 /** 查询掉落表；无表返回 undefined */

@@ -4,8 +4,8 @@
  */
 import { describe, expect, it } from 'vitest'
 import { createInitialGameState } from '../content/initial'
-import { ENEMIES, getEnemy } from '../content'
-import { getEncounter, SINGLE_ENEMY_ENCOUNTERS, validateEncounterDefinition } from '../content/encounters'
+import { ENEMIES, getEnemy, getLocation } from '../content'
+import { ENCOUNTERS, getEncounter, SINGLE_ENEMY_ENCOUNTERS, validateEncounterDefinition } from '../content/encounters'
 import type { EncounterDefinition } from '../types/encounter'
 import { checkEnemyEncounter, checkEncounter, currentEncounterVariantId, encounterRosterPreview, formatEncounterMembers, resolveEncounterVariant } from './encounter'
 import { buildCombatSetup } from './combatSetup'
@@ -633,5 +633,96 @@ describe('TM-P2-009-R1 §4：Encounter roster 预览（未固化多候选 / 固�
       { enemyId: 'wild_wolf', count: 2 },
       { enemyId: 'corrupted_wolf', count: 1 },
     ])
+  })
+})
+
+describe('TM-P2-009-R1 §11：Encounter Diversity V1（H1-H6）', () => {
+  const COVERED_MAPS = [
+    'village_grassland',
+    'abandoned_mine',
+    'black_stone_tower_floor1',
+    'black_stone_tower_floor2',
+    'black_stone_tower_floor3',
+    'tianlong_north_outskirts',
+  ] as const
+
+  it('H1: 关键探索地图每图至少两种可选威胁（location.encounters ≥2 且全部已注册）', () => {
+    for (const locationId of COVERED_MAPS) {
+      const location = getLocation(locationId)
+      expect(location, locationId).toBeDefined()
+      const encounterIds = location!.encounters ?? []
+      expect(encounterIds.length, `${locationId} 至少 2 种威胁`).toBeGreaterThanOrEqual(2)
+      for (const encounterId of encounterIds) {
+        expect(getEncounter(encounterId), `${locationId} → ${encounterId}`).toBeDefined()
+      }
+    }
+  })
+
+  it('H2: 全部遭遇有推荐等级（recommendedLevelMin ≥1；Max ≥ Min 若提供）', () => {
+    for (const def of Object.values(ENCOUNTERS)) {
+      expect(def.recommendedLevelMin, def.id).toBeTypeOf('number')
+      expect(def.recommendedLevelMin!, def.id).toBeGreaterThanOrEqual(1)
+      if (def.recommendedLevelMax !== undefined) {
+        expect(def.recommendedLevelMax, def.id).toBeGreaterThanOrEqual(def.recommendedLevelMin!)
+      }
+    }
+  })
+
+  it('H3: low/standard/dangerous 三种难度均可区分且均被使用', () => {
+    const seen = new Set<string>()
+    for (const def of Object.values(ENCOUNTERS)) {
+      expect(['low', 'standard', 'dangerous'], def.id).toContain(def.difficulty)
+      seen.add(def.difficulty!)
+    }
+    expect(seen).toEqual(new Set(['low', 'standard', 'dangerous']))
+  })
+
+  it('H4: 不动态缩放——全部遭遇定义校验通过（成员 1-3、敌人已注册；无 scaling 字段）', () => {
+    for (const def of Object.values(ENCOUNTERS)) {
+      expect(() => validateEncounterDefinition(def), def.id).not.toThrow()
+    }
+  })
+
+  it('H5/H6: repeatable 约束——可重复的必为可选（无 defeated 门）且有低额重复 XP；一次性遭遇不标 repeatable', () => {
+    for (const def of Object.values(ENCOUNTERS)) {
+      if (def.repeatable) {
+        expect(def.encounterDefeatFlag, `${def.id} repeatable 不可有 defeated 门`).toBeUndefined()
+        expect(def.repeatAdventureXpReward ?? 0, `${def.id} repeat XP`).toBeGreaterThan(0)
+      } else {
+        expect(def.repeatAdventureXpReward, `${def.id} 非 repeatable 不应有 repeat XP`).toBeUndefined()
+      }
+    }
+  })
+
+  it('新增 7 个 repeatable 遭遇注册有效（二选一、成员已注册、可逃跑、有难度）', () => {
+    const ids = [
+      'encounter_grassland_rabbit_pair',
+      'encounter_cave_bat',
+      'encounter_mine_mixed',
+      'encounter_floor1_soldier_pair',
+      'encounter_floor3_witch_escort',
+      'encounter_north_boar',
+      'encounter_north_mane_pack',
+    ]
+    for (const id of ids) {
+      const def = getEncounter(id)
+      expect(def, id).toBeDefined()
+      expect(() => validateEncounterDefinition(def!), id).not.toThrow()
+      expect(def!.canEscape, id).toBe(true)
+      expect(def!.repeatable, id).toBe(true)
+      expect(def!.difficulty, id).toBeDefined()
+      expect(def!.recommendedLevelMin, id).toBeGreaterThanOrEqual(1)
+    }
+  })
+
+  it('新敌人 cave_bat/wild_boar 挂载对应地点 enemyIds 且单敌遭遇可进入（checkEnemyEncounter 委托）', () => {
+    expect(getLocation('abandoned_mine')!.enemyIds).toContain('cave_bat')
+    expect(getLocation('tianlong_north_outskirts')!.enemyIds).toContain('wild_boar')
+    const mine = atLocation(createInitialGameState(), 'abandoned_mine')
+    expect(checkEnemyEncounter(mine, 'cave_bat').allowed).toBe(true)
+    expect(checkEncounter(mine, 'encounter_cave_bat').allowed).toBe(true)
+    const north = atLocation(createInitialGameState(), 'tianlong_north_outskirts')
+    expect(checkEnemyEncounter(north, 'wild_boar').allowed).toBe(true)
+    expect(checkEncounter(north, 'encounter_north_boar').allowed).toBe(true)
   })
 })

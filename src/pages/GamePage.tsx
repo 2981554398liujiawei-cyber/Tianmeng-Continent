@@ -8,6 +8,7 @@ import Toast from '../components/Toast'
 import MobileNav from '../components/MobileNav'
 import { useGameStore, VILLAGE_ELDER_POST_QUEST_EVENT_ID } from '../game/state/gameStore'
 import { getClue, getEnemy, getEncounter, getItem, getLocation, getNpc, NPCS, QUESTS } from '../game/content'
+import type { EncounterDefinition } from '../game/types/encounter'
 import { CHECK_DC, type D20CheckResult } from '../game/rules/d20'
 import { checkEncounter, encounterRosterPreview, formatEncounterMembers, singleEnemyIdOf } from '../game/rules/encounter'
 import type { Character } from '../game/types/character'
@@ -46,6 +47,21 @@ const CHECK_OUTCOME_LABELS: Record<D20CheckResult['outcome'], string> = {
   success: '成功',
   failure: '失败',
   critical_failure: '大失败',
+}
+
+/** TM-P2-009-R1 §11：遭遇难度徽章（低风险/标准/高危；UI 文案不泄露内部 ID） */
+const DIFFICULTY_META: Record<'low' | 'standard' | 'dangerous', { label: string; className: string }> = {
+  low: { label: '低风险', className: 'border-emerald-500/40 bg-emerald-900/30 text-emerald-300' },
+  standard: { label: '标准', className: 'border-sky-500/40 bg-sky-900/30 text-sky-300' },
+  dangerous: { label: '高危', className: 'border-red-500/40 bg-red-900/30 text-red-300' },
+}
+
+/** TM-P2-009-R1 §11：遭遇推荐等级文案（仅 Min → 「Lv.X 起」；Min+Max → 「Lv.X–Y」） */
+function encounterLevelHint(def: EncounterDefinition): string | null {
+  if (def.recommendedLevelMin === undefined) return null
+  return def.recommendedLevelMax !== undefined
+    ? `建议等级 Lv.${def.recommendedLevelMin}–${def.recommendedLevelMax}`
+    : `建议等级 Lv.${def.recommendedLevelMin} 起`
 }
 
 interface GamePageProps {
@@ -1726,6 +1742,9 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
                       // TM-P2-009-R1 §4：roster 预览与 CombatPage 共享同一固化 variant（world.encounterVariants）。
                       // 未固化 → 「可能遭遇」多候选（或分隔）；已固化 → 只显示单一「本次遭遇」；绝不把 variants 并集当阵容。
                       const roster = encounterRosterPreview(gameState, def)
+                      // TM-P2-009-R1 §11：难度徽章 + 推荐等级（UI 文案，不泄露内部 ID）
+                      const diffMeta = DIFFICULTY_META[def.difficulty ?? 'standard']
+                      const levelHint = encounterLevelHint(def)
                       return (
                         <div key={def.id} className="rounded border border-ink-600 bg-ink-900/40 p-3">
                           <div className="flex items-center justify-between gap-3">
@@ -1735,7 +1754,13 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
                                 {singleEnemy && (
                                   <span className="text-xs font-normal text-bone-500"> · Lv.{singleEnemy.level}</span>
                                 )}
+                                <span
+                                  className={`ml-2 inline-block rounded border px-1.5 py-0.5 align-middle text-[10px] font-medium ${diffMeta.className}`}
+                                >
+                                  {diffMeta.label}
+                                </span>
                               </p>
+                              {levelHint && <p className="mt-1 text-xs text-bone-500">{levelHint}</p>}
                               {singleEnemy ? (
                                 <p className="mt-1 text-xs text-bone-500">
                                   HP {singleEnemy.maxHp} · 护甲 {singleEnemy.armor}

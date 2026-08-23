@@ -44,7 +44,6 @@ import {
   isEncounterLost,
   isEncounterWon,
   nextAliveTurnIndex,
-  resolveEncounterXp,
   resolvePartyEscape,
   updateCombatantHp,
   type Combatant,
@@ -52,6 +51,7 @@ import {
   type EnemyInstance,
   type InitiativeTurn,
 } from '../game/rules/partyCombat'
+import { resolveEncounterVictoryXp } from '../game/rules/combatXp'
 import { applyAdventureXpReward } from '../game/rules/progression'
 
 interface CombatPageProps {
@@ -446,7 +446,8 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
     const defeatedInstances: EnemyInstance[] = next
       .filter((c) => c.side === 'enemy' && !c.isAlive)
       .map((c) => ({ instanceId: c.instanceId, enemyId: c.sourceId, currentHp: 0, maxHp: c.maxHp }))
-    const xp = resolveEncounterXp(gameState, defeatedInstances)
+    // TM-P2-009-R1 §11.3：遭遇胜利 XP（展示值，与 gameStore 真实授予同一公式）
+    const xp = resolveEncounterVictoryXp(gameState, def, defeatedInstances)
     setDefeatedList(buildDefeatedList(next))
     setVictoryXp(xp)
     setVictoryLevelPreview(xp > 0 ? applyAdventureXpReward(gameState.player, xp) : null)

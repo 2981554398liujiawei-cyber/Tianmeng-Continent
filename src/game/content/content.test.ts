@@ -67,11 +67,11 @@ describe('TM-P0-002：内容数量与指定条目', () => {
     expect(getLocation('sakura_domain_fragment')?.name).toBe('樱华神域·破碎边界')
     expect(getLocation('sakura_domain_fragment')?.connections).toEqual([])
     expect(getLocation('sakura_domain_fragment')?.enemyIds).toEqual(['sakura_calamity_fragment'])
-    // TM-P2-008 §17：天龙城北郊（北门解锁后进入；连接北门）
+    // TM-P2-008 §17：天龙城北郊（北门解锁后进入；连接北门）；TM-P2-009-R1 §11：+荒原野猪（北郊非狼系野兽）
     expect(getLocation('tianlong_north_outskirts')?.name).toBe('天龙城北郊')
     expect(getLocation('tianlong_north_outskirts')?.requiredFlag).toBe('north_outskirts_unlocked')
     expect(getLocation('tianlong_north_outskirts')?.connections).toEqual(['tianlong_north_gate', 'tianlong_north_abandoned_waystation'])
-    expect(getLocation('tianlong_north_outskirts')?.enemyIds).toEqual(['wild_wolf'])
+    expect(getLocation('tianlong_north_outskirts')?.enemyIds).toEqual(['wild_wolf', 'wild_boar'])
     // TM-P2-009 §11：北郊旧驿站（《断旗余声》Stage A 简报写 north_waystation_unlocked 后解锁；连接北郊；驿站狼群为 Stage C 战斗解）
     expect(getLocation('tianlong_north_abandoned_waystation')?.name).toBe('北郊旧驿站')
     expect(getLocation('tianlong_north_abandoned_waystation')?.requiredFlag).toBe('north_waystation_unlocked')
@@ -172,8 +172,8 @@ describe('TM-P0-002：内容数量与指定条目', () => {
     expect(getNpc('shen_tuo')?.locationId).toBe('tianlong_north_abandoned_waystation')
   })
 
-  it('敌人 13 个且等级符合设定', () => {
-    expect(Object.keys(ENEMIES)).toHaveLength(13)
+  it('敌人 15 个且等级符合设定', () => {
+    expect(Object.keys(ENEMIES)).toHaveLength(15)
     expect(getEnemy('corrupted_rabbit')?.level).toBe(1)
     expect(getEnemy('corrupted_rat')?.level).toBe(1)
     expect(getEnemy('corrupted_wolf')?.level).toBe(2)
@@ -191,6 +191,9 @@ describe('TM-P0-002：内容数量与指定条目', () => {
     expect(getEnemy('sakura_calamity_fragment')?.maxHp).toBe(14)
     // TM-P2-008 §23：荒原野狼 Lv.2（北郊狼群主力）
     expect(getEnemy('wild_wolf')?.level).toBe(2)
+    // TM-P2-009-R1 §11.4：洞穴蝙蝠 Lv.1（矿洞高敏低血练级怪）+ 荒原野猪 Lv.2（北郊高血低敏）
+    expect(getEnemy('cave_bat')?.level).toBe(1)
+    expect(getEnemy('wild_boar')?.level).toBe(2)
   })
 
   // TM-P1-025：骷髅士兵完整锁定（普通战斗规则，无技能/状态/抗性/掉落）
@@ -398,8 +401,8 @@ describe('TM-P0-002-R1：关键内容身份锁', () => {
   })
 
   it('注册表数量与 ID 未被改动（无新增黄金兔子王条目；TM-P1-005 新增《矿洞清理》、TM-P1-010 新增《草原狼影》、TM-P1-017 新增《追寻黄金兔子王》、TM-P1-021 新增《采药受阻》、TM-P1-022 新增《矿洞余患》、TM-P1-024 新增《商人王财的麻烦》与马科/王财、TM-P1-025 新增骷髅士兵、TM-P1-026 新增骷髅队长、TM-P1-027 新增僵尸/黑法师与黑石塔二层、TM-P1-028 新增骷髅战士、TM-P1-029 新增骷髅女妖/黑石塔三层/夔峒项链、TM-P2-001 新增北门失联/天龙城北门/黑鬃魔狼、TM-P2-004 新增落樱越界/樱华神域/残灾之影/樱花优子/桂花糕、TM-P2-008 新增北郊追踪/天龙城北郊/荒原野狼/狼牙/狼皮、TM-P2-009 新增断旗余声/北郊旧驿站/沈拓/驿站狼群/断裂队旗）', () => {
-    // TM-P2-004：+残灾之影（12）；TM-P2-008：+荒原野狼（13）
-    expect(Object.keys(ENEMIES)).toHaveLength(13)
+    // TM-P2-004：+残灾之影（12）；TM-P2-008：+荒原野狼（13）；TM-P2-009-R1：+洞穴蝙蝠/荒原野猪（15）
+    expect(Object.keys(ENEMIES)).toHaveLength(15)
     // TM-P2-004：+樱花优子（6）；TM-P2-009：+沈拓（7）
     expect(Object.keys(NPCS)).toHaveLength(7)
     // TM-P2-004：+《落樱越界》（9）；TM-P2-008：+《北郊追踪》（10）；TM-P2-009：+《断旗余声》（11）
@@ -554,7 +557,8 @@ describe('TM-P0-008：地点遭遇敌人数据一致性', () => {
     expect(getLocation('qingshi_village')?.enemyIds).toEqual([])
     // TM-P1-010：草原投放既有 corrupted_wolf（追加在魔化兔之后，不替换）
     expect(getLocation('village_grassland')?.enemyIds).toEqual(['corrupted_rabbit', 'corrupted_wolf'])
-    expect(getLocation('abandoned_mine')?.enemyIds).toEqual(['corrupted_rat'])
+    // TM-P2-009-R1 §11：矿洞 + 洞穴蝙蝠（3 层威胁）
+    expect(getLocation('abandoned_mine')?.enemyIds).toEqual(['corrupted_rat', 'cave_bat'])
     expect(getLocation('rabbit_lair')?.enemyIds).toEqual(['dudu_rabbit'])
   })
 

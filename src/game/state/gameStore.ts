@@ -8,7 +8,9 @@ import { checkEncounter, currentEncounterVariantId, resolveEncounterVariant, sin
 import { performD20Check, CHECK_DC, type D20CheckResult } from '../rules/d20'
 import { KNIGHT_POWER_STRIKE_MP_COST, MAGE_SPELL_MP_COST, WARRIOR_SUPPRESS_STRIKE_MP_COST } from '../rules/combat'
 import { applyAdventureXpReward } from '../rules/progression'
-import { getEnemyFirstKillXp } from '../rules/combatXp'
+import { getEnemyFirstKillXp, FIRST_KILL_FLAG_ENEMIES, resolveEncounterVictoryXp } from '../rules/combatXp'
+import { SINGLE_ENEMY_ENCOUNTERS } from '../content/encounters'
+import type { EncounterDefinition } from '../types/encounter'
 import { checkEquipItem } from '../rules/equipment'
 import { canBuyMerchantItem, getMerchantOffer } from '../rules/merchant'
 import { rollLoot } from '../rules/loot'
@@ -369,6 +371,17 @@ function applyQuestTransition(gameState: GameState, questId: string, to: QuestSt
   const nextQuests = [...gameState.quests]
   nextQuests[index] = { ...current, status: to }
   return { ...gameState, quests: nextQuests }
+}
+
+/**
+ * 单敌可重复遭遇定义（TM-P2-009-R1 §11.3）：enemyId → 其 SINGLE_ENEMY_ENCOUNTERS 单敌遭遇，
+ * 且该遭遇 repeatable=true → 返回 def；否则 undefined。用于 resolveCombatVictory 重复胜利给低额 XP。
+ */
+function repeatableEncounterDefForEnemy(enemyId: string): EncounterDefinition | undefined {
+  const encounterId = SINGLE_ENEMY_ENCOUNTERS[enemyId]
+  if (!encounterId) return undefined
+  const def = getEncounter(encounterId)
+  return def?.repeatable ? def : undefined
 }
 
 export const useGameStore = create<GameStoreState>()((set, get) => ({
@@ -995,12 +1008,13 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
       // TM-P2-006 第 38/40 节：战斗阅历——只在「首次正式击败」时授予（getEnemyFirstKillXp 复用现有 defeated flags 防重复）；
       // 重复遭遇 / 无 XP 定义 → firstKillXp=0，withFirstKillXp 原样返回
       const firstKillXp = getEnemyFirstKillXp(s.gameState, enemyId)
-      const withFirstKillXp = (gs: GameState): GameState => {
-        if (firstKillXp <= 0) return gs
-        const progression = applyAdventureXpReward(gs.player, firstKillXp)
+      const withXp = (gs: GameState, amount: number): GameState => {
+        if (amount <= 0) return gs
+        const progression = applyAdventureXpReward(gs.player, amount)
         if (!progression) return gs
         return { ...gs, player: progression.player }
       }
+      const withFirstKillXp = (gs: GameState): GameState => withXp(gs, firstKillXp)
       // 《村外异动》任务推进：村外草原击败魔化兔 → completable（复用封板状态机）
       if (enemyId === 'corrupted_rabbit' && location.id === 'village_grassland') {
         const next = applyQuestTransition(s.gameState, 'quest_village_monsters', 'completable')
@@ -1161,7 +1175,18 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
         }
       }
       // 合法胜利但无持久效果（其他敌人 / 重复嘟嘟兔胜利 / 任务不在推进条件）：仍可能授予首次击败 XP（如：未接任务就击败的可重复遭遇敌人首次奖励）；其余状态全部不变
-      const xpState = withFirstKillXp(s.gameState)
+      // TM-P2-009-R1 §11.3：单敌可重复遭遇——首次授予 first-kill 并写首次标记（cave_bat/wild_boar，见 FIRST_KILL_FLAG_ENEMIES）；
+      // 非首次（重复胜利）给低额 repeatAdventureXpReward（wild_wolf/cave_bat/wild_boar 单敌可重复遭遇）
+      const repeatDef = repeatableEncounterDefForEnemy(enemyId)
+      let base = s.gameState
+      if (firstKillXp > 0 && repeatDef && FIRST_KILL_FLAG_ENEMIES.has(enemyId)) {
+        base = {
+          ...base,
+          world: { ...base.world, flags: { ...base.world.flags, [`${enemyId}_first_kill`]: true } },
+        }
+      }
+      const xp = firstKillXp > 0 ? firstKillXp : (repeatDef?.repeatAdventureXpReward ?? 0)
+      const xpState = xp > 0 ? withXp(base, xp) : base
       return xpState === s.gameState ? {} : { gameState: xpState }
     })
     return ok
@@ -1216,16 +1241,23 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
     const variantId = currentEncounterVariantId(state, def)
     const variant = variantId ? def.variants?.find((v) => v.id === variantId) : undefined
     if (!variant) return null
-    let xp = 0
+    let firstKillXp = 0
     const grants: LootGrant[] = []
     for (const member of variant.members) {
       for (let i = 0; i < member.count; i += 1) {
         // 每个 EnemyInstance 独立结算（§16 pendingLoot；同 enemyId 多实例各算一次 XP）
-        xp += getEnemyFirstKillXp(state, member.enemyId)
+        firstKillXp += getEnemyFirstKillXp(state, member.enemyId)
         const grant = rollLoot(member.enemyId, state.player.attributes.lck)
         if (grant) grants.push(grant)
       }
     }
+    // TM-P2-009-R1 §11.3：遭遇胜利 XP——首次击败优先 first-kill 总和；否则 repeatable 遭遇重复胜利给低额 repeat XP
+    // 同 enemyId 多实例按 count 展开各计一次（如 wild_wolf×2 → 2 次）
+    const xp = resolveEncounterVictoryXp(
+      state,
+      def,
+      variant.members.flatMap((m) => Array.from({ length: m.count }, () => ({ enemyId: m.enemyId }))),
+    )
     let ok = false
     set((s) => {
       if (!s.gameState) return {}
@@ -1250,8 +1282,27 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
       // 区分「战斗击杀」与「非战斗绕开」：非战斗路线（MND/LCK/Sakura/Mount）只写 neutralized，不消耗 wild_wolf first-kill（A7）
       const extraCombatFlags: Record<string, boolean> =
         encounterId === 'encounter_waystation_wolf_pack' ? { waystation_wolf_pack_combat: true } : {}
-      const world = def.encounterDefeatFlag
-        ? { ...gs.world, flags: { ...gs.world.flags, [def.encounterDefeatFlag]: true, ...extraCombatFlags } }
+      // TM-P2-009-R1 §11：多敌可重复遭遇首次击败写入 first-kill 标记（仅 FIRST_KILL_FLAG_ENEMIES 需要 flag 记录）
+      const firstKillFlags: Record<string, boolean> = {}
+      if (firstKillXp > 0) {
+        for (const member of variant.members) {
+          if (FIRST_KILL_FLAG_ENEMIES.has(member.enemyId) && getEnemyFirstKillXp(state, member.enemyId) > 0) {
+            firstKillFlags[`${member.enemyId}_first_kill`] = true
+          }
+        }
+      }
+      const hasFlagChanges =
+        Boolean(def.encounterDefeatFlag) || Object.keys(extraCombatFlags).length > 0 || Object.keys(firstKillFlags).length > 0
+      const world = hasFlagChanges
+        ? {
+            ...gs.world,
+            flags: {
+              ...gs.world.flags,
+              ...extraCombatFlags,
+              ...firstKillFlags,
+              ...(def.encounterDefeatFlag ? { [def.encounterDefeatFlag]: true } : {}),
+            },
+          }
         : gs.world
       ok = true
       return { gameState: { ...gs, inventory, player: { ...gs.player, gold }, world } }

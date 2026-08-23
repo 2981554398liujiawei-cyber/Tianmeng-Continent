@@ -1,6 +1,7 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest'
 import { useGameStore } from '../state/gameStore'
-import { getEnemyFirstKillXp } from './combatXp'
+import { getEnemyFirstKillXp, resolveEncounterVictoryXp } from './combatXp'
+import { getEncounter } from '../content'
 import type { GameState } from '../types/game'
 
 function createMockStorage(): Storage {
@@ -266,5 +267,110 @@ describe('TM-P2-006：战斗阅历（Combat XP）规则（XP1-XP13）', () => {
       }
     })
     expect(getEnemyFirstKillXp(gs(), 'wild_wolf')).toBe(0)
+  })
+})
+
+describe('TM-P2-009-R1 §11：Encounter Diversity 重复 XP（H5/H6）', () => {
+  it('XP14. resolveEncounterVictoryXp：首次给 first-kill 总和；repeatable 重复给低额 repeat XP；非 repeatable 重复 0', () => {
+    const fresh = baseState()
+    // cave_bat 遭遇：无首次标记 → 首次 = 8
+    const caveDef = getEncounter('encounter_cave_bat')!
+    expect(caveDef.repeatable).toBe(true)
+    expect(caveDef.repeatAdventureXpReward).toBe(4)
+    expect(resolveEncounterVictoryXp(fresh, caveDef, [{ enemyId: 'cave_bat' }])).toBe(8)
+    // 已写首次标记 → 重复胜利 = repeat XP 4（明显低于首次 8）
+    const marked = {
+      ...fresh,
+      world: { ...fresh.world, flags: { ...fresh.world.flags, cave_bat_first_kill: true } },
+    } as GameState
+    expect(resolveEncounterVictoryXp(marked, caveDef, [{ enemyId: 'cave_bat' }])).toBe(4)
+    // 非 repeatable 遭遇重复胜利 → 0（H6：一次性遭遇不可刷任务 XP）
+    const rabbitDef = getEncounter('encounter_corrupted_rabbit')!
+    expect(rabbitDef.repeatable).not.toBe(true)
+    const rabbitDone = {
+      ...fresh,
+      quests: [
+        ...fresh.quests,
+        { questId: 'quest_village_monsters', status: 'completed' as const, stage: 0, flags: {} },
+      ],
+    } as GameState
+    expect(resolveEncounterVictoryXp(rabbitDone, rabbitDef, [{ enemyId: 'corrupted_rabbit' }])).toBe(0)
+    // repeatable 多敌混合首次：矿洞混杂（鼠 + 蝙蝠）→ 10 + 8 = 18
+    const mixedDef = getEncounter('encounter_mine_mixed')!
+    const mineState = {
+      ...fresh,
+      quests: [
+        ...fresh.quests,
+        { questId: 'quest_mine_cleanup', status: 'in_progress' as const, stage: 0, flags: {} },
+      ],
+    } as GameState
+    expect(
+      resolveEncounterVictoryXp(mineState, mixedDef, [
+        { enemyId: 'corrupted_rat' },
+        { enemyId: 'cave_bat' },
+      ]),
+    ).toBe(18)
+    // 多敌混合重复：鼠已随主线推进（quest_mine_cleanup completed）+ 蝙蝠已首次击败 → 无 first-kill → repeat XP 5
+    const mixedDone = {
+      ...mineState,
+      quests: mineState.quests.map((q) => (q.questId === 'quest_mine_cleanup' ? { ...q, status: 'completed' as const } : q)),
+      world: { ...mineState.world, flags: { cave_bat_first_kill: true } },
+    } as GameState
+    expect(
+      resolveEncounterVictoryXp(mixedDone, mixedDef, [
+        { enemyId: 'corrupted_rat' },
+        { enemyId: 'cave_bat' },
+      ]),
+    ).toBe(5)
+  })
+
+  it('XP15. cave_bat：首次（无 flag）→ 8；cave_bat_first_kill=true → 0', () => {
+    const s = baseState()
+    expect(getEnemyFirstKillXp(s, 'cave_bat')).toBe(8)
+    useGameStore.setState((state) => {
+      if (!state.gameState) return {}
+      return {
+        gameState: {
+          ...state.gameState,
+          world: { ...state.gameState.world, flags: { ...state.gameState.world.flags, cave_bat_first_kill: true } },
+        },
+      }
+    })
+    expect(getEnemyFirstKillXp(gs(), 'cave_bat')).toBe(0)
+  })
+
+  it('XP16. wild_boar：首次 → 12；wild_boar_first_kill=true → 0', () => {
+    const s = baseState()
+    expect(getEnemyFirstKillXp(s, 'wild_boar')).toBe(12)
+    useGameStore.setState((state) => {
+      if (!state.gameState) return {}
+      return {
+        gameState: {
+          ...state.gameState,
+          world: { ...state.gameState.world, flags: { ...state.gameState.world.flags, wild_boar_first_kill: true } },
+        },
+      }
+    })
+    expect(getEnemyFirstKillXp(gs(), 'wild_boar')).toBe(0)
+  })
+
+  it('XP17. 单敌 repeatable 实际结算：resolveCombatVictory(cave_bat) 首次 +8 并写 flag；重复 +4', () => {
+    useGameStore.setState((state) => {
+      if (!state.gameState) return {}
+      return {
+        gameState: {
+          ...state.gameState,
+          world: { ...state.gameState.world, currentLocationId: 'abandoned_mine' },
+        },
+      }
+    })
+    const before = gs().player.adventureXp
+    expect(useGameStore.getState().resolveCombatVictory('cave_bat')).toBe(true)
+    const afterFirst = gs()
+    expect(afterFirst.player.adventureXp).toBe(before + 8)
+    expect(afterFirst.world.flags.cave_bat_first_kill).toBe(true)
+    // 重复击败 → 不再给 first-kill，只给低额 repeat XP
+    expect(useGameStore.getState().resolveCombatVictory('cave_bat')).toBe(true)
+    expect(gs().player.adventureXp).toBe(afterFirst.player.adventureXp + 4)
   })
 })
