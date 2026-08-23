@@ -7,7 +7,8 @@ import { createInitialGameState } from '../content/initial'
 import { ENEMIES, getEnemy } from '../content'
 import { getEncounter, SINGLE_ENEMY_ENCOUNTERS, validateEncounterDefinition } from '../content/encounters'
 import type { EncounterDefinition } from '../types/encounter'
-import { checkEnemyEncounter, checkEncounter, currentEncounterVariantId, resolveEncounterVariant } from './encounter'
+import { checkEnemyEncounter, checkEncounter, currentEncounterVariantId, encounterRosterPreview, formatEncounterMembers, resolveEncounterVariant } from './encounter'
+import { buildCombatSetup } from './combatSetup'
 import type { GameState } from '../types/game'
 import type { QuestState } from '../types/quest'
 
@@ -533,5 +534,104 @@ describe('TM-P2-008 EN1-8：北郊荒原狼群（§23-24）', () => {
     // 黑鬃魔狼单敌迁移仍指向北门遭遇
     expect(SINGLE_ENEMY_ENCOUNTERS.black_mane_wolf).toBe('encounter_black_mane_wolf')
     expect(getEncounter('encounter_black_mane_wolf')!.locationId).toBe('tianlong_north_gate')
+  })
+})
+
+describe('TM-P2-009-R1 §4：Encounter roster 预览（未固化多候选 / 固化单一阵容；禁并集假阵容）', () => {
+  const brokenPatrol = () => getEncounter('encounter_broken_patrol')!
+  const atTower2 = (variants?: Record<string, string>): GameState => {
+    const state = atLocation(createInitialGameState(), 'black_stone_tower_floor2')
+    if (!variants) return state
+    return { ...state, world: { ...state.world, encounterVariants: { ...state.world.encounterVariants, ...variants } } }
+  }
+
+  it('R1: 未固化 → locked=false，candidates 为各 variant 独立阵容（不并集）', () => {
+    const preview = encounterRosterPreview(atTower2(), brokenPatrol())
+    expect(preview.locked).toBe(false)
+    expect(preview.members).toEqual([])
+    expect(preview.candidates).toHaveLength(2)
+    expect(preview.candidates[0]).toEqual([{ enemyId: 'skeleton_warrior', count: 2 }])
+    expect(preview.candidates[1]).toEqual([
+      { enemyId: 'skeleton_warrior', count: 1 },
+      { enemyId: 'black_mage', count: 1 },
+    ])
+    // 禁止把 variants 并集当阵容：每个候选成员总数 ≤3，且永不出现 2 warriors + 1 mage 假阵容
+    for (const members of preview.candidates) {
+      const total = members.reduce((sum, m) => sum + m.count, 0)
+      expect(total).toBeLessThanOrEqual(3)
+      const warriors = members.find((m) => m.enemyId === 'skeleton_warrior')?.count ?? 0
+      const mages = members.find((m) => m.enemyId === 'black_mage')?.count ?? 0
+      expect(warriors <= 2 && mages <= 1).toBe(true)
+    }
+  })
+
+  it('R2: 固化 variant A → locked=true 只显示单一阵容（2 warriors）', () => {
+    const preview = encounterRosterPreview(atTower2({ encounter_broken_patrol: 'broken_patrol_a' }), brokenPatrol())
+    expect(preview.locked).toBe(true)
+    expect(preview.members).toEqual([{ enemyId: 'skeleton_warrior', count: 2 }])
+    expect(preview.candidates).toEqual([])
+  })
+
+  it('R3: 固化 variant B → locked=true 只显示单一阵容（warrior + mage）', () => {
+    const preview = encounterRosterPreview(atTower2({ encounter_broken_patrol: 'broken_patrol_b' }), brokenPatrol())
+    expect(preview.locked).toBe(true)
+    expect(preview.members).toEqual([
+      { enemyId: 'skeleton_warrior', count: 1 },
+      { enemyId: 'black_mage', count: 1 },
+    ])
+  })
+
+  it('R4: 预览（preview）与战斗（buildCombatSetup 读同一 persisted variant）阵容一致，永不出现 2+1 假阵容', () => {
+    const def = brokenPatrol()
+    const cases: { variantId: string; total: number; warriors: number; mages: number }[] = [
+      { variantId: 'broken_patrol_a', total: 2, warriors: 2, mages: 0 },
+      { variantId: 'broken_patrol_b', total: 2, warriors: 1, mages: 1 },
+    ]
+    for (const c of cases) {
+      const state = atTower2({ encounter_broken_patrol: c.variantId })
+      const preview = encounterRosterPreview(state, def)
+      expect(preview.locked).toBe(true)
+      const battle = buildCombatSetup(state, def).enemies
+      expect(battle).toHaveLength(c.total)
+      const warriors = battle.filter((cc) => cc.sourceId === 'skeleton_warrior').length
+      const mages = battle.filter((cc) => cc.sourceId === 'black_mage').length
+      expect(warriors).toBe(c.warriors)
+      expect(mages).toBe(c.mages)
+      // 永不出现 2 warriors + 1 mage 假阵容
+      expect(!(warriors === 2 && mages === 1)).toBe(true)
+    }
+  })
+
+  it('R5: formatEncounterMembers 用户文案（×N / +；不泄露内部 ID）', () => {
+    expect(formatEncounterMembers([{ enemyId: 'skeleton_warrior', count: 2 }])).toBe('骷髅战士×2')
+    expect(
+      formatEncounterMembers([
+        { enemyId: 'skeleton_warrior', count: 1 },
+        { enemyId: 'black_mage', count: 1 },
+      ]),
+    ).toBe('骷髅战士+黑法师')
+    expect(formatEncounterMembers([])).toBe('')
+  })
+
+  it('R6: 单 variant 遭遇（驿站狼群）未固化显示唯一候选，固化后 locked 单一阵容', () => {
+    const def = getEncounter('encounter_waystation_wolf_pack')!
+    const fresh = atLocation(createInitialGameState(), 'tianlong_north_abandoned_waystation')
+    const preview = encounterRosterPreview(fresh, def)
+    expect(preview.locked).toBe(false)
+    expect(preview.candidates).toHaveLength(1)
+    expect(preview.candidates[0]).toEqual([
+      { enemyId: 'wild_wolf', count: 2 },
+      { enemyId: 'corrupted_wolf', count: 1 },
+    ])
+    const locked = {
+      ...fresh,
+      world: { ...fresh.world, encounterVariants: { encounter_waystation_wolf_pack: 'waystation_wolf_pack_fixed' } },
+    }
+    const lockedPreview = encounterRosterPreview(locked, def)
+    expect(lockedPreview.locked).toBe(true)
+    expect(lockedPreview.members).toEqual([
+      { enemyId: 'wild_wolf', count: 2 },
+      { enemyId: 'corrupted_wolf', count: 1 },
+    ])
   })
 })

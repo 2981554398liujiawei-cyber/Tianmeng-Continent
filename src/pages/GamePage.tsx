@@ -7,10 +7,9 @@ import Drawer from '../components/Drawer'
 import Toast from '../components/Toast'
 import MobileNav from '../components/MobileNav'
 import { useGameStore, VILLAGE_ELDER_POST_QUEST_EVENT_ID } from '../game/state/gameStore'
-import { getClue, getEnemy, getEncounter, getItem, getLocation, getNpc, allEncounterMembers, NPCS, QUESTS } from '../game/content'
+import { getClue, getEnemy, getEncounter, getItem, getLocation, getNpc, NPCS, QUESTS } from '../game/content'
 import { CHECK_DC, type D20CheckResult } from '../game/rules/d20'
-import { checkEncounter, singleEnemyIdOf } from '../game/rules/encounter'
-import type { EncounterDefinition } from '../game/types/encounter'
+import { checkEncounter, encounterRosterPreview, formatEncounterMembers, singleEnemyIdOf } from '../game/rules/encounter'
 import type { Character } from '../game/types/character'
 import { formatLuckCheckLog } from '../game/rules/luck'
 import { getUsableSkills } from '../game/rules/skill'
@@ -47,18 +46,6 @@ const CHECK_OUTCOME_LABELS: Record<D20CheckResult['outcome'], string> = {
   success: '成功',
   failure: '失败',
   critical_failure: '大失败',
-}
-
-/** 遭遇成员摘要（TM-P2-007 §17：威胁入口卡片显示成员构成；variants 用「或」分隔；不泄露内部 ID） */
-function encounterMembersSummary(def: EncounterDefinition): string {
-  if (def.fixedMembers) {
-    return def.fixedMembers
-      .map((m) => `${getEnemy(m.enemyId)?.name ?? m.enemyId}${m.count > 1 ? `×${m.count}` : ''}`)
-      .join('、')
-  }
-  return (def.variants ?? [])
-    .map((v) => v.members.map((m) => `${getEnemy(m.enemyId)?.name ?? m.enemyId}${m.count > 1 ? `×${m.count}` : ''}`).join('+'))
-    .join(' 或 ')
 }
 
 interface GamePageProps {
@@ -1736,6 +1723,9 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
                       const cannotFight = player.hp <= 0
                       const singleEnemyId = singleEnemyIdOf(def)
                       const singleEnemy = singleEnemyId ? getEnemy(singleEnemyId) : undefined
+                      // TM-P2-009-R1 §4：roster 预览与 CombatPage 共享同一固化 variant（world.encounterVariants）。
+                      // 未固化 → 「可能遭遇」多候选（或分隔）；已固化 → 只显示单一「本次遭遇」；绝不把 variants 并集当阵容。
+                      const roster = encounterRosterPreview(gameState, def)
                       return (
                         <div key={def.id} className="rounded border border-ink-600 bg-ink-900/40 p-3">
                           <div className="flex items-center justify-between gap-3">
@@ -1750,8 +1740,12 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
                                 <p className="mt-1 text-xs text-bone-500">
                                   HP {singleEnemy.maxHp} · 护甲 {singleEnemy.armor}
                                 </p>
+                              ) : roster.locked ? (
+                                <p className="mt-1 text-xs text-bone-500">本次遭遇：{formatEncounterMembers(roster.members)}</p>
                               ) : (
-                                <p className="mt-1 text-xs text-bone-500">{encounterMembersSummary(def)}</p>
+                                <p className="mt-1 text-xs text-bone-500">
+                                  可能遭遇：{roster.candidates.map((members) => `• ${formatEncounterMembers(members)}`).join(' 或 ')}
+                                </p>
                               )}
                             </div>
                             <Button variant="primary" disabled={cannotFight} onClick={() => onEngage(def.id)}>
