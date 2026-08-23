@@ -45,6 +45,8 @@ export interface SkillDefinition {
   combat?: {
     /** 伤害公式说明（描述性；实际结算走 combat.ts V3，不在此执行） */
     damageFormula: string
+    /** TM-P2-009-R1 §6：行动消耗类型——action=主行动 / bonus=附赠行动；缺省 action */
+    actionType?: 'action' | 'bonus'
     /** 伤害结算元数据（TM-P2-003-R2 B1：rules 按 type 分发；缺省 = 无法结算，拒绝执行） */
     damageResolver?: {
       type: DamageResolverType

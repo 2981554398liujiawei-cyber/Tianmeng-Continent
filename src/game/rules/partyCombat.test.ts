@@ -16,6 +16,7 @@ import {
   buildFriendlyCombatant,
   chooseEnemyTarget,
   didTurnLoop,
+  friendlyBlockIndices,
   instanceDisplaySuffix,
   isEncounterLost,
   isEncounterWon,
@@ -27,6 +28,7 @@ import {
   rollInitiativeQueue,
   updateCombatantHp,
   type Combatant,
+  type InitiativeTurn,
   type Rng,
 } from './partyCombat'
 
@@ -227,6 +229,67 @@ describe('回合推进（§9.4 死亡跳过 / round）', () => {
     const turns = rollInitiativeQueue([makePlayer()], seqRng(0))
     expect(() => nextAliveTurnIndex(turns, -1)).toThrow(RangeError)
     expect(() => nextAliveTurnIndex(turns, 5)).toThrow(RangeError)
+  })
+})
+
+describe('friendlyBlockIndices（TM-P2-009-R1 §7 Friendly Ready Block 线性连续段）', () => {
+  /** 直接构造 InitiativeTurn（不经过 rollInitiativeQueue），以便精确控制 friendly/enemy 几何布局 */
+  function turnOf(combatant: Combatant, order: number): InitiativeTurn {
+    return { combatant, roll: 1, initiative: combatant.agility + 1, order }
+  }
+
+  it('PC-§7-1 F1→F2→E1：同段 [0,1] 互切；E1 独立单段', () => {
+    const f1 = makePlayer()
+    const f2 = makeSakura()
+    const e1 = makeEnemyCombatants({ enemyId: 'corrupted_rabbit', count: 1 })[0]!
+    const turns = [turnOf(f1, 0), turnOf(f2, 1), turnOf(e1, 2)]
+    expect(friendlyBlockIndices(turns, 0)).toEqual([0, 1])
+    expect(friendlyBlockIndices(turns, 1)).toEqual([0, 1])
+    expect(friendlyBlockIndices(turns, 2)).toEqual([2])
+  })
+
+  it('PC-§7-2 F1→E1→F2：F1/F2 被 E1 隔开，各自单段，不能跨 E1 互切', () => {
+    const f1 = makePlayer()
+    const f2 = makeSakura()
+    const e1 = makeEnemyCombatants({ enemyId: 'corrupted_rabbit', count: 1 })[0]!
+    const turns = [turnOf(f1, 0), turnOf(e1, 1), turnOf(f2, 2)]
+    expect(friendlyBlockIndices(turns, 0)).toEqual([0])
+    expect(friendlyBlockIndices(turns, 1)).toEqual([1])
+    expect(friendlyBlockIndices(turns, 2)).toEqual([2])
+  })
+
+  it('PC-§7-3 全 friendly 段：无 enemy 时整列同一段', () => {
+    const turns = [turnOf(makePlayer(), 0), turnOf(makeSakura(), 1)]
+    expect(friendlyBlockIndices(turns, 0)).toEqual([0, 1])
+    expect(friendlyBlockIndices(turns, 1)).toEqual([0, 1])
+  })
+
+  it('PC-§7-4 friendly 在末尾连续：E1→F1→F2 时 F1/F2 同段', () => {
+    const e1 = makeEnemyCombatants({ enemyId: 'corrupted_rabbit', count: 1 })[0]!
+    const f1 = makePlayer()
+    const f2 = makeSakura()
+    const turns = [turnOf(e1, 0), turnOf(f1, 1), turnOf(f2, 2)]
+    expect(friendlyBlockIndices(turns, 1)).toEqual([1, 2])
+    expect(friendlyBlockIndices(turns, 2)).toEqual([1, 2])
+    expect(friendlyBlockIndices(turns, 0)).toEqual([0])
+  })
+
+  it('PC-§7-5 线性非环：turns 首尾的 friendly 不被错误相连', () => {
+    // F1 → E1 → E2 → F2 布局：index0 与 index3 都是 friendly，但被 enemy 隔开 → 各自单段
+    const f1 = makePlayer()
+    const e1 = makeEnemyCombatants({ enemyId: 'corrupted_rabbit', count: 1 })[0]!
+    const e2 = makeEnemyCombatants({ enemyId: 'corrupted_rat', count: 1 })[0]!
+    const f2 = makeSakura()
+    const turns = [turnOf(f1, 0), turnOf(e1, 1), turnOf(e2, 2), turnOf(f2, 3)]
+    expect(friendlyBlockIndices(turns, 0)).toEqual([0])
+    expect(friendlyBlockIndices(turns, 3)).toEqual([3])
+  })
+
+  it('PC-§7-6 空队列 / 越界索引拒绝', () => {
+    expect(() => friendlyBlockIndices([], 0)).toThrow(RangeError)
+    const turns = [turnOf(makePlayer(), 0)]
+    expect(() => friendlyBlockIndices(turns, -1)).toThrow(RangeError)
+    expect(() => friendlyBlockIndices(turns, 3)).toThrow(RangeError)
   })
 })
 

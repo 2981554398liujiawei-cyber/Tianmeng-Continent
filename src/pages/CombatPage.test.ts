@@ -15,7 +15,9 @@ import { createInitialGameState } from '../game/content/initial'
 import { useGameStore } from '../game/state/gameStore'
 import { SAKURA_COMPANION_ID } from '../game/content'
 import { COMPANIONS } from '../game/content/companions'
+import { ITEMS } from '../game/content/items'
 import type { CompanionDefinition } from '../game/types/companion'
+import type { ItemDefinition } from '../game/content/items'
 import type { GameState } from '../game/types/game'
 
 const NOOP = () => undefined
@@ -109,8 +111,8 @@ describe('CombatPage 单敌遭遇渲染', () => {
     expect(bodyText()).toContain('的回合')
     expect(bodyText()).toContain('普通攻击')
     expect(bodyText()).toContain('技能')
-    expect(bodyText()).toContain('物品')
-    expect(bodyText()).toContain('尝试逃跑')
+    expect(bodyText()).toContain('背包')
+    expect(bodyText()).toContain('逃跑')
     // 无伙伴
     expect(document.querySelector('[data-testid="combat-companion-panel"]')).toBeNull()
   })
@@ -190,6 +192,17 @@ const TEST_FOX_DEF: CompanionDefinition = {
   tags: ['test'],
 }
 
+/** §6.3 test fixture：附赠行动加成装备（test-only registry mutation，不进生产注册表） */
+const TEST_BONUS_ITEM_ID = 'test_bonus_gear'
+const TEST_BONUS_ITEM_DEF: ItemDefinition = {
+  id: TEST_BONUS_ITEM_ID,
+  name: '测试腕甲',
+  type: 'accessory',
+  description: 'TM-P2-009-R1 §6.3 测试用附赠行动加成装备（测试后从注册表移除）。',
+  value: 1,
+  combatTurnBonus: { bonusActions: 1 },
+}
+
 /** 注入已招募的樱花优子 + 测试狐（双伙伴；两者都会 once-per-combat 的魔法盾） */
 function withTwoCompanions(state: GameState): GameState {
   const next: GameState = { ...state, companions: { ...state.companions }, party: { ...state.party } }
@@ -266,6 +279,9 @@ describe('CombatPage 双伙伴 3v3 集成（BLOCKER A）', () => {
     clickButtonByText('石头城')
     expect(bodyText()).toContain('樱花优子为石头城施展了樱花魔法盾')
 
+    // TM-P2-009-R1 §6.2/§8：Sakura 用盾后不再自动换人（仍是她回合），手动结束回合 → 切到 test_fox
+    expect(bodyText()).toContain('樱花优子的回合')
+    clickButtonByText('结束回合')
     // 下一回合是 test_fox（agi12 ini13 > player agi10 ini11）→ 手动操作伙伴
     expect(bodyText()).toContain('测试狐的回合')
     clickButtonByText('技能')
@@ -293,5 +309,121 @@ describe('CombatPage 双伙伴 3v3 集成（BLOCKER A）', () => {
     // 3v3 布局：卡片最小宽度压缩到 200px（1280 两栏各 ~620px 单排 3 卡不溢出）
     const playerCard = document.querySelector('[data-testid="combat-player-panel"]') as HTMLElement
     expect(playerCard.className).toContain('min-w-[200px]')
+  })
+})
+
+// ---- TM-P2-009-R1 §5-§8：Action Economy V1 / End Turn / Friendly Ready Block 切换 ----
+describe('CombatPage TM-P2-009-R1 §5-§8', () => {
+  beforeEach(() => {
+    useGameStore.setState({ gameState: null })
+    ;(COMPANIONS as Record<string, CompanionDefinition>)[TEST_FOX_ID] = TEST_FOX_DEF
+    ;(ITEMS as Record<string, ItemDefinition>)[TEST_BONUS_ITEM_ID] = TEST_BONUS_ITEM_DEF
+  })
+  afterEach(() => {
+    delete (COMPANIONS as Record<string, CompanionDefinition>)[TEST_FOX_ID]
+    delete (ITEMS as Record<string, ItemDefinition>)[TEST_BONUS_ITEM_ID]
+    vi.restoreAllMocks()
+    if (root) {
+      act(() => root?.unmount())
+      root = null
+    }
+    useGameStore.setState({ gameState: null })
+  })
+
+  it('R1-U4 §5.1/§5.2 顶部回合号 + 单位卡三行（玩家/敌方）', () => {
+    useGameStore.setState({ gameState: createInitialGameState() })
+    vi.spyOn(Math, 'random').mockReturnValueOnce(0.99).mockReturnValue(0)
+    mountCombat('encounter_corrupted_rabbit')
+    // §5.1 顶部：战斗标题 / 回合
+    expect(bodyText()).toContain('第 1 回合 · 战斗进行中')
+    // §5.2 玩家三行：名字·职业·Lv / 生命·灵力 / 攻击·护甲·敏捷（有效属性含装备：护甲 12）
+    expect(bodyText()).toContain('石头城 · 骑士 · Lv.1')
+    expect(bodyText()).toContain('生命 22 / 22')
+    expect(bodyText()).toContain('灵力 6 / 6')
+    expect(bodyText()).toContain('攻击 6')
+    expect(bodyText()).toContain('护甲 12')
+    expect(bodyText()).toContain('敏捷 10')
+    // 敌方三行：魔化兔 · Lv / 生命 8 / 8 / 攻击 16
+    expect(bodyText()).toContain('魔化兔 · Lv')
+    expect(bodyText()).toContain('生命 8 / 8')
+    expect(bodyText()).toContain('攻击 16')
+  })
+
+  it('R1-U5 §6.2 普攻消耗 Action 后留在原地；§8 结束回合推进（不自动换人）', () => {
+    useGameStore.setState({ gameState: createInitialGameState() })
+    vi.spyOn(Math, 'random').mockReturnValueOnce(0.99).mockReturnValue(0)
+    mountCombat('encounter_corrupted_rabbit')
+    // 玩家先手：普通攻击 → 目标魔化兔
+    clickButtonByText('普通攻击')
+    clickButtonByText('魔化兔')
+    // §6.2：Action=0 后不自动换人，仍是玩家回合
+    expect(bodyText()).toContain('石头城的回合')
+    const attackBtn = Array.from(document.querySelectorAll('button')).find((b) => b.textContent?.includes('普通攻击'))
+    expect((attackBtn as HTMLButtonElement).disabled).toBe(true)
+    // Bonus 仍在 → 不出现「本回合已无可用行动」提示
+    expect(bodyText()).not.toContain('本回合已无可用行动')
+    // 技能 tray 内骑士重击 disabled + 提示「本回合行动已用完」
+    clickButtonByText('技能')
+    expect(bodyText()).toContain('本回合行动已用完')
+    const strikeBtn = Array.from(document.querySelectorAll('button')).find((b) => b.textContent?.includes('骑士重击'))
+    expect((strikeBtn as HTMLButtonElement).disabled).toBe(true)
+    // §8：结束回合 → 放弃剩余资源 → 推进到魔化兔（footer 因非 friendly 回合消失）
+    clickButtonByText('结束回合')
+    expect(bodyText()).not.toContain('石头城的回合')
+  })
+
+  it('R1-U6 §7 friendly 段切换：Sakura 回合点 test_fox 卡 → 控制切换（独立资源）', () => {
+    useGameStore.setState({ gameState: withTwoCompanions(createInitialGameState()) })
+    vi.spyOn(Math, 'random').mockReturnValueOnce(0).mockReturnValueOnce(0.99).mockReturnValue(0)
+    mountCombat('encounter_corrupted_rabbit')
+    expect(bodyText()).toContain('樱花优子的回合')
+    // 点 test_fox 卡（同 friendly 段：sakura→test_fox→player 线性连续）→ 切到 test_fox
+    const foxCard = Array.from(document.querySelectorAll('[data-testid="combat-companion-panel"]')).find((el) =>
+      (el.textContent ?? '').includes('测试狐'),
+    )
+    expect(foxCard).toBeDefined()
+    act(() => {
+      ;(foxCard as HTMLElement).click()
+    })
+    expect(bodyText()).toContain('测试狐的回合')
+  })
+
+  it('R1-U7 §6.1 治疗药水消耗 Bonus：普攻不影响 bonus，背包内药水不因资源禁用', () => {
+    useGameStore.setState({ gameState: createInitialGameState() })
+    vi.spyOn(Math, 'random').mockReturnValueOnce(0.99).mockReturnValue(0)
+    mountCombat('encounter_corrupted_rabbit')
+    // 满血开背包 → 药水按钮 disabled（「生命已满」），此时 Bonus=1 未消耗
+    clickButtonByText('背包')
+    expect(bodyText()).toContain('使用治疗药水')
+    expect(bodyText()).toContain('生命已满')
+    clickButtonByText('背包')
+    // 普攻消耗 Action
+    clickButtonByText('普通攻击')
+    clickButtonByText('魔化兔')
+    // 再开背包：药水仍因满血 disabled，但「本回合附赠行动已用完」不出现 → bonus 未被普攻消耗
+    clickButtonByText('背包')
+    expect(bodyText()).not.toContain('本回合附赠行动已用完')
+  })
+
+  it('R1-U8 §6.3 combatTurnBonus：装备 +1 附赠行动 → 玩家本回合可连续喝药两次（bonus=2）', () => {
+    const state = createInitialGameState()
+    state.player.hp = 10 // 掉血以便连续喝药（基础 bonus 仍从装备加成）
+    state.equipment.accessory = TEST_BONUS_ITEM_ID
+    useGameStore.setState({ gameState: state })
+    vi.spyOn(Math, 'random').mockReturnValueOnce(0.99).mockReturnValue(0)
+    mountCombat('encounter_corrupted_rabbit')
+    // 注入 HP 生效（玩家卡显示 生命 10 / 22）
+    expect(bodyText()).toContain('生命 10 / 22')
+    // 玩家先手（bonus=2）：喝药第一次 bonus 2→1
+    clickButtonByText('背包')
+    clickButtonByText('使用治疗药水')
+    expect(bodyText()).toContain('你使用了治疗药水')
+    // bonus 仍 1 → 药水按钮可用（未满血且 bonus 未耗尽）
+    const potionBtn = Array.from(document.querySelectorAll('button')).find((b) => b.textContent?.includes('使用治疗药水'))
+    expect((potionBtn as HTMLButtonElement).disabled).toBe(false)
+    // 喝药第二次 bonus 1→0 → 提示出现
+    clickButtonByText('使用治疗药水')
+    expect(bodyText()).toContain('你使用了治疗药水')
+    expect(bodyText()).toContain('本回合附赠行动已用完')
   })
 })

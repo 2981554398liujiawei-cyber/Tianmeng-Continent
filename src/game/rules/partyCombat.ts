@@ -198,6 +198,29 @@ export function didTurnLoop(fromIndex: number, nextIndex: number): boolean {
   return nextIndex <= fromIndex
 }
 
+/**
+ * TM-P2-009-R1 §7：从 fromIndex 出发的 Friendly Ready Block（线性连续 friendly 段）。
+ * 从 fromIndex 沿 turns 数组向两侧扩展连续 friendly 单位，直到遇到 enemy 或数组端点。
+ * 有意用「线性」而非「环」：turns 首尾的 friendly 不被错误相连，从而保证
+ *   `F1 → E1 → F2` 中 F1 不能跨过 E1 切到 F2、F2 也不能切回 F1；
+ *   `F1 → F2 → E1` 中 F1/F2 同段可互切。
+ * fromIndex 本身不是 friendly（enemy 位置）时只返回自身——段是「friendly 单位集」，
+ * 敌人不在任何段内；UI 层实际只在友好行动时调用（isFriendlyTurn）。
+ * 本函数只表达「段」的几何；是否可切换（未 ended / 存活）由调用方在 UI 层过滤。
+ */
+export function friendlyBlockIndices(turns: readonly InitiativeTurn[], fromIndex: number): number[] {
+  const n = turns.length
+  if (n === 0) throw new RangeError('先手队列不能为空')
+  if (!Number.isInteger(fromIndex) || fromIndex < 0 || fromIndex >= n) {
+    throw new RangeError('当前行动索引越界')
+  }
+  if (turns[fromIndex]!.combatant.side !== 'friendly') return [fromIndex]
+  const result = new Set<number>([fromIndex])
+  for (let i = fromIndex + 1; i < n && turns[i]!.combatant.side === 'friendly'; i += 1) result.add(i)
+  for (let i = fromIndex - 1; i >= 0 && turns[i]!.combatant.side === 'friendly'; i -= 1) result.add(i)
+  return [...result].sort((a, b) => a - b)
+}
+
 /** 敌方 AI 目标选择（§12 AI V1）：随机选取存活我方单位。livingTargets 必须已过滤为存活我方。 */
 export function chooseEnemyTarget(livingTargets: readonly Combatant[], rng: Rng): Combatant {
   if (!Array.isArray(livingTargets) || livingTargets.length === 0) {

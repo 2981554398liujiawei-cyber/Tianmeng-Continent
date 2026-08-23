@@ -22,6 +22,13 @@ export interface ItemDefinition {
   allowedProfessions?: import('../types/character').ProfessionId[]
   /** 礼物标签（仅 gift 类型可使用；TM-P2-004 第 65 节——赠礼按标签匹配关系档案 likedGiftTags） */
   giftTags?: string[]
+  /** TM-P2-009-R1 §6.3：装备后每回合额外行动资源（通用扩展点；缺省无加成）。
+   *  actions=额外主行动 / bonusActions=额外附赠行动。仅玩家装备生效（伙伴无装备）。
+   *  §6.3 只要求通用实现 + test fixture，本卡不强行新增失衡装备。 */
+  combatTurnBonus?: {
+    actions?: number
+    bonusActions?: number
+  }
 }
 
 /** V1 最小物品目录（仅当前需要的内容） */

@@ -35,7 +35,7 @@ import {
 } from '../game/rules/combatSetup'
 import {
   chooseEnemyTarget,
-  didTurnLoop,
+  friendlyBlockIndices,
   instanceDisplaySuffix,
   isEncounterLost,
   isEncounterWon,
@@ -129,6 +129,12 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
   const [pendingTarget, setPendingTarget] = useState<PendingTarget | null>(null)
   const [actionTray, setActionTray] = useState<'skill' | 'item' | null>(null)
   const [detailDrawerOpen, setDetailDrawerOpen] = useState(false)
+  /** TM-P2-009-R1 §6：每单位独立 Action/Bonus（按 instanceId；纯 UI 资源，不写 Save；新回合重置） */
+  const [turnResources, setTurnResources] = useState<Record<string, { action: number; bonus: number }>>({})
+  /** §7/§8：每单位已结束回合标记（End Turn 后 true；新回合重置） */
+  const [endedByInstance, setEndedByInstance] = useState<Record<string, boolean>>({})
+  /** §5：当前回合号（roundRef 的 UI 镜像，供顶部标题展示） */
+  const [round, setRound] = useState(1)
 
   /** 每场一次技能按 skillId 独立追踪（玩家 / 伙伴分开；TM-P2-003-R2 B2） */
   const [usedOnceSkillIds, setUsedOnceSkillIds] = useState<ReadonlySet<string>>(new Set())
@@ -151,7 +157,7 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
   const potionsUsedRef = useRef(0)
 
   const eventSeqRef = useRef(0)
-  const roundRef = useRef(0)
+  const roundRef = useRef(1)
   const pushEvent = (
     kind: CombatEventKind,
     actor: CombatEvent['actor'],
@@ -181,7 +187,7 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
     if (skipNextEnemy) {
       setSkipNextEnemy(false)
       pushEvent('companion_skip', 'companion', `${actor.name}被${skipSourceName}牵走了注意力，本回合没有行动。`)
-      setCurrentTurnIndex((idx) => advanceTurnIndex(idx))
+      advanceTurn(currentTurnIndex)
       return
     }
     const timer = window.setTimeout(() => {
@@ -258,7 +264,6 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
   const currentCombatant = combatants.find((c) => c.instanceId === turns[currentTurnIndex]?.combatant.instanceId)
   const isPlayerTurn = currentCombatant?.sourceType === 'player' && currentCombatant?.isAlive
   const isFriendlyTurn = currentCombatant?.side === 'friendly' && currentCombatant?.isAlive
-  const actionsLocked = phase !== 'active' || !isFriendlyTurn || pendingTarget !== null
 
   // 玩家 / 伙伴当前 combatant（面板展示 + 行动）
   const playerCombatant = combatants.find((c) => c.sourceType === 'player')
@@ -277,14 +282,108 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
     return next
   }
 
-  /** 推进到下一个存活单位（§9.4：环状；回绕 = 新回合 round+1） */
-  const advanceTurnIndex = (fromIndex: number): number => {
-    const next = nextAliveTurnIndex(turns, fromIndex)
-    if (didTurnLoop(fromIndex, next)) roundRef.current += 1
-    return next
+  /** TM-P2-009-R1 §6：每单位资源读取（未初始化 = 满资源 {action:1, bonus:1}） */
+  // TM-P2-009-R1 §6.3：玩家装备 combatTurnBonus 聚合（武器/防具/饰品逐件累加 actions/bonusActions；
+  // 伙伴无装备、敌方无资源。缺省 {action:1, bonus:1}。置于 resourcesFor 前避免 TDZ 前向引用。）
+  const equipmentTurnBonus = (() => {
+    let actions = 0
+    let bonusActions = 0
+    for (const slot of [gameState.equipment.weapon, gameState.equipment.armor, gameState.equipment.accessory]) {
+      if (!slot) continue
+      const def = getItem(slot)
+      const bonus = def?.combatTurnBonus
+      if (!bonus) continue
+      actions += bonus.actions ?? 0
+      bonusActions += bonus.bonusActions ?? 0
+    }
+    return { actions, bonusActions }
+  })()
+  /** 单位回合基础资源（未消耗时的初始值）：玩家按装备 bonus 加成；其余固定 {1,1} */
+  const baseResourcesFor = (instanceId: string): { action: number; bonus: number } =>
+    instanceId === playerCombatant?.instanceId
+      ? { action: 1 + equipmentTurnBonus.actions, bonus: 1 + equipmentTurnBonus.bonusActions }
+      : { action: 1, bonus: 1 }
+  const resourcesFor = (instanceId: string): { action: number; bonus: number } =>
+    turnResources[instanceId] ?? baseResourcesFor(instanceId)
+  const hasResourceOf = (instanceId: string, type: 'action' | 'bonus'): boolean => {
+    const r = resourcesFor(instanceId)
+    return type === 'action' ? r.action > 0 : r.bonus > 0
+  }
+  /** 消耗资源（当前渲染 state 读取 + 函数式更新；单次操作内闭包值可靠） */
+  const consumeResource = (instanceId: string, type: 'action' | 'bonus'): boolean => {
+    if (!hasResourceOf(instanceId, type)) return false
+    setTurnResources((prev) => {
+      const cur = prev[instanceId] ?? baseResourcesFor(instanceId)
+      return {
+        ...prev,
+        [instanceId]:
+          type === 'action'
+            ? { action: Math.max(0, cur.action - 1), bonus: cur.bonus }
+            : { action: cur.action, bonus: Math.max(0, cur.bonus - 1) },
+      }
+    })
+    return true
   }
 
-  /** 行动后统一收尾：胜负判定 → 结算 / 推进回合 */
+  /** §8：下一个「可行动」单位（turns 环）。friendly 要求未 ended；enemy 恒可行动。
+   *  整圈扫描遇到 fromIndex 自身 → 说明所有 friendly 已 ended（或全场只剩 fromIndex）→ 返回 null 进入新回合。
+   *  绝不能返回 fromIndex 自己，否则 enemy 行动完会无限循环。 */
+  const nextActorIndex = (fromIndex: number): number | null => {
+    const n = turns.length
+    for (let step = 1; step <= n; step += 1) {
+      const idx = (fromIndex + step) % n
+      if (idx === fromIndex) return null
+      const c = turns[idx]!.combatant
+      if (c.isAlive && (c.side === 'enemy' || !(endedByInstance[c.instanceId] ?? false))) return idx
+    }
+    return null
+  }
+
+  /** §8：新回合——round+1、清空所有单位 ended 与资源、回到第一个存活单位 */
+  const startNewRound = (fromIndex: number): number => {
+    roundRef.current += 1
+    setRound(roundRef.current)
+    setEndedByInstance({})
+    setTurnResources({})
+    return nextAliveTurnIndex(turns, fromIndex)
+  }
+
+  /** 回合推进（End Turn / 敌方行动后）：下一未结束存活单位；全场已结束 → 新回合 */
+  const advanceTurn = (fromIndex: number) => {
+    const next = nextActorIndex(fromIndex)
+    if (next !== null) {
+      setCurrentTurnIndex(next)
+    } else {
+      setCurrentTurnIndex(startNewRound(fromIndex))
+    }
+  }
+
+  /** §8：结束回合——当前单位 ended=true、放弃剩余资源、推进 */
+  const handleEndTurn = () => {
+    if (phase !== 'active' || !currentCombatant) return
+    if (currentCombatant.side !== 'friendly' || !currentCombatant.isAlive) return
+    setPendingTarget(null)
+    setActionTray(null)
+    const id = currentCombatant.instanceId
+    setEndedByInstance((prev) => ({ ...prev, [id]: true }))
+    setTurnResources((prev) => ({ ...prev, [id]: { action: 0, bonus: 0 } }))
+    advanceTurn(currentTurnIndex)
+  }
+
+  /** §7：friendly 段内切换控制（点卡片；未 ended 且存活且同段才可切） */
+  const handleSwitchFriendly = (instanceId: string) => {
+    if (phase !== 'active' || pendingTarget !== null) return
+    const idx = turns.findIndex((t) => t.combatant.instanceId === instanceId)
+    if (idx === -1) return
+    const c = turns[idx]!.combatant
+    if (c.side !== 'friendly' || !c.isAlive || (endedByInstance[c.instanceId] ?? false)) return
+    const block = friendlyBlockIndices(turns, currentTurnIndex)
+    if (!block.includes(idx)) return
+    setCurrentTurnIndex(idx)
+  }
+
+  /** 行动后统一收尾：胜负判定 → 结算。TM-P2-009-R1 §6.2：不再自动换人——
+   *  当前单位仍有 Action/Bonus 时留在原地，由玩家手动 End Turn 才推进。 */
   const afterAction = (next: Combatant[]) => {
     if (isEncounterWon(next)) {
       setPhase('victory')
@@ -296,8 +395,22 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
       finalizeCombatEnd(next)
       return
     }
-    setCurrentTurnIndex((idx) => advanceTurnIndex(idx))
   }
+
+  // TM-P2-009-R1 §6/§7/§8：当前单位资源 / ended / friendly 段可切换集合
+  //（置于 resourcesFor 之后派生，避免对 const 箭头函数的前向引用 TDZ）
+  const currentEnded = currentCombatant ? (endedByInstance[currentCombatant.instanceId] ?? false) : false
+  const currentResources = currentCombatant ? resourcesFor(currentCombatant.instanceId) : { action: 0, bonus: 0 }
+  const hasAction = currentResources.action > 0
+  const hasBonus = currentResources.bonus > 0
+  const friendlyBlock = isFriendlyTurn ? friendlyBlockIndices(turns, currentTurnIndex) : []
+  const switchableFriendlyIds = new Set(
+    friendlyBlock
+      .map((i) => turns[i]!.combatant)
+      .filter((c) => c.isAlive && !(endedByInstance[c.instanceId] ?? false))
+      .map((c) => c.instanceId),
+  )
+  const actionsLocked = phase !== 'active' || !isFriendlyTurn || pendingTarget !== null || currentEnded
 
   /** 战斗结束统一同步：玩家 HP/MP + 药水 + 伙伴 MP 写入 GameState；胜利再结算 XP/loot/flags */
   const finalizeCombatEnd = (next: Combatant[]) => {
@@ -409,6 +522,9 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
     const info = getSkillExecutionInfo(skillId)
     if (!info) return
     if (info.oncePerCombat && isOnceUsed(actor, skillId)) return
+    // TM-P2-009-R1 §6.1：主动技能消耗由 SkillDefinition.combat.actionType 决定（缺省 action）
+    const actionType = info.skill.combat?.actionType ?? 'action'
+    if (!hasResourceOf(actor.instanceId, actionType)) return
     const support = info.skill.combat?.supportEffect
     // 盾：选友方目标，目标下次被敌人命中减伤
     if (support?.type === 'reduce_next_enemy_damage') {
@@ -417,6 +533,7 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
         pushEvent('system', 'system', '灵力不足，技能无法施展。')
         return
       }
+      if (!consumeResource(actor.instanceId, actionType)) return
       const next = commitCombatantUpdate((cs) =>
         cs.map((c) => (c.instanceId === actor.instanceId ? { ...c, currentMp: c.currentMp - info.skill.mpCost } : c)),
       )
@@ -435,6 +552,7 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
         pushEvent('system', 'system', '灵力不足，技能无法施展。')
         return
       }
+      if (!consumeResource(actor.instanceId, actionType)) return
       const next = commitCombatantUpdate((cs) =>
         cs.map((c) => (c.instanceId === actor.instanceId ? { ...c, currentMp: c.currentMp - info.skill.mpCost } : c)),
       )
@@ -453,6 +571,7 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
       pushEvent('system', 'system', '灵力不足，技能无法施展。')
       return
     }
+    if (!consumeResource(actor.instanceId, actionType)) return
     const result = performAttack(actor.agility, target.agility, rawDamage, target.armor)
     const next = commitCombatantUpdate((cs) =>
       cs.map((c) => {
@@ -519,6 +638,8 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
     const { kind, skillId } = pendingTarget
     setPendingTarget(null)
     if (kind === 'attack') {
+      // TM-P2-009-R1 §6.1：普通攻击消耗 Action -1
+      if (!consumeResource(actor.instanceId, 'action')) return
       const result = performAttack(actor.agility, target.agility, actor.attack, target.armor)
       applyAttackResult(actor, target, result, 'basic')
     } else if (skillId) {
@@ -531,6 +652,8 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
     if (phase !== 'active' || !isPlayerTurn || !playerCombatant) return
     if (playerCombatant.currentHp <= 0 || playerCombatant.currentHp >= playerCombatant.maxHp) return
     if (!healingPotionAmount || healingPotionAmount <= 0 || healingPotionCount <= 0) return
+    // TM-P2-009-R1 §6.1：治疗药水消耗 Bonus Action -1
+    if (!consumeResource(playerCombatant.instanceId, 'bonus')) return
     const hpBefore = playerCombatant.currentHp
     const next = commitCombatantUpdate((cs) =>
       cs.map((c) =>
@@ -546,18 +669,18 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
     afterAction(next)
   }
 
-  /** 伙伴跳过（不耗 MP；视为行动，推进回合） */
+  /** 伙伴跳过（不耗 MP；§8 语义 = 放弃本回合剩余资源并推进，等同 End Turn） */
   const handleCompanionSkip = () => {
     if (phase !== 'active' || !currentCombatant || currentCombatant.sourceType !== 'companion') return
     setPendingTarget(null)
     setActionTray(null)
     pushEvent('companion_skip', 'companion', `${currentCombatant.name}静静守在后方。`, [], currentCombatant.name)
-    afterAction(combatants)
+    handleEndTurn()
   }
 
   /** 逃跑（§14：只在玩家自己的回合；成功无奖励 / 失败消耗本回合） */
   const handleEscape = () => {
-    if (phase !== 'active' || !isPlayerTurn || !canEscape) return
+    if (phase !== 'active' || !isPlayerTurn || !playerCombatant || !canEscape) return
     const friendly = combatants.filter((c) => c.side === 'friendly')
     const enemies = combatants.filter((c) => c.side === 'enemy')
     const highestFriendly = Math.max(...friendly.map((c) => c.agility))
@@ -575,7 +698,8 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
     pushEvent('escape_failure', 'player', `逃跑失败，敌人封住了退路。`, [
       `逃跑值 = (最高敏捷 ${highestFriendly} + D20 ${result.roll}) / 3 = ${result.score}；敌方最高敏捷 ${highestEnemy}。`,
     ])
-    setCurrentTurnIndex((idx) => advanceTurnIndex(idx))
+    // TM-P2-009-R1 §6.1：逃跑消耗 Action -1；失败不自动换人（仍有 Bonus 可用或玩家 End Turn）
+    consumeResource(playerCombatant.instanceId, 'action')
   }
 
   /** 敌方 AI 行动（§12 V1：随机存活我方目标 → 正式攻击） */
@@ -620,7 +744,8 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
       finalizeCombatEnd(next)
       return
     }
-    setCurrentTurnIndex((idx) => advanceTurnIndex(idx))
+    // TM-P2-009-R1 §7/§8：敌方不占 Action/Bonus，行动完推进到下一未结束存活单位
+    advanceTurn(currentTurnIndex)
   }
 
   // ---- V4：回合分组（详细日志按回合折叠分组） ----
@@ -669,8 +794,14 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
     // R1：3v3 单排 3 卡（min-w 200px）→ 1280 视口两栏各 ~620px 不换行不溢出
     const base = 'min-w-[200px] flex-1 rounded border p-3 text-sm text-bone-300 transition-colors'
     if (!c.isAlive) return `${base} border-ink-800 bg-ink-950/40 text-bone-600 opacity-60`
-    if (c.instanceId === currentCombatant?.instanceId) {
-      return `${base} border-gold-400 bg-ink-800/70 ring-1 ring-gold-400`
+    // TM-P2-009-R1 §7：已结束回合的 friendly 单位弱化（仅 friendly 有 ended 语义）
+    const ended = c.side === 'friendly' && (endedByInstance[c.instanceId] ?? false)
+    const isCurrent = c.instanceId === currentCombatant?.instanceId
+    if (isCurrent) return `${base} border-gold-400 bg-ink-800/70 ring-1 ring-gold-400`
+    if (ended) return `${base} border-ink-800 bg-ink-950/60 text-bone-600 opacity-70`
+    // §7：当前 friendly 段内可切换的伙伴/玩家卡（ready → 可点）
+    if (c.side === 'friendly' && switchableFriendlyIds.has(c.instanceId)) {
+      return `${base} cursor-pointer border-sky-500/60 bg-ink-800/60 hover:border-sky-400`
     }
     return `${base} border-ink-600 bg-ink-800/50`
   }
@@ -690,32 +821,36 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
 
   const renderUnitCard = (c: Combatant, label: string, levelText: string) => {
     const isTarget = pendingTarget !== null && pendingTarget.mode === (c.side === 'enemy' ? 'enemy' : 'friendly') && c.isAlive
+    // TM-P2-009-R1 §7：friendly 段内可切换（未 ended / 存活 / 同段 / 非目标选择中）
+    const isSwitchable =
+      c.side === 'friendly' &&
+      !isTarget &&
+      phase === 'active' &&
+      isFriendlyTurn &&
+      pendingTarget === null &&
+      c.isAlive &&
+      !(endedByInstance[c.instanceId] ?? false) &&
+      switchableFriendlyIds.has(c.instanceId)
     // 伙伴卡信息按 sourceId 独立（R1：多伙伴各自展示自己的技能/等级）
     const companionInfo = c.sourceType === 'companion' ? companionInfoFor(c.sourceId) : undefined
+    const mpText = c.currentMp > 0 ? ` · 灵力 ${c.currentMp} / ${c.maxMp}` : ''
     return (
       <div
         key={c.instanceId}
         data-testid={c.side === 'enemy' ? 'combat-enemy-unit' : c.sourceType === 'player' ? 'combat-player-panel' : 'combat-companion-panel'}
         className={`${unitCardClass(c)} ${isTarget ? 'cursor-pointer border-sky-400 ring-1 ring-sky-400' : ''}`}
-        onClick={isTarget ? () => executeTargeted(c) : undefined}
-        role={isTarget ? 'button' : undefined}
+        onClick={isTarget ? () => executeTargeted(c) : isSwitchable ? () => handleSwitchFriendly(c.instanceId) : undefined}
+        role={isTarget || isSwitchable ? 'button' : undefined}
       >
+        {/* TM-P2-009-R1 §5.2 三行：名字(·职业) · Lv / 生命 · 灵力 / 攻击 · 护甲 · 敏捷 */}
         <p className="font-bold text-bone-100">
-          {label}
-          {c.sourceType === 'player' && (
-            <span className="ml-2 text-xs font-normal text-bone-500">
-              {getProfessionName(player.profession)}
-            </span>
-          )}
+          {label} · <span className="text-xs font-normal text-bone-400">{levelText}</span>
         </p>
         <p className="mt-1 text-xs text-bone-500">
-          {levelText}
-          {c.currentMp > 0 ? ` · 灵力 ${c.currentMp}/${c.maxMp}` : ''}
-        </p>
-        <p className="mt-2">
           生命 <span className="tabular-nums text-bone-100">{c.currentHp}</span> / {c.maxHp}
+          {mpText}
         </p>
-        <p>
+        <p className="mt-1">
           攻击 <span className="tabular-nums text-bone-100">{c.attack}</span> · 护甲{' '}
           <span className="tabular-nums text-bone-100">{c.armor}</span> · 敏捷{' '}
           <span className="tabular-nums text-bone-100">{c.agility}</span>
@@ -737,7 +872,8 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
   // 我方（玩家 + 伙伴）
   const renderFriendlyCard = (c: Combatant) => {
     const info = c.sourceType === 'companion' ? companionInfoFor(c.sourceId) : undefined
-    const label = c.sourceType === 'player' ? player.name : info ? getCompanion(c.sourceId)?.name ?? c.name : c.name
+    // TM-P2-009-R1 §5.2：玩家第一行 `名字 · 职业 · Lv.N`（职业并入 label；levelText 仅 Lv.N）
+    const label = c.sourceType === 'player' ? `${player.name} · ${getProfessionName(player.profession)}` : info ? getCompanion(c.sourceId)?.name ?? c.name : c.name
     const levelText =
       c.sourceType === 'player'
         ? `Lv.${player.level}`
@@ -788,7 +924,7 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
         </p>
         <div className="flex items-center gap-3">
           <p className="text-xs text-bone-500">
-            {phase === 'active' ? '战斗进行中' : phase === 'victory' ? '胜利' : '失败'}
+            {phase === 'active' ? `第 ${round} 回合 · 战斗进行中` : phase === 'victory' ? '胜利' : '失败'}
           </p>
           <Button variant="ghost" className="xl:hidden" onClick={() => setDetailDrawerOpen(true)}>
             详细战斗日志
@@ -863,74 +999,99 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
       {/* 下：固定行动栏 */}
       <footer className="relative z-[60] mt-3 border-t border-ink-600 pt-3">
         {phase === 'active' && isFriendlyTurn && !pendingTarget && (
-          <div className="flex flex-col items-center gap-3">
-            <p className="text-base font-bold text-bone-100">{currentCombatant?.name}的回合</p>
-            <div className="flex flex-wrap items-center justify-center gap-2">
-              <Button variant="primary" disabled={actionsLocked} onClick={handleAttack}>
-                普通攻击
-              </Button>
-              {unitSkills.length > 0 && (
-                <Button variant="ghost" disabled={actionsLocked} onClick={() => setActionTray(actionTray === 'skill' ? null : 'skill')}>
-                  技能{actionTray === 'skill' ? ' ▴' : ' ▾'}
-                </Button>
+          <div className="flex flex-col items-center gap-2">
+            {/* TM-P2-009-R1 §5.3：Action Tray（固定高度，技能/背包内容内部滚动；空时占位保持 Action Bar Y 不动） */}
+            <div
+              data-testid="combat-action-tray"
+              className="combat-action-tray flex min-h-[56px] w-full max-h-[168px] flex-col items-center justify-start gap-2 overflow-y-auto"
+            >
+              {!currentEnded && !hasAction && !hasBonus && (
+                <p className="text-center text-xs text-bone-500">本回合已无可用行动——点击「结束回合」继续。</p>
               )}
-              {currentCombatant?.sourceType === 'player' && healingPotionAmount !== undefined && (
-                <Button variant="ghost" disabled={actionsLocked} onClick={() => setActionTray(actionTray === 'item' ? null : 'item')}>
-                  物品{actionTray === 'item' ? ' ▴' : ' ▾'}
-                </Button>
-              )}
-              {isPlayerTurn && canEscape && (
-                <Button variant="ghost" disabled={actionsLocked} onClick={handleEscape}>
-                  尝试逃跑
-                </Button>
-              )}
-              {currentCombatant?.sourceType === 'companion' && (
-                <Button variant="ghost" disabled={actionsLocked} onClick={handleCompanionSkip}>
-                  跳过
-                </Button>
-              )}
-              {!canEscape && isPlayerTurn && <span className="text-xs text-bone-600">无法逃离</span>}
-            </div>
-            {actionTray === 'skill' && (
-              <div data-testid="combat-skill-tray" className="flex flex-wrap items-center justify-center gap-2">
-                {unitSkills.map((skill) => {
-                  const mpNotEnough = skill.mpCost > 0 && (currentCombatant?.currentMp ?? 0) < skill.mpCost
-                  const onceUsed = skill.combat?.oncePerCombat === true && unitOnceUsed(skill.id)
-                  return (
-                    <div key={skill.id} className="flex flex-col items-center gap-1">
-                      <Button
-                        variant="primary"
-                        disabled={actionsLocked || mpNotEnough || onceUsed}
-                        onClick={() => (currentCombatant?.sourceType === 'companion' ? handleCompanionSkill(skill.id) : handleSkill(skill.id))}
-                      >
-                        {skill.name}
-                        {skill.mpCost > 0 ? `（${skill.mpCost} 灵力）` : ''}
-                      </Button>
-                      {mpNotEnough && <span className="text-xs text-red-300">灵力不足</span>}
-                      {onceUsed && <span className="text-xs text-bone-500">本场战斗已使用</span>}
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-            {actionTray === 'item' && (
-              <div data-testid="combat-item-tray" className="flex flex-wrap items-center justify-center gap-2">
-                <div className="flex flex-col items-center gap-1">
-                  <Button
-                    variant="primary"
-                    disabled={actionsLocked || (playerCombatant?.currentHp ?? 0) >= (playerCombatant?.maxHp ?? 0) || healingPotionCount <= 0}
-                    onClick={handleUseHealingPotion}
-                  >
-                    使用治疗药水（+{healingPotionAmount} 生命）
-                  </Button>
-                  {healingPotionCount > 0 && <span className="text-xs text-bone-500">剩余：{healingPotionCount}</span>}
-                  {healingPotionCount <= 0 && <span className="text-xs text-red-300">没有治疗药水</span>}
-                  {(playerCombatant?.currentHp ?? 0) >= (playerCombatant?.maxHp ?? 0) && (
-                    <span className="text-xs text-bone-500">生命已满</span>
-                  )}
+              {actionTray === 'skill' && (
+                <div data-testid="combat-skill-tray" className="flex flex-wrap items-center justify-center gap-2">
+                  {unitSkills.map((skill) => {
+                    const mpNotEnough = skill.mpCost > 0 && (currentCombatant?.currentMp ?? 0) < skill.mpCost
+                    const onceUsed = skill.combat?.oncePerCombat === true && unitOnceUsed(skill.id)
+                    // TM-P2-009-R1 §6.1：主动技能资源由 SkillDefinition.combat.actionType 决定（缺省 action）
+                    const actionType = skill.combat?.actionType ?? 'action'
+                    const resourceOk = actionType === 'action' ? hasAction : hasBonus
+                    return (
+                      <div key={skill.id} className="flex flex-col items-center gap-1">
+                        <Button
+                          variant="primary"
+                          disabled={actionsLocked || mpNotEnough || onceUsed || !resourceOk}
+                          onClick={() => (currentCombatant?.sourceType === 'companion' ? handleCompanionSkill(skill.id) : handleSkill(skill.id))}
+                        >
+                          {skill.name}
+                          {skill.mpCost > 0 ? `（${skill.mpCost} 灵力）` : ''}
+                        </Button>
+                        {mpNotEnough && <span className="text-xs text-red-300">灵力不足</span>}
+                        {onceUsed && <span className="text-xs text-bone-500">本场战斗已使用</span>}
+                        {!resourceOk && (
+                          <span className="text-xs text-bone-500">
+                            {actionType === 'action' ? '本回合行动已用完' : '本回合附赠行动已用完'}
+                          </span>
+                        )}
+                      </div>
+                    )
+                  })}
                 </div>
+              )}
+              {actionTray === 'item' && (
+                <div data-testid="combat-item-tray" className="flex flex-wrap items-center justify-center gap-2">
+                  <div className="flex flex-col items-center gap-1">
+                    <Button
+                      variant="primary"
+                      disabled={actionsLocked || !hasBonus || (playerCombatant?.currentHp ?? 0) >= (playerCombatant?.maxHp ?? 0) || healingPotionCount <= 0}
+                      onClick={handleUseHealingPotion}
+                    >
+                      使用治疗药水（+{healingPotionAmount} 生命）
+                    </Button>
+                    {healingPotionCount > 0 && <span className="text-xs text-bone-500">剩余：{healingPotionCount}</span>}
+                    {healingPotionCount <= 0 && <span className="text-xs text-red-300">没有治疗药水</span>}
+                    {!hasBonus && <span className="text-xs text-bone-500">本回合附赠行动已用完</span>}
+                    {(playerCombatant?.currentHp ?? 0) >= (playerCombatant?.maxHp ?? 0) && (
+                      <span className="text-xs text-bone-500">生命已满</span>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+            {/* §5.3：Action Bar 主按钮行（固定底部；技能/背包只改变上方 Tray，Y 位置不变） */}
+            <div className="flex w-full flex-col items-center gap-1 border-t border-ink-700 pt-2">
+              <p className="text-base font-bold text-bone-100">{currentCombatant?.name}的回合</p>
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <Button variant="primary" disabled={actionsLocked || !hasAction} onClick={handleAttack}>
+                  普通攻击
+                </Button>
+                {unitSkills.length > 0 && (
+                  <Button variant="ghost" disabled={actionsLocked} onClick={() => setActionTray(actionTray === 'skill' ? null : 'skill')}>
+                    技能{actionTray === 'skill' ? ' ▴' : ' ▾'}
+                  </Button>
+                )}
+                {currentCombatant?.sourceType === 'player' && healingPotionAmount !== undefined && (
+                  <Button variant="ghost" disabled={actionsLocked} onClick={() => setActionTray(actionTray === 'item' ? null : 'item')}>
+                    背包{actionTray === 'item' ? ' ▴' : ' ▾'}
+                  </Button>
+                )}
+                {isPlayerTurn && canEscape && (
+                  <Button variant="ghost" disabled={actionsLocked || !hasAction} onClick={handleEscape}>
+                    逃跑
+                  </Button>
+                )}
+                {currentCombatant?.sourceType === 'companion' && (
+                  <Button variant="ghost" disabled={actionsLocked} onClick={handleCompanionSkip}>
+                    跳过
+                  </Button>
+                )}
+                {!canEscape && isPlayerTurn && <span className="text-xs text-bone-600">无法逃离</span>}
+                {/* TM-P2-009-R1 §8：底部固定结束回合按钮（无费用；放弃剩余资源并推进） */}
+                <Button variant="ghost" disabled={phase !== 'active' || !isFriendlyTurn} onClick={handleEndTurn}>
+                  结束回合
+                </Button>
               </div>
-            )}
+            </div>
           </div>
         )}
         {phase === 'active' && isFriendlyTurn && pendingTarget && renderTargetPicker()}
