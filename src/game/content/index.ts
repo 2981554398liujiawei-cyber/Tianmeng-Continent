@@ -30,6 +30,8 @@ export type { MountDefinition } from '../types/mount'
 export { MOUNTS, MOUNT_PRICES, getMount } from './mounts'
 export type { RelationshipProfile } from '../types/relationship'
 export { RELATIONSHIP_PROFILES, getRelationshipProfile, isRomanceableNpc } from './relationships'
+export type { ClueDefinition, ClueCategory } from '../types/clue'
+export { CLUES, getClue } from './clues'
 
 import type { ProfessionId } from '../types'
 import { LOCATIONS, type LocationDefinition } from './locations'

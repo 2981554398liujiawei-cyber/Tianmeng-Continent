@@ -18,4 +18,5 @@ export type {
   RelationshipChangeSource,
   RelationshipChangeRequest,
 } from './relationship'
+export type { ClueDefinition, ClueCategory } from './clue'
 export type { SkillDefinition, SkillTag, DamageResolverType, SupportEffect } from './skill'

@@ -1,9 +1,9 @@
 import { create } from 'zustand'
-import type { CharacterCreationInput, GameState, QuestStatus } from '../types'
+import type { CharacterCreationInput, ClueDefinition, GameState, QuestStatus } from '../types'
 import { createInitialGameState } from '../content/initial'
 import { checkTravel } from '../rules/exploration'
 import { canTransitionQuestStatus } from '../rules/quest'
-import { getEnemy, getEncounter, getItem, getLocation, getMount, getNpc, getQuest } from '../content'
+import { getClue, getEnemy, getEncounter, getItem, getLocation, getMount, getNpc, getQuest } from '../content'
 import { checkEncounter, currentEncounterVariantId, resolveEncounterVariant, singleEnemyIdOf } from '../rules/encounter'
 import { performD20Check, CHECK_DC, type D20CheckResult } from '../rules/d20'
 import { KNIGHT_POWER_STRIKE_MP_COST, MAGE_SPELL_MP_COST, WARRIOR_SUPPRESS_STRIKE_MP_COST } from '../rules/combat'
@@ -226,6 +226,10 @@ interface GameStoreState {
   /** 查看北门巡逻队痕迹（TM-P2-001 D3）：天龙城北门 + 《北门失联》in_progress/stage 0 + north_gate_trail_checked undefined/false 时成功，只写 quest.flags.north_gate_trail_checked=true（status/stage 不变）；非 boolean 异常 flag 整次拒绝且完全不变（不修复）；已 true 重复调用 false 且 GameState 同一引用；无金币/HP/MP/物品/装备/关系/flags/completedEvents 副作用、不自动保存 */
   investigateNorthGateTrail: () => boolean
 
+  // ---- TM-P2-008：Clue Journal V1（§7-8/§37-39；发现进度持久化于 world.flags[clueId]）----
+  /** 正式记录一条线索（幂等）：clueId 未注册 → { ok:false } 且 GameState 完全不变；未发现 → 写 world.flags[clueId]=true 返回 { ok:true, added:true, clue }；已发现 → { ok:true, added:false, alreadyKnown:true }（不重复插入，§39） */
+  addClue: (clueId: string) => { ok: boolean; added: boolean; alreadyKnown: boolean; clue?: ClueDefinition }
+
   // ---- TM-P2-004：Sakura 剧情 / 伙伴 / 关系 / 休整 ----
   /** 触发反季樱雨（TM-P2-004 第 31 节）：canTriggerSakuraEncounter 纯规则；成功写 sakura_encounter_started=true + 《落樱越界》discover→in_progress */
   startSakuraEncounter: () => boolean
@@ -263,6 +267,19 @@ interface GameStoreState {
   setCompanionActive: (companionId: string, active: boolean) => boolean
   /** 伙伴技能 MP 消费（TM-P2-004 第 106 节）：伙伴自身 MP；checkSkillUse（profession=undefined）统一校验 */
   spendCompanionSkillMp: (companionId: string, skillId: string) => boolean
+}
+
+/** 线索发现（TM-P2-008 §38）：clueId 已注册 + `world.flags[clueId]` 非严格 true → 写 flag 返回新 GameState；未注册 / 已发现返回 null（不变）。幂等、纯函数 */
+function applyClueDiscovery(gameState: GameState, clueId: string): GameState | null {
+  if (!getClue(clueId)) return null
+  if (gameState.world.flags[clueId] === true) return null
+  return {
+    ...gameState,
+    world: {
+      ...gameState.world,
+      flags: { ...gameState.world.flags, [clueId]: true },
+    },
+  }
 }
 
 /** 任务发现：不存在 → 创建 available；undiscovered → available；其余状态不重复创建。非法返回 null（TM-P0-006） */
@@ -1840,17 +1857,35 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
       if (existing === true || (existing !== undefined && typeof existing !== 'boolean')) return {}
       changed = true
       // TM-P1-013：成功只设置 world.flags.rabbit_path_examined=true（地图不消耗；player/inventory/equipment/quests/位置/completedEvents/npcStates 全不变；不自动保存）
+      // TM-P2-008 §8：同时把《兔子的路径》登记为已发现线索 clue_rabbit_path（同一原子写入，幂等；不改变 Golden Rabbit 剧情状态）
       return {
         gameState: {
           ...s.gameState,
           world: {
             ...s.gameState.world,
-            flags: { ...s.gameState.world.flags, rabbit_path_examined: true },
+            flags: { ...s.gameState.world.flags, rabbit_path_examined: true, clue_rabbit_path: true },
           },
         },
       }
     })
     return changed
+  },
+
+  addClue: (clueId) => {
+    // TM-P2-008 §38：clueId 未注册直接拒绝，GameState 完全不变
+    if (!getClue(clueId)) return { ok: false, added: false, alreadyKnown: false }
+    let added = false
+    set((s) => {
+      if (!s.gameState) return {}
+      const next = applyClueDiscovery(s.gameState, clueId)
+      if (!next) return {}
+      added = true
+      return { gameState: next }
+    })
+    // §39：重复获取（已发现）不重复插入，返回 alreadyKnown
+    return added
+      ? { ok: true, added: true, alreadyKnown: false, clue: getClue(clueId) }
+      : { ok: true, added: false, alreadyKnown: true }
   },
 
   reportRabbitPathToVillageElder: () => {
