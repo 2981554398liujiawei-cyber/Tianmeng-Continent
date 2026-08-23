@@ -33,6 +33,8 @@
     "qa:p2-007-layout": "node qa/p2-007-layout-idleak-e2e.mjs",
     "qa:p2-007": "npm run qa:p2-007-save && npm run qa:p2-007-backpack && npm run qa:p2-007-party-combat && npm run qa:p2-007-mount && npm run qa:p2-007-layout",
     "qa:p2-007-r1": "node qa/p2-007-r1-e2e.mjs",
+    "qa:live": "node qa/p2-007-r2-live-e2e.mjs",
+    "qa:p2-007-r2": "node qa/p2-007-r2-static.mjs",
     "qa:rc": "npm run build && node qa/rc-e2e.mjs"
   },
   "dependencies": {
