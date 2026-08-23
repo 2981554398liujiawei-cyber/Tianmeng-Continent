@@ -150,6 +150,16 @@ function sakuraGrasslandFixture() {
   }
 }
 
+// ---- Part C fixture：天龙城（马厩入口仅在天龙城显示，TM-P2-007 §19）----
+function tianlongCityFixture() {
+  const base = sakuraGrasslandFixture()
+  return {
+    ...base,
+    player: { ...base.player, gold: 5000 },
+    world: { ...base.world, currentLocationId: 'tianlong_city' },
+  }
+}
+
 try {
   const profileDir = mkdtempSync(join(tmpdir(), 'p2-007-r2-public-'))
   browser = await puppeteer.launch({
@@ -183,8 +193,9 @@ try {
   check('S04: GamePage（青石村 + 系统栏保存/返回主菜单）', (await readLocationName(pageA)) === '青石村' && body.includes('保存游戏') && body.includes('返回主菜单'))
 
   await saveToSlot1(pageA)
+  const slot1Saved = await pageA.evaluate(() => Boolean(localStorage.getItem('tianmeng_continent_save_slot_slot1')))
   body = await bodyText(pageA)
-  check('S05: 本地存档成功', body.includes('本地已保存'), body.includes('云端已同步') ? '本地+云端同步' : '(同步状态)')
+  check('S05: 本地存档成功（slot1 已写入 localStorage）', slot1Saved, body.includes('云：已同步') ? '云已同步' : '(同步状态)')
 
   // Backpack UI
   await pageA.click('[data-testid="open-backpack"]')
@@ -192,14 +203,6 @@ try {
   const backpackVisible = await pageA.evaluate(() => Boolean(document.querySelector('[data-testid="backpack-panel"]')) && [...document.querySelectorAll('[data-testid^="backpack-tab-"]')].length > 0)
   check('S06: Backpack UI（背包面板 + tabs）', backpackVisible)
   await pageA.evaluate(() => document.querySelector('[data-testid="backpack-panel"] [aria-label="关闭背包"]')?.click())
-  await sleep(400)
-
-  // Mount UI
-  await pageA.click('[data-testid="open-mount-stable-entry"]')
-  await sleep(600)
-  const mountVisible = await pageA.evaluate(() => Boolean(document.querySelector('[data-testid="mount-panel"]')) && (document.body.textContent || '').includes('当前不在天龙城，无法购买坐骑。'))
-  check('S07: Mount UI（马厩面板可见）', mountVisible)
-  await pageA.evaluate(() => document.querySelector('[aria-label="关闭马厩"]')?.click())
   await sleep(400)
 
   await clickByText(pageA, '返回主菜单')
@@ -254,9 +257,43 @@ try {
   body = await bodyText(pageB)
   check('S10b: CombatPage（玩家面板 + 行动按钮）', Boolean(await pageB.$('[data-testid="combat-player-panel"]')) && body.includes('普通攻击'))
   check('S10c: 战斗渲染真实伙伴 Sakura（玩家+伙伴 3v 构成）', Boolean(await pageB.$('[data-testid="combat-companion-panel"]')) && body.includes('樱花优子'))
+  await ctxB.close()
+
+  // ============ Part C：Mount UI（马厩入口仅在天龙城显示，TM-P2-007 §19） ============
+  const ctxC = await browser.createBrowserContext()
+  const pageC = await ctxC.newPage()
+  await pageC.setViewport({ width: 1366, height: 768 })
+  pageC.on('pageerror', (e) => jsErrors.push(String(e)))
+  await pageC.goto(PUBLIC_GAME_URL, { waitUntil: 'networkidle0' })
+  await pageC.evaluate((fixture) => {
+    localStorage.clear()
+    localStorage.setItem('tianmeng_continent_save_slot_slot1', JSON.stringify({ version: 5, savedAt: new Date().toISOString(), gameState: fixture }))
+  }, tianlongCityFixture())
+  await pageC.reload({ waitUntil: 'networkidle0' })
+  await sleep(500)
+  await typePassphrase(pageC, randomPass())
+  body = await bodyText(pageC)
+  if (body.includes('使用本机存档创建云存档')) {
+    await clickByText(pageC, '使用本机存档创建云存档')
+    await sleep(700)
+  }
+  await clickByText(pageC, '继续游戏')
+  await sleep(700)
+  check('S07a: Part C 进入 GamePage（天龙城）', (await readLocationName(pageC)) === '天龙城')
+  await pageC.click('[data-testid="open-mount-stable-entry"]')
+  await sleep(600)
+  const mountVisible = await pageC.evaluate(() => {
+    const panel = document.querySelector('[data-testid="mount-panel"]')
+    const entries = document.querySelectorAll('[data-testid^="mount-entry-"]')
+    return Boolean(panel) && entries.length > 0
+  })
+  check('S07: Mount UI（天龙城马厩面板 + 坐骑列表可达）', mountVisible)
+  await pageC.evaluate(() => document.querySelector('[aria-label="关闭马厩"]')?.click())
+  await sleep(400)
+  await ctxC.close()
+
   check('S11: 全程无 fatal JS exception', jsErrors.length === 0, jsErrors.length > 0 ? jsErrors.join(' | ') : '')
 
-  await ctxB.close()
   await browser.close()
   rmSync(profileDir, { recursive: true, force: true })
 } catch (err) {
