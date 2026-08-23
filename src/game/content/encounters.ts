@@ -161,6 +161,26 @@ export const ENCOUNTERS: Record<string, EncounterDefinition> = {
     // 首次胜利后写 world.flags.steppe_wolf_pack_defeated=true，不再刷出（§24；可选遭遇不阻塞主线）
     encounterDefeatFlag: 'steppe_wolf_pack_defeated',
   },
+  // ---- TM-P2-009 §13：北郊旧驿站狼群（《断旗余声》Stage C 战斗解；固定阵容 wild_wolf×2 + corrupted_wolf×1；canEscape=true；胜利得 XP/Loot/neutralized，逃跑不推进不保留）----
+  // 固定阵容用单一 weighted variant 表达（fixedMembers 多敌不走 resolveEncounterVictory 结算路径）。
+  encounter_waystation_wolf_pack: {
+    id: 'encounter_waystation_wolf_pack',
+    name: '驿站狼群',
+    locationId: 'tianlong_north_abandoned_waystation',
+    variants: [
+      {
+        id: 'waystation_wolf_pack_fixed',
+        weight: 1,
+        members: [
+          { enemyId: 'wild_wolf', count: 2 },
+          { enemyId: 'corrupted_wolf', count: 1 },
+        ],
+      },
+    ],
+    canEscape: true,
+    // 首次胜利后写 world.flags.waystation_wolf_pack_neutralized=true（Stage C combat 解前置；§13）
+    encounterDefeatFlag: 'waystation_wolf_pack_neutralized',
+  },
 }
 
 export function getEncounter(id: string): EncounterDefinition | undefined {

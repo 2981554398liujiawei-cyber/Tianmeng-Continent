@@ -116,10 +116,21 @@ export const LOCATIONS: Record<string, LocationDefinition> = {
     name: '天龙城北郊',
     description: '荒草与碎石的官道一路向北延伸，两侧是起伏的荒原，风里隐约传来野兽的嚎叫。',
     requiredFlag: 'north_outskirts_unlocked',
-    connections: ['tianlong_north_gate'],
+    // TM-P2-009 §11：北郊连接北郊旧驿站（驿站 requiredFlag 未解锁时 travel 拒绝）
+    connections: ['tianlong_north_gate', 'tianlong_north_abandoned_waystation'],
     // TM-P2-008 §23：单只落单野狼 + 荒原狼群（狼群首次胜利后不再出现；可选遭遇不阻塞主线）
     enemyIds: ['wild_wolf'],
     encounters: ['encounter_wild_wolf', 'encounter_steppe_wolf_pack'],
+  },
+  // TM-P2-009 §11：北线新地点——北郊旧驿站（《断旗余声》Stage A 写 north_waystation_unlocked 后解锁；连接北郊；驿站狼群遭遇为 Stage C 战斗解）
+  tianlong_north_abandoned_waystation: {
+    id: 'tianlong_north_abandoned_waystation',
+    name: '北郊旧驿站',
+    description: '半塌的驿站立在官道岔口，门板被风蚀得发白。院内一面战旗半悬空中，断口处的旗布在北风里轻轻晃动。',
+    requiredFlag: 'north_waystation_unlocked',
+    connections: ['tianlong_north_outskirts'],
+    enemyIds: [],
+    encounters: ['encounter_waystation_wolf_pack'],
   },
   // TM-P2-004 第 33/34 节：樱华神域·破碎边界（特殊事件地点；connections=[] 不允许普通 Travel 进入，只能通过 Sakura 特殊事件；完成后返回天龙城）
   sakura_domain_fragment: {

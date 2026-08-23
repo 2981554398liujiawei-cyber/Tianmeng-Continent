@@ -147,6 +147,9 @@ export default function TaskActivitySidebar({ onCompleteQuest, onViewQuest, onAc
       if (quest.id === 'quest_north_outskirts') {
         return gameState.quests.some((q) => q.questId === 'quest_north_gate_missing_patrol' && q.status === 'completed')
       }
+      if (quest.id === 'quest_north_broken_banner') {
+        return gameState.quests.some((q) => q.questId === 'quest_north_outskirts' && q.status === 'completed')
+      }
       if (quest.id === 'quest_sakura_boundary') return false
       return true
     })
@@ -494,6 +497,13 @@ function QuestRow({ questId, gameState, compact }: { questId: string; gameState:
   const northOutskirtsTrailTracked = northOutskirtsQuest?.flags.north_outskirts_trail_tracked === true
   const northOutskirtsAmbushFound = northOutskirtsQuest?.flags.north_outskirts_ambush_found === true
   const northOutskirtsAmbushInvestigated = northOutskirtsQuest?.flags.north_outskirts_ambush_investigated === true
+  // TM-P2-009：《断旗余声》Stage A-F 进度读取
+  const brokenBannerQuest = gameState.quests.find((q) => q.questId === 'quest_north_broken_banner')
+  const brokenBannerBriefed = brokenBannerQuest?.flags.north_broken_banner_make_briefed === true
+  const waystationSearched = brokenBannerQuest?.flags.north_waystation_searched === true
+  const waystationBarrierResolved = brokenBannerQuest?.flags.north_waystation_barrier_resolved === true
+  const waystationSurvivorRescued = brokenBannerQuest?.flags.north_waystation_survivor_rescued === true
+  const waystationSurvivorDebriefed = brokenBannerQuest?.flags.north_waystation_survivor_debriefed === true
   const wangcaiQuest = gameState.quests.find((q) => q.questId === 'quest_wangcai_trouble')
   const wangcaiBriefed = wangcaiQuest?.flags.wangcai_briefed === true
   const towerUnlocked = world.flags.black_stone_tower_unlocked === true
@@ -671,6 +681,44 @@ function QuestRow({ questId, gameState, compact }: { questId: string; gameState:
         <div className="mt-1 text-xs text-bone-400">
           <p className="text-gold-300">北郊的发现已汇总。</p>
           <p className="mt-1">当前目标：返回武馆，向马科汇报。</p>
+        </div>
+      )}
+      {questId === 'quest_north_broken_banner' && qs.status === 'in_progress' && (
+        <div className="mt-1 text-xs text-bone-400">
+          {!brokenBannerBriefed ? (
+            <p>当前目标：返回武馆，听马科说明北郊驿站的异常。</p>
+          ) : !waystationSearched ? (
+            <>
+              <p className="text-gold-300">已向马科了解情况，旧驿站的路线已确认。</p>
+              <p className="mt-1">当前目标：前往北郊旧驿站搜索。</p>
+            </>
+          ) : !waystationBarrierResolved ? (
+            <>
+              <p className="text-gold-300">旧驿站已搜索，发现断裂的巡逻队战旗。</p>
+              <p className="mt-1">当前目标：解开驿站的屏障。</p>
+            </>
+          ) : !waystationSurvivorRescued ? (
+            <>
+              <p className="text-gold-300">驿站屏障已解除。</p>
+              <p className="mt-1">当前目标：搜救驿站中的幸存者。</p>
+            </>
+          ) : !waystationSurvivorDebriefed ? (
+            <>
+              <p className="text-gold-300">驿站中的幸存者已救出。</p>
+              <p className="mt-1">当前目标：向幸存的骑士沈拓了解详情。</p>
+            </>
+          ) : (
+            <>
+              <p className="text-gold-300">沈拓的证词已听完。</p>
+              <p className="mt-1">当前目标：返回武馆，向马科汇报。</p>
+            </>
+          )}
+        </div>
+      )}
+      {questId === 'quest_north_broken_banner' && qs.status === 'completable' && (
+        <div className="mt-1 text-xs text-bone-400">
+          <p className="text-gold-300">北郊驿站的真相已查明。</p>
+          <p className="mt-1">当前目标：返回武馆，向马科提交任务。</p>
         </div>
       )}
     </div>

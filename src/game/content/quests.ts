@@ -90,4 +90,12 @@ export const QUESTS: Record<string, QuestDefinition> = {
     giverNpcId: 'knight_captain_make',
     goldReward: 40, adventureXpReward: 100,
   },
+  // TM-P2-009 §9：北线主线《断旗余声》（马科发布；仅《北郊追踪》completed 后可发现；奖励走 generic 提交路径 120 XP + 50 金；Stage A-F 用 flags 表达，stage 保持 number）
+  quest_north_broken_banner: {
+    id: 'quest_north_broken_banner',
+    title: '断旗余声',
+    summary: '北郊深处一座废弃的驿站，挂着被斩断的巡逻队战旗。失联的第三巡逻队，似乎在这里留下了最后的痕迹。',
+    giverNpcId: 'knight_captain_make',
+    goldReward: 50, adventureXpReward: 120,
+  },
 }

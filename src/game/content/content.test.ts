@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   ENEMIES,
+  getClue,
+  getEncounter,
   getEnemy,
   getItem,
   getLocation,
@@ -47,9 +49,9 @@ describe('TM-P0-002：内容注册表交叉引用一致性', () => {
 })
 
 describe('TM-P0-002：内容数量与指定条目', () => {
-  // TM-P2-004 第 33/34 节：新增樱华神域·破碎边界（特殊事件地点；connections=[] 只能特殊事件进入）
-  it('地点 12 个：青石村/村外草原/废弃矿洞/兔王巢穴/天龙城/武馆/黑石塔一层/黑石塔二层/黑石塔三层/天龙城北门/樱华神域·破碎边界/天龙城北郊', () => {
-    expect(Object.keys(LOCATIONS)).toHaveLength(12)
+  // TM-P2-004 第 33/34 节：新增樱华神域·破碎边界（特殊事件地点；connections=[] 只能特殊事件进入）；TM-P2-009 §11：新增北郊旧驿站（13）
+  it('地点 13 个：青石村/村外草原/废弃矿洞/兔王巢穴/天龙城/武馆/黑石塔一层/黑石塔二层/黑石塔三层/天龙城北门/樱华神域·破碎边界/天龙城北郊/北郊旧驿站', () => {
+    expect(Object.keys(LOCATIONS)).toHaveLength(13)
     expect(getLocation('qingshi_village')?.name).toBe('青石村')
     expect(getLocation('village_grassland')?.name).toBe('村外草原')
     expect(getLocation('abandoned_mine')?.name).toBe('废弃矿洞')
@@ -68,8 +70,14 @@ describe('TM-P0-002：内容数量与指定条目', () => {
     // TM-P2-008 §17：天龙城北郊（北门解锁后进入；连接北门）
     expect(getLocation('tianlong_north_outskirts')?.name).toBe('天龙城北郊')
     expect(getLocation('tianlong_north_outskirts')?.requiredFlag).toBe('north_outskirts_unlocked')
-    expect(getLocation('tianlong_north_outskirts')?.connections).toEqual(['tianlong_north_gate'])
+    expect(getLocation('tianlong_north_outskirts')?.connections).toEqual(['tianlong_north_gate', 'tianlong_north_abandoned_waystation'])
     expect(getLocation('tianlong_north_outskirts')?.enemyIds).toEqual(['wild_wolf'])
+    // TM-P2-009 §11：北郊旧驿站（《断旗余声》Stage A 简报写 north_waystation_unlocked 后解锁；连接北郊；驿站狼群为 Stage C 战斗解）
+    expect(getLocation('tianlong_north_abandoned_waystation')?.name).toBe('北郊旧驿站')
+    expect(getLocation('tianlong_north_abandoned_waystation')?.requiredFlag).toBe('north_waystation_unlocked')
+    expect(getLocation('tianlong_north_abandoned_waystation')?.connections).toEqual(['tianlong_north_outskirts'])
+    expect(getLocation('tianlong_north_abandoned_waystation')?.enemyIds).toEqual([])
+    expect(getLocation('tianlong_north_abandoned_waystation')?.encounters).toEqual(['encounter_waystation_wolf_pack'])
   })
 
   // TM-P1-023：天龙城落点锁定——本卡只做区域切换与落点；TM-P1-024 起 connections=['tianlong_martial_hall']（双向武馆）、enemyIds=[]（无假内容）
@@ -152,15 +160,16 @@ describe('TM-P0-002：内容数量与指定条目', () => {
     expect(getLocation('rabbit_lair')?.requiredFlag).toBe('rabbit_lair_unlocked')
   })
 
-  // TM-P2-004：新增樱花优子（世界奇遇 NPC 条目；不参与普通对话/关系系统）
-  it('NPC 6 个：村长/铁匠/药师位于青石村，马科位于武馆，王财/樱花优子位于天龙城', () => {
-    expect(Object.keys(NPCS)).toHaveLength(6)
+  // TM-P2-004：新增樱花优子（世界奇遇 NPC 条目；不参与普通对话/关系系统）；TM-P2-009 §12：新增沈拓（纯剧情人物，不建 Companion/Relationship）
+  it('NPC 7 个：村长/铁匠/药师位于青石村，马科位于武馆，王财/樱花优子位于天龙城，沈拓位于北郊旧驿站', () => {
+    expect(Object.keys(NPCS)).toHaveLength(7)
     expect(getNpc('village_elder')?.locationId).toBe('qingshi_village')
     expect(getNpc('blacksmith')?.locationId).toBe('qingshi_village')
     expect(getNpc('apothecary')?.locationId).toBe('qingshi_village')
     expect(getNpc('knight_captain_make')?.locationId).toBe('tianlong_martial_hall')
     expect(getNpc('merchant_wangcai')?.locationId).toBe('tianlong_city')
     expect(getNpc('sakura_yuko')?.locationId).toBe('tianlong_city')
+    expect(getNpc('shen_tuo')?.locationId).toBe('tianlong_north_abandoned_waystation')
   })
 
   it('敌人 13 个且等级符合设定', () => {
@@ -388,13 +397,13 @@ describe('TM-P0-002-R1：关键内容身份锁', () => {
     expect(necklace?.value).toBe(0)
   })
 
-  it('注册表数量与 ID 未被改动（无新增黄金兔子王条目；TM-P1-005 新增《矿洞清理》、TM-P1-010 新增《草原狼影》、TM-P1-017 新增《追寻黄金兔子王》、TM-P1-021 新增《采药受阻》、TM-P1-022 新增《矿洞余患》、TM-P1-024 新增《商人王财的麻烦》与马科/王财、TM-P1-025 新增骷髅士兵、TM-P1-026 新增骷髅队长、TM-P1-027 新增僵尸/黑法师与黑石塔二层、TM-P1-028 新增骷髅战士、TM-P1-029 新增骷髅女妖/黑石塔三层/夔峒项链、TM-P2-001 新增北门失联/天龙城北门/黑鬃魔狼、TM-P2-004 新增落樱越界/樱华神域/残灾之影/樱花优子/桂花糕、TM-P2-008 新增北郊追踪/天龙城北郊/荒原野狼/狼牙/狼皮）', () => {
+  it('注册表数量与 ID 未被改动（无新增黄金兔子王条目；TM-P1-005 新增《矿洞清理》、TM-P1-010 新增《草原狼影》、TM-P1-017 新增《追寻黄金兔子王》、TM-P1-021 新增《采药受阻》、TM-P1-022 新增《矿洞余患》、TM-P1-024 新增《商人王财的麻烦》与马科/王财、TM-P1-025 新增骷髅士兵、TM-P1-026 新增骷髅队长、TM-P1-027 新增僵尸/黑法师与黑石塔二层、TM-P1-028 新增骷髅战士、TM-P1-029 新增骷髅女妖/黑石塔三层/夔峒项链、TM-P2-001 新增北门失联/天龙城北门/黑鬃魔狼、TM-P2-004 新增落樱越界/樱华神域/残灾之影/樱花优子/桂花糕、TM-P2-008 新增北郊追踪/天龙城北郊/荒原野狼/狼牙/狼皮、TM-P2-009 新增断旗余声/北郊旧驿站/沈拓/驿站狼群/断裂队旗）', () => {
     // TM-P2-004：+残灾之影（12）；TM-P2-008：+荒原野狼（13）
     expect(Object.keys(ENEMIES)).toHaveLength(13)
-    // TM-P2-004：+樱花优子（6）
-    expect(Object.keys(NPCS)).toHaveLength(6)
-    // TM-P2-004：+《落樱越界》（9）；TM-P2-008：+《北郊追踪》（10）
-    expect(Object.keys(QUESTS)).toHaveLength(10)
+    // TM-P2-004：+樱花优子（6）；TM-P2-009：+沈拓（7）
+    expect(Object.keys(NPCS)).toHaveLength(7)
+    // TM-P2-004：+《落樱越界》（9）；TM-P2-008：+《北郊追踪》（10）；TM-P2-009：+《断旗余声》（11）
+    expect(Object.keys(QUESTS)).toHaveLength(11)
     // TM-P2-003 C：新增黑鬃狼牙（common）/黑鬃狼皮（uncommon）/精制铁剑（uncommon，+3）；TM-P2-004：+桂花糕（10）
     // TM-P2-007 §5.6：新增兽肉/鼠尾/破损骨片/残破布片/暗影粉尘/灵性碎片 6 种通用材料（20）
     // TM-P2-008 §25：+狼牙/狼皮 2 种普通材料（22）
@@ -419,6 +428,14 @@ describe('TM-P0-002-R1：关键内容身份锁', () => {
     expect(getEnemy('wild_wolf')).toBeDefined()
     expect(getItem('wolf_fang')).toBeDefined()
     expect(getItem('wolf_pelt')).toBeDefined()
+    // TM-P2-009：《断旗余声》/ 北郊旧驿站 / 沈拓 / 驿站狼群 / 三条新线索已注册
+    expect(getQuest('quest_north_broken_banner')).toBeDefined()
+    expect(getLocation('tianlong_north_abandoned_waystation')).toBeDefined()
+    expect(getNpc('shen_tuo')).toBeDefined()
+    expect(getEncounter('encounter_waystation_wolf_pack')).toBeDefined()
+    expect(getClue('clue_north_broken_banner')).toBeDefined()
+    expect(getClue('clue_north_black_wagon_tracks')).toBeDefined()
+    expect(getClue('clue_north_alchemical_bait')).toBeDefined()
   })
 
   // TM-P1-024：第五正式主线 + 天龙城 NPC 注册表锁定（无 goldReward、本卡不完成任务；马科/王财无 relationship）

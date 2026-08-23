@@ -60,3 +60,16 @@ export function canSearchNorthOutskirtsByMount(state: GameState): boolean {
     state.world.flags.north_outskirts_mount_search === undefined
   )
 }
+
+/**
+ * 北郊旧驿站「骑马快速侦查」可否触发（TM-P2-009 §13）。
+ * 条件：在旧驿站 + 装备带 fast_travel 的坐骑 + 尚未侦查（一次性）。
+ * 坐骑不攻击、不进 initiative，仅作为驿站屏障调查的 optional 补充手段（得黑篷车辙线索，不推进 barrier_resolved）。
+ */
+export function canSearchWaystationByMount(state: GameState): boolean {
+  return (
+    state.world.currentLocationId === 'tianlong_north_abandoned_waystation' &&
+    hasTravelTag(state, 'fast_travel') &&
+    state.world.flags.waystation_mount_search === undefined
+  )
+}
