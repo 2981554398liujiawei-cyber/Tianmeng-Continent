@@ -371,7 +371,7 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
       <header className="mb-3 flex items-center justify-between gap-3 border-b border-ink-600 pb-2">
         <p className="text-xs tracking-widest text-bone-500">
           天梦大陆
-          {cloudStatus === 'connected' && <span className="ml-3 text-bone-500">云：{cloudSyncStatus === 'conflict' ? '有冲突' : cloudSyncStatus === 'syncing' ? '同步中' : '已同步'}</span>}
+          {cloudStatus === 'connected' && <span className="ml-3 text-bone-500">云：{cloudSyncStatus === 'conflict' ? '有冲突' : cloudSyncStatus === 'syncing' ? '同步中' : cloudSyncStatus === 'offline' ? '仅本机' : '已同步'}</span>}
           {cloudStatus === 'not_configured' && <span className="ml-3 text-bone-500">云：仅本机</span>}
         </p>
         <div className="flex items-center gap-2">
