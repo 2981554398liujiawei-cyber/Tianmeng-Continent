@@ -42,6 +42,12 @@
     "qa:p2-008-full-journey": "node qa/p2-008-full-journey-e2e.mjs",
     "qa:p2-008-balance": "node qa/p2-008-balance.mjs",
     "qa:p2-008": "npm run qa:p2-008-as && npm run qa:p2-008-north && npm run qa:p2-008-layout && npm run qa:p2-008-mobile && npm run qa:p2-008-full-journey && npm run qa:p2-008-balance",
+    "qa:p2-009-sidebar": "node qa/p2-009-sidebar-e2e.mjs",
+    "qa:p2-009-north-story": "node qa/p2-009-north-story-e2e.mjs",
+    "qa:p2-009-full-journey": "node qa/p2-009-full-journey-e2e.mjs",
+    "qa:p2-009-layout": "node qa/p2-009-layout-e2e.mjs",
+    "qa:p2-009-balance": "node qa/p2-009-balance.mjs",
+    "qa:p2-009": "npm run qa:p2-009-sidebar && npm run qa:p2-009-north-story && npm run qa:p2-009-full-journey && npm run qa:p2-009-layout && npm run qa:p2-009-balance",
     "qa:rc": "npm run build && node qa/rc-e2e.mjs"
   },
   "dependencies": {

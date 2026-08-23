@@ -100,3 +100,28 @@ jobs:
           fi
           echo "Using Chrome at $CHROME_PATH"
           CHROME_PATH="$CHROME_PATH" npm run qa:p2-008
+
+  qa-p2-009:
+    name: P2-009 E2E Regression
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # TM-P2-009：sidebar（§4-8 封板修复）+ north-story（§9-19 断旗余声全流程）+ full-journey
+      # （§31 北线三段链 + 窄前置）+ layout（§14-15 断点）+ balance（§13 驿站狼群）全量回归。
+      # 各 E2E 脚本自备本地 dev server（--strictPort 5241-5244）；balance 无需浏览器。
+      - name: Run P2-009 E2E suite
+        run: |
+          CHROME_PATH="$(command -v google-chrome-stable || command -v google-chrome || command -v chromium || true)"
+          if [ -z "$CHROME_PATH" ]; then
+            echo "Chrome executable was not found on the runner"
+            exit 1
+          fi
+          echo "Using Chrome at $CHROME_PATH"
+          CHROME_PATH="$CHROME_PATH" npm run qa:p2-009
