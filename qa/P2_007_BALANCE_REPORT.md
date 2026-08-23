@@ -1,6 +1,6 @@
 # TM-P2-007 §53 Balance Regression 报告（Party Combat V5 3v3）
 
-> 生成时间：2026-08-22T14:04:45.151Z ｜ Node v24.14.0 ｜ 每 pairing 模拟 **5000** 次 ｜ 种子 **20260701**
+> 生成时间：2026-08-23T01:13:42.280Z ｜ Node v24.14.0 ｜ 每 pairing 模拟 **5000** 次 ｜ 种子 **20260701**
 > 全部结算调用 `src/game/rules/partyCombat.ts` + `src/game/rules/combat.ts` 正式纯函数；骰面由 mulberry32 seeded PRNG 生成，可复现。
 
 ## 0. 显著异常判定标准

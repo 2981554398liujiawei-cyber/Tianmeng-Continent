@@ -1,5 +1,11 @@
 /**
- * qa/p2-006-balance.mjs —— TM-P2-006 数值平衡 Monte Carlo 模拟器（seeded、确定性、可复现）。
+ * [LEGACY] qa/p2-006-balance.mjs —— TM-P2-006 数值平衡 Monte Carlo 模拟器（seeded、确定性、可复现）。
+ *
+ * ⚠️ LEGACY 标注（TM-P2-007-R1 BLOCKER D）：本脚本是 P2-006 时期的旧平衡回归，
+ * 仅由 qa:p2-006 聚合命令保留引用。唯一权威 Balance truth source 是
+ * `npm run qa:balance`（qa/p2-007-balance.mjs + qa/P2_007_BALANCE_REPORT.md，§53 3v3）。
+ * 新平衡评估一律使用 qa:balance；不再用本脚本做判定，仅作历史回归兼容。
+ *
  *
  * 运行方式（Node 22.15+ / 23.6+ 均可；本仓库 Node 24 已验证）：
  *   node qa/p2-006-balance.mjs

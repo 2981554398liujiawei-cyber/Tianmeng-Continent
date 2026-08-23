@@ -1,5 +1,8 @@
 # P2-006 数值平衡审计报告（Before 表（调参前））
 
+> [LEGACY] TM-P2-007-R1 BLOCKER D：本报告为 P2-006 时期历史平衡审计产物，仅存档。
+> 唯一权威 Balance truth source = `npm run qa:balance`（qa/p2-007-balance.mjs + qa/P2_007_BALANCE_REPORT.md）。
+
 > 生成时间：2026-08-21T19:15:15.413Z ｜ Node v22.22.2 ｜ 每 pairing 模拟 **10000** 次 ｜ 种子 **20250206** ｜ 药水策略：关闭（默认）
 > 全部结算调用 `src/game/rules/combat.ts` / `src/game/rules/skill.ts` 正式纯函数；骰面由 mulberry32 seeded PRNG 生成，可复现。
 

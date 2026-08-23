@@ -1,5 +1,8 @@
 # TM-P2-006 数值平衡静态审计（P2_006_BALANCE_AUDIT.md）
 
+> [LEGACY] TM-P2-007-R1 BLOCKER D：本报告为 P2-006 时期历史平衡审计产物，仅存档。
+> 唯一权威 Balance truth source = `npm run qa:balance`（qa/p2-007-balance.mjs + qa/P2_007_BALANCE_REPORT.md）。
+
 > 审计对象：《天梦大陆》战斗数值（Combat V3 冻结公式，TM-P2-002）
 > 审计方式：静态公式审计 + 解析期望伤害（遍历 1–20 骰面调用 `resolveAttack`）+ 对照 Monte Carlo 模拟（`qa/p2-006-balance.mjs`，种子 20250206，每配对 10000 次）
 > 数据来源：`src/game/rules/combat.ts`、`src/game/content/enemies.ts`、`src/game/content/professions.ts`、`src/game/content/skills.ts`、`src/game/content/items.ts`、`src/game/rules/character.ts`、`src/game/rules/progression.ts`、`src/game/rules/skill.ts`、`src/pages/CombatPage.tsx`
