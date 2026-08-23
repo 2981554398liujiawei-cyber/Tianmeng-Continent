@@ -250,6 +250,44 @@ describe('TM-P2-008 §20/§22：Stage C 多解调查（北郊）', () => {
   })
 })
 
+describe('TM-P2-008 §50：Mount 快速搜索（沿官道快速搜索）', () => {
+  function mountEquipped(): void {
+    const state = useGameStore.getState().gameState!
+    state.ownedMountIds = ['fire_stallion']
+    state.equippedMountId = 'fire_stallion'
+  }
+
+  it('装备火焰驹 → ok:true method:mount + clue_north_patrol_emblem 已得 + 不推进 investigated（§50 不自动解决）', () => {
+    stageCReady()
+    mountEquipped()
+    const res = useGameStore.getState().investigateNorthOutskirtsAmbush('mount')
+    expect(res?.ok).toBe(true)
+    expect(res).toMatchObject({ method: 'mount' })
+    const state = useGameStore.getState().gameState!
+    expect(hasClue(state, 'clue_north_patrol_emblem')).toBe(true)
+    expect(state.world.flags.north_outskirts_mount_search).toBe(true)
+    const quest = state.quests.find((q) => q.questId === 'quest_north_outskirts')!
+    expect(quest.flags.north_outskirts_ambush_investigated).toBeUndefined()
+  })
+
+  it('未装备 fast_travel 坐骑 → mount_not_present 且完全不变', () => {
+    stageCReady()
+    const before = useGameStore.getState().gameState
+    const res = useGameStore.getState().investigateNorthOutskirtsAmbush('mount')
+    expect(res).toEqual({ ok: false, reason: 'mount_not_present' })
+    expect(useGameStore.getState().gameState).toBe(before)
+  })
+
+  it('重复搜索 → alreadySearched:true + clue 幂等不重复得', () => {
+    stageCReady()
+    mountEquipped()
+    useGameStore.getState().investigateNorthOutskirtsAmbush('mount')
+    const res = useGameStore.getState().investigateNorthOutskirtsAmbush('mount')
+    expect(res?.ok).toBe(true)
+    expect(res).toMatchObject({ method: 'mount', alreadySearched: true, clueAdded: undefined })
+  })
+})
+
 describe('TM-P2-008 §26：Stage D 回报 + generic 完成', () => {
   it('未调查袭击现场 → reportNorthOutskirts false', () => {
     const state = useGameStore.getState().gameState!

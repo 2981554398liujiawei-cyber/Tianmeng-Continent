@@ -17,7 +17,7 @@ import { resolveEncounterLoot } from '../rules/partyCombat'
 import type { EncounterLootSummary } from '../rules/partyCombat'
 import { checkSkillUse } from '../rules/skill'
 import { rollLuckCheck, resolveLuckCheck, type LuckCheckResult } from '../rules/luck'
-import { canExploreMountTrail, getEffectiveCharacterAttributes, MOUNT_TRAIL_REWARD_GOLD } from '../rules/mount'
+import { canExploreMountTrail, canSearchNorthOutskirtsByMount, getEffectiveCharacterAttributes, hasTravelTag, MOUNT_TRAIL_REWARD_GOLD } from '../rules/mount'
 import { resolveD20Check, rollD20 } from '../rules/d20'
 import {
   canTriggerSakuraEncounter,
@@ -236,8 +236,8 @@ interface GameStoreState {
   trackNorthOutskirtsTrail: () => boolean
   /** Stage B 找到袭击现场（北郊）：quest in_progress + trail_tracked===true + ambush_found undefined/false 时成功，只写 quest.flags.north_outskirts_ambush_found=true（status/stage 不变）；非法前置/异常 flag/重复全部拒绝且完全不变 */
   searchNorthOutskirtsAmbush: () => boolean
-  /** Stage C 调查多解（北郊）：mnd/lck 检定（DC 12）任一成功 → 写 ambush_investigated=true + 对应线索返回 progressed:true；sakura 在场 → flavor + 额外线索（不自动解决，§22）；检定失败可重试（§29，不软阻断）；前置不满足 → locked 且完全不变 */
-  investigateNorthOutskirtsAmbush: (method: 'mnd' | 'lck' | 'sakura') => NorthOutskirtsInvestigateResult
+  /** Stage C 调查多解（北郊）：mnd/lck 检定（DC 12）任一成功 → 写 ambush_investigated=true + 对应线索返回 progressed:true；sakura 在场 → flavor + 额外线索（不自动解决，§22）；mount（装备 fast_travel 坐骑）→ 沿官道快速搜索得巡逻队徽记线索（不自动解决，§50）；检定失败可重试（§29，不软阻断）；前置不满足 → locked 且完全不变 */
+  investigateNorthOutskirtsAmbush: (method: 'mnd' | 'lck' | 'sakura' | 'mount') => NorthOutskirtsInvestigateResult
   /** Stage D 回报（武馆/北门）：quest in_progress + ambush_investigated===true + reported undefined/false 时成功，写 quest.flags.north_outskirts_reported=true 且 status→completable（stage 保持 0）；非法前置/异常 flag/重复全部拒绝且完全不变 */
   reportNorthOutskirts: () => boolean
 
@@ -2380,6 +2380,29 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
         }
         return { gameState: withClue ?? base }
       }
+      // Mount 快速搜索（§50）：装备 fast_travel 坐骑可「沿官道快速搜索」得巡逻队徽记线索；optional，不推进 ambush_investigated
+      if (method === 'mount') {
+        if (!hasTravelTag(state, 'fast_travel')) {
+          result = { ok: false, reason: 'mount_not_present' }
+          return {}
+        }
+        const alreadySearched = state.world.flags.north_outskirts_mount_search === true
+        const base = {
+          ...state,
+          world: {
+            ...state.world,
+            flags: { ...state.world.flags, north_outskirts_mount_search: true },
+          },
+        }
+        const withClue = applyClueDiscovery(base, 'clue_north_patrol_emblem')
+        result = {
+          ok: true,
+          method: 'mount',
+          clueAdded: withClue ? 'clue_north_patrol_emblem' : undefined,
+          alreadySearched,
+        }
+        return { gameState: withClue ?? base }
+      }
       // mnd / lck 检定（DC 12；失败可重试，不软阻断 §29）
       let check: D20CheckResult
       try {
@@ -3105,7 +3128,8 @@ export const NORTH_OUTSKIRTS_INVESTIGATE_DC = 12
 export type NorthOutskirtsInvestigateResult =
   | { ok: true; method: 'mnd' | 'lck'; check: D20CheckResult; progressed: boolean; clueAdded?: string }
   | { ok: true; method: 'sakura'; present: true; clueAdded?: string }
-  | { ok: false; reason: 'locked' | 'sakura_not_present' | 'already_done' }
+  | { ok: true; method: 'mount'; clueAdded?: string; alreadySearched?: boolean }
+  | { ok: false; reason: 'locked' | 'sakura_not_present' | 'mount_not_present' | 'already_done' }
 
 export type NorthTowerClaimResult =
   | {
