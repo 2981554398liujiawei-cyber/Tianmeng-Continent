@@ -195,6 +195,15 @@ try {
   await clickTab('线索')
   side = await sidebarText()
   check('AS8: 已发现线索含「兔子的路径」', side.includes('兔子的路径'))
+  // TM-P2-009 §4 线索卡默认折叠：先点「展开」才能断言描述/来源（展开后分类 tag 仍在）
+  await page.evaluate(() => {
+    const qc = document.querySelector('[data-testid="quest-column"]')
+    const cardEl = qc && [...qc.querySelectorAll('li')].find((li) => li.textContent?.includes('兔子的路径'))
+    const btn = cardEl && [...cardEl.querySelectorAll('button')].find((b) => b.textContent?.trim() === '展开')
+    if (btn) btn.click()
+  })
+  await sleep(300)
+  side = await sidebarText()
   check('AS4: 线索卡含描述（指向黄金兔子王所在之地）', side.includes('指向黄金兔子王所在之地'))
   check('AS4: 线索卡含来源「来源：兔王巢穴」', side.includes('来源：兔王巢穴'))
   check('AS4: 线索卡含分类 tag「地图」', side.includes('地图'))
