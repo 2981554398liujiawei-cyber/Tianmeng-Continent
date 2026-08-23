@@ -224,13 +224,13 @@ try {
   body = await bodyText()
   const hpAfterShieldMiss = await readPlayerHp()
   check('R1-06: B2a 敌人反击 miss → 玩家 HP 不变', hpAfterShieldMiss.hp === hp0.hp, `before=${hp0.hp} after=${hpAfterShieldMiss.hp}`)
-  check('R1-07: B2a 盾未消耗仍展开（可抵消 3 点伤害）', body.includes('展开了魔法盾（可抵消 3 点伤害）'))
+  check('R1-07: B2a 盾未消耗仍展开（可抵消 3 点伤害）', body.includes('施展了樱花魔法盾（可抵消 3 点伤害）'))
   check('R1-08: B2a 无抵消日志（miss 不吸收）', !body.includes('樱花魔法盾抵消了'))
 
   // ---- B2b：下一轮敌人反击命中（roll=9 → 承伤率 0.45）→ 盾抵消 3、HP -4、盾消耗 ----
   // 当前 Sakura 阶段（B2a 敌人 miss 后回 Sakura）→ 跳过 → 玩家普攻（擦伤 3 不影响断言）→ 敌人命中
   body = await bodyText()
-  check('R1-09: B2b 盾保留期间仍显示展开状态（跨轮保持）', body.includes('展开了魔法盾（可抵消 3 点伤害）'))
+  check('R1-09: B2b 盾保留期间仍显示展开状态（跨轮保持）', body.includes('施展了樱花魔法盾（可抵消 3 点伤害）'))
   setRandom(0.4) // 玩家 roll=9 擦伤 3 伤；敌人 roll=9 命中 → v=0.4 选玩家，raw 14 → 7，盾抵消 3 → HP -4
   await clickByText('跳过') // Sakura 跳过
   await sleep(400)
