@@ -1,5 +1,6 @@
-// TM-P2-005-R1：CombatPage 真实布局验收。
+// TM-P2-005-R1 / TM-P2-006 CombatPage V4 适配：CombatPage 真实布局验收。
 // 自启 Vite，经正式存档/Continue/迎战 UI 进入战斗；覆盖桌面双分辨率与无/有伙伴状态。
+// V4：技能/物品收进底部固定行动栏 tray（combat-skill-tray / combat-item-tray），Sakura 阶段按钮仍平铺直接可见。
 import puppeteer from 'puppeteer-core'
 import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
@@ -81,6 +82,26 @@ async function clickButton(text) {
   await sleep(500)
 }
 
+/** V4：点击行动栏一级按钮（技能/物品文本随展开在「技能 ▾/▴」间切换，按前缀匹配，避免误中 tray 内技能名） */
+async function clickBarButton(prefix) {
+  const clicked = await page.evaluate((label) => {
+    const button = [...document.querySelectorAll('button')].find((item) => item.textContent?.trim().startsWith(label))
+    if (!button) return false
+    button.click()
+    return true
+  }, prefix)
+  if (!clicked) throw new Error(`未找到行动栏按钮: ${prefix}`)
+  await sleep(350)
+}
+
+async function waitForTray(testid) {
+  await page.waitForSelector(`[data-testid="${testid}"]`, { visible: true })
+}
+
+async function waitForTrayGone(testid) {
+  await page.waitForFunction((id) => !document.querySelector(`[data-testid="${id}"]`), { timeout: 5000 }, testid)
+}
+
 async function enterCombat(sakura) {
   await page.goto(APP_URL, { waitUntil: 'networkidle0' })
   const slot = { version: 4, savedAt: new Date().toISOString(), gameState: fixture({ sakura }) }
@@ -121,9 +142,12 @@ async function outerLayout() {
   })
 }
 
-async function accessibleButtons(labels) {
-  return page.evaluate((wanted) => wanted.map((label) => {
-    const button = [...document.querySelectorAll('button')].find((item) => item.textContent?.includes(label))
+/** scopeSelector 非空时只在指定容器（如 tray）内查找按钮 */
+async function accessibleButtons(labels, scopeSelector = null) {
+  return page.evaluate(([wanted, scope]) => wanted.map((label) => {
+    const root = scope ? document.querySelector(scope) : document
+    const buttons = root ? [...root.querySelectorAll('button')] : [...document.querySelectorAll('button')]
+    const button = buttons.find((item) => item.textContent?.includes(label))
     if (!button) return { label, present: false }
     button.scrollIntoView({ block: 'nearest', inline: 'nearest' })
     const rect = button.getBoundingClientRect()
@@ -134,7 +158,7 @@ async function accessibleButtons(labels) {
       inViewport: rect.top >= -1 && rect.left >= -1 && rect.bottom <= innerHeight + 1 && rect.right <= innerWidth + 1,
       focusable: button.tabIndex >= 0,
     }
-  }), labels)
+  }), [labels, scopeSelector])
 }
 
 try {
@@ -147,16 +171,60 @@ try {
 
       if (sakura) {
         await clickButton('普通攻击')
-        await page.waitForFunction(() => document.body.textContent?.includes('樱花优子的行动'))
+        await clickButton('残灾之影') // P2-007 普攻进 target selector 选敌
+        await page.waitForFunction(() => document.body.textContent?.includes('樱花优子的回合'))
       }
 
-      const labels = sakura
-        ? ['樱花飞斩', '樱花魔法盾', '樱花轻舞', '跳过']
-        : ['普通攻击', '骑士重击', '使用治疗药水']
-      const buttons = await accessibleButtons(labels)
-      for (const button of buttons) {
-        const ok = button.present && button.visible && button.inViewport && button.focusable && !button.disabled
-        check(`${width}x${height} ${stateName}: ${button.label} 可见可访问`, ok, JSON.stringify(button))
+      if (!sakura) {
+        // V4：底部固定行动栏一级按钮直接可见可访问
+        const primary = await accessibleButtons(['普通攻击', '技能 ▾', '物品 ▾', '逃跑'])
+        for (const button of primary) {
+          const ok = button.present && button.visible && button.inViewport && button.focusable && !button.disabled
+          check(`${width}x${height} ${stateName}: 行动栏 ${button.label} 可见可访问`, ok, JSON.stringify(button))
+        }
+
+        // V4：技能 tray 展开 → tray 内技能按钮可见可访问 → 收起 → tray 消失
+        await clickBarButton('技能')
+        await waitForTray('combat-skill-tray')
+        const skillButtons = await accessibleButtons(['骑士重击（2 灵力）'], '[data-testid="combat-skill-tray"]')
+        for (const button of skillButtons) {
+          const ok = button.present && button.visible && button.inViewport && button.focusable && !button.disabled
+          check(`${width}x${height} ${stateName}: 技能 tray 内 骑士重击（2 灵力）可见可访问`, ok, JSON.stringify(button))
+        }
+        await clickBarButton('技能')
+        await waitForTrayGone('combat-skill-tray')
+        check(`${width}x${height} ${stateName}: 技能 tray 收起后消失`, true)
+
+        // V4：物品 tray 展开 → tray 内药水按钮可见可访问 + 剩余数量文案 → 收起 → tray 消失
+        await clickBarButton('物品')
+        await waitForTray('combat-item-tray')
+        const itemButtons = await accessibleButtons(['使用治疗药水（+8 生命）'], '[data-testid="combat-item-tray"]')
+        for (const button of itemButtons) {
+          const ok = button.present && button.visible && button.inViewport && button.focusable && !button.disabled
+          check(`${width}x${height} ${stateName}: 物品 tray 内 使用治疗药水 可见可访问`, ok, JSON.stringify(button))
+        }
+        const itemTrayText = await page.evaluate(() => document.querySelector('[data-testid="combat-item-tray"]')?.textContent ?? '')
+        check(`${width}x${height} ${stateName}: 物品 tray 显示剩余药水数量`, itemTrayText.includes('剩余：2'), `trayText=${itemTrayText}`)
+        await clickBarButton('物品')
+        await waitForTrayGone('combat-item-tray')
+        check(`${width}x${height} ${stateName}: 物品 tray 收起后消失`, true)
+      } else {
+        // P2-007：伙伴技能收敛进「技能」tray（带灵力后缀）；「跳过」仍在行动栏平铺
+        await clickBarButton('技能')
+        await waitForTray('combat-skill-tray')
+        const skillButtons = await accessibleButtons(['樱花飞斩（1 灵力）', '樱花魔法盾（2 灵力）', '樱花轻舞（2 灵力）'], '[data-testid="combat-skill-tray"]')
+        for (const button of skillButtons) {
+          const ok = button.present && button.visible && button.inViewport && button.focusable && !button.disabled
+          check(`${width}x${height} ${stateName}: ${button.label} 可见可访问`, ok, JSON.stringify(button))
+        }
+        await clickBarButton('技能')
+        await waitForTrayGone('combat-skill-tray')
+        check(`${width}x${height} ${stateName}: 技能 tray 收起后消失`, true)
+        const skipButtons = await accessibleButtons(['跳过'])
+        for (const button of skipButtons) {
+          const ok = button.present && button.visible && button.inViewport && button.focusable && !button.disabled
+          check(`${width}x${height} ${stateName}: ${button.label} 可见可访问`, ok, JSON.stringify(button))
+        }
       }
 
       // 截图进入内存，确保真实渲染帧可被浏览器捕获且不是空输出；不落盘，遵守仅改指定脚本。
@@ -178,5 +246,5 @@ try {
 }
 
 const failed = results.filter((result) => !result.ok).length
-console.log(`===== TM-P2-005-R1 CombatPage 结果：${results.length - failed}/${results.length} 通过 =====`)
+console.log(`===== TM-P2-005-R1 / TM-P2-006 CombatPage V4 结果：${results.length - failed}/${results.length} 通过 =====`)
 process.exit(failed ? 1 : 0)

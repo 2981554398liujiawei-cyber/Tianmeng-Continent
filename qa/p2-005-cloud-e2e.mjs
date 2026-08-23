@@ -146,11 +146,10 @@ const saveToSlot1 = async (page) => {
 
 const readLocationName = (page) =>
   page.evaluate(() => {
-    const label = [...document.querySelectorAll('p')].find((el) => el.textContent.trim() === '当前位置')
-    if (!label) return null
-    const section = label.closest('section')
+    // TM-P2-006：中央场景标题（h2 地点名）；旧「当前位置」标签已删除
+    const section = document.querySelector('[data-current-location-id]')
     if (!section) return null
-    const nameEl = section.querySelector('h3')
+    const nameEl = section.querySelector('h2')
     return nameEl ? nameEl.textContent.trim() : null
   })
 
@@ -364,13 +363,13 @@ try {
   await clickByText(pageC, '继续游戏')
   await sleep(600)
   body = await bodyText(pageC)
-  check('C22: V3→V5 迁移后正常进入游戏（青石村）', (await readLocationName(pageC)) === '青石村')
+  check('C22: V3→V6 迁移后正常进入游戏（青石村）', (await readLocationName(pageC)) === '青石村')
   const localV4 = await pageC.evaluate(() => {
     const raw = localStorage.getItem('tianmeng_continent_save_slot_slot1')
     if (!raw) return null
     return JSON.parse(raw)
   })
-  check('C23: 迁移后本地已是 V5（companions/relationships/party/restCount/XP）', localV4 && localV4.version === 5 && localV4.gameState.companions && localV4.gameState.relationships && localV4.gameState.party && localV4.gameState.world.restCount === 0 && Number.isSafeInteger(localV4.gameState.player.adventureXp))
+  check('C23: 迁移后本地已是 V6（companions/relationships/party/restCount/XP）', localV4 && localV4.version === 6 && localV4.gameState.companions && localV4.gameState.relationships && localV4.gameState.party && localV4.gameState.world.restCount === 0 && Number.isSafeInteger(localV4.gameState.player.adventureXp))
   // 黄金兔冻结保持
   const golden = localV4?.gameState?.quests?.find((q) => q.questId === 'quest_golden_rabbit_search')
   check(
@@ -387,7 +386,7 @@ try {
   await saveToSlot1(pageC)
   const afterV4 = await cloudRequest({ action: 'load', passphrase: PASS_V3 })
   const cloudSlot = afterV4.json.payload?.savesExport?.slots?.slot1
-  check('C25: 迁移后保存 → 云端已是 V5 且 revision 2', afterV4.json.revision === 2 && cloudSlot?.version === 5 && cloudSlot?.gameState?.companions !== undefined && Number.isSafeInteger(cloudSlot?.gameState?.player?.adventureXp))
+  check('C25: 迁移后保存 → 云端已是 V6 且 revision 2', afterV4.json.revision === 2 && cloudSlot?.version === 6 && cloudSlot?.gameState?.companions !== undefined && Number.isSafeInteger(cloudSlot?.gameState?.player?.adventureXp))
 
   // ============ C2 解锁冲突保护：divergent 必须显式选择，identical 忽略 exportedAt ============
   const cloudConflictPayload = structuredClone(afterForce.json.payload)

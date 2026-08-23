@@ -13,6 +13,9 @@ dist-ssr
 *.local
 cloud/.wrangler/
 
+# Claude Code local session/launch config (never commit)
+.claude/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

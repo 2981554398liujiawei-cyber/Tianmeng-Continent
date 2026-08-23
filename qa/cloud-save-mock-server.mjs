@@ -35,6 +35,13 @@ const ALLOWED_ORIGINS = new Set([
   'http://127.0.0.1:5201',
 ])
 
+// TM-P2-007：rc-e2e 集成时可注入额外端口（逗号分隔，如 Mount suite 把 cloudDev 搬到 5204 避开共享 Vite）
+for (const port of (process.env.MOCK_ALLOWED_EXTRA_ORIGINS || '').split(',').map((p) => p.trim()).filter(Boolean)) {
+  if (!/^\d{1,5}$/.test(port)) throw new Error(`MOCK_ALLOWED_EXTRA_ORIGINS 含非法端口: ${port}`)
+  ALLOWED_ORIGINS.add(`http://localhost:${port}`)
+  ALLOWED_ORIGINS.add(`http://127.0.0.1:${port}`)
+}
+
 function corsHeaders(origin) {
   return {
     'Access-Control-Allow-Origin': origin,

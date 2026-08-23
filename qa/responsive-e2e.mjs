@@ -128,12 +128,13 @@ try {
   const r390 = await readColumnRects()
   check('390: 三栏均渲染（player/main/quest）', r390.player !== null && r390.main !== null && r390.quest !== null)
   check('390: 单栏（三栏 left 相同）', r390.player && r390.main && r390.quest && r390.player.left === r390.main.left && r390.main.left === r390.quest.left)
-  check('390: 垂直排列（top 递增）', r390.player && r390.main && r390.quest && r390.player.top < r390.quest.top && r390.quest.top < r390.main.top)
+  // TM-P2-006：V4 单栏顺序 = 主玩法(order-1) → 玩家(order-2) → 任务(order-3)
+  check('390: 垂直排列（top 递增）', r390.player && r390.main && r390.quest && r390.main.top < r390.player.top && r390.player.top < r390.quest.top)
   check('390: 无横向滚动（scrollWidth <= 390）', r390.scrollWidth <= 390 && r390.docScrollWidth <= 390, `scrollWidth=${r390.scrollWidth} body=${r390.docScrollWidth}`)
   check('390: 三栏宽度不溢出（right <= 390）', r390.player && r390.main && r390.quest && r390.player.right <= 390 && r390.main.right <= 390 && r390.quest.right <= 390)
-  // 手机角色概览：进入游戏页时完整角色详情默认折叠（不先滚两屏属性表），概览包含当前武器
+  // 手机角色概览：进入游戏页时完整角色详情默认折叠（不先滚两屏属性表），概览包含当前武器（V4 左栏战斗摘要「武器：」）
   const body390 = await page.evaluate(() => document.body.textContent)
-  check('390: 角色概览显示当前武器', body390.includes('当前武器'))
+  check('390: 角色概览显示当前武器', body390.includes('武器：') || body390.includes('当前武器'))
   check('390: 查看角色详情按钮存在', body390.includes('查看角色详情'))
   check('390: 主要玩法按钮不溢出（保存游戏/主菜单按钮存在）', body390.includes('保存游戏') && body390.includes('主菜单'))
   // TM-P2-002：完整角色详情容器用 data-testid + getComputedStyle 断言（不用 textContent，display:none 元素仍存在于 textContent）
@@ -165,7 +166,8 @@ try {
   await sleep(400)
   const r1024 = await readColumnRects()
   check('1024: 两栏（main 与 quest 左右分列）', r1024.main && r1024.quest && r1024.main.left < r1024.quest.left)
-  check('1024: 角色信息在右侧任务栏下方（player.left >= quest.left 且 player.top > quest.top）', r1024.player && r1024.quest && r1024.player.left >= r1024.quest.left - 8 && r1024.player.top > r1024.quest.top)
+  // TM-P2-006：V4 在 1024 两栏 = 左主玩法 + 右栏（上=玩家、下=任务）
+  check('1024: 角色信息在右侧任务栏上方（player.left >= quest.left 且 player.top < quest.top）', r1024.player && r1024.quest && r1024.player.left >= r1024.quest.left - 8 && r1024.player.top < r1024.quest.top)
   check('1024: 无横向滚动', r1024.scrollWidth <= 1024)
   await page.screenshot({ path: 'qa/responsive-1024.png' })
 

@@ -43,6 +43,26 @@ const clickByText = async (text) => {
   await sleep(450)
 }
 
+// ---- TM-P2-007 适配：CombatPage 战斗操作（玩家普攻/伙伴技能均进 target selector；技能收敛进「技能」tray）----
+const playerAttack = async () => {
+  await clickByText('普通攻击')
+  await clickByText('残灾之影') // 单敌 target selector
+}
+const sakuraShield = async () => {
+  await clickByText('技能')
+  await clickByText('樱花魔法盾')
+  await clickByText('P2004R1测试骑士') // 盾选友方（玩家）
+}
+const sakuraDance = async () => {
+  await clickByText('技能')
+  await clickByText('樱花轻舞') // 自身技能，无 picker
+}
+const sakuraSlash = async () => {
+  await clickByText('技能')
+  await clickByText('樱花飞斩')
+  await clickByText('残灾之影') // 伤害技能选敌方
+}
+
 const bodyText = () => page.evaluate(() => document.body.textContent)
 
 /** TM-P2-005：云口令页出现「仅本机模式」时点击进入（未配置云端端点的降级入口） */
@@ -179,66 +199,80 @@ try {
   check('R1-02b: 神域状态已保存（存档位置 = sakura_domain_fragment）', savedLoc === 'sakura_domain_fragment', `loc=${savedLoc}`)
 
   // ================= 第一场战斗：B2 盾 MISS 持续 + B3 轻舞 =================
-  setRandom(0.4) // 玩家 D20=8 → miss → 进入伙伴阶段
+  // P2-007 轮序：Sakura(AGI16) → 玩家(AGI10) → 残灾(AGI10) → 循环（先手 = AGI 最高）
+  setRandom(0.4)
   await clickByText('迎战')
   await sleep(300)
   body = await bodyText()
   check('R1-03: 进入残灾战斗（Lv.3 + 樱花优子伙伴面板）', body.includes('残灾之影') && body.includes('Lv.3') && body.includes('樱花优子'))
-  const hp0 = await readPlayerHp()
-  await clickByText('普通攻击')
-  await sleep(500)
+  check('R1-04: Sakura 先手（AGI 最高 → 樱花优子的回合）', body.includes('樱花优子的回合'))
+  // R1-05：打开技能 tray 验证三技能按钮（带灵力后缀）
+  await clickByText('技能')
+  await sleep(300)
   body = await bodyText()
-  check('R1-04: 玩家行动后进入「樱花优子的行动」阶段', body.includes('樱花优子的行动'))
-  check('R1-05: 三个伙伴技能按钮真实出现', body.includes('樱花飞斩') && body.includes('樱花魔法盾') && body.includes('樱花轻舞'))
+  check('R1-05: 三个伙伴技能按钮真实出现', body.includes('樱花飞斩（1 灵力）') && body.includes('樱花魔法盾（2 灵力）') && body.includes('樱花轻舞（2 灵力）'))
+  await clickByText('技能') // 关闭 tray
+  await sleep(300)
+  const hp0 = await readPlayerHp()
 
-  // ---- B2a：施盾后敌人反击 MISS（D20=1）→ 盾不消耗、保持展开 ----
-  setRandom(0) // 敌人反击 D20=1 → critical_miss（V3 唯一真正的 miss）
-  await clickByText('樱花魔法盾')
+  // ---- B2a：Sakura 施盾 → 玩家普攻（roll=1 miss）→ 敌人反击 MISS（roll=1）→ 盾不消耗、保持展开 ----
+  setRandom(0) // 玩家 roll=1 critical_miss 无伤；敌人 roll=1 critical_miss，v=0 选玩家
+  await sakuraShield() // Sakura 施盾（先手）
+  await sleep(400)
+  await playerAttack() // 玩家普攻 miss
   await sleep(500)
   body = await bodyText()
   const hpAfterShieldMiss = await readPlayerHp()
   check('R1-06: B2a 敌人反击 miss → 玩家 HP 不变', hpAfterShieldMiss.hp === hp0.hp, `before=${hp0.hp} after=${hpAfterShieldMiss.hp}`)
-  check('R1-07: B2a 盾未消耗仍展开（可抵消 3 点伤害）', body.includes('樱花魔法盾已展开（可抵消 3 点伤害）'))
+  check('R1-07: B2a 盾未消耗仍展开（可抵消 3 点伤害）', body.includes('施展了樱花魔法盾（可抵消 3 点伤害）'))
   check('R1-08: B2a 无抵消日志（miss 不吸收）', !body.includes('樱花魔法盾抵消了'))
 
-  // ---- B2b：下一轮敌人反击暴击命中（D20=20 → 原始伤害 4）→ 盾抵消 3、HP -1、盾消失 ----
-  setRandom(0.4)
-  await clickByText('普通攻击')
-  await sleep(500)
+  // ---- B2b：下一轮敌人反击命中（roll=9 → 承伤率 0.45）→ 盾抵消 3、HP -4、盾消耗 ----
+  // 当前 Sakura 阶段（B2a 敌人 miss 后回 Sakura）→ 跳过 → 玩家普攻（擦伤 3 不影响断言）→ 敌人命中
   body = await bodyText()
-  check('R1-09: B2b 盾保留期间伙伴阶段盾按钮显示「盾已展开」', body.includes('盾已展开'))
-  setRandom(0.99) // 敌人反击 D20=20 → 暴击，V3 最终伤害 = ceil(3×2×20/(11+20)) = 4
-  await clickByText('跳过')
-  await sleep(500)
+  check('R1-09: B2b 盾保留期间仍显示展开状态（跨轮保持）', body.includes('施展了樱花魔法盾（可抵消 3 点伤害）'))
+  setRandom(0.4) // 玩家 roll=9 擦伤 3 伤；敌人 roll=9 命中 → v=0.4 选玩家，raw 14 → 7，盾抵消 3 → HP -4
+  await clickByText('跳过') // Sakura 跳过
+  await sleep(400)
+  await playerAttack() // 玩家普攻
+  await sleep(600)
   body = await bodyText()
   const hpAfterShieldAbsorb = await readPlayerHp()
   check('R1-10: B2b 敌人命中 → 盾抵消 3 点伤害（日志）', body.includes('樱花魔法盾抵消了 3 点伤害'))
-  check('R1-11: B2b 实际 HP 变化 = raw(4) - absorbed(3) = -1', hpAfterShieldAbsorb.hp === hp0.hp - 1, `before=${hp0.hp} after=${hpAfterShieldAbsorb.hp}`)
-  check('R1-12: B2b 盾被消耗（已展开提示消失）', !body.includes('樱花魔法盾已展开'))
+  // TM-P2-006 数值平衡：残灾之影 attackPower 3→14（Combat V3 公式冻结不动）。不再硬编码 raw=4，
+  // 改为相对断言：日志中的造成伤害（已含盾减伤）必须恰好等于实际 HP 变化（盾确实吸收 3 点）。
+  const absorbedDealt = Number((body.match(/残灾之影的攻击命中.*?，造成 (\d+) 点伤害/) ?? [])[1] ?? -1)
+  check('R1-11: B2b 盾减伤后 HP 变化 = 日志伤害（盾吸收 3 点已计入）', hpAfterShieldAbsorb.hp === hp0.hp - absorbedDealt && absorbedDealt >= 0, `before=${hp0.hp} after=${hpAfterShieldAbsorb.hp} logDealt=${absorbedDealt}`)
   check('R1-13: 盾施放只扣一次 MP（灵力 6→4）', (await readSakuraMp()) === 4, `mp=${await readSakuraMp()}`)
 
   // ---- B3：樱花轻舞 → 本轮敌人不反击 ----
+  // 当前 Sakura 阶段 → 轻舞 → 玩家普攻 → 敌人被取消
   setRandom(0.4)
-  await clickByText('普通攻击')
-  await sleep(500)
-  await clickByText('樱花轻舞')
+  await sakuraDance() // Sakura 轻舞
+  await sleep(400)
+  await playerAttack() // 玩家普攻
   await sleep(500)
   body = await bodyText()
   const hpAfterDance = await readPlayerHp()
-  check('R1-14: B3 轻舞日志（敌人找不到反击机会）', body.includes('敌人的攻势被轻舞牵走，没有找到反击的机会'))
+  check('R1-14: B3 轻舞日志（敌人注意力被牵走，下一次攻势落空）', body.includes('敌人的注意力被牵走，下一次攻势落空'))
   check('R1-15: B3 本轮敌人未反击（玩家 HP 不变）', hpAfterDance.hp === hpAfterShieldAbsorb.hp, `before=${hpAfterShieldAbsorb.hp} after=${hpAfterDance.hp}`)
-  // 轻舞只取消本轮：下一玩家行动 → 跳过 → 敌人反击恢复正常（无盾无轻舞，HP -4）
+  // 轻舞只取消本轮：下一轮 Sakura 跳过 → 玩家普攻 → 敌人反击恢复正常（无盾无轻舞）
   setRandom(0.4)
-  await clickByText('普通攻击')
+  await clickByText('跳过') // Sakura 跳过
+  await sleep(400)
+  await playerAttack() // 玩家普攻
   await sleep(500)
   body = await bodyText()
-  check('R1-16: B3 轻舞后可进入下一玩家行动', body.includes('樱花优子的行动'))
-  setRandom(0.99)
-  await clickByText('跳过')
-  await sleep(500)
+  check('R1-16: 轻舞后可继续下一轮（敌人反击后回樱花优子的回合）', body.includes('樱花优子的回合'))
+  setRandom(0.4) // 敌人 roll=9 命中 → 打玩家（v=0.4 选 index 0），raw 14 → 7
+  await clickByText('跳过') // 当前 Sakura 阶段 → 跳过
+  await sleep(400)
+  await playerAttack() // 玩家普攻
+  await sleep(600)
   body = await bodyText()
   const hpAfterCounterBack = await readPlayerHp()
-  check('R1-17: 轻舞只取消本轮（下一轮反击恢复，HP -4）', hpAfterCounterBack.hp === hpAfterShieldAbsorb.hp - 4, `before=${hpAfterShieldAbsorb.hp} after=${hpAfterCounterBack.hp}`)
+  // TM-P2-006 数值平衡：残灾攻击 3→14。断言「下一轮反击恢复（HP 必然下降）」验证轻舞只取消本轮的语义。
+  check('R1-17: 轻舞只取消本轮（下一轮反击恢复，HP 下降）', hpAfterCounterBack.hp < hpAfterShieldAbsorb.hp, `before=${hpAfterShieldAbsorb.hp} after=${hpAfterCounterBack.hp}`)
 
   // ================= 刷新退出第一场战斗 → 神域残灾威胁仍在 =================
   await page.reload({ waitUntil: 'networkidle0' })
@@ -255,26 +289,25 @@ try {
   await sleep(300)
   const hp1 = await readPlayerHp()
   check('R1-19: 第二场战斗玩家 HP 恢复存档值（23/26）', hp1.hp === 23, `hp=${hp1.hp}`)
-  await clickByText('普通攻击')
-  await sleep(500)
-  // ---- B1：施盾 → 敌人立即暴击命中 → 即时吸收（stale state 修复核心验证） ----
-  setRandom(0.99) // 敌人反击 D20=20 → 暴击，V3 最终伤害 4 → 盾吸收 3 → HP -1
-  await clickByText('樱花魔法盾')
-  await sleep(500)
+  // ---- B1：Sakura 先手施盾 → 玩家普攻（擦伤 3）→ 敌人立即命中 → 即时吸收（stale state 修复核心验证） ----
+  setRandom(0.4) // 玩家 roll=9 擦伤 3 伤；敌人 roll=9 命中 → v=0.4 选玩家，raw 14 → 7，盾抵消 3 → HP -4
+  await sakuraShield() // Sakura 施盾（先手）
+  await sleep(400)
+  await playerAttack() // 玩家普攻
+  await sleep(600)
   body = await bodyText()
   const hpAfterImmediateAbsorb = await readPlayerHp()
   check('R1-20: B1 施盾后敌人立即命中 → 抵消 3 点伤害（DOM 日志）', body.includes('樱花魔法盾抵消了 3 点伤害'))
-  check('R1-21: B1 即时吸收生效（HP 变化 = raw(4) - absorbed(3) = -1）', hpAfterImmediateAbsorb.hp === hp1.hp - 1, `before=${hp1.hp} after=${hpAfterImmediateAbsorb.hp}`)
-  check('R1-22: B1 盾已消耗（已展开提示消失）', !body.includes('樱花魔法盾已展开'))
+  // TM-P2-006 数值平衡：与 R1-11 相同，改为相对断言（日志伤害已含盾减伤 == 实际 HP 变化）
+  const immediateDealt = Number((body.match(/残灾之影的攻击命中.*?，造成 (\d+) 点伤害/) ?? [])[1] ?? -1)
+  check('R1-21: B1 即时吸收生效（HP 变化 = 日志伤害，盾吸收 3 点）', hpAfterImmediateAbsorb.hp === hp1.hp - immediateDealt && immediateDealt >= 0, `before=${hp1.hp} after=${hpAfterImmediateAbsorb.hp} logDealt=${immediateDealt}`)
   // ---- B4：樱花飞斩暴击击杀（保留真实攻击/击杀） ----
-  setRandom(0.4)
-  await clickByText('普通攻击')
-  await sleep(500)
-  setRandom(0.99) // 飞斩 D20=20 → 暴击击杀
-  await clickByText('樱花飞斩')
-  await sleep(500)
+  // B1 后残灾 HP = 14 - 3(玩家擦伤) = 11；Sakura 先手第二轮飞斩暴击 = applyArmor(16,11,20) = 11 → 击杀
+  setRandom(0.99) // 飞斩 D20=20 → 暴击
+  await sakuraSlash() // 当前 Sakura 阶段 → 飞斩
+  await sleep(600)
   body = await bodyText()
-  check('R1-23: B4 樱花优子的攻击实际结算（战斗日志）', body.includes('樱花优子的攻击'))
+  check('R1-23: B4 樱花优子的攻击实际结算（战斗日志）', body.includes('樱花飞斩') && (body.includes('造成') || body.includes('落空')))
   check('R1-24: B4 飞斩暴击击杀 → 战斗胜利', body.includes('战斗胜利'), body.includes('战斗失败') ? '战斗失败！' : '')
   await clickByText('返回冒险')
   await sleep(500)

@@ -18,4 +18,8 @@ export interface GameState {
   relationships: Record<string, RelationshipState>
   /** V4：队伍状态（activeCompanionIds 去重、最多 3） */
   party: PartyState
+  /** V6：已持有坐骑 id 列表（P2-007 Mount V1；一次只能装备一匹） */
+  ownedMountIds: string[]
+  /** V6：当前装备坐骑 id（一次一匹；null 未装备；坐骑不是战斗单位） */
+  equippedMountId: string | null
 }

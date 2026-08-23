@@ -115,13 +115,14 @@ describe('TM-P2-004：《落樱越界》完整剧情（trigger → recruited）'
     expect(sakuraCompanion()?.status).toBe('recruited')
     expect(sakuraRel()?.personalQuestStage).toBe(1)
     expect(gs().world.flags.sakura_contract_accepted).toBe(true)
-    expect(gs().player.adventureXp).toBe(100)
+    // TM-P2-006 第 40 节：残灾之影首次击败 +35 XP（战斗阅历）→ 100（任务）+ 35 = 135
+    expect(gs().player.adventureXp).toBe(135)
     expect(gs().player.level).toBe(2)
     // 《落樱越界》completed
     expect(gs().quests.find((q) => q.questId === 'quest_sakura_boundary')?.status).toBe('completed')
     // 重复招募 no-op（防双入队；canAcceptContract false → null）
     expect(useGameStore.getState().acceptSakuraContract('affirm')).toBeNull()
-    expect(gs().player.adventureXp).toBe(100)
+    expect(gs().player.adventureXp).toBe(135)
   })
 
   it('初见三分支：pet_joke 被明确拒绝但不永久断线（affection-2 trust-4；不锁死后续）', () => {

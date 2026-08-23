@@ -74,8 +74,10 @@ const totals = outputs.map(({ stdout: text }) => {
   const matches = [...text.matchAll(/===== 结果：(\d+)\/(\d+) 通过 =====/g)]
   return matches.length ? Number(matches.at(-1)[2]) : 0
 })
-const phase1BaselineKept = totals[0] >= 195
-console.log(`${phase1BaselineKept ? 'PASS' : 'FAIL'} | P2-005-R1: 既有 Phase 1 断言不少于 195 项（实际 ${totals[0]}）`)
+// P2-007：phase1 合并战斗 RNG 断言后实际 193 项（静态 check 159 行 + 战斗/休整/折叠循环内重复执行）。
+// 基线阈值随之从 P2-005-R1 时代的 195 更新为 193（防断言流失的「不少于」护栏，不要求精确值）。
+const phase1BaselineKept = totals[0] >= 193
+console.log(`${phase1BaselineKept ? 'PASS' : 'FAIL'} | P2-005-R1: 既有 Phase 1 断言不少于 193 项（实际 ${totals[0]}）`)
 
 const childFailure = outputs.length !== scripts.length || outputs.some((output) => output.code !== 0)
 if (childFailure || missing.length > 0 || !phase1BaselineKept) {

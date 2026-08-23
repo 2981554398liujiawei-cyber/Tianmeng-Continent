@@ -40,12 +40,14 @@
     font-family: var(--font-serif-cn);
     min-height: 100vh;
   }
-  @media (min-width: 1280px) {
-    html, body { overflow: hidden; }
-    .game-page { height: 100vh; overflow: hidden; }
-    .game-page > .grid { height: calc(100vh - 110px); min-height: 0; }
-    .game-page > .grid > section { min-height: 0; overflow-y: auto; }
-    .combat-page { height: 100vh; min-height: 0; overflow: hidden; }
-    .combat-page .combat-log { min-height: 0; max-height: 32vh; overflow-y: auto; }
-  }
+}
+/* TM-P2-006：桌面端 GamePage/CombatPage 外层禁滚动，内部区域独立滚动。
+   放在 @layer 之外：未分层规则优先于 Tailwind utilities（h-full 等），
+   确保 .combat-page/.game-page 的 height:100vh 不被 h-full(100%) 覆盖。 */
+@media (min-width: 1280px) {
+  html, body { overflow: hidden; }
+  .game-page { height: 100vh; overflow: hidden; }
+  .game-page .game-grid { min-height: 0; }
+  .game-page .game-col { overflow-y: auto; }
+  .combat-page { height: 100vh; min-height: 0; overflow: hidden; }
 }

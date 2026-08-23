@@ -9,6 +9,8 @@ export interface LocationDefinition {
   requiredFlag?: string
   /** 该地点可遭遇的敌人 ID（TM-P0-008；空数组表示无威胁） */
   enemyIds?: string[]
+  /** TM-P2-007 §7：该地点可遭遇的 Encounter ID（Encounter V2 权威入口；与 enemyIds 并存，不删除 enemyIds） */
+  encounters?: string[]
 }
 
 export const LOCATIONS: Record<string, LocationDefinition> = {
@@ -26,6 +28,8 @@ export const LOCATIONS: Record<string, LocationDefinition> = {
     connections: ['qingshi_village', 'rabbit_lair'],
     // TM-P1-010：投放既有 corrupted_wolf（数据零修改）；正式可见性仍由任务状态（仅 in_progress）在 GamePage/App 双守
     enemyIds: ['corrupted_rabbit', 'corrupted_wolf'],
+    // TM-P2-007 §7：Encounter V2 挂载（与 enemyIds 一一对应）
+    encounters: ['encounter_corrupted_rabbit', 'encounter_corrupted_wolf'],
   },
   abandoned_mine: {
     id: 'abandoned_mine',
@@ -33,6 +37,7 @@ export const LOCATIONS: Record<string, LocationDefinition> = {
     description: '早已废弃的矿洞，洞口杂草丛生，深处传来若有若无的声响。',
     connections: ['qingshi_village'],
     enemyIds: ['corrupted_rat'],
+    encounters: ['encounter_corrupted_rat'],
   },
   rabbit_lair: {
     id: 'rabbit_lair',
@@ -41,6 +46,7 @@ export const LOCATIONS: Record<string, LocationDefinition> = {
     requiredFlag: 'rabbit_lair_unlocked',
     connections: ['village_grassland'],
     enemyIds: ['dudu_rabbit'],
+    encounters: ['encounter_dudu_rabbit'],
   },
   // TM-P1-023：第二区域落点——天龙城（青石村→天龙城正式跨越；本卡只做区域切换与落点：connections=[] 单向不可返回，enemyIds=[] 无假内容；P1-024 再开始城内内容）
   tianlong_city: {
@@ -69,6 +75,7 @@ export const LOCATIONS: Record<string, LocationDefinition> = {
     connections: ['tianlong_city', 'black_stone_tower_floor2'],
     // TM-P1-026：一层普通敌人骷髅士兵 + 一层 Boss 骷髅队长（同一场景节点；不建新大厅 Location）
     enemyIds: ['skeleton_soldier', 'skeleton_captain'],
+    encounters: ['encounter_skeleton_soldier', 'encounter_skeleton_captain'],
   },
   // TM-P1-027/P1-028：黑石塔二层（严格固定顺序战斗：僵尸→黑法师→骷髅战士；深度由剧情阶段控制，本卡不新建「二层深处」Location；三层未开放时移动按钮可见但 disabled）
   black_stone_tower_floor2: {
@@ -80,6 +87,8 @@ export const LOCATIONS: Record<string, LocationDefinition> = {
     connections: ['black_stone_tower_floor1', 'black_stone_tower_floor3'],
     // TM-P1-028：二层严格固定顺序三敌（僵尸→黑法师→骷髅战士）
     enemyIds: ['tower_zombie', 'black_mage', 'skeleton_warrior'],
+    // TM-P2-007 §7.5：二层同时挂非主线可选多怪遭遇「残破巡逻队」（不进主线，可忽略）
+    encounters: ['encounter_tower_zombie', 'encounter_black_mage', 'encounter_skeleton_warrior', 'encounter_broken_patrol'],
   },
   // TM-P1-029：黑石塔三层（越过石阶后更深；守卫敌人骷髅女妖；击败后找到夔峒项链；未解锁时移动按钮可见但 disabled）
   black_stone_tower_floor3: {
@@ -89,6 +98,7 @@ export const LOCATIONS: Record<string, LocationDefinition> = {
     requiredFlag: 'black_stone_tower_floor3_unlocked',
     connections: ['black_stone_tower_floor2'],
     enemyIds: ['skeleton_witch'],
+    encounters: ['encounter_skeleton_witch'],
   },
   // TM-P2-001 D1：Phase 2 新地点——天龙城北门（与天龙城双向连接；北门本身无需 requiredFlag，任何时候可参观；任务行动只在正确状态出现）
   tianlong_north_gate: {
@@ -97,6 +107,7 @@ export const LOCATIONS: Record<string, LocationDefinition> = {
     description: '高大的城门向北方荒野敞开。往来的商旅明显比南城稀少，城墙下能看到巡逻骑士留下的马蹄印。',
     connections: ['tianlong_city'],
     enemyIds: ['black_mane_wolf'],
+    encounters: ['encounter_black_mane_wolf'],
   },
   // TM-P2-004 第 33/34 节：樱华神域·破碎边界（特殊事件地点；connections=[] 不允许普通 Travel 进入，只能通过 Sakura 特殊事件；完成后返回天龙城）
   sakura_domain_fragment: {
@@ -105,5 +116,6 @@ export const LOCATIONS: Record<string, LocationDefinition> = {
     description: '漂浮的石阶、残破神社、倒悬樱树与不断撕裂的天空。这是樱花女神神域崩落的一角，正随着裂隙缓慢坍缩。',
     connections: [],
     enemyIds: ['sakura_calamity_fragment'],
+    encounters: ['encounter_sakura_calamity_fragment'],
   },
 }

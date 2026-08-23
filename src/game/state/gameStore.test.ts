@@ -570,13 +570,13 @@ describe('TM-P0-009：resolveCombatVictory 战斗胜利推进任务', () => {
     expect(questStatus()).toBe('completed')
   })
 
-  it('无奖励副作用：推进成功后除 quest.status 外 player/inventory/world 全部不变', () => {
+  it('TM-P2-006 首次击败 XP：推进成功后除 quest.status 与 player.adventureXp(+10) 外 inventory/world 全部不变', () => {
     acceptQuest()
     travelGrassland()
     const before = useGameStore.getState().gameState!
     useGameStore.getState().resolveCombatVictory('corrupted_rabbit')
     const after = useGameStore.getState().gameState!
-    expect(after.player).toEqual(before.player)
+    expect(after.player).toEqual({ ...before.player, adventureXp: before.player.adventureXp + 10 })
     expect(after.inventory).toEqual(before.inventory)
     expect(after.world).toEqual(before.world)
     expect(after.quests[0]?.status).toBe('completable')
@@ -874,7 +874,7 @@ describe('TM-P0-012：击败嘟嘟兔获得唯一《兔子的路径》', () => {
     expect(pathQty()).toBe(0)
   })
 
-  it('G. 无额外副作用：Boss 胜利除 inventory 新增 rabbit_path 外 player/equipment/quests/world 全不变', () => {
+  it('G. TM-P2-006 首次击败 XP：Boss 胜利除 inventory 新增 rabbit_path 与 player.adventureXp(+30) 外 player 其他字段/equipment/quests/world 全不变', () => {
     useGameStore.setState({
       gameState: {
         ...useGameStore.getState().gameState!,
@@ -884,7 +884,7 @@ describe('TM-P0-012：击败嘟嘟兔获得唯一《兔子的路径》', () => {
     const before = useGameStore.getState().gameState!
     expect(useGameStore.getState().resolveCombatVictory('dudu_rabbit')).toBe(true)
     const after = useGameStore.getState().gameState!
-    expect(after.player).toEqual(before.player)
+    expect(after.player).toEqual({ ...before.player, adventureXp: before.player.adventureXp + 30 })
     expect(after.equipment).toEqual(before.equipment)
     expect(after.quests).toEqual(before.quests)
     expect(after.world).toEqual(before.world)
@@ -2630,7 +2630,7 @@ describe('TM-P1-011：第一次里程碑升级 Lv.2（完成《草原狼影》�
     })
   }
 
-  it('B. 正常完成：Lv1→Lv2、HP 22/22→22/24、MP 6/6→6/7、XP 40→100、金币 85→110、任务 completed（同一原子更新）', () => {
+  it('B. 正常完成：Lv1→Lv2、HP 22/22→22/24、MP 6/6→6/7、XP 75→135、金币 85→110、任务 completed（同一原子更新）', () => {
     completeWolfQuest()
     expect(p().level).toBe(1)
     expect(gold()).toBe(85)
@@ -2641,7 +2641,7 @@ describe('TM-P1-011：第一次里程碑升级 Lv.2（完成《草原狼影》�
     expect(p().maxHp).toBe(24)
     expect(p().mp).toBe(6)
     expect(p().maxMp).toBe(7)
-    expect(p().adventureXp).toBe(100)
+    expect(p().adventureXp).toBe(135)
     expect(gold()).toBe(110)
   })
 
@@ -5370,14 +5370,14 @@ describe('TM-P1-025：黑石塔一层——解锁路线与骷髅士兵清场', (
     expect(wangcaiQuest()?.flags.wangcai_briefed).toBe(true)
   })
 
-  it('AB. 无金币/物品/装备奖励（胜利只改 quest flag）', () => {
+  it('AB. TM-P2-006：除首次击败 XP(+20) 与 quest flag 外无金币/物品/装备奖励', () => {
     seedSoldierFight()
     const beforePlayer = useGameStore.getState().gameState!.player
     const beforeInventory = useGameStore.getState().gameState!.inventory
     const beforeEquipment = useGameStore.getState().gameState!.equipment
     useGameStore.getState().resolveCombatVictory('skeleton_soldier')
     const after = useGameStore.getState().gameState!
-    expect(after.player).toEqual(beforePlayer)
+    expect(after.player).toEqual({ ...beforePlayer, adventureXp: beforePlayer.adventureXp + 20 })
     expect(after.inventory).toEqual(beforeInventory)
     expect(after.equipment).toEqual(beforeEquipment)
     // 无任何物品新增（不含骨头/骷髅碎片/黑石）
@@ -5621,14 +5621,14 @@ describe('TM-P1-026：黑石塔一层——骷髅队长 Boss 战与项链线索�
     expect(wangcaiQuest()?.flags.floor1_soldier_defeated).toBe(true)
   })
 
-  it('N. 无金币/物品/装备/等级奖励', () => {
+  it('N. TM-P2-006：除首次击败 XP(+30) 外无金币/物品/装备/等级奖励', () => {
     seedCaptainFight()
     const beforePlayer = useGameStore.getState().gameState!.player
     const beforeInventory = useGameStore.getState().gameState!.inventory
     const beforeEquipment = useGameStore.getState().gameState!.equipment
     useGameStore.getState().resolveCombatVictory('skeleton_captain')
     const after = useGameStore.getState().gameState!
-    expect(after.player).toEqual(beforePlayer)
+    expect(after.player).toEqual({ ...beforePlayer, adventureXp: beforePlayer.adventureXp + 30 })
     expect(after.inventory).toEqual(beforeInventory)
     expect(after.equipment).toEqual(beforeEquipment)
     // 无骷髅大剑/黑石/骨头/骷髅套装物品
@@ -5639,7 +5639,7 @@ describe('TM-P1-026：黑石塔一层——骷髅队长 Boss 战与项链线索�
     ).toBe(true)
   })
 
-  it('O. 除本 Quest flag 外其他 GameState 不变', () => {
+  it('O. TM-P2-006：除首次击败 XP(+30) 与本 Quest flag 外其他 GameState 不变', () => {
     seedCaptainFight()
     const beforePlayer = useGameStore.getState().gameState!.player
     const beforeInventory = useGameStore.getState().gameState!.inventory
@@ -5650,7 +5650,7 @@ describe('TM-P1-026：黑石塔一层——骷髅队长 Boss 战与项链线索�
     )
     useGameStore.getState().resolveCombatVictory('skeleton_captain')
     const after = useGameStore.getState().gameState!
-    expect(after.player).toEqual(beforePlayer)
+    expect(after.player).toEqual({ ...beforePlayer, adventureXp: beforePlayer.adventureXp + 30 })
     expect(after.inventory).toEqual(beforeInventory)
     expect(after.equipment).toEqual(beforeEquipment)
     expect(after.world).toEqual(beforeWorld)
@@ -6007,14 +6007,14 @@ describe('TM-P1-027：黑石塔二层——武馆休整、僵尸与黑法师', (
     expect(wangcaiQuest()?.stage).toBe(0)
   })
 
-  it('Z3. 僵尸胜利无 XP/金币/item/装备/等级奖励', () => {
+  it('Z3. TM-P2-006：除首次击败 XP(+25) 外无金币/item/装备/等级奖励', () => {
     seedFloor2Ready()
     const beforePlayer = useGameStore.getState().gameState!.player
     const beforeInventory = useGameStore.getState().gameState!.inventory
     const beforeEquipment = useGameStore.getState().gameState!.equipment
     useGameStore.getState().resolveCombatVictory('tower_zombie')
     const after = useGameStore.getState().gameState!
-    expect(after.player).toEqual(beforePlayer)
+    expect(after.player).toEqual({ ...beforePlayer, adventureXp: beforePlayer.adventureXp + 25 })
     expect(after.inventory).toEqual(beforeInventory)
     expect(after.equipment).toEqual(beforeEquipment)
   })
@@ -6081,14 +6081,14 @@ describe('TM-P1-027：黑石塔二层——武馆休整、僵尸与黑法师', (
     expect(wangcaiQuest()?.stage).toBe(0)
   })
 
-  it('M4. 黑法师胜利无 XP/金币/item/装备/治疗奖励', () => {
+  it('M4. TM-P2-006：除首次击败 XP(+30) 外无金币/item/装备/治疗奖励', () => {
     seedBlackMageReady()
     const beforePlayer = useGameStore.getState().gameState!.player
     const beforeInventory = useGameStore.getState().gameState!.inventory
     const beforeEquipment = useGameStore.getState().gameState!.equipment
     useGameStore.getState().resolveCombatVictory('black_mage')
     const after = useGameStore.getState().gameState!
-    expect(after.player).toEqual(beforePlayer)
+    expect(after.player).toEqual({ ...beforePlayer, adventureXp: beforePlayer.adventureXp + 30 })
     expect(after.inventory).toEqual(beforeInventory)
     expect(after.equipment).toEqual(beforeEquipment)
   })
@@ -6180,14 +6180,14 @@ describe('TM-P1-027：黑石塔二层——武馆休整、僵尸与黑法师', (
     expect(wangcaiQuest()?.stage).toBe(0)
   })
 
-  it('W4. 骷髅战士胜利无 XP/金币/item/装备/治疗奖励', () => {
+  it('W4. TM-P2-006：除首次击败 XP(+40) 外无金币/item/装备/治疗奖励', () => {
     seedWarriorReady()
     const beforePlayer = useGameStore.getState().gameState!.player
     const beforeInventory = useGameStore.getState().gameState!.inventory
     const beforeEquipment = useGameStore.getState().gameState!.equipment
     useGameStore.getState().resolveCombatVictory('skeleton_warrior')
     const after = useGameStore.getState().gameState!
-    expect(after.player).toEqual(beforePlayer)
+    expect(after.player).toEqual({ ...beforePlayer, adventureXp: beforePlayer.adventureXp + 40 })
     expect(after.inventory).toEqual(beforeInventory)
     expect(after.equipment).toEqual(beforeEquipment)
   })
@@ -6353,13 +6353,22 @@ describe('TM-P1-027：黑石塔二层——武馆休整、僵尸与黑法师', (
     expect(useGameStore.getState().gameState!.inventory.filter((i) => i.itemId === 'kuidong_necklace')).toHaveLength(1)
   })
 
-  it('V4. 骷髅女妖胜利无金币/XP/等级/装备奖励（除项链外 player/equipment 全不变）', () => {
+  it('V4. TM-P2-006：首次击败 XP(+45)（可能升级）+ 项链；无金币/装备奖励（hp/mp/gold/attributes/profession/equipment 不变）', () => {
     seedWitchReady()
     const beforePlayer = useGameStore.getState().gameState!.player
     const beforeEquipment = useGameStore.getState().gameState!.equipment
     useGameStore.getState().resolveCombatVictory('skeleton_witch')
     const after = useGameStore.getState().gameState!
-    expect(after.player).toEqual(beforePlayer)
+    // 首次击败 XP 精确授予
+    expect(after.player.adventureXp).toBe(beforePlayer.adventureXp + 45)
+    // 升级可改变 level/maxHp/maxMp，但 hp/mp/gold/attributes/profession/name/learnedSkillIds 不变
+    expect(after.player.hp).toBe(beforePlayer.hp)
+    expect(after.player.mp).toBe(beforePlayer.mp)
+    expect(after.player.gold).toBe(beforePlayer.gold)
+    expect(after.player.attributes).toEqual(beforePlayer.attributes)
+    expect(after.player.profession).toBe(beforePlayer.profession)
+    expect(after.player.name).toBe(beforePlayer.name)
+    expect(after.player.learnedSkillIds).toEqual(beforePlayer.learnedSkillIds)
     expect(after.equipment).toEqual(beforeEquipment)
   })
 

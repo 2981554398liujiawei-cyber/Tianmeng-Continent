@@ -30,7 +30,7 @@ import {
  */
 interface SakuraEncounterPanelProps {
   /** 进入残灾战斗（App 入口校验；仅 guest 阶段使用） */
-  onEngage: (enemyId: string) => void
+  onEngage: (encounterId: string) => void
   onLevelUp: (before: Character, after: Character) => void
 }
 
@@ -291,7 +291,7 @@ export default function SakuraEncounterPanel({ onEngage, onLevelUp }: SakuraEnco
           残灾之影撕开裂隙冲了过来。樱花优子与你并肩而立，她的神力只剩下最后一缕。
         </p>
         <div className="mt-4 flex flex-col items-start gap-3">
-          <Button variant="primary" onClick={() => onEngage('sakura_calamity_fragment')}>
+          <Button variant="primary" onClick={() => onEngage('encounter_sakura_calamity_fragment')}>
             迎战残灾之影
           </Button>
         </div>

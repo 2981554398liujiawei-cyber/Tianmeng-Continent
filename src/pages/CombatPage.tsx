@@ -1,98 +1,215 @@
 import { useEffect, useRef, useState } from 'react'
 import Button from '../components/Button'
 import { useGameStore } from '../game/state/gameStore'
-import { getEnemy, getItem, getCompanion, SAKURA_COMPANION_ID } from '../game/content'
-import { ATTRIBUTE_KEYS, ATTRIBUTE_LABELS, getProfessionName } from '../game/content/professions'
+import { getEnemy, getItem, getCompanion, getEncounter } from '../game/content'
+import { getProfessionName } from '../game/content/professions'
 import {
   formatAttackLog,
   getPlayerAgility,
   getPlayerArmor,
   getPlayerAttackPower,
-  getPlayerLevelDamageBonus,
   performAttack,
-  rollInitiative,
-  getCombatPhaseAfterEnemyAttack,
-  resolvePlayerStrike,
   type AttackResult,
-  type CombatPhase,
 } from '../game/rules/combat'
 import {
   getSkillExecutionInfo,
   getUsableSkills,
   isOncePerCombatUsed,
-  isSuppressOnFullHitSkill,
   markOncePerCombatUsed,
   resolveSkillRawDamage,
 } from '../game/rules/skill'
-import type { InitiativeWinner } from '../game/rules/combat'
+import type { SkillDefinition } from '../game/types/skill'
 import { formatLuckCheckLog } from '../game/rules/luck'
 import { getSkill } from '../game/content/skills'
-import { resolveEnemyCounterWithSupport } from '../game/rules/combatSupport'
+import { rollD20 } from '../game/rules/d20'
 import type { LootGrant } from '../game/types/loot'
 import { RARITY_LABELS } from '../game/types/loot'
 import { SAKURA_SEALED_SKILLS } from '../game/content/companions'
+import { getEffectiveCharacterAttributes } from '../game/rules/mount'
+import { combatEventId, type CombatEvent } from '../game/rules/combatEvent'
+import {
+  buildCombatSetup,
+  weaponDamageBonusOf,
+  type CompanionCombatInfo,
+  type CombatSetup,
+} from '../game/rules/combatSetup'
+import {
+  chooseEnemyTarget,
+  didTurnLoop,
+  instanceDisplaySuffix,
+  isEncounterLost,
+  isEncounterWon,
+  nextAliveTurnIndex,
+  resolveEncounterXp,
+  resolvePartyEscape,
+  updateCombatantHp,
+  type Combatant,
+  type EncounterLootSummary,
+  type EnemyInstance,
+  type InitiativeTurn,
+} from '../game/rules/partyCombat'
+import { applyAdventureXpReward } from '../game/rules/progression'
 
 interface CombatPageProps {
-  enemyId: string
+  /** TM-P2-007 §7：Encounter 战斗入口（App 已通过 startEncounter 校验并固化 weighted variant） */
+  encounterId: string
   onVictory: () => void
   onDefeat: () => void
-  /** TM-P0-022-R2：防御性异常出口（无 GameState / 未知 enemyId）→ 真正返回主菜单 */
+  /** TM-P2-006 第 33 节：逃跑成功 → 直接结束战斗返回冒险（不结算 defeated/XP/loot） */
+  onEscape: () => void
+  /** TM-P0-022-R2：防御性异常出口（无 GameState / 未知 encounterId / 无有效阵容）→ 真正返回主菜单 */
   onExitToMenu: () => void
 }
 
-/** TM-P2-002-R1 A：敌人先手攻击演示延迟（期间玩家操作全封锁；卸载后 timer 被清理不造成伤害） */
-const ENEMY_FIRST_STRIKE_DELAY_MS = 400
+/** TM-P2-007 §12：敌方单位 AI 行动的演示延迟（期间玩家操作不可用；卸载后 timer 被清理） */
+const ENEMY_ACTION_DELAY_MS = 400
 
-/** TM-P2-004 第 48/49 节：樱花魔法盾减伤量（reduce_next_enemy_damage amount=3，来自技能注册表） */
-const SAKURA_SHIELD_AMOUNT = 3
+/** V4：战斗事件（summary 简洁播报 / detail 详细日志） */
+type CombatEventKind = CombatEvent['kind']
 
-export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu }: CombatPageProps) {
-  const gameState = useGameStore((s) => s.gameState)
-  const damagePlayer = useGameStore((s) => s.damagePlayer)
-  const spendSkillMp = useGameStore((s) => s.spendSkillMp)
-  const spendCompanionSkillMp = useGameStore((s) => s.spendCompanionSkillMp)
-  const useHealingPotion = useGameStore((s) => s.useHealingPotion)
-  const enemy = getEnemy(enemyId)
+/** 技能目标模式（TM-P2-007 §11：伤害→敌方 / 盾、治疗→友方 / 自身技能→无 picker） */
+type SkillTargetMode = 'enemy' | 'friendly' | 'self'
 
-  const [enemyCurrentHp, setEnemyCurrentHp] = useState(enemy?.maxHp ?? 0)
-  const [phase, setPhase] = useState<CombatPhase>('active')
-  const [lastPlayerAttack, setLastPlayerAttack] = useState<AttackResult | null>(null)
-  const [lastEnemyAttack, setLastEnemyAttack] = useState<AttackResult | null>(null)
-  /** TM-P1-015：最近一次成功药水行动的实际恢复量（仅战斗 UI 即时日志） */
-  const [lastPotionHeal, setLastPotionHeal] = useState<number | null>(null)
-  /** TM-P2-003 C：战斗胜利结算的掉落（基础 + 幸运追加；victory 界面展示） */
-  const [victoryLoot, setVictoryLoot] = useState<LootGrant | null>(null)
-  /** TM-P2-003 A：最近一次玩家行动（'basic' 或技能 id；仅页面本地） */
-  const [lastPlayerAction, setLastPlayerAction] = useState<string | null>(null)
-  /** TM-P2-003-R2 B2：每场一次技能按 skillId 独立追踪（Set；使用 A 不影响 B） */
-  const [usedOnceSkillIds, setUsedOnceSkillIds] = useState<ReadonlySet<string>>(new Set())
-  /** TM-P2-002 D：先手（进入战斗时双方各掷 D20+AGI；高者先，平局 AGI 高者先，仍同则玩家先）。
-   * 用 ref 缓存结果：React StrictMode 会双调用组件体/useState initializer，若直接掷骰会消耗两次随机数
-   * 导致序列错位；ref 保证同一组件实例只掷一次。 */
-  const initiativeWinnerRef = useRef<InitiativeWinner | null>(null)
-  if (initiativeWinnerRef.current === null) {
-    initiativeWinnerRef.current = gameState && enemy ? rollInitiative(playerAgilityOf(gameState), enemy.agility) : null
+/** 目标选择挂起状态（§11：点击后先选目标再执行；取消不耗行动） */
+interface PendingTarget {
+  mode: 'enemy' | 'friendly'
+  kind: 'attack' | 'skill'
+  skillId?: string
+}
+
+/** 击败统计（§6 VictorySummary：按 enemyId 聚合数量） */
+interface DefeatedEntry {
+  enemyId: string
+  name: string
+  count: number
+}
+
+/** 技能目标模式推导（§11：不按 skillId 硬编码；supportEffect/标签语义决定） */
+function skillTargetMode(skill: SkillDefinition): SkillTargetMode {
+  if (skill.combat?.supportEffect?.type === 'reduce_next_enemy_damage') return 'friendly'
+  if (skill.combat?.supportEffect?.type === 'cancel_next_enemy_counter') return 'self'
+  if (skill.tags.includes('healing')) return 'friendly'
+  return 'enemy'
+}
+
+/** 击败统计（§6：敌方死亡单位按 sourceId 聚合） */
+function buildDefeatedList(combatants: readonly Combatant[]): DefeatedEntry[] {
+  const map = new Map<string, DefeatedEntry>()
+  for (const c of combatants) {
+    if (c.side !== 'enemy' || c.isAlive) continue
+    const entry = map.get(c.sourceId)
+    if (entry) {
+      entry.count += 1
+    } else {
+      map.set(c.sourceId, { enemyId: c.sourceId, name: c.name, count: 1 })
+    }
   }
-  const initiativeWinner = initiativeWinnerRef.current
-  /** TM-P2-002-R1 A：敌人先手攻击进行中 → 所有玩家操作（攻击/技能/药水）封锁、不消耗 MP */
-  const [enemyFirstStriking, setEnemyFirstStriking] = useState(false)
-  const [enemyFirstStrikeDone, setEnemyFirstStrikeDone] = useState(false)
+  return [...map.values()]
+}
 
-  // ---- TM-P2-004：伙伴阶段（樱花优子临时/正式并肩作战）----
-  /** 玩家行动后、敌人反击前，等待伙伴行动的标志（MVP：每轮最多一次伙伴行动） */
-  const [awaitingCompanionAction, setAwaitingCompanionAction] = useState(false)
-  /** 樱花魔法盾剩余减伤（reduce_next_enemy_damage；一次实际命中反击消耗） */
-  const [shieldRemaining, setShieldRemaining] = useState(0)
-  /** 最近一次盾实际抵消值（日志显示真实抵消量，不足 3 显示真实值） */
-  const [shieldAbsorbedLast, setShieldAbsorbedLast] = useState<number | null>(null)
-  /** 樱花轻舞：本轮敌人不反击（cancel_next_enemy_counter） */
-  const [companionCanceledCounter, setCompanionCanceledCounter] = useState(false)
-  /** 伙伴每场一次技能独立追踪（与玩家 Set 分开；TM-P2-004 第 107 节） */
-  const [usedOnceCompanionSkillIds, setUsedOnceCompanionSkillIds] = useState<ReadonlySet<string>>(new Set())
-  /** 最近一次伙伴行动（'petalslash' | 'shield' | 'light_dance' | 'skip'；仅页面本地） */
-  const [lastCompanionAction, setLastCompanionAction] = useState<string | null>(null)
-  /** 最近一次伙伴飞斩攻击结果（日志展示） */
-  const [lastCompanionAttack, setLastCompanionAttack] = useState<AttackResult | null>(null)
+export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape, onExitToMenu }: CombatPageProps) {
+  const gameState = useGameStore((s) => s.gameState)
+  const def = gameState ? getEncounter(encounterId) : undefined
+
+  // 战斗构建（ref 缓存：StrictMode 双调用组件体 / useState initializer 只构建一次）
+  const setupRef = useRef<CombatSetup | null>(null)
+  if (!setupRef.current && gameState && def) {
+    try {
+      setupRef.current = buildCombatSetup(gameState, def)
+    } catch {
+      setupRef.current = null
+    }
+  }
+  const setup = setupRef.current
+
+  const [combatants, setCombatants] = useState<Combatant[]>(() => setup?.combatants ?? [])
+  const [turns, setTurns] = useState<InitiativeTurn[]>(() => setup?.turns ?? [])
+  const [currentTurnIndex, setCurrentTurnIndex] = useState(0)
+  const [phase, setPhase] = useState<'active' | 'victory' | 'defeat'>('active')
+  const [pendingTarget, setPendingTarget] = useState<PendingTarget | null>(null)
+  const [actionTray, setActionTray] = useState<'skill' | 'item' | null>(null)
+  const [detailDrawerOpen, setDetailDrawerOpen] = useState(false)
+
+  /** 每场一次技能按 skillId 独立追踪（玩家 / 伙伴分开；TM-P2-003-R2 B2） */
+  const [usedOnceSkillIds, setUsedOnceSkillIds] = useState<ReadonlySet<string>>(new Set())
+  /** 伙伴 once-per-combat 按 companionId 隔离（R1：双伙伴各自独立，不串号） */
+  const [usedOnceCompanionSkillIds, setUsedOnceCompanionSkillIds] = useState<Record<string, ReadonlySet<string>>>({})
+
+  /** 护盾——target instanceId → 剩余减伤量 + 施术技能名（敌人命中时消耗；播报用技能名泛化） */
+  const [shieldByTarget, setShieldByTarget] = useState<Record<string, { amount: number; skillName: string }>>({})
+  /** 取消下一次敌方行动（cancel_next_enemy_counter；R1：记录触发技能名以泛化播报） */
+  const [skipNextEnemy, setSkipNextEnemy] = useState(false)
+  const [skipSourceName, setSkipSourceName] = useState('轻舞')
+
+  const [events, setEvents] = useState<CombatEvent[]>([])
+  const [victoryLoot, setVictoryLoot] = useState<LootGrant | null>(null)
+  const [victorySummary, setVictorySummary] = useState<EncounterLootSummary | null>(null)
+  const [defeatedList, setDefeatedList] = useState<DefeatedEntry[]>([])
+  const [victoryXp, setVictoryXp] = useState(0)
+  const [victoryLevelPreview, setVictoryLevelPreview] = useState<ReturnType<typeof applyAdventureXpReward> | null>(null)
+  /** 战斗内使用治疗药水的次数（结束同步时一次扣减 inventory） */
+  const potionsUsedRef = useRef(0)
+
+  const eventSeqRef = useRef(0)
+  const roundRef = useRef(0)
+  const pushEvent = (
+    kind: CombatEventKind,
+    actor: CombatEvent['actor'],
+    summary: string,
+    detail: string[] = [],
+    actorName?: string,
+  ) => {
+    eventSeqRef.current += 1
+    const ev: CombatEvent = {
+      id: combatEventId(eventSeqRef.current),
+      round: roundRef.current,
+      actor,
+      kind,
+      summary,
+      detail,
+      actorName,
+    }
+    setEvents((prev) => [...prev, ev])
+  }
+
+  // ---- 敌方 AI 回合（effect + ref 防 StrictMode 双调；timer 卸载清理）----
+  // 注：effect 回调在渲染完成后才执行，此处引用定义在下方条件 return 之后的 executeEnemyTurn 是安全的（TDZ 已解除）。
+  useEffect(() => {
+    if (phase !== 'active') return
+    const actor = turns[currentTurnIndex]?.combatant
+    if (!actor || actor.side !== 'enemy' || !actor.isAlive) return
+    if (skipNextEnemy) {
+      setSkipNextEnemy(false)
+      pushEvent('companion_skip', 'companion', `${actor.name}被${skipSourceName}牵走了注意力，本回合没有行动。`)
+      setCurrentTurnIndex((idx) => advanceTurnIndex(idx))
+      return
+    }
+    const timer = window.setTimeout(() => {
+      executeEnemyTurn(actor)
+    }, ENEMY_ACTION_DELAY_MS)
+    return () => window.clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentTurnIndex, phase, skipNextEnemy])
+
+  // ---- 战斗开场播报（ref 防 StrictMode 双调）----
+  const introLoggedRef = useRef(false)
+  useEffect(() => {
+    if (introLoggedRef.current) return
+    introLoggedRef.current = true
+    const first = turns[currentTurnIndex]?.combatant
+    pushEvent('initiative', 'system', first ? `战斗开始——${first.name}先行动。` : '战斗开始。')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // ---- 移动端详细战斗日志抽屉 ESC 关闭 ----
+  useEffect(() => {
+    if (!detailDrawerOpen) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setDetailDrawerOpen(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [detailDrawerOpen])
 
   // ---- 防御性异常出口 ----
   if (!gameState) {
@@ -103,66 +220,34 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
       </div>
     )
   }
-
-  if (!enemy) {
+  if (!def || !setup || setup.turns.length === 0 || setup.combatants.length === 0) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-6">
-        <p className="text-bone-300">敌人数据异常，无法进入战斗。</p>
+        <p className="text-bone-300">遭遇数据异常，无法进入战斗。</p>
         <Button onClick={onExitToMenu}>返回主菜单</Button>
       </div>
     )
   }
 
   const player = gameState.player
-  // TM-P2-002 A：V3 玩家派生属性
-  const equippedWeapon = gameState.equipment.weapon ? getItem(gameState.equipment.weapon) : undefined
-  const weaponDamageBonus =
-    equippedWeapon?.type === 'weapon' && Number.isInteger(equippedWeapon.weaponDamageBonus)
-      ? (equippedWeapon.weaponDamageBonus ?? 0)
-      : 0
-  const equippedArmor = gameState.equipment.armor ? getItem(gameState.equipment.armor) : undefined
-  const armorDefenseBonus =
-    equippedArmor?.type === 'armor' && Number.isInteger(equippedArmor.armorDefenseBonus)
-      ? (equippedArmor.armorDefenseBonus ?? 0)
-      : 0
-  const playerAttackPower = getPlayerAttackPower(player.attributes.str, weaponDamageBonus, player.level)
-  const playerArmor = getPlayerArmor(player.attributes.con, armorDefenseBonus)
-  const playerAgility = getPlayerAgility(player.attributes.agi)
-  const levelDamageBonus = getPlayerLevelDamageBonus(player.level)
-  // TM-P2-003-R3 C：已学习技能统一解析入口（learnedSkillIds → getUsableSkills）
-  const learnedSkills = getUsableSkills(gameState.player.learnedSkillIds, player.profession)
+  // P2-007 §20：技能 rawDamage 上下文同样使用装备坐骑后的有效五维
+  const effectivePlayerAttrs = getEffectiveCharacterAttributes(player.attributes, gameState.equippedMountId)
+  const enemyInstances = setup.enemies
+  const friendlyInstances = setup.friendly
+  const companionInfos = setup.companions
+  const companionInfoFor = (sourceId: string): CompanionCombatInfo | undefined =>
+    companionInfos.find((info) => info.companionId === sourceId)
+  const canEscape = setup.canEscape
 
-  // ---- TM-P2-004：当前战斗伙伴（sakura_yuko；guest/recruited 且 active）----
-  const activeCompanionIds = gameState.party?.activeCompanionIds ?? []
-  const companion = activeCompanionIds.includes(SAKURA_COMPANION_ID)
-    ? gameState.companions[SAKURA_COMPANION_ID]
-    : undefined
-  const companionDef = companion ? getCompanion(companion.companionId) : undefined
-  const companionReady =
-    !!companion && (companion.status === 'guest' || companion.status === 'recruited') && !!companionDef
-  /** 伙伴技能走 getUsableSkills（profession=undefined → 仅通用技能，即 Sakura 三技能；不硬编码名字） */
-  const companionSkills = companion ? getUsableSkills(companion.learnedSkillIds, undefined) : []
-  const sakuraAttrs = companionDef?.attributes
-  const sakuraAgility = sakuraAttrs ? getPlayerAgility(sakuraAttrs.agi) : 0
+  // 当前行动单位（turns 内的引用；HP 变化以 combatants 为准）
+  const currentCombatant = combatants.find((c) => c.instanceId === turns[currentTurnIndex]?.combatant.instanceId)
+  const isPlayerTurn = currentCombatant?.sourceType === 'player' && currentCombatant?.isAlive
+  const isFriendlyTurn = currentCombatant?.side === 'friendly' && currentCombatant?.isAlive
+  const actionsLocked = phase !== 'active' || !isFriendlyTurn || pendingTarget !== null
 
-  // TM-P2-002 D：敌人先手 → 进入正常回合前先执行一次敌人攻击（仅一次）
-  // TM-P2-002-R1 A：攻击进行期间封锁玩家操作（enemyFirstStriking）；timer 由 cleanup 清理
-  useEffect(() => {
-    if (initiativeWinner !== 'enemy') return
-    setEnemyFirstStriking(true)
-    let cancelled = false
-    const timer = window.setTimeout(() => {
-      if (cancelled) return
-      applyEnemyCounter()
-      setEnemyFirstStrikeDone(true)
-      setEnemyFirstStriking(false)
-    }, ENEMY_FIRST_STRIKE_DELAY_MS)
-    return () => {
-      cancelled = true
-      window.clearTimeout(timer)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initiativeWinner])
+  // 玩家 / 伙伴当前 combatant（面板展示 + 行动）
+  const playerCombatant = combatants.find((c) => c.sourceType === 'player')
+  const companionCombatants = combatants.filter((c) => c.sourceType === 'companion')
 
   const healingPotion = getItem('healing_potion')
   const healingPotionAmount = healingPotion?.healAmount
@@ -170,465 +255,764 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
     .filter((entry) => entry.itemId === 'healing_potion' && Number.isSafeInteger(entry.quantity) && entry.quantity >= 1)
     .reduce((total, entry) => total + entry.quantity, 0)
 
-  /** TM-P2-002：敌人反击（V3：敏捷命中 + 护甲减伤）——玩家/伙伴行动共用。
-   *  TM-P2-004 第 48 节 + R1 A：樱花魔法盾在 V3 最终伤害后额外减伤（最低 0）；命中才消耗盾（miss 保留）。
-   *  R1 A：盾减伤走显式上下文参数（incomingDamageReduction）或当前 shieldRemaining，
-   *  绝不在同一 call stack 里依赖 setShieldRemaining 之后的闭包值（stale state 修复）。 */
-  const applyEnemyCounter = (opts?: { incomingDamageReduction?: number }) => {
-    const rawResult = performAttack(enemy.agility, playerAgility, enemy.attackPower, playerArmor)
-    // 施盾同回合：显式传入本次盾量（不依赖刚 set 的 state）；跨回合：读当前 shieldRemaining（miss 保留）
-    const activeShield = opts?.incomingDamageReduction ?? shieldRemaining
-    const { result, absorbed, shieldConsumed } = resolveEnemyCounterWithSupport(rawResult, activeShield)
-    setShieldAbsorbedLast(absorbed)
-    // 仅真实命中消耗盾；miss 保留到下一次真实命中的敌人反击
-    if (shieldConsumed) setShieldRemaining(0)
-    setLastEnemyAttack(result)
-    if (result.hit && result.damage > 0) {
-      damagePlayer(result.damage)
-    }
-    setPhase(getCombatPhaseAfterEnemyAttack(useGameStore.getState().gameState?.player.hp ?? 1))
+  /** 提交战斗单位状态更新：基于当前 combatants 计算 next 并返回（一次行动只 commit 一次） */
+  const commitCombatantUpdate = (updater: (cs: Combatant[]) => Combatant[]): Combatant[] => {
+    const next = updater(combatants)
+    setCombatants(next)
+    return next
   }
 
-  const handleUseHealingPotion = () => {
-    // TM-P2-002-R1 A：敌人先手攻击期间药水不可执行
-    if (phase !== 'active' || enemyFirstStriking || awaitingCompanionAction) return
-    const hpBefore = player.hp
-    if (!useHealingPotion()) return
-    const hpAfter = useGameStore.getState().gameState?.player.hp ?? hpBefore
-    setLastPlayerAttack(null)
-    setLastPlayerAction(null)
-    setLastPotionHeal(hpAfter - hpBefore)
-    setLastEnemyAttack(null)
-    // 药水行动后同样可进入伙伴阶段（MVP 统一流程）
-    if (companionReady) {
-      setAwaitingCompanionAction(true)
+  /** 推进到下一个存活单位（§9.4：环状；回绕 = 新回合 round+1） */
+  const advanceTurnIndex = (fromIndex: number): number => {
+    const next = nextAliveTurnIndex(turns, fromIndex)
+    if (didTurnLoop(fromIndex, next)) roundRef.current += 1
+    return next
+  }
+
+  /** 行动后统一收尾：胜负判定 → 结算 / 推进回合 */
+  const afterAction = (next: Combatant[]) => {
+    if (isEncounterWon(next)) {
+      setPhase('victory')
+      finalizeCombatEnd(next)
       return
     }
-    applyEnemyCounter()
+    if (isEncounterLost(next)) {
+      setPhase('defeat')
+      finalizeCombatEnd(next)
+      return
+    }
+    setCurrentTurnIndex((idx) => advanceTurnIndex(idx))
   }
 
+  /** 战斗结束统一同步：玩家 HP/MP + 药水 + 伙伴 MP 写入 GameState；胜利再结算 XP/loot/flags */
+  const finalizeCombatEnd = (next: Combatant[]) => {
+    const playerC = next.find((c) => c.sourceType === 'player')
+    useGameStore.getState().applyPartyCombatEnd({
+      playerHp: playerC?.currentHp ?? 0,
+      playerMp: playerC?.currentMp ?? 0,
+      potionsUsed: potionsUsedRef.current,
+      companions: next
+        .filter((c) => c.sourceType === 'companion')
+        .map((c) => ({ companionId: c.sourceId, mp: c.currentMp })),
+    })
+    if (!isEncounterWon(next)) return
+    // 胜利结算（§6/§15/§16）：单敌委托 grantLoot + resolveCombatVictory；多敌整体事务一次写入并返回 summary
+    if (setup.singleEnemyId) {
+      setVictoryLoot(useGameStore.getState().grantLoot(setup.singleEnemyId))
+      useGameStore.getState().resolveEncounterVictory(encounterId)
+    } else {
+      const summary = useGameStore.getState().resolveEncounterVictory(encounterId)
+      setVictorySummary(summary)
+    }
+    const defeatedInstances: EnemyInstance[] = next
+      .filter((c) => c.side === 'enemy' && !c.isAlive)
+      .map((c) => ({ instanceId: c.instanceId, enemyId: c.sourceId, currentHp: 0, maxHp: c.maxHp }))
+    const xp = resolveEncounterXp(gameState, defeatedInstances)
+    setDefeatedList(buildDefeatedList(next))
+    setVictoryXp(xp)
+    setVictoryLevelPreview(xp > 0 ? applyAdventureXpReward(gameState.player, xp) : null)
+  }
+
+  /** 逃跑成功同步（无任何奖励：§14） */
+  const finalizeEscape = () => {
+    const playerC = combatants.find((c) => c.sourceType === 'player')
+    useGameStore.getState().applyPartyCombatEnd({
+      playerHp: playerC?.currentHp ?? 0,
+      playerMp: playerC?.currentMp ?? 0,
+      potionsUsed: potionsUsedRef.current,
+      companions: combatants
+        .filter((c) => c.sourceType === 'companion')
+        .map((c) => ({ companionId: c.sourceId, mp: c.currentMp })),
+    })
+  }
+
+  /** 攻击结果结算（普通攻击 / 技能共用）：伤害 + 事件 + 收尾 */
+  const applyAttackResult = (actor: Combatant, target: Combatant, result: AttackResult, action: string) => {
+    const skillName = action === 'basic' ? null : getSkill(action)?.name ?? '技能'
+    const detail = formatAttackLog(result, target.name)
+    const kind: CombatEventKind = actor.sourceType === 'companion' ? 'companion_attack' : 'player_attack'
+    const actorName = actor.sourceType === 'companion' ? actor.name : undefined
+    if (result.outcome === 'critical_miss') {
+      pushEvent(kind, actor.sourceType, `${actor.name}的攻击落空了。`, detail, actorName)
+    } else if (result.damage > 0) {
+      pushEvent(
+        kind,
+        actor.sourceType,
+        `${skillName ? `${skillName}命中` : `${actor.name}的攻击命中`}${target.name}，造成 ${result.damage} 点伤害。`,
+        detail,
+        actorName,
+      )
+    } else {
+      pushEvent(kind, actor.sourceType, `${skillName ? `${skillName}没有` : `${actor.name}的攻击没有`}造成伤害。`, detail, actorName)
+    }
+    const next = commitCombatantUpdate((cs) =>
+      cs.map((c) => (c.instanceId === target.instanceId ? updateCombatantHp(c, c.currentHp - result.damage) : c)),
+    )
+    afterAction(next)
+  }
+
+  /** 每场一次技能标记（玩家一个 Set；伙伴按 companionId 隔离——R1：双伙伴不串号） */
+  const markOnceUsed = (actor: Combatant, skillId: string) => {
+    if (actor.sourceType === 'companion') {
+      setUsedOnceCompanionSkillIds((prev) => ({
+        ...prev,
+        [actor.sourceId]: markOncePerCombatUsed(prev[actor.sourceId] ?? new Set(), skillId),
+      }))
+    } else {
+      setUsedOnceSkillIds((prev) => markOncePerCombatUsed(prev, skillId))
+    }
+  }
+
+  /** oncePerCombat 是否已用（按 actor 归属；伙伴各自独立 Set） */
+  const isOnceUsed = (actor: Combatant, skillId: string): boolean =>
+    actor.sourceType === 'companion'
+      ? isOncePerCombatUsed(usedOnceCompanionSkillIds[actor.sourceId] ?? new Set(), skillId)
+      : isOncePerCombatUsed(usedOnceSkillIds, skillId)
+
+  /** 伤害技能 rawDamage 上下文（玩家走装备加成；伙伴武器加成 0，按 sourceId 独立取属性） */
+  const skillContextFor = (actor: Combatant) => {
+    const info = actor.sourceType === 'companion' ? companionInfoFor(actor.sourceId) : undefined
+    return actor.sourceType === 'companion'
+      ? {
+          str: info?.attrs.str ?? 0,
+          agi: info?.attrs.agi ?? 0,
+          mnd: info?.attrs.mnd ?? 0,
+          weaponDamageBonus: 0,
+          level: info?.level ?? 1,
+        }
+      : {
+          str: effectivePlayerAttrs.str,
+          agi: effectivePlayerAttrs.agi,
+          mnd: effectivePlayerAttrs.mnd,
+          weaponDamageBonus: weaponDamageBonusOf(gameState),
+          level: player.level,
+        }
+  }
+
+  /** 技能执行（伤害→目标 / 盾→友方目标 / 轻舞→自身无 picker） */
+  const executeSkill = (actor: Combatant, skillId: string, target?: Combatant) => {
+    const info = getSkillExecutionInfo(skillId)
+    if (!info) return
+    if (info.oncePerCombat && isOnceUsed(actor, skillId)) return
+    const support = info.skill.combat?.supportEffect
+    // 盾：选友方目标，目标下次被敌人命中减伤
+    if (support?.type === 'reduce_next_enemy_damage') {
+      if (!target || target.side !== 'friendly') return
+      if (actor.currentMp < info.skill.mpCost) {
+        pushEvent('system', 'system', '灵力不足，技能无法施展。')
+        return
+      }
+      const next = commitCombatantUpdate((cs) =>
+        cs.map((c) => (c.instanceId === actor.instanceId ? { ...c, currentMp: c.currentMp - info.skill.mpCost } : c)),
+      )
+      if (info.oncePerCombat) markOnceUsed(actor, skillId)
+      setShieldByTarget((prev) => ({
+        ...prev,
+        [target.instanceId]: { amount: support.amount, skillName: info.skill.name },
+      }))
+      pushEvent('companion_support', 'companion', `${actor.name}为${target.name}施展了${info.skill.name}（可抵消 ${support.amount} 点伤害）。`, [], actor.name)
+      afterAction(next)
+      return
+    }
+    // 轻舞：自身技能，取消下一次敌方行动
+    if (support?.type === 'cancel_next_enemy_counter') {
+      if (actor.currentMp < info.skill.mpCost) {
+        pushEvent('system', 'system', '灵力不足，技能无法施展。')
+        return
+      }
+      const next = commitCombatantUpdate((cs) =>
+        cs.map((c) => (c.instanceId === actor.instanceId ? { ...c, currentMp: c.currentMp - info.skill.mpCost } : c)),
+      )
+      if (info.oncePerCombat) markOnceUsed(actor, skillId)
+      setSkipNextEnemy(true)
+      setSkipSourceName(info.skill.name)
+      pushEvent('companion_support', 'companion', `${actor.name}施展了${info.skill.name}，敌人的注意力被牵走，下一次攻势落空。`, [], actor.name)
+      afterAction(next)
+      return
+    }
+    // 伤害技能：选敌方目标
+    if (!target || target.side !== 'enemy') return
+    const rawDamage = resolveSkillRawDamage(skillId, skillContextFor(actor))
+    if (rawDamage === null) return
+    if (actor.currentMp < info.skill.mpCost) {
+      pushEvent('system', 'system', '灵力不足，技能无法施展。')
+      return
+    }
+    const result = performAttack(actor.agility, target.agility, rawDamage, target.armor)
+    const next = commitCombatantUpdate((cs) =>
+      cs.map((c) => {
+        if (c.instanceId === actor.instanceId) return { ...c, currentMp: c.currentMp - info.skill.mpCost }
+        if (c.instanceId === target.instanceId) return updateCombatantHp(c, c.currentHp - result.damage)
+        return c
+      }),
+    )
+    if (info.oncePerCombat) markOnceUsed(actor, skillId)
+    const detail = formatAttackLog(result, target.name)
+    const skillName = getSkill(skillId)?.name ?? '技能'
+    const actorName = actor.sourceType === 'companion' ? actor.name : undefined
+    const attackKind = actor.sourceType === 'companion' ? 'companion_attack' : 'player_attack'
+    if (result.outcome === 'critical_miss') {
+      pushEvent(attackKind, actor.sourceType, `${actor.name}的攻击落空了。`, detail, actorName)
+    } else if (result.damage > 0) {
+      pushEvent(attackKind, actor.sourceType, `${skillName}命中${target.name}，造成 ${result.damage} 点伤害。`, detail, actorName)
+    } else {
+      pushEvent(attackKind, actor.sourceType, `${skillName}没有造成伤害。`, detail, actorName)
+    }
+    afterAction(next)
+  }
+
+  /** 普通攻击：进入目标选择（敌） */
   const handleAttack = () => {
-    // TM-P2-002-R1 A：敌人先手攻击期间普通攻击不可执行；伙伴行动期间玩家按钮封锁
-    if (phase !== 'active' || enemyFirstStriking || awaitingCompanionAction) return
-    const playerResult = performAttack(playerAgility, enemy.agility, playerAttackPower, enemy.armor)
-    applyPlayerAttack(playerResult, 'basic')
+    if (actionsLocked) return
+    setActionTray(null)
+    setPendingTarget({ mode: 'enemy', kind: 'attack' })
   }
 
-  /** TM-P2-003-R2 B1/B2：技能统一入口（learnedSkillIds → Skill Registry → rules/skill 执行） */
+  /** 技能：按目标模式进入选择或直接执行（自身技能无 picker） */
   const handleSkill = (skillId: string) => {
-    if (phase !== 'active' || enemyFirstStriking || awaitingCompanionAction) return
+    if (actionsLocked || !currentCombatant) return
     const info = getSkillExecutionInfo(skillId)
     if (!info) return
     if (info.skill.profession !== undefined && info.skill.profession !== player.profession) return
-    if (info.oncePerCombat && isOncePerCombatUsed(usedOnceSkillIds, skillId)) return
-    const rawDamage = resolveSkillRawDamage(skillId, {
-      str: player.attributes.str,
-      agi: player.attributes.agi,
-      mnd: player.attributes.mnd,
-      weaponDamageBonus,
-      level: player.level,
-    })
-    if (rawDamage === null) return
-    if (!spendSkillMp(skillId)) return
-    if (info.oncePerCombat) {
-      setUsedOnceSkillIds((prev) => markOncePerCombatUsed(prev, skillId))
+    const mode = skillTargetMode(info.skill)
+    setActionTray(null)
+    if (mode === 'self') {
+      executeSkill(currentCombatant, skillId)
+    } else {
+      setPendingTarget({ mode, kind: 'skill', skillId })
     }
-    const skillResult = performAttack(playerAgility, enemy.agility, rawDamage, enemy.armor)
-    applyPlayerAttack(skillResult, skillId)
   }
 
-  /** TM-P1-001/006/007/008：玩家攻击共用最小局部结算（V3 保持）——压制按 Skill Registry 标志判断。
-   *  TM-P2-004 第 47 节：玩家行动后若伙伴在场且敌人存活 → 进入伙伴行动阶段（敌人反击推迟到伙伴行动后）。 */
-  const applyPlayerAttack = (attack: AttackResult, action: string) => {
-    setLastPlayerAttack(attack)
-    setLastPlayerAction(action)
-    setLastPotionHeal(null)
-    setLastEnemyAttack(null)
-
-    const strike = resolvePlayerStrike(enemyCurrentHp, attack)
-    setEnemyCurrentHp(strike.enemyHp)
-    if (!strike.enemyShouldCounter) {
-      setPhase(strike.phase)
-      // TM-P2-003 C：胜利时结算掉落（基础 + 幸运追加；只结算一次）
-      if (strike.phase === 'victory') {
-        setVictoryLoot(useGameStore.getState().grantLoot(enemyId))
-      }
-      return
-    }
-    // TM-P1-008/TM-P2-003-R1：suppressCounterOnFullHit 技能仅「正常命中/暴击」压制本次反击；擦伤不压制
-    if (action !== 'basic' && isSuppressOnFullHitSkill(action) && (attack.outcome === 'hit' || attack.outcome === 'critical_hit')) {
-      // 压制已取消本次反击：不进入伙伴阶段（轻舞无意义，绝不白耗 MP）
-      return
-    }
-    // 有反击：伙伴在场且敌人存活 → 伙伴行动阶段
-    if (companionReady && strike.phase === 'active') {
-      setAwaitingCompanionAction(true)
-      return
-    }
-    applyEnemyCounter()
-  }
-
-  // ---- TM-P2-004 第 47-51 节：伙伴行动（按技能注册表 supportEffect 分派，不硬编码 skillId 分支）----
-
+  /** 伙伴技能入口（无职业校验；支持盾 / 轻舞 / 飞斩） */
   const handleCompanionSkill = (skillId: string) => {
-    if (!companion || !companionReady || phase !== 'active' || !awaitingCompanionAction) return
+    if (actionsLocked || !currentCombatant || currentCombatant.sourceType !== 'companion') return
     const info = getSkillExecutionInfo(skillId)
     if (!info) return
-    const support = info.skill.combat?.supportEffect
-    // 支持效果：盾 / 轻舞（oncePerCombat 独立追踪；MP 不足不消耗不结束阶段）
-    if (support) {
-      if (info.oncePerCombat && isOncePerCombatUsed(usedOnceCompanionSkillIds, skillId)) return
-      if (!spendCompanionSkillMp(companion.companionId, skillId)) return
-      if (info.oncePerCombat) {
-        setUsedOnceCompanionSkillIds((prev) => markOncePerCombatUsed(prev, skillId))
-      }
-      setLastPlayerAttack(null)
-      setLastEnemyAttack(null)
-      setLastPotionHeal(null)
-      setAwaitingCompanionAction(false)
-      if (support.type === 'reduce_next_enemy_damage') {
-        // 樱花魔法盾：下一次敌人反击最终伤害 -amount（最低 0）
-        // R1 A：盾量以显式上下文传给本次反击（不依赖刚 setShieldRemaining 的闭包旧值）
-        setShieldRemaining(support.amount)
-        setLastCompanionAction('shield')
-        applyEnemyCounter({ incomingDamageReduction: support.amount })
-      } else if (support.type === 'cancel_next_enemy_counter') {
-        // 樱花轻舞：本轮敌人不反击
-        setCompanionCanceledCounter(true)
-        setLastCompanionAction('light_dance')
-      }
-      return
+    const mode = skillTargetMode(info.skill)
+    setActionTray(null)
+    if (mode === 'self') {
+      executeSkill(currentCombatant, skillId)
+    } else {
+      setPendingTarget({ mode, kind: 'skill', skillId })
     }
-    // 伤害技能：樱花飞斩（agility_power；Sakura 自身 AGI/等级，武器加成 0）
-    const rawDamage = resolveSkillRawDamage(skillId, {
-      str: sakuraAttrs?.str ?? 0,
-      agi: sakuraAttrs?.agi ?? 0,
-      mnd: sakuraAttrs?.mnd ?? 0,
-      weaponDamageBonus: 0,
-      level: companion.level,
-    })
-    if (rawDamage === null) return
-    if (!spendCompanionSkillMp(companion.companionId, skillId)) return
-    const result = performAttack(sakuraAgility, enemy.agility, rawDamage, enemy.armor)
-    setLastPlayerAttack(null)
-    setLastEnemyAttack(null)
-    setLastPotionHeal(null)
-    setLastCompanionAttack(result)
-    setLastCompanionAction('petalslash')
-    setAwaitingCompanionAction(false)
-    const strike = resolvePlayerStrike(enemyCurrentHp, result)
-    setEnemyCurrentHp(strike.enemyHp)
-    if (!strike.enemyShouldCounter) {
-      setPhase(strike.phase)
-      // 伙伴击杀 → 胜利（只结算一次 loot / 一次 victory 提交；无反击）
-      if (strike.phase === 'victory') {
-        setVictoryLoot(useGameStore.getState().grantLoot(enemyId))
-      }
-      return
-    }
-    applyEnemyCounter()
   }
 
+  /** 目标选择确认（§11：点存活目标执行；取消由独立按钮处理） */
+  const executeTargeted = (target: Combatant) => {
+    if (!pendingTarget || !currentCombatant) return
+    const actor = currentCombatant
+    const { kind, skillId } = pendingTarget
+    setPendingTarget(null)
+    if (kind === 'attack') {
+      const result = performAttack(actor.agility, target.agility, actor.attack, target.armor)
+      applyAttackResult(actor, target, result, 'basic')
+    } else if (skillId) {
+      executeSkill(actor, skillId, target)
+    }
+  }
+
+  /** 治疗药水（仅玩家回合；本地治疗 combatant，结束同步时统一扣 inventory） */
+  const handleUseHealingPotion = () => {
+    if (phase !== 'active' || !isPlayerTurn || !playerCombatant) return
+    if (playerCombatant.currentHp <= 0 || playerCombatant.currentHp >= playerCombatant.maxHp) return
+    if (!healingPotionAmount || healingPotionAmount <= 0 || healingPotionCount <= 0) return
+    const hpBefore = playerCombatant.currentHp
+    const next = commitCombatantUpdate((cs) =>
+      cs.map((c) =>
+        c.instanceId === playerCombatant.instanceId
+          ? { ...c, currentHp: Math.min(c.maxHp, c.currentHp + healingPotionAmount) }
+          : c,
+      ),
+    )
+    const hpAfter = next.find((c) => c.instanceId === playerCombatant.instanceId)?.currentHp ?? hpBefore
+    const actual = Math.max(0, hpAfter - hpBefore)
+    potionsUsedRef.current += 1
+    pushEvent('potion', 'player', `你使用了治疗药水，恢复 ${actual} 点生命。`)
+    afterAction(next)
+  }
+
+  /** 伙伴跳过（不耗 MP；视为行动，推进回合） */
   const handleCompanionSkip = () => {
-    if (!awaitingCompanionAction) return
-    setLastPlayerAttack(null)
-    setLastEnemyAttack(null)
-    setLastPotionHeal(null)
-    setLastCompanionAction('skip')
-    setAwaitingCompanionAction(false)
-    applyEnemyCounter()
+    if (phase !== 'active' || !currentCombatant || currentCombatant.sourceType !== 'companion') return
+    setPendingTarget(null)
+    setActionTray(null)
+    pushEvent('companion_skip', 'companion', `${currentCombatant.name}静静守在后方。`, [], currentCombatant.name)
+    afterAction(combatants)
   }
 
-  const actionLabel =
-    lastPlayerAction === null || lastPlayerAction === 'basic'
-      ? '你的攻击：'
-      : `你的${getSkill(lastPlayerAction)?.name ?? '技能'}：`
+  /** 逃跑（§14：只在玩家自己的回合；成功无奖励 / 失败消耗本回合） */
+  const handleEscape = () => {
+    if (phase !== 'active' || !isPlayerTurn || !canEscape) return
+    const friendly = combatants.filter((c) => c.side === 'friendly')
+    const enemies = combatants.filter((c) => c.side === 'enemy')
+    const highestFriendly = Math.max(...friendly.map((c) => c.agility))
+    const highestEnemy = Math.max(...enemies.map((c) => c.agility))
+    const roll = rollD20()
+    const result = resolvePartyEscape(friendly, enemies, roll)
+    if (result.success) {
+      pushEvent('escape_success', 'player', `你成功脱离了战斗。`, [
+        `逃跑值 = (最高敏捷 ${highestFriendly} + D20 ${result.roll}) / 3 = ${result.score}；敌方最高敏捷 ${highestEnemy}。`,
+      ])
+      finalizeEscape()
+      onEscape()
+      return
+    }
+    pushEvent('escape_failure', 'player', `逃跑失败，敌人封住了退路。`, [
+      `逃跑值 = (最高敏捷 ${highestFriendly} + D20 ${result.roll}) / 3 = ${result.score}；敌方最高敏捷 ${highestEnemy}。`,
+    ])
+    setCurrentTurnIndex((idx) => advanceTurnIndex(idx))
+  }
 
-  const companionActionLabel = (() => {
-    if (lastCompanionAction === 'petalslash') return '樱花优子的攻击：'
-    if (lastCompanionAction === 'shield') return '樱花优子施展了樱花魔法盾：'
-    if (lastCompanionAction === 'light_dance') return '樱花优子施展了樱花轻舞：'
-    if (lastCompanionAction === 'skip') return '樱花优子按兵不动。'
-    return null
+  /** 敌方 AI 行动（§12 V1：随机存活我方目标 → 正式攻击） */
+  const executeEnemyTurn = (enemy: Combatant) => {
+    const livingFriendly = combatants.filter((c) => c.side === 'friendly' && c.isAlive)
+    if (livingFriendly.length === 0) {
+      setPhase('defeat')
+      finalizeCombatEnd(combatants)
+      return
+    }
+    const target = chooseEnemyTarget(livingFriendly, Math.random)
+    const result = performAttack(enemy.agility, target.agility, enemy.attack, target.armor)
+    const detail = formatAttackLog(result, target.name)
+    // 盾（命中才消耗；miss 保留）
+    const shield = shieldByTarget[target.instanceId]
+    let damage = result.damage
+    let absorbed = 0
+    if (result.hit && shield && shield.amount > 0) {
+      absorbed = Math.min(shield.amount, damage)
+      damage = Math.max(0, damage - absorbed)
+    }
+    const next = commitCombatantUpdate((cs) =>
+      cs.map((c) => (c.instanceId === target.instanceId ? updateCombatantHp(c, c.currentHp - damage) : c)),
+    )
+    if (result.hit && damage > 0) {
+      pushEvent('enemy_attack', 'enemy', `${enemy.name}的攻击命中${target.name}，造成 ${damage} 点伤害。`, detail)
+    } else if (result.hit) {
+      pushEvent('enemy_attack', 'enemy', `${enemy.name}的攻击被${target.name}挡下，没有造成伤害。`, detail)
+    } else {
+      pushEvent('enemy_attack', 'enemy', `${enemy.name}的攻击落空了。`, detail)
+    }
+    if (absorbed > 0) {
+      pushEvent('shield', 'companion', `${shield?.skillName ?? '魔法盾'}抵消了 ${absorbed} 点伤害。`)
+      setShieldByTarget((prev) => {
+        const nextShield = { ...prev }
+        delete nextShield[target.instanceId]
+        return nextShield
+      })
+    }
+    if (isEncounterLost(next)) {
+      setPhase('defeat')
+      finalizeCombatEnd(next)
+      return
+    }
+    setCurrentTurnIndex((idx) => advanceTurnIndex(idx))
+  }
+
+  // ---- V4：回合分组（详细日志按回合折叠分组） ----
+  const roundGroups = (() => {
+    const groups: { round: number; items: CombatEvent[] }[] = []
+    for (const ev of events) {
+      const last = groups[groups.length - 1]
+      if (last && last.round === ev.round) {
+        last.items.push(ev)
+      } else {
+        groups.push({ round: ev.round, items: [ev] })
+      }
+    }
+    return groups
   })()
 
-  return (
-    <div className="combat-page mx-auto flex min-h-screen w-full max-w-3xl flex-col gap-6 px-4 py-6">
-      <header className="border-b border-ink-600 pb-4 text-center">
-        <h2 className="text-xl font-bold tracking-widest text-gold-300">战斗</h2>
-      </header>
-
-      {/* TM-P2-002 D：先手提示（TM-P2-002-R1 A：攻击进行期间显示「抢得先手」并封锁操作） */}
-      {enemyFirstStriking && phase === 'active' && (
-        <p className="text-center text-sm text-gold-300">{enemy.name}抢得先手……</p>
-      )}
-      {enemyFirstStrikeDone && !enemyFirstStriking && phase === 'active' && (
-        <p className="text-center text-sm text-bone-500">{enemy.name}先手。</p>
-      )}
-
-      <div className="grid gap-4 sm:grid-cols-2">
-        {/* TM-P2-002 E：玩家面板（攻击力/护甲/敏捷/五属性/武器） */}
-        <section className="rounded border border-ink-600 bg-ink-800/50 p-4 text-sm text-bone-300">
-          <p className="text-base font-bold text-bone-100">{player.name}</p>
-          <p className="mt-1 text-xs text-bone-500">
-            Lv.{player.level} · {getProfessionName(player.profession)}
-          </p>
-          <p className="mt-2">
-            生命 <span className="tabular-nums text-bone-100">{player.hp}</span> / {player.maxHp}
-          </p>
-          <p>
-            灵力 <span className="tabular-nums text-bone-100">{player.mp}</span> / {player.maxMp}
-          </p>
-          <p className="mt-2">
-            攻击力 <span className="tabular-nums text-bone-100">{playerAttackPower}</span>
-          </p>
-          <p>
-            护甲等级 <span className="tabular-nums text-bone-100">{playerArmor}</span>
-          </p>
-          <p>
-            敏捷 <span className="tabular-nums text-bone-100">{playerAgility}</span>
-          </p>
-          <p className="mt-1">
-            当前防具：{' '}
-            {equippedArmor ? <span className="text-bone-100">{equippedArmor.name}</span> : gameState.equipment.armor ? <span className="text-bone-100">物品数据异常</span> : <span className="text-bone-500">未装备</span>}
-          </p>
-          <p className="mt-2">
-            当前武器：{' '}
-            {equippedWeapon ? (
-              <span className="text-bone-100">{equippedWeapon.name}</span>
-            ) : gameState.equipment.weapon ? (
-              <span className="text-bone-100">
-                物品数据异常
-              </span>
-            ) : (
-              <span className="text-bone-500">未装备</span>
-            )}
-          </p>
-        </section>
-
-        {/* TM-P2-002 E：敌人面板（名称/等级/HP/攻击力/护甲/敏捷） */}
-        <section className="rounded border border-ink-600 bg-ink-800/50 p-4 text-sm text-bone-300">
-          <p className="text-base font-bold text-bone-100">{enemy.name}</p>
-          <p className="mt-1 text-xs text-bone-500">Lv.{enemy.level}</p>
-          <p className="mt-2">
-            HP <span className="tabular-nums text-bone-100">{enemyCurrentHp}</span> / {enemy.maxHp}
-          </p>
-          <p className="mt-2">
-            攻击力 <span className="tabular-nums text-bone-100">{enemy.attackPower}</span>
-          </p>
-          <p>
-            护甲等级 <span className="tabular-nums text-bone-100">{enemy.armor}</span>
-          </p>
-          <p>
-            敏捷 <span className="tabular-nums text-bone-100">{enemy.agility}</span>
-          </p>
-        </section>
-
-        {/* TM-P2-004 第 47 节：伙伴面板（樱花优子——MP/技能/封印技能展示；敌人只攻击玩家，她不参与受击） */}
-        {companion && companionDef && (
-          <section className="rounded border border-sakura-500/40 bg-ink-800/50 p-4 text-sm text-bone-300 sm:col-span-2">
-            <p className="text-base font-bold text-sakura-200">
-              {companionDef.name}
-              <span className="ml-2 text-xs font-normal text-bone-500">
-                {companion.status === 'recruited' ? '神契宠物' : '临时同行'} · Lv.{companion.level}
-              </span>
-            </p>
-            <p className="mt-1">
-              灵力 <span className="tabular-nums text-bone-100">{companion.mp}</span> / {companion.maxMp}
-            </p>
-            <p className="mt-2 text-xs text-bone-500">可用技能：</p>
-            <div className="mt-1 flex flex-wrap gap-2">
-              {companionSkills.map((skill) => (
-                <span key={skill.id} className="rounded border border-ink-600 bg-ink-900/60 px-2 py-0.5 text-xs text-bone-300">
-                  {skill.name}
-                  {skill.mpCost > 0 ? `（${skill.mpCost} 灵力）` : ''}
-                  {skill.combat?.oncePerCombat === true ? '·每场一次' : ''}
-                </span>
+  const renderDetailLogBody = () =>
+    roundGroups.length === 0 ? (
+      <p className="text-sm text-bone-500">尚无记录。</p>
+    ) : (
+      <div className="flex flex-col gap-3">
+        {roundGroups.map((group) => (
+          <div key={`round-${group.round}`} className="rounded border border-ink-700 bg-ink-950/50 p-3">
+            <p className="mb-2 text-xs font-bold text-bone-500">回合 {group.round}</p>
+            <div className="flex flex-col gap-2">
+              {group.items.map((ev) => (
+                <div key={ev.id}>
+                  <p className="text-sm text-bone-200">{ev.summary}</p>
+                  {ev.detail.length > 0 && (
+                    <div className="mt-1 pl-3 text-xs leading-relaxed text-bone-500">
+                      {ev.detail.map((line, i) => (
+                        <p key={i}>{line}</p>
+                      ))}
+                    </div>
+                  )}
+                </div>
               ))}
             </div>
-            <p className="mt-2 text-xs text-bone-500">封印技能（尚未恢复）：</p>
-            <div className="mt-1 flex flex-wrap gap-2">
-              {SAKURA_SEALED_SKILLS.map((sealed) => (
-                <span key={sealed.skillId} className="rounded border border-ink-700 bg-ink-900/40 px-2 py-0.5 text-xs text-bone-600">
-                  {sealed.name}（封印）
-                </span>
-              ))}
-            </div>
-            {shieldRemaining > 0 && (
-              <p className="mt-2 text-xs text-sakura-200">樱花魔法盾已展开（可抵消 {shieldRemaining} 点伤害）。</p>
+          </div>
+        ))}
+      </div>
+    )
+
+  // ---- 单位卡渲染 ----
+  const unitCardClass = (c: Combatant): string => {
+    // R1：3v3 单排 3 卡（min-w 200px）→ 1280 视口两栏各 ~620px 不换行不溢出
+    const base = 'min-w-[200px] flex-1 rounded border p-3 text-sm text-bone-300 transition-colors'
+    if (!c.isAlive) return `${base} border-ink-800 bg-ink-950/40 text-bone-600 opacity-60`
+    if (c.instanceId === currentCombatant?.instanceId) {
+      return `${base} border-gold-400 bg-ink-800/70 ring-1 ring-gold-400`
+    }
+    return `${base} border-ink-600 bg-ink-800/50`
+  }
+
+  // 敌方多实例展示名（骷髅战士①/②；生产 UI 不泄露 instanceId）。
+  // P2-007 缺陷修复：combatant 取 combatants 实时实例，敌方卡 HP 随战斗刷新（击杀后显示 0/最大）；
+  // 保留 enemyInstances 作顺序/重名后缀基准（构建后敌单位集合稳定）。
+  const enemyDisplays = (() => {
+    const counts = new Map<string, number>()
+    return enemyInstances.map((c) => {
+      const n = counts.get(c.sourceId) ?? 0
+      counts.set(c.sourceId, n + 1)
+      const live = combatants.find((cc) => cc.instanceId === c.instanceId) ?? c
+      return { combatant: live, label: n === 0 ? live.name : `${live.name}${instanceDisplaySuffix(n)}` }
+    })
+  })()
+
+  const renderUnitCard = (c: Combatant, label: string, levelText: string) => {
+    const isTarget = pendingTarget !== null && pendingTarget.mode === (c.side === 'enemy' ? 'enemy' : 'friendly') && c.isAlive
+    // 伙伴卡信息按 sourceId 独立（R1：多伙伴各自展示自己的技能/等级）
+    const companionInfo = c.sourceType === 'companion' ? companionInfoFor(c.sourceId) : undefined
+    return (
+      <div
+        key={c.instanceId}
+        data-testid={c.side === 'enemy' ? 'combat-enemy-unit' : c.sourceType === 'player' ? 'combat-player-panel' : 'combat-companion-panel'}
+        className={`${unitCardClass(c)} ${isTarget ? 'cursor-pointer border-sky-400 ring-1 ring-sky-400' : ''}`}
+        onClick={isTarget ? () => executeTargeted(c) : undefined}
+        role={isTarget ? 'button' : undefined}
+      >
+        <p className="font-bold text-bone-100">
+          {label}
+          {c.sourceType === 'player' && (
+            <span className="ml-2 text-xs font-normal text-bone-500">
+              {getProfessionName(player.profession)}
+            </span>
+          )}
+        </p>
+        <p className="mt-1 text-xs text-bone-500">
+          {levelText}
+          {c.currentMp > 0 ? ` · 灵力 ${c.currentMp}/${c.maxMp}` : ''}
+        </p>
+        <p className="mt-2">
+          生命 <span className="tabular-nums text-bone-100">{c.currentHp}</span> / {c.maxHp}
+        </p>
+        <p>
+          攻击 <span className="tabular-nums text-bone-100">{c.attack}</span> · 护甲{' '}
+          <span className="tabular-nums text-bone-100">{c.armor}</span> · 敏捷{' '}
+          <span className="tabular-nums text-bone-100">{c.agility}</span>
+        </p>
+        {companionInfo && (
+          <div className="mt-2 border-t border-ink-600 pt-2 text-xs text-bone-500">
+            <p>
+              当前技能：{companionInfo.skills.length > 0 ? companionInfo.skills.map((s) => s.name).join('、') : '—'}
+            </p>
+            {SAKURA_SEALED_SKILLS.length > 0 && (
+              <p>封印技能：{SAKURA_SEALED_SKILLS.map((entry) => getSkill(entry.skillId)?.name ?? entry.name).join('、')}</p>
             )}
-          </section>
+          </div>
         )}
       </div>
+    )
+  }
 
-      {(lastPlayerAttack || lastEnemyAttack || lastPotionHeal !== null || lastCompanionAction !== null) && (
-        <section className="combat-log rounded border border-ink-600 bg-ink-900/50 p-4 text-sm leading-relaxed text-bone-300">
-          {lastPlayerAttack && (
-            <div>
-              <p className="text-bone-500">{actionLabel}</p>
-              {formatAttackLog(lastPlayerAttack, enemy.name).map((line, i) => (
-                <p key={i} className="mt-1">
-                  {line}
-                </p>
-              ))}
-            </div>
-          )}
-          {lastPotionHeal !== null && (
-            <p className="mt-2">
-              <span className="text-bone-500">你使用了治疗药水：恢复 {lastPotionHeal} 点生命。</span>
-            </p>
-          )}
-          {/* TM-P2-004：伙伴行动日志 */}
-          {lastCompanionAction === 'petalslash' && lastCompanionAttack && (
-            <div className="mt-2">
-              <p className="text-sakura-200">{companionActionLabel}</p>
-              {formatAttackLog(lastCompanionAttack, enemy.name).map((line, i) => (
-                <p key={i} className="mt-1">
-                  {line}
-                </p>
-              ))}
-            </div>
-          )}
-          {lastCompanionAction === 'shield' && (
-            <p className="mt-2 text-sakura-200">下一次敌人反击的伤害将被削减。</p>
-          )}
-          {shieldAbsorbedLast !== null && (
-            <p className="mt-1 text-sakura-200">樱花魔法盾抵消了 {shieldAbsorbedLast} 点伤害。</p>
-          )}
-          {lastCompanionAction === 'light_dance' && (
-            <p className="mt-2 text-sakura-200">敌人的攻势被轻舞牵走，没有找到反击的机会。</p>
-          )}
-          {lastCompanionAction === 'skip' && (
-            <p className="mt-2 text-bone-500">樱花优子静静守在后方。</p>
-          )}
-          {lastEnemyAttack && (
-            <div className="mt-2">
-              <p className="text-bone-500">{enemy.name}的攻击：</p>
-              {formatAttackLog(lastEnemyAttack, player.name).map((line, i) => (
-                <p key={i} className="mt-1">
-                  {line}
-                </p>
-              ))}
-            </div>
-          )}
+  // 我方（玩家 + 伙伴）
+  const renderFriendlyCard = (c: Combatant) => {
+    const info = c.sourceType === 'companion' ? companionInfoFor(c.sourceId) : undefined
+    const label = c.sourceType === 'player' ? player.name : info ? getCompanion(c.sourceId)?.name ?? c.name : c.name
+    const levelText =
+      c.sourceType === 'player'
+        ? `Lv.${player.level}`
+        : `Lv.${info?.level ?? 1}${info ? (gameState.companions[c.sourceId]?.status === 'recruited' ? ' · 神契宠物' : ' · 临时同行') : ''}`
+    return renderUnitCard(c, label, levelText)
+  }
+
+  const renderEnemyCard = (entry: { combatant: Combatant; label: string }) => {
+    const levelText = `Lv.${getEnemy(entry.combatant.sourceId)?.level ?? '?'}`
+    return renderUnitCard(entry.combatant, entry.label, levelText)
+  }
+
+  // ---- 行动栏目标选择 ----
+  const targetCandidates = pendingTarget
+    ? combatants.filter((c) => (pendingTarget.mode === 'enemy' ? c.side === 'enemy' : c.side === 'friendly') && c.isAlive)
+    : []
+  const renderTargetPicker = () => (
+    <div className="flex flex-col items-center gap-3">
+      <p className="text-base font-bold text-bone-100">选择目标（{pendingTarget?.mode === 'enemy' ? '敌方' : '友方'}）</p>
+      <div className="flex flex-wrap items-center justify-center gap-2">
+        {targetCandidates.map((c) => (
+          <Button key={c.instanceId} variant="primary" onClick={() => executeTargeted(c)}>
+            {c.sourceType === 'enemy' ? c.name : c.name}
+          </Button>
+        ))}
+        <Button variant="ghost" onClick={() => setPendingTarget(null)}>
+          取消
+        </Button>
+      </div>
+    </div>
+  )
+
+  // ---- 单位技能 tray ----
+  const currentCompanionInfo =
+    currentCombatant?.sourceType === 'companion' ? companionInfoFor(currentCombatant.sourceId) : undefined
+  const unitSkills = currentCompanionInfo ? currentCompanionInfo.skills : getUsableSkills(player.learnedSkillIds, player.profession)
+  const unitOnceUsed = (skillId: string) =>
+    currentCombatant?.sourceType === 'companion'
+      ? isOncePerCombatUsed(usedOnceCompanionSkillIds[currentCombatant.sourceId] ?? new Set(), skillId)
+      : isOncePerCombatUsed(usedOnceSkillIds, skillId)
+
+  return (
+    <div className="combat-page mx-auto flex h-full w-full max-w-[1600px] flex-col px-4 py-3">
+      {/* 顶部薄标题栏 */}
+      <header className="mb-3 flex items-center justify-between gap-3 border-b border-ink-600 pb-2">
+        <p className="text-sm tracking-widest text-bone-500">
+          战斗 · <span className="text-gold-300">{def.name}</span>
+        </p>
+        <div className="flex items-center gap-3">
+          <p className="text-xs text-bone-500">
+            {phase === 'active' ? '战斗进行中' : phase === 'victory' ? '胜利' : '失败'}
+          </p>
+          <Button variant="ghost" className="xl:hidden" onClick={() => setDetailDrawerOpen(true)}>
+            详细战斗日志
+          </Button>
+        </div>
+      </header>
+
+      {/* 上：我方 / 敌方两栏（§17） */}
+      <section className="combat-status mb-3 grid gap-3 sm:grid-cols-2">
+        {/* 我方（玩家 + 伙伴） */}
+        <section className="flex flex-wrap gap-2">
+          <p className="text-xs font-bold tracking-widest text-bone-500">我方</p>
+          {combatants.filter((c) => c.side === 'friendly').map((c) => renderFriendlyCard(c))}
         </section>
-      )}
+        {/* 敌方 */}
+        <section data-testid="combat-enemy-panel" className="flex flex-wrap gap-2">
+          <p className="text-xs font-bold tracking-widest text-bone-500">敌方</p>
+          {enemyDisplays.map((entry) => renderEnemyCard(entry))}
+        </section>
+      </section>
 
-      <footer className="flex flex-col items-center gap-4">
-        {phase === 'active' && !awaitingCompanionAction && (
+      {/* 中 + 右：简洁战斗播报（中央）+ 详细战斗日志（右侧，按回合分组） */}
+      <section className="combat-main grid min-h-0 flex-1 grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <div data-testid="combat-summary-feed" className="combat-feed min-h-0 overflow-y-auto rounded border border-ink-600 bg-ink-900/40 p-4">
+          <p className="mb-3 text-xs tracking-widest text-bone-500">战况播报</p>
+          {events.length === 0 ? (
+            <p className="text-sm text-bone-500">战斗开始。</p>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {events.map((ev) => (
+                <p key={ev.id} className="text-sm leading-relaxed text-bone-200">
+                  {ev.actor === 'enemy' ? (
+                    <span className="text-gold-300">【敌方】</span>
+                  ) : ev.actor === 'companion' ? (
+                    <span className="text-sakura-300">【{ev.actorName ?? '伙伴'}】</span>
+                  ) : ev.actor === 'system' ? (
+                    <span className="text-bone-500">【系统】</span>
+                  ) : (
+                    <span className="text-bone-500">【你】</span>
+                  )}{' '}
+                  {ev.summary}
+                </p>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div data-testid="combat-detail-log" className="combat-log hidden min-h-0 overflow-y-auto rounded border border-ink-600 bg-ink-900/50 p-4 xl:block">
+          <p className="mb-3 text-xs tracking-widest text-bone-500">详细战斗日志</p>
+          {renderDetailLogBody()}
+        </div>
+      </section>
+
+      {/* 下：固定行动栏 */}
+      <footer className="relative z-[60] mt-3 border-t border-ink-600 pt-3">
+        {phase === 'active' && isFriendlyTurn && !pendingTarget && (
           <div className="flex flex-col items-center gap-3">
-            <Button variant="primary" disabled={enemyFirstStriking} onClick={handleAttack}>
-              普通攻击
-            </Button>
-            {/* TM-P2-003 A：技能按钮由 learnedSkillIds → Skill Registry 动态生成 */}
-            {learnedSkills.map((skill) => {
-              const mpNotEnough = skill.mpCost > 0 && player.mp < skill.mpCost
-              const onceUsed =
-                skill.combat?.oncePerCombat === true && isOncePerCombatUsed(usedOnceSkillIds, skill.id)
-              return (
-                <div key={skill.id} className="flex flex-col items-center gap-1">
-                  <Button
-                    variant="primary"
-                    disabled={enemyFirstStriking || mpNotEnough || onceUsed}
-                    onClick={() => handleSkill(skill.id)}
-                  >
-                    {skill.name}
-                    {skill.mpCost > 0 ? `（${skill.mpCost} 灵力）` : ''}
-                  </Button>
-                  {mpNotEnough && <span className="text-xs text-red-300">灵力不足</span>}
-                  {onceUsed && <span className="text-xs text-bone-500">本场战斗已使用</span>}
-                </div>
-              )
-            })}
-            {healingPotionAmount !== undefined && (
-              <div className="flex flex-col items-center gap-1">
-                <Button
-                  variant="primary"
-                  disabled={enemyFirstStriking || player.hp >= player.maxHp || healingPotionCount <= 0}
-                  onClick={handleUseHealingPotion}
-                >
-                  使用治疗药水（+{healingPotionAmount} 生命）
+            <p className="text-base font-bold text-bone-100">{currentCombatant?.name}的回合</p>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <Button variant="primary" disabled={actionsLocked} onClick={handleAttack}>
+                普通攻击
+              </Button>
+              {unitSkills.length > 0 && (
+                <Button variant="ghost" disabled={actionsLocked} onClick={() => setActionTray(actionTray === 'skill' ? null : 'skill')}>
+                  技能{actionTray === 'skill' ? ' ▴' : ' ▾'}
                 </Button>
-                {healingPotionCount > 0 && <span className="text-xs text-bone-500">剩余：{healingPotionCount}</span>}
-                {healingPotionCount <= 0 && <span className="text-xs text-red-300">没有治疗药水</span>}
-                {healingPotionCount > 0 && player.hp >= player.maxHp && (
-                  <span className="text-xs text-bone-500">生命已满</span>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-        {/* TM-P2-004 第 47/49 节：伙伴行动阶段（玩家行动后、敌人反击前；MVP 每轮一次） */}
-        {phase === 'active' && awaitingCompanionAction && companionReady && (
-          <div className="flex flex-col items-center gap-3">
-            <p className="text-base font-bold text-sakura-200">樱花优子的行动</p>
-            {companionSkills.map((skill) => {
-              const mpNotEnough = skill.mpCost > 0 && (companion?.mp ?? 0) < skill.mpCost
-              const onceUsed =
-                skill.combat?.oncePerCombat === true &&
-                isOncePerCombatUsed(usedOnceCompanionSkillIds, skill.id)
-              const shieldAlreadyUp = skill.combat?.supportEffect?.type === 'reduce_next_enemy_damage' && shieldRemaining > 0
-              return (
-                <div key={skill.id} className="flex flex-col items-center gap-1">
-                  <Button
-                    variant="primary"
-                    disabled={mpNotEnough || onceUsed || shieldAlreadyUp}
-                    onClick={() => handleCompanionSkill(skill.id)}
-                  >
-                    {skill.name}
-                    {skill.mpCost > 0 ? `（${skill.mpCost} 灵力）` : ''}
-                  </Button>
-                  {mpNotEnough && <span className="text-xs text-red-300">灵力不足</span>}
-                  {onceUsed && <span className="text-xs text-bone-500">本场战斗已使用</span>}
-                  {shieldAlreadyUp && <span className="text-xs text-bone-500">盾已展开</span>}
-                </div>
-              )
-            })}
-            <Button variant="ghost" onClick={handleCompanionSkip}>
-              跳过
-            </Button>
-          </div>
-        )}
-        {phase === 'victory' && (
-          <>
-            <p className="text-lg font-bold text-gold-300">战斗胜利</p>
-            {victoryLoot && (
-              <div className="rounded border border-gold-500/40 bg-ink-900/40 p-4 text-left text-sm text-bone-300">
-                <p className="text-bone-500">掉落：</p>
-                {victoryLoot.items.map((it, index) => {
-                  const def = getItem(it.itemId)
-                  const rarity = def?.rarity ? `（${RARITY_LABELS[def.rarity]}）` : ''
+              )}
+              {currentCombatant?.sourceType === 'player' && healingPotionAmount !== undefined && (
+                <Button variant="ghost" disabled={actionsLocked} onClick={() => setActionTray(actionTray === 'item' ? null : 'item')}>
+                  物品{actionTray === 'item' ? ' ▴' : ' ▾'}
+                </Button>
+              )}
+              {isPlayerTurn && canEscape && (
+                <Button variant="ghost" disabled={actionsLocked} onClick={handleEscape}>
+                  尝试逃跑
+                </Button>
+              )}
+              {currentCombatant?.sourceType === 'companion' && (
+                <Button variant="ghost" disabled={actionsLocked} onClick={handleCompanionSkip}>
+                  跳过
+                </Button>
+              )}
+              {!canEscape && isPlayerTurn && <span className="text-xs text-bone-600">无法逃离</span>}
+            </div>
+            {actionTray === 'skill' && (
+              <div data-testid="combat-skill-tray" className="flex flex-wrap items-center justify-center gap-2">
+                {unitSkills.map((skill) => {
+                  const mpNotEnough = skill.mpCost > 0 && (currentCombatant?.currentMp ?? 0) < skill.mpCost
+                  const onceUsed = skill.combat?.oncePerCombat === true && unitOnceUsed(skill.id)
                   return (
-                    <p key={combatLootItemKey(it.itemId, index)} className="mt-1">
-                      {def?.name ?? '异常物品（无法识别）'} ×{it.quantity}
-                      {rarity}
-                    </p>
+                    <div key={skill.id} className="flex flex-col items-center gap-1">
+                      <Button
+                        variant="primary"
+                        disabled={actionsLocked || mpNotEnough || onceUsed}
+                        onClick={() => (currentCombatant?.sourceType === 'companion' ? handleCompanionSkill(skill.id) : handleSkill(skill.id))}
+                      >
+                        {skill.name}
+                        {skill.mpCost > 0 ? `（${skill.mpCost} 灵力）` : ''}
+                      </Button>
+                      {mpNotEnough && <span className="text-xs text-red-300">灵力不足</span>}
+                      {onceUsed && <span className="text-xs text-bone-500">本场战斗已使用</span>}
+                    </div>
                   )
                 })}
-                {victoryLoot.gold > 0 && <p className="mt-1">金币 +{victoryLoot.gold}</p>}
-                {victoryLoot.luckCheck && (
-                  <div className="mt-2 text-xs text-bone-500">
-                    {formatLuckCheckLog(victoryLoot.luckCheck).map((line) => (
-                      <p key={line}>{line}</p>
-                    ))}
-                  </div>
-                )}
               </div>
             )}
+            {actionTray === 'item' && (
+              <div data-testid="combat-item-tray" className="flex flex-wrap items-center justify-center gap-2">
+                <div className="flex flex-col items-center gap-1">
+                  <Button
+                    variant="primary"
+                    disabled={actionsLocked || (playerCombatant?.currentHp ?? 0) >= (playerCombatant?.maxHp ?? 0) || healingPotionCount <= 0}
+                    onClick={handleUseHealingPotion}
+                  >
+                    使用治疗药水（+{healingPotionAmount} 生命）
+                  </Button>
+                  {healingPotionCount > 0 && <span className="text-xs text-bone-500">剩余：{healingPotionCount}</span>}
+                  {healingPotionCount <= 0 && <span className="text-xs text-red-300">没有治疗药水</span>}
+                  {(playerCombatant?.currentHp ?? 0) >= (playerCombatant?.maxHp ?? 0) && (
+                    <span className="text-xs text-bone-500">生命已满</span>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+        {phase === 'active' && isFriendlyTurn && pendingTarget && renderTargetPicker()}
+
+        {/* TM-P2-007 §6：胜利结算面板（§6 格式：击败 / 阅历 / 金币 / 战利品 / 已收入背包） */}
+        {phase === 'victory' && (
+          <div className="flex flex-col items-center gap-3">
+            <p className="text-lg font-bold text-gold-300">战斗胜利</p>
+            <div className="w-full max-w-md rounded border border-gold-500/40 bg-ink-900/40 p-4 text-left text-sm text-bone-300">
+              <p className="font-bold text-bone-500">击败：</p>
+              {defeatedList.length === 0 && <p className="text-bone-500">无</p>}
+              {defeatedList.map((d) => (
+                <p key={d.enemyId} className="mt-0.5 text-bone-200">
+                  {d.name} ×{d.count}
+                </p>
+              ))}
+              {victoryXp > 0 && <p className="mt-2 font-bold text-gold-300">冒险阅历 +{victoryXp}</p>}
+              {victoryLevelPreview && victoryLevelPreview.levelGain > 0 && (
+                <p className="mt-1 text-bone-200">
+                  等级提升至 Lv.{victoryLevelPreview.player.level}
+                  {victoryLevelPreview.maxHpGain > 0 && `（生命上限 +${victoryLevelPreview.maxHpGain}`}
+                  {victoryLevelPreview.maxMpGain > 0 && `，灵力上限 +${victoryLevelPreview.maxMpGain}`}
+                  {victoryLevelPreview.maxHpGain > 0 && '）'}
+                </p>
+              )}
+              {(victoryLoot?.gold ?? 0) > 0 && <p className="mt-2">金币 +{victoryLoot?.gold ?? 0}</p>}
+              {(victorySummary?.gold ?? 0) > 0 && <p className="mt-2">金币 +{victorySummary?.gold ?? 0}</p>}
+              {victoryLoot && victoryLoot.items.length > 0 && (
+                <div className="mt-3">
+                  <p className="text-bone-500">战利品：</p>
+                  {victoryLoot.items.map((it, index) => {
+                    const itemDef = getItem(it.itemId)
+                    const rarity = itemDef?.rarity ? `（${RARITY_LABELS[itemDef.rarity]}）` : ''
+                    return (
+                      <p key={combatLootItemKey(it.itemId, index)} className="mt-1">
+                        {itemDef?.name ?? '异常物品（无法识别）'} ×{it.quantity}
+                        {rarity}
+                      </p>
+                    )
+                  })}
+                </div>
+              )}
+              {victorySummary && victorySummary.items.length > 0 && (
+                <div className="mt-3">
+                  <p className="text-bone-500">战利品：</p>
+                  {victorySummary.items.map((it, index) => {
+                    const itemDef = getItem(it.itemId)
+                    const rarity = itemDef?.rarity ? `（${RARITY_LABELS[itemDef.rarity]}）` : ''
+                    return (
+                      <p key={combatLootItemKey(it.itemId, index)} className="mt-1">
+                        {itemDef?.name ?? '异常物品（无法识别）'} ×{it.quantity}
+                        {rarity}
+                      </p>
+                    )
+                  })}
+                </div>
+              )}
+              {(victoryLoot?.luckCheck || victorySummary?.luckChecks?.length) && (
+                <div className="mt-2 text-xs text-bone-500">
+                  {victoryLoot?.luckCheck && formatLuckCheckLog(victoryLoot.luckCheck).map((line) => <p key={line}>{line}</p>)}
+                  {victorySummary?.luckChecks?.map((lc, i) =>
+                    formatLuckCheckLog(lc).map((line) => (
+                      <p key={`${i}-${line}`}>{line}</p>
+                    )),
+                  )}
+                </div>
+              )}
+              {(victoryXp > 0 || victoryLoot || victorySummary) && (
+                <p className="mt-3 text-bone-500">已收入背包</p>
+              )}
+              {victoryXp <= 0 && !victoryLoot && !victorySummary && (
+                <p className="text-bone-500">本次胜利没有额外奖励。</p>
+              )}
+            </div>
             <Button variant="primary" onClick={onVictory}>
               返回冒险
             </Button>
-          </>
+          </div>
         )}
         {phase === 'defeat' && (
-          <>
+          <div className="flex flex-col items-center gap-3">
             <p className="text-lg font-bold text-red-300">战斗失败</p>
             <Button variant="danger" onClick={onDefeat}>
               返回冒险
             </Button>
-          </>
+          </div>
         )}
       </footer>
+
+      {/* 移动端详细战斗日志抽屉 */}
+      {detailDrawerOpen && (
+        <div
+          data-testid="combat-detail-drawer"
+          role="dialog"
+          aria-modal="true"
+          aria-label="详细战斗日志"
+          className="fixed inset-x-0 bottom-24 top-0 z-50"
+        >
+          <button
+            type="button"
+            aria-label="关闭详细战斗日志"
+            className="absolute inset-0 h-full w-full bg-ink-950/60"
+            onClick={() => setDetailDrawerOpen(false)}
+          />
+          <div className="absolute inset-x-0 bottom-0 top-16 flex flex-col rounded-t-lg border border-ink-600 bg-ink-900 p-4 shadow-2xl">
+            <div className="mb-3 flex items-center justify-between">
+              <p className="text-xs tracking-widest text-bone-500">详细战斗日志</p>
+              <Button variant="ghost" onClick={() => setDetailDrawerOpen(false)}>
+                关闭（Esc）
+              </Button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto">{renderDetailLogBody()}</div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -636,9 +1020,4 @@ export default function CombatPage({ enemyId, onVictory, onDefeat, onExitToMenu 
 /** React-only identity for victory loot rows; duplicate itemId drops remain separate. */
 export function combatLootItemKey(itemId: string, index: number): string {
   return `${itemId}-${index}`
-}
-
-/** 读取玩家敏捷（在 gameState 可能为 null 的惰性初始化场景下安全取值） */
-function playerAgilityOf(state: { player: { attributes: { agi: number } } }): number {
-  return state.player.attributes.agi
 }

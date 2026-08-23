@@ -21,8 +21,10 @@ export const LEGACY_SAVE_VERSION = 1
 /** TM-P2-002-R1 G：槽位文件自身格式版本（SaveSlot.version）。
  *  3（TM-P2-003 A）：player 增加 learnedSkillIds（技能注册表）。
  *  4（TM-P2-004）：GameState 增加 companions / relationships / party / world.restCount（Schema V4）。
- *  兼容 514f3e2 无版本 V2 槽与 2.x/3 版本槽（迁移链补齐 version / learnedSkillIds / V4 字段）。 */
-export const SLOT_FORMAT_VERSION = 5
+ *  5（TM-P2-006）：adventureXp / level 为权威进度字段；V5 严格校验（V1-V4 XP 视为 legacy 迁移输入）。
+ *  6（TM-P2-007）：GameState 增加 ownedMountIds / equippedMountId / world.encounterVariants（Schema V6）。
+ *  兼容 514f3e2 无版本 V2 槽与 2.x/3/4/5 版本槽（迁移链补齐 version / learnedSkillIds / V4 字段 / V6 字段）。 */
+export const SLOT_FORMAT_VERSION = 6
 
 export const SLOT_IDS = ['slot1', 'slot2', 'slot3', 'slot4', 'slot5'] as const
 export type SlotId = (typeof SLOT_IDS)[number]
@@ -287,9 +289,9 @@ export function isGameState(value: unknown): value is GameState {
   )
 }
 
-/** 当前 v4 格式 GameState 判定（TM-P2-004 第 96 节：必须带完整 V4 字段 + 交叉引用合法；
- * 新保存只允许此校验通过——防止 saveSlot 写出自身无法读取的 v4） */
-function hasCurrentSchemaFields(gs: GameState): boolean {
+/** V4 基础字段判定（companions/relationships/party/restCount + 交叉引用；TM-P2-004 第 96 节 + R1 C strictness；
+ * 新保存只允许带完整 V4 字段——防止 saveSlot 写出自身无法读取的格式） */
+function hasV4Fields(gs: GameState): boolean {
   const skills = gs.player.learnedSkillIds
   if (!Array.isArray(skills) || !skills.every((id) => typeof id === 'string')) return false
   if (gs.companions === undefined || gs.relationships === undefined || gs.party === undefined) return false
@@ -300,8 +302,34 @@ function hasCurrentSchemaFields(gs: GameState): boolean {
   return true
 }
 
-/** Current V5 is authoritative and strict. Malformed level/XP is rejected, never migrated or repaired. */
+/** V6 新增字段判定（ownedMountIds / equippedMountId / world.encounterVariants；TM-P2-007 §3.1） */
+function hasV6Fields(gs: GameState): boolean {
+  if (!Array.isArray(gs.ownedMountIds) || !gs.ownedMountIds.every((id) => typeof id === 'string')) return false
+  if (gs.equippedMountId !== null && typeof gs.equippedMountId !== 'string') return false
+  const variants = gs.world.encounterVariants
+  if (!isRecord(variants)) return false
+  if (!Object.values(variants).every((v) => typeof v === 'string')) return false
+  return true
+}
+
+/** 当前 V6 格式基础字段判定（V4 + V6；新保存只允许此语义通过） */
+function hasCurrentSchemaFields(gs: GameState): boolean {
+  return hasV4Fields(gs) && hasV6Fields(gs)
+}
+
+/** 当前 V5 格式判定（V5 语义：V4 字段齐全 + 严格 level/XP 不变量；不含 V6 字段——V5 存档可被 V6 迁移）。
+ * 保留供 isValidSaveSlot 判定 V5 存档是否合法可迁移。 */
 export function validateCurrentV5GameState(value: unknown): value is GameState {
+  if (!isGameState(value)) return false
+  const gs = value as GameState
+  if (!Number.isSafeInteger(gs.player.level) || gs.player.level < 1 || gs.player.level > 15) return false
+  if (!Number.isSafeInteger(gs.player.adventureXp) || gs.player.adventureXp < 0) return false
+  if (gs.player.adventureXp < getXpThresholdForLevel(gs.player.level)) return false
+  return hasV4Fields(gs)
+}
+
+/** 当前 V6 格式判定（权威 + 严格：完整 V4+V6 字段 + level/XP 不变量；malformed level/XP 拒绝，绝不迁移修复） */
+export function validateCurrentV6GameState(value: unknown): value is GameState {
   if (!isGameState(value)) return false
   const gs = value as GameState
   if (!Number.isSafeInteger(gs.player.level) || gs.player.level < 1 || gs.player.level > 15) return false
@@ -310,21 +338,24 @@ export function validateCurrentV5GameState(value: unknown): value is GameState {
   return hasCurrentSchemaFields(gs)
 }
 
-/** Backward-compatible public name for callers that validate the current schema. */
-export const isCurrentGameState = validateCurrentV5GameState
+/** Backward-compatible public name for callers that validate the current (V6) schema. */
+export const isCurrentGameState = validateCurrentV6GameState
 
-/** 合法槽位存档判定（TM-P2-003-R1 D：版本感知——可迁移格式 version undefined(514f3e2)/2(9ddb5db)/3(TM-P2-003)/4(当前) 均合法；
- * 其中 version 4 必须携带完整 V4 字段（companions/relationships/party/restCount），缺失判 malformed；旧版本允许缺失（迁移链补全）） */
+/** 合法槽位存档判定（TM-P2-003-R1 D：版本感知——可迁移格式 version undefined(514f3e2)/2/3/4/5 与当前 6 均合法；
+ * 其中 version 4 必须携带完整 V4 字段、version 5 必须携带完整 V5 字段（V4 字段 + 严格 level/XP）、
+ * 当前 version 6 必须携带完整 V4+V6 字段；旧版本允许缺 V6 字段（迁移链补全）） */
 export function isValidSaveSlot(raw: unknown): raw is SaveSlot {
   if (!isRecord(raw)) return false
   const v = raw.version
-  if (v !== undefined && v !== 2 && v !== 3 && v !== 4 && v !== SLOT_FORMAT_VERSION) return false
+  if (v !== undefined && v !== 2 && v !== 3 && v !== 4 && v !== 5 && v !== SLOT_FORMAT_VERSION) return false
   if (typeof raw.savedAt !== 'string') return false
   if (!isGameState(raw.gameState)) return false
   // V4 requires its complete schema, but its XP is legacy migration input and is not authoritative.
-  if (v === 4 && !hasCurrentSchemaFields(raw.gameState as GameState)) return false
-  // Only source version 5 is subject to the strict current level/XP invariant.
-  if (v === SLOT_FORMAT_VERSION && !validateCurrentV5GameState(raw.gameState)) return false
+  if (v === 4 && !hasV4Fields(raw.gameState as GameState)) return false
+  // V5 requires its complete schema (V4 fields; no V6 fields yet) with the strict level/XP invariant.
+  if (v === 5 && !validateCurrentV5GameState(raw.gameState)) return false
+  // Only current version 6 is subject to the strict current level/XP invariant + V6 fields.
+  if (v === SLOT_FORMAT_VERSION && !validateCurrentV6GameState(raw.gameState)) return false
   return true
 }
 
@@ -353,6 +384,29 @@ export function withV4Fields(gs: GameState): GameState {
     relationships,
     party,
     world: { ...gs.world, restCount },
+  }
+}
+
+/** TM-P2-007 Schema V6 字段补全（幂等）：ownedMountIds=[] equippedMountId=null world.encounterVariants={}；
+ * 缺哪个补哪个，已存在的不动。返回新对象（不修改原对象）。
+ * V5→V6 只补这三字段，XP / level / 其余数据原样保留（不得重算）。 */
+export function withV6Fields(gs: GameState): GameState {
+  const ownedMountIds =
+    Array.isArray(gs.ownedMountIds) && gs.ownedMountIds.every((id) => typeof id === 'string')
+      ? gs.ownedMountIds
+      : []
+  const equippedMountId =
+    gs.equippedMountId === null || typeof gs.equippedMountId === 'string' ? gs.equippedMountId : null
+  const encounterVariants =
+    isRecord(gs.world.encounterVariants) &&
+    Object.values(gs.world.encounterVariants).every((v) => typeof v === 'string')
+      ? gs.world.encounterVariants
+      : {}
+  return {
+    ...gs,
+    ownedMountIds,
+    equippedMountId,
+    world: { ...gs.world, encounterVariants },
   }
 }
 
@@ -558,7 +612,7 @@ export function loadSlot(slotId: SlotId): SaveSlot | null {
     const p = parsed as { version?: number; savedAt: string; gameState: GameState }
     // TM-P2-003 A/R1：旧版本（undefined/2）读时补 learnedSkillIds（内存级；不写回——持久迁移由 migrateSave/importSaves 负责）
     // TM-P2-004 V4：读时补 companions/relationships/party/restCount（内存级；持久迁移同由 migrateSave 负责）
-    // V5 is the canonical current format.  Return its payload untouched:
+    // V6 is the canonical current format.  Return its payload untouched:
     // loading must be bit-for-bit lossless for XP and all other fields.
     if (p.version === SLOT_FORMAT_VERSION && isCurrentGameState(p.gameState)) {
       return { version: SLOT_FORMAT_VERSION, savedAt: p.savedAt, gameState: p.gameState }
@@ -567,7 +621,14 @@ export function loadSlot(slotId: SlotId): SaveSlot | null {
     if (!Array.isArray(gs.player.learnedSkillIds)) {
       gs.player.learnedSkillIds = defaultSkillsForProfession(gs.player.profession)
     }
-    gs = migrateLegacyGameStateToV5(withV4Fields(gs))
+    // V5 → V6：只补 V6 三字段，XP / level / 其余数据原样保留（不得重算；TM-P2-007 §3.2）
+    if (p.version === 5) {
+      gs = withV6Fields(gs)
+      if (!isCurrentGameState(gs)) return null
+      return { version: SLOT_FORMAT_VERSION, savedAt: p.savedAt, gameState: gs }
+    }
+    // V1-V4：legacy migration 重建 XP/等级后，再补 V6 字段
+    gs = withV6Fields(migrateLegacyGameStateToV5(withV4Fields(gs)))
     if (!isCurrentGameState(gs)) return null
     return { version: SLOT_FORMAT_VERSION, savedAt: p.savedAt, gameState: gs }
   } catch (err) {
@@ -668,8 +729,9 @@ export function migrateLegacySave(): boolean {
   // TM-P2-003-R2 D：真正历史 V1 存档没有 learnedSkillIds——写当前格式前必须按职业补全，
   // 否则 loadSlot 的严格校验会失败导致迁移回滚（旧 V1 自动迁移断裂）。
   // TM-P2-004 V4：同时补 companions/relationships/party/restCount。
+  // TM-P2-007 V6：最后补 ownedMountIds/equippedMountId/world.encounterVariants。
   const migratedState = withV4Fields(legacy.gameState)
-  const gs = migrateLegacyGameStateToV5(migratedState)
+  let gs = withV6Fields(migrateLegacyGameStateToV5(migratedState))
   if (!Array.isArray(gs.player.learnedSkillIds)) {
     gs.player.learnedSkillIds = defaultSkillsForProfession(gs.player.profession)
   }
@@ -730,7 +792,7 @@ export function migrateSave(): boolean {
           if (!Array.isArray(gs.player.learnedSkillIds)) {
             gs.player.learnedSkillIds = defaultSkillsForProfession(gs.player.profession)
           }
-          gs = migrateLegacyGameStateToV5(withV4Fields(gs))
+          gs = withV6Fields(migrateLegacyGameStateToV5(withV4Fields(gs)))
           if (!isCurrentGameState(gs)) continue
           storage.setItem(slotKey(id), JSON.stringify({ version: SLOT_FORMAT_VERSION, savedAt: parsed.savedAt, gameState: gs }))
           changed = true
@@ -742,7 +804,7 @@ export function migrateSave(): boolean {
           if (!Array.isArray(gs.player.learnedSkillIds)) {
             gs.player.learnedSkillIds = defaultSkillsForProfession(gs.player.profession)
           }
-          gs = migrateLegacyGameStateToV5(withV4Fields(gs))
+          gs = withV6Fields(migrateLegacyGameStateToV5(withV4Fields(gs)))
           if (!isCurrentGameState(gs)) continue
           storage.setItem(slotKey(id), JSON.stringify({ version: SLOT_FORMAT_VERSION, savedAt: parsed.savedAt, gameState: gs }))
           changed = true
@@ -750,13 +812,21 @@ export function migrateSave(): boolean {
         }
         // Step 4（TM-P2-004）：schema 3 → 4 —— 补 companions/relationships/party/restCount（黄金兔冻结档原样迁移）
         if (parsed.version === 3 && isGameState(parsed.gameState)) {
-          const gs = migrateLegacyGameStateToV5(withV4Fields(parsed.gameState))
+          const gs = withV6Fields(migrateLegacyGameStateToV5(withV4Fields(parsed.gameState)))
           if (!isCurrentGameState(gs)) continue
           storage.setItem(slotKey(id), JSON.stringify({ version: SLOT_FORMAT_VERSION, savedAt: parsed.savedAt, gameState: gs }))
           changed = true
         }
         if (parsed.version === 4 && isGameState(parsed.gameState)) {
-          const gs = migrateLegacyGameStateToV5(withV4Fields(parsed.gameState))
+          const gs = withV6Fields(migrateLegacyGameStateToV5(withV4Fields(parsed.gameState)))
+          if (!isCurrentGameState(gs)) continue
+          storage.setItem(slotKey(id), JSON.stringify({ version: SLOT_FORMAT_VERSION, savedAt: parsed.savedAt, gameState: gs }))
+          changed = true
+        }
+        // Step 5（TM-P2-007 §3.2）：schema 5 → 6 —— 只补 ownedMountIds/equippedMountId/world.encounterVariants，
+        // XP / level / 其余数据原样保留（不得重算；V5 存档的 XP 已是权威进度）。
+        if (parsed.version === 5 && isGameState(parsed.gameState)) {
+          const gs = withV6Fields(parsed.gameState)
           if (!isCurrentGameState(gs)) continue
           storage.setItem(slotKey(id), JSON.stringify({ version: SLOT_FORMAT_VERSION, savedAt: parsed.savedAt, gameState: gs }))
           changed = true
@@ -771,14 +841,19 @@ export function migrateSave(): boolean {
 
 // ---------- 导出 / 导入（TM-P2-002 I / TM-P2-003-R1 D） ----------
 
-/** 将单个槽位条目迁移到当前格式（version 4 + learnedSkillIds + V4 字段）；旧版本原地升级，v4 直接返回 */
+/** 将单个槽位条目迁移到当前格式（version 6 + learnedSkillIds + V4 字段 + V6 字段）；旧版本原地升级，v6 直接返回 */
 function migrateSlotEntryToCurrent(entry: SaveSlot): SaveSlot {
   if (entry.version === SLOT_FORMAT_VERSION) return entry
   let gs = entry.gameState
   if (!Array.isArray(gs.player.learnedSkillIds)) {
     gs.player.learnedSkillIds = defaultSkillsForProfession(gs.player.profession)
   }
-  gs = migrateLegacyGameStateToV5(withV4Fields(gs))
+  // V5 → V6：只补 V6 字段，XP / level / 其余数据原样保留
+  if (entry.version === 5) {
+    gs = withV6Fields(gs)
+    return { version: SLOT_FORMAT_VERSION, savedAt: entry.savedAt, gameState: gs }
+  }
+  gs = withV6Fields(migrateLegacyGameStateToV5(withV4Fields(gs)))
   return { version: SLOT_FORMAT_VERSION, savedAt: entry.savedAt, gameState: gs }
 }
 

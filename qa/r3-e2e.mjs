@@ -53,48 +53,50 @@ const enterLocalModeIfNeeded = async () => {
   } catch { return false }
 }
 
-/** 在包含指定物品名的背包行中点击指定文本的按钮（如 装备/卸下）；名称精确匹配（startsWith，避免「铁剑」误中「精制铁剑」行） */
-const clickInRow = async (rowContains, btnText) => {
-  const ok = await page.evaluate(
-    ([contains, text]) => {
-      const buttons = [...document.querySelectorAll('button')]
-      for (const btn of buttons) {
-        if (!btn.textContent.includes(text)) continue
-        const row = btn.closest('div[class*="rounded"]')
-        if (!row) continue
-        const nameEl = row.querySelector('p.font-bold')
-        if (!nameEl) continue
-        const name = (nameEl.textContent || '').trim()
-        if (name === contains || name.startsWith(contains + ' ')) {
-          btn.click()
-          return true
-        }
-      }
-      return false
-    },
-    [rowContains, btnText],
-  )
-  if (!ok) throw new Error(`未找到「${rowContains}」行内的「${btnText}」按钮`)
+/** TM-P2-007：背包操作经 BackpackPanel（左栏 compact 无行内按钮） */
+const openBackpack = async () => {
+  await page.evaluate(() => {
+    const btn = document.querySelector('[data-testid="open-backpack"]')
+    if (!btn) throw new Error('未找到打开背包按钮')
+    btn.click()
+  })
+  await sleep(300)
+}
+const closeBackpack = async () => {
+  await page.evaluate(() => {
+    const dialog = document.querySelector('[data-testid="backpack-panel"]')
+    const btn = dialog ? [...dialog.querySelectorAll('button')].find((b) => b.textContent.trim() === '关闭') : null
+    if (!btn) throw new Error('未找到关闭背包按钮')
+    btn.click()
+  })
   await sleep(250)
 }
-
-/** 某物品所在背包行是否包含指定按钮文本（名称精确匹配） */
-const rowHasButton = async (itemName, btnText) =>
-  page.evaluate(
-    ([name, text]) => {
-      const buttons = [...document.querySelectorAll('button')]
-      return buttons.some((btn) => {
-        if (!btn.textContent.includes(text)) return false
-        const row = btn.closest('div[class*="rounded"]')
-        if (!row) return false
-        const nameEl = row.querySelector('p.font-bold')
-        if (!nameEl) return false
-        const rowName = (nameEl.textContent || '').trim()
-        return rowName === name || rowName.startsWith(name + ' ')
-      })
-    },
-    [itemName, btnText],
-  )
+/** BackpackPanel 物品行点击（按 itemId 精确定位，避免「铁剑」误中「精制铁剑」行） */
+const backpackRowClick = async (itemId) => {
+  const ok = await page.evaluate((id) => {
+    const row = document.querySelector(`[data-testid="backpack-item-${id}"]`)
+    if (!row) return false
+    row.click()
+    return true
+  }, itemId)
+  if (!ok) throw new Error(`背包中未找到 item ${itemId}`)
+  await sleep(250)
+}
+/** 详情视图动作按钮状态（equip/unequip/use/back） */
+const backpackDetailState = (action) =>
+  page.evaluate((a) => {
+    const btn = document.querySelector(`[data-testid="backpack-${a}"]`)
+    return btn ? { exists: true, disabled: btn.disabled } : { exists: false, disabled: null }
+  }, action)
+/** 详情视图动作按钮点击 */
+const backpackClick = async (action) => {
+  await page.evaluate((a) => {
+    const btn = document.querySelector(`[data-testid="backpack-${a}"]`)
+    if (!btn) throw new Error(`未找到背包按钮 ${a}`)
+    btn.click()
+  }, action)
+  await sleep(250)
+}
 
 /** 注入 slot1 存档（v3 合法 fixture）并刷新 → 主菜单出现「继续游戏」 */
 const injectSaveAndContinue = async (gameState) => {
@@ -160,32 +162,47 @@ try {
 
   check('R3-A1: 背包同时显示铁剑与精制铁剑', body.includes('铁剑') && body.includes('精制铁剑'))
 
-  // 铁剑行有装备、精制铁剑行有装备（尚未装备任何武器；名称精确匹配）
-  const ironHasEquip = await rowHasButton('铁剑', '装备')
-  const refinedHasEquip = await rowHasButton('精制铁剑', '装备')
-  check('R3-A2: 铁剑行提供「装备」入口', ironHasEquip, '')
-  check('R3-A3: 精制铁剑行提供「装备」入口', refinedHasEquip, '')
-
-  // 点击精制铁剑的装备 → 当前武器 = 精制铁剑
-  await clickInRow('精制铁剑', '装备')
+  // 打开背包：铁剑/精制铁剑详情均提供「装备」（尚未装备任何武器；按 itemId 精确定位）
+  await openBackpack()
+  await backpackRowClick('iron_sword')
+  check('R3-A2: 铁剑详情提供「装备」入口', (await backpackDetailState('equip')).exists === true)
+  await backpackClick('back')
+  await backpackRowClick('refined_iron_sword')
+  check('R3-A3: 精制铁剑详情提供「装备」入口', (await backpackDetailState('equip')).exists === true)
+  // 点击装备精制铁剑 → 详情按钮变「卸下」
+  await backpackClick('equip')
+  check('R3-A4: 装备精制铁剑 → 详情按钮变「卸下」', (await backpackDetailState('unequip')).exists === true)
+  await backpackClick('back')
+  // 铁剑仍可装备
+  await backpackRowClick('iron_sword')
+  check('R3-A5: 装备精制铁剑 → 铁剑详情仍为「装备」', (await backpackDetailState('equip')).exists === true)
+  await backpackClick('back')
+  await closeBackpack()
   body = await bodyText()
-  const refinedEquipped = await rowHasButton('精制铁剑', '卸下')
-  const ironStillEquip = await rowHasButton('铁剑', '装备')
-  check('R3-A4: 装备精制铁剑 → 精制铁剑行变「卸下」', refinedEquipped, '')
-  check('R3-A5: 装备精制铁剑 → 铁剑行仍为「装备」（未装备）', ironStillEquip, '')
-  check('R3-A6: 装备区当前武器显示「精制铁剑」', body.includes('武器：') && body.includes('精制铁剑'), '')
+  check('R3-A6: 装备区当前武器显示「精制铁剑」', body.includes('武器：精制铁剑'))
 
   // 点击铁剑的装备 → 当前武器 = 铁剑（自动替换）
-  await clickInRow('铁剑', '装备')
+  await openBackpack()
+  await backpackRowClick('iron_sword')
+  await backpackClick('equip')
+  check('R3-A7: 装备铁剑 → 铁剑详情变「卸下」', (await backpackDetailState('unequip')).exists === true)
+  await backpackClick('back')
+  await backpackRowClick('refined_iron_sword')
+  check('R3-A8: 装备铁剑 → 精制铁剑详情变回「装备」', (await backpackDetailState('equip')).exists === true)
+  await backpackClick('back')
+  await closeBackpack()
   body = await bodyText()
-  check('R3-A7: 装备铁剑 → 铁剑行变「卸下」', await rowHasButton('铁剑', '卸下'), '')
-  check('R3-A8: 装备铁剑 → 精制铁剑行变回「装备」', await rowHasButton('精制铁剑', '装备'), '')
-  check('R3-A9: 装备区当前武器显示「铁剑」', body.includes('武器：') && body.includes('铁剑') && !body.includes('武器：精制铁剑'), '')
+  check('R3-A9: 装备区当前武器显示「铁剑」', body.includes('武器：铁剑') && !body.includes('武器：精制铁剑'))
 
   // 切回精制铁剑
-  await clickInRow('精制铁剑', '装备')
+  await openBackpack()
+  await backpackRowClick('refined_iron_sword')
+  await backpackClick('equip')
+  check('R3-A10: 切回精制铁剑 → 详情变「卸下」', (await backpackDetailState('unequip')).exists === true)
+  await backpackClick('back')
+  await closeBackpack()
   body = await bodyText()
-  check('R3-A10: 切回精制铁剑 → 当前武器 = 精制铁剑', await rowHasButton('精制铁剑', '卸下') && body.includes('武器：精制铁剑'), '')
+  check('R3-A11: 切回精制铁剑 → 武器区显示「精制铁剑」', body.includes('武器：精制铁剑'))
 
   // ================= Part B：真实 Luck 奖励链（北门旧哨塔 → 大成功 → 精制铁剑 → 装备） =================
   await page.goto(URL, { waitUntil: 'networkidle0' })
@@ -232,12 +249,16 @@ try {
     delete Math.random
   })
 
-  // 背包精制铁剑行提供装备入口 → 点击装备
-  check('R3-B5: 背包精制铁剑行提供「装备」入口', await rowHasButton('精制铁剑', '装备'), '')
-  await clickInRow('精制铁剑', '装备')
-  await sleep(300)
+  // 背包精制铁剑详情提供装备入口 → 点击装备（P2-007：经 BackpackPanel）
+  await openBackpack()
+  await backpackRowClick('refined_iron_sword')
+  check('R3-B5: 背包精制铁剑详情提供「装备」入口', (await backpackDetailState('equip')).exists === true, '')
+  await backpackClick('equip')
+  check('R3-B6: 装备精制铁剑成功 → 详情变「卸下」', (await backpackDetailState('unequip')).exists === true, '')
+  await backpackClick('back')
+  await closeBackpack()
   body = await bodyText()
-  check('R3-B6: 装备精制铁剑成功 → 行变「卸下」+ 当前武器显示精制铁剑', (await rowHasButton('精制铁剑', '卸下')) && body.includes('武器：精制铁剑'), '')
+  check('R3-B7: 装备精制铁剑 → 武器区显示精制铁剑', body.includes('武器：精制铁剑'), '')
 
   check('R3-C1: 全程无 JS exception', jsErrors.length === 0, jsErrors.length > 0 ? jsErrors.join(' | ') : '')
 } catch (err) {

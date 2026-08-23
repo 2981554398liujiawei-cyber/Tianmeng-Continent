@@ -15,18 +15,36 @@ const suites = [
   { name: 'Combat', script: 'qa/p2-005-combat-layout-e2e.mjs' },
   { name: 'Merchant', script: 'qa/p2-005-merchant-e2e.mjs' },
   { name: 'Worker + Local D1', script: 'qa/p2-005-worker-e2e.mjs' },
+  // TM-P2-006：Game UI 信息架构 + CombatPage V4 + Balance（balance 0.4s，满足任务卡 87 节 <2min）
+  { name: 'P2-006 Game UI', script: 'qa/p2-006-game-ui-e2e.mjs' },
+  { name: 'P2-006 Combat UI', script: 'qa/p2-006-combat-ui-e2e.mjs' },
+  { name: 'P2-006 Balance', script: 'qa/p2-006-balance.mjs --phase after' },
+  // TM-P2-007：核心 RPG 系统扩展。各 suite 自带独立 server/端口：
+  //   backpack-loot 自起 5225；mount 自备 localDev 5227 + cloudDev(搬 5204 避开共享 Vite) + mock 5203；
+  //   save-v6 纯逻辑无浏览器；layout-idleak 自起 5231；party-combat 自起 5226。
+  { name: 'P2-007 Backpack/Loot', script: 'qa/p2-007-backpack-loot-e2e.mjs' },
+  { name: 'P2-007 Party Combat', script: 'qa/p2-007-party-combat-e2e.mjs' },
+  {
+    name: 'P2-007 Mount',
+    script: 'qa/p2-007-mount-e2e.mjs',
+    env: { MOUNT_CLOUD_E2E_PORT: '5204', MOCK_ALLOWED_EXTRA_ORIGINS: '5204' },
+  },
+  { name: 'P2-007 Save V6', script: 'qa/p2-007-save-v6.mjs' },
+  { name: 'P2-007 Layout/IDLeak', script: 'qa/p2-007-layout-idleak-e2e.mjs' },
 ]
 
 const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds))
 
 function runSuite(suite) {
-  const env = { ...process.env }
+  const env = { ...process.env, ...(suite.env || {}) }
   if (suite.shared) env.BASE_URL = sharedUrl
   else delete env.BASE_URL
 
   return new Promise((resolve, reject) => {
     console.log(`\n===== RC suite start: ${suite.name} =====`)
-    const child = spawn(process.execPath, [suite.script], {
+    // script 字段可含参数（如 'qa/p2-006-balance.mjs --phase after'）；Windows 下不能把整串当一个模块路径，
+    // 按空白拆分后传给 node（本项目脚本路径不含空格）。
+    const child = spawn(process.execPath, suite.script.split(/\s+/).filter(Boolean), {
       cwd: root,
       env,
       stdio: 'inherit',
