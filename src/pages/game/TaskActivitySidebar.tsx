@@ -1,11 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Button from '../../components/Button'
 import Accordion from '../../components/Accordion'
 import Drawer from '../../components/Drawer'
 import RelationshipPanel from '../../components/game/RelationshipPanel'
 import CompanionPanel from '../../components/game/CompanionPanel'
 import { useGameStore } from '../../game/state/gameStore'
-import { getClue, getQuest, getNpc, getItem, QUESTS } from '../../game/content'
+import { getClue, getQuest, getNpc, getItem, getActivityEvent, QUESTS } from '../../game/content'
 import { getCurrentObjective, type CurrentObjective } from '../../game/rules/objective'
 import { getDiscoveredClueIds } from '../../game/rules/clue'
 import type { ClueCategory } from '../../game/types'
@@ -38,6 +38,10 @@ const CLUE_CATEGORY_LABELS: Record<ClueCategory, string> = {
 const clueCategoryLabel = (category?: ClueCategory): string =>
   category ? CLUE_CATEGORY_LABELS[category] ?? '线索' : '线索'
 
+/** Activity Feed 上限（TM-P2-009 §7）：右栏最近记录最多 5 条，消息中心 Drawer 最多 20 条 */
+const RECENT_ACTIVITY_LIMIT = 5
+const ACTIVITY_DRAWER_LIMIT = 20
+
 type SidebarTab = 'quests' | 'clues' | 'log'
 
 interface TaskActivitySidebarProps {
@@ -63,9 +67,11 @@ function deriveActivityItems(state: GameState): { id: string; category: '任务'
   if (state.world.flags.rabbit_path_reported === true) {
     items.push({ id: 'world-qingshi-stage', category: '世界', text: '青石村阶段完成' })
   }
-  // 剧情世界事件
+  // 剧情世界事件（TM-P2-009 §6：只展示已登记事件的用户文案；未知事件宁可隐藏，不泄露内部 event id）
   for (const eventId of state.world.completedEvents) {
-    items.push({ id: `event-${eventId}`, category: '世界', text: `事件记录：${eventId}` })
+    const def = getActivityEvent(eventId)
+    if (!def) continue
+    items.push({ id: `event-${eventId}`, category: '世界', text: def.text })
   }
   // 关键道具（战利品/线索）
   const pathDef = getItem('rabbit_path')
@@ -93,6 +99,15 @@ export default function TaskActivitySidebar({ onCompleteQuest, onViewQuest, onAc
   const [completedDetail, setCompletedDetail] = useState<string | null>(null)
   // 附近委托详情展开（仅 UI）
   const [nearbyDetail, setNearbyDetail] = useState<string | null>(null)
+  // ---- Clue 未读（TM-P2-009 §5：UI-only seenClueIds，不进 GameState / Save V6）----
+  // 页面加载时存量线索视为已读；本次页面生命周期中新发现线索为未读；打开线索 Tab 后全部已读。
+  const [seenClueIds, setSeenClueIds] = useState<string[]>([])
+  const seenInitialized = useRef(false)
+  useEffect(() => {
+    if (!gameState || seenInitialized.current) return
+    seenInitialized.current = true
+    setSeenClueIds(getDiscoveredClueIds(gameState))
+  }, [gameState])
 
   if (!gameState) return null
   const { player, world } = gameState
@@ -147,6 +162,14 @@ export default function TaskActivitySidebar({ onCompleteQuest, onViewQuest, onAc
 
   // ---- 线索 Journal ----
   const discoveredClueIds = getDiscoveredClueIds(gameState)
+  // 停留在线索 Tab 时新发现线索直接视为已读（玩家已在看该页面）
+  const effectiveSeenClueIds = activeTab === 'clues' ? discoveredClueIds : seenClueIds
+  const unreadClueIds = discoveredClueIds.filter((id) => !effectiveSeenClueIds.includes(id))
+
+  const openCluesTab = () => {
+    setActiveTab('clues')
+    setSeenClueIds((prev) => Array.from(new Set([...prev, ...discoveredClueIds])))
+  }
 
   const handleNearbyAction = (questId: string, status: 'undiscovered' | 'available') => {
     if (status === 'undiscovered') {
@@ -158,13 +181,13 @@ export default function TaskActivitySidebar({ onCompleteQuest, onViewQuest, onAc
     }
   }
 
-  const tabButton = (key: SidebarTab, label: string, count?: number) => (
+  const tabButton = (key: SidebarTab, label: string, count?: number, onClickOverride?: () => void) => (
     <button
       type="button"
       role="tab"
       aria-selected={activeTab === key}
       data-active-tab={activeTab === key ? 'true' : 'false'}
-      onClick={() => setActiveTab(key)}
+      onClick={onClickOverride ?? (() => setActiveTab(key))}
       className={`flex items-center gap-1.5 rounded px-3 py-1.5 text-sm transition-colors ${
         activeTab === key
           ? 'bg-gold-500/20 font-bold text-gold-200'
@@ -197,7 +220,7 @@ export default function TaskActivitySidebar({ onCompleteQuest, onViewQuest, onAc
       {/* ② Tab 切换（任务 / 线索 / 日志；TM-P2-008 §5） */}
       <div role="tablist" aria-label="冒险面板" className="flex gap-2 border-b border-ink-600 pb-2">
         {tabButton('quests', '任务')}
-        {tabButton('clues', '线索', discoveredClueIds.length)}
+        {tabButton('clues', '线索', unreadClueIds.length, openCluesTab)}
         {tabButton('log', '日志')}
       </div>
 
@@ -338,8 +361,8 @@ export default function TaskActivitySidebar({ onCompleteQuest, onViewQuest, onAc
         </div>
       )}
 
-      {/* ④ 线索 Tab（Clue Journal V1；UI 只显示 title/description/source，杜绝生产 ID 泄漏） */}
-      {activeTab === 'clues' && <ClueJournalList gameState={gameState} />}
+      {/* ④ 线索 Tab（Clue Journal V2：默认折叠 + 未读标记；UI 只显示 title/description/source，杜绝生产 ID 泄漏） */}
+      {activeTab === 'clues' && <ClueJournalList gameState={gameState} unreadClueIds={unreadClueIds} />}
 
       {/* ⑤ 日志 Tab（最近记录 Activity Feed） */}
       {activeTab === 'log' && (
@@ -350,7 +373,7 @@ export default function TaskActivitySidebar({ onCompleteQuest, onViewQuest, onAc
               <p className="text-bone-500">暂无记录。</p>
             ) : (
               <ul className="flex flex-col gap-1.5">
-                {activityItems.slice(0, 5).map((item) => (
+                {activityItems.slice(0, RECENT_ACTIVITY_LIMIT).map((item) => (
                   <li key={item.id} className="flex items-start gap-2 text-xs text-bone-400">
                     <span className="shrink-0 text-bone-500">[{item.category}]</span>
                     <span>{item.text}</span>
@@ -358,7 +381,7 @@ export default function TaskActivitySidebar({ onCompleteQuest, onViewQuest, onAc
                 ))}
               </ul>
             )}
-            {activityItems.length > 5 && (
+            {activityItems.length > RECENT_ACTIVITY_LIMIT && (
               <Button variant="ghost" className="mt-2" onClick={() => setActivityOpen(true)}>
                 查看全部
               </Button>
@@ -373,10 +396,10 @@ export default function TaskActivitySidebar({ onCompleteQuest, onViewQuest, onAc
         <CompanionPanel />
       </div>
 
-      {/* Activity Drawer（消息中心） */}
+      {/* Activity Drawer（消息中心；TM-P2-009 §7 上限 20 条） */}
       <Drawer open={activityOpen} onClose={() => setActivityOpen(false)} title="消息中心" ariaLabel="消息中心">
         <div className="flex flex-col gap-2">
-          {activityItems.map((item) => (
+          {activityItems.slice(0, ACTIVITY_DRAWER_LIMIT).map((item) => (
             <div key={item.id} className="rounded border border-ink-600 bg-ink-900/40 px-3 py-2 text-sm text-bone-300">
               <span className="mr-2 text-xs text-gold-300">[{item.category}]</span>
               {item.text}
@@ -388,10 +411,19 @@ export default function TaskActivitySidebar({ onCompleteQuest, onViewQuest, onAc
   )
 }
 
-/** 线索 Journal 列表（TM-P2-008 §7；UI 只显示 title/description/source/category 中文标签，杜绝生产 ID 泄漏）。
+/** 线索 Journal 列表（TM-P2-009 §4：Clue Journal V2 默认折叠 + 未读标记）。
+ *  每条 Clue Card 默认只显示标题/分类/未读标记（如有）/展开按钮；展开后显示 description/source。
+ *  同一时间最多展开 1 条（expandedClueId 纯 UI state，不进 GameState / Save）。
  *  独立导出以便纯 SSR 组件测试（与 BackpackPanel 的导出纯函数模式一致）。 */
-export function ClueJournalList({ gameState }: { gameState: GameState }) {
+export function ClueJournalList({
+  gameState,
+  unreadClueIds = [],
+}: {
+  gameState: GameState
+  unreadClueIds?: string[]
+}) {
   const discoveredClueIds = getDiscoveredClueIds(gameState)
+  const [expandedClueId, setExpandedClueId] = useState<string | null>(null)
   return (
     <section className="rounded border border-ink-600 bg-ink-800/50 p-4 text-sm text-bone-300">
       <h3 className="mb-2 text-xs font-bold tracking-wider text-gold-300">线索录</h3>
@@ -402,16 +434,38 @@ export function ClueJournalList({ gameState }: { gameState: GameState }) {
           {discoveredClueIds.map((id) => {
             const def = getClue(id)
             if (!def) return null
+            const isExpanded = expandedClueId === def.id
+            const isUnread = unreadClueIds.includes(def.id)
             return (
               <li key={def.id} className="rounded border border-ink-600 bg-ink-900/40 p-3">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="font-bold text-bone-100">{def.title}</p>
-                  <span className="shrink-0 rounded bg-gold-500/20 px-2 py-0.5 text-xs text-gold-300">
-                    {clueCategoryLabel(def.category)}
+                  <p className="flex items-center gap-2 font-bold text-bone-100">
+                    {isUnread && (
+                      <span aria-label="未读线索" className="shrink-0 text-gold-300">
+                        ●
+                      </span>
+                    )}
+                    {def.title}
+                  </p>
+                  <span className="flex items-center gap-2">
+                    <span className="shrink-0 rounded bg-gold-500/20 px-2 py-0.5 text-xs text-gold-300">
+                      {clueCategoryLabel(def.category)}
+                    </span>
+                    <button
+                      type="button"
+                      className="shrink-0 text-xs text-bone-400 hover:text-bone-200"
+                      onClick={() => setExpandedClueId(isExpanded ? null : def.id)}
+                    >
+                      {isExpanded ? '收起' : '展开'}
+                    </button>
                   </span>
                 </div>
-                <p className="mt-1 text-xs leading-relaxed text-bone-400">{def.description}</p>
-                {def.source && <p className="mt-1 text-xs text-bone-500">来源：{def.source}</p>}
+                {isExpanded && (
+                  <>
+                    <p className="mt-1 text-xs leading-relaxed text-bone-400">{def.description}</p>
+                    {def.source && <p className="mt-1 text-xs text-bone-500">来源：{def.source}</p>}
+                  </>
+                )}
               </li>
             )
           })}
