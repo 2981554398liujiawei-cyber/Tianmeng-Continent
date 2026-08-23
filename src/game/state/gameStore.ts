@@ -145,7 +145,7 @@ interface GameStoreState {
     playerHp: number
     playerMp: number
     potionsUsed: number
-    companion?: { companionId: string; mp: number }
+    companions?: { companionId: string; mp: number }[]
   }) => boolean
   /** TM-P2-007 §19：在天龙城马厩购买坐骑。校验顺序：坐骑存在 → 已登记价格 → 位置在天龙城 → 金币足够 → 未拥有；成功扣金并加入 ownedMountIds（不自动装备） */
   buyMount: (
@@ -1197,7 +1197,7 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
     return ok ? resolveEncounterLoot(grants) : null
   },
 
-  applyPartyCombatEnd: ({ playerHp, playerMp, potionsUsed, companion }) => {
+  applyPartyCombatEnd: ({ playerHp, playerMp, potionsUsed, companions }) => {
     if (
       !Number.isFinite(playerHp) ||
       !Number.isFinite(playerMp) ||
@@ -1222,16 +1222,16 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
           inventory = inventory.filter((e) => e.itemId !== 'healing_potion')
         }
       }
-      let companions = s.gameState.companions
-      if (companion) {
-        const entry = companions[companion.companionId]
+      let nextCompanions = s.gameState.companions
+      for (const companion of companions ?? []) {
+        const entry = nextCompanions[companion.companionId]
         if (entry) {
           const companionMp = Math.min(entry.maxMp, Math.max(0, Math.round(companion.mp)))
-          companions = { ...companions, [companion.companionId]: { ...entry, mp: companionMp } }
+          nextCompanions = { ...nextCompanions, [companion.companionId]: { ...entry, mp: companionMp } }
         }
       }
       ok = true
-      return { gameState: { ...s.gameState, player: { ...player, hp, mp }, inventory, companions } }
+      return { gameState: { ...s.gameState, player: { ...player, hp, mp }, inventory, companions: nextCompanions } }
     })
     return ok
   },

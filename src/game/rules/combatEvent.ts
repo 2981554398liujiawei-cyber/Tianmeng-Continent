@@ -35,6 +35,8 @@ export interface CombatEvent {
   summary: string
   /** 详细日志（右侧详细区；可为空数组） */
   detail: string[]
+  /** 播报前缀里的具名单位（companion 事件 = 施术伙伴名；缺省 UI 回退「伙伴」） */
+  actorName?: string
 }
 
 /** 生成事件 id（页面本地：序号即可，无需全局唯一性） */

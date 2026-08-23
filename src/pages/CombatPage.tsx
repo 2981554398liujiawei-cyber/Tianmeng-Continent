@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import Button from '../components/Button'
 import { useGameStore } from '../game/state/gameStore'
-import { getEnemy, getItem, getCompanion, getEncounter, SAKURA_COMPANION_ID } from '../game/content'
+import { getEnemy, getItem, getCompanion, getEncounter } from '../game/content'
 import { getProfessionName } from '../game/content/professions'
 import {
   formatAttackLog,
@@ -25,12 +25,15 @@ import { rollD20 } from '../game/rules/d20'
 import type { LootGrant } from '../game/types/loot'
 import { RARITY_LABELS } from '../game/types/loot'
 import { SAKURA_SEALED_SKILLS } from '../game/content/companions'
-import { getStartingMaxHp } from '../game/rules/character'
-import { currentEncounterVariantId, singleEnemyIdOf } from '../game/rules/encounter'
+import { getEffectiveCharacterAttributes } from '../game/rules/mount'
+import { combatEventId, type CombatEvent } from '../game/rules/combatEvent'
 import {
-  buildEnemyCombatant,
-  buildEnemyInstances,
-  buildFriendlyCombatant,
+  buildCombatSetup,
+  weaponDamageBonusOf,
+  type CompanionCombatInfo,
+  type CombatSetup,
+} from '../game/rules/combatSetup'
+import {
   chooseEnemyTarget,
   didTurnLoop,
   instanceDisplaySuffix,
@@ -39,7 +42,6 @@ import {
   nextAliveTurnIndex,
   resolveEncounterXp,
   resolvePartyEscape,
-  rollInitiativeQueue,
   updateCombatantHp,
   type Combatant,
   type EncounterLootSummary,
@@ -47,10 +49,6 @@ import {
   type InitiativeTurn,
 } from '../game/rules/partyCombat'
 import { applyAdventureXpReward } from '../game/rules/progression'
-import { getEffectiveCharacterAttributes } from '../game/rules/mount'
-import { combatEventId, type CombatEvent } from '../game/rules/combatEvent'
-import type { EncounterDefinition } from '../game/types/encounter'
-import type { GameState } from '../game/types/game'
 
 interface CombatPageProps {
   /** TM-P2-007 §7：Encounter 战斗入口（App 已通过 startEncounter 校验并固化 weighted variant） */
@@ -79,39 +77,11 @@ interface PendingTarget {
   skillId?: string
 }
 
-/** 战斗构建结果（进入战斗时一次性生成；战斗过程全在本地 state） */
-interface CombatSetup {
-  friendly: Combatant[]
-  enemies: Combatant[]
-  combatants: Combatant[]
-  turns: InitiativeTurn[]
-  singleEnemyId: string | undefined
-  canEscape: boolean
-  companion: {
-    companionId: string
-    level: number
-    skills: SkillDefinition[]
-    attrs: GameState['player']['attributes']
-  } | null
-}
-
 /** 击败统计（§6 VictorySummary：按 enemyId 聚合数量） */
 interface DefeatedEntry {
   enemyId: string
   name: string
   count: number
-}
-
-/** 读取装备武器攻击加成（与单敌版本一致；equipment 数据异常返回 0） */
-function weaponDamageBonusOf(state: GameState): number {
-  const equipped = state.equipment.weapon ? getItem(state.equipment.weapon) : undefined
-  return equipped?.type === 'weapon' && Number.isInteger(equipped.weaponDamageBonus) ? (equipped.weaponDamageBonus ?? 0) : 0
-}
-
-/** 读取装备护甲防御加成（equipment 数据异常返回 0） */
-function armorDefenseBonusOf(state: GameState): number {
-  const equipped = state.equipment.armor ? getItem(state.equipment.armor) : undefined
-  return equipped?.type === 'armor' && Number.isInteger(equipped.armorDefenseBonus) ? (equipped.armorDefenseBonus ?? 0) : 0
 }
 
 /** 技能目标模式推导（§11：不按 skillId 硬编码；supportEffect/标签语义决定） */
@@ -120,83 +90,6 @@ function skillTargetMode(skill: SkillDefinition): SkillTargetMode {
   if (skill.combat?.supportEffect?.type === 'cancel_next_enemy_counter') return 'self'
   if (skill.tags.includes('healing')) return 'friendly'
   return 'enemy'
-}
-
-/** 构建本场遭遇的全部战斗单位与先手队列（纯函数；生产用 Math.random 注入） */
-function buildCombatSetup(state: GameState, def: EncounterDefinition): CombatSetup {
-  const player = state.player
-  // P2-007 §20：Combat derived stats 使用「装备坐骑后的有效五维」
-  const playerAttrs = getEffectiveCharacterAttributes(player.attributes, state.equippedMountId)
-  const playerCombatant = buildFriendlyCombatant({
-    instanceId: 'player',
-    sourceType: 'player',
-    sourceId: 'player',
-    name: player.name,
-    currentHp: player.hp,
-    maxHp: player.maxHp,
-    currentMp: player.mp,
-    maxMp: player.maxMp,
-    attack: getPlayerAttackPower(playerAttrs.str, weaponDamageBonusOf(state), player.level),
-    armor: getPlayerArmor(playerAttrs.con, armorDefenseBonusOf(state)),
-    agility: getPlayerAgility(playerAttrs.agi),
-  })
-  const friendly = [playerCombatant]
-
-  // 伙伴（guest/recruited 且 active；伙伴 HP 不持久化，战斗内按 con 派生满血进入）
-  const activeCompanionIds = state.party?.activeCompanionIds ?? []
-  const companionState = activeCompanionIds.includes(SAKURA_COMPANION_ID)
-    ? state.companions[SAKURA_COMPANION_ID]
-    : undefined
-  const companionDef = companionState ? getCompanion(companionState.companionId) : undefined
-  const companionReady =
-    !!companionState && (companionState.status === 'guest' || companionState.status === 'recruited') && !!companionDef
-  const companion = companionReady && companionState && companionDef
-    ? {
-        companionId: companionState.companionId,
-        level: companionState.level,
-        skills: getUsableSkills(companionState.learnedSkillIds, undefined),
-        attrs: companionDef.attributes,
-      }
-    : null
-  if (companion) {
-    const attrs = companion.attrs
-    const maxHp = getStartingMaxHp(attrs.con)
-    friendly.push(
-      buildFriendlyCombatant({
-        instanceId: 'companion',
-        sourceType: 'companion',
-        sourceId: companion.companionId,
-        name: companionDef!.name,
-        currentHp: maxHp,
-        maxHp,
-        currentMp: companionState!.mp,
-        maxMp: companionDef!.maxMp,
-        attack: getPlayerAttackPower(attrs.str, 0, companion.level),
-        armor: getPlayerArmor(attrs.con, 0),
-        agility: getPlayerAgility(attrs.agi),
-      }),
-    )
-  }
-
-  // 敌方（fixed 或已固化的 weighted variant 阵容）
-  const variantId = currentEncounterVariantId(state, def)
-  const members = def.fixedMembers ?? def.variants?.find((v) => v.id === variantId)?.members
-  if (!members || members.length === 0) {
-    throw new Error(`encounter ${def.id} 无有效阵容`)
-  }
-  const instances = buildEnemyInstances(members)
-  const enemies = instances.map(buildEnemyCombatant)
-
-  const turns = rollInitiativeQueue([...friendly, ...enemies], Math.random)
-  return {
-    friendly,
-    enemies,
-    combatants: [...friendly, ...enemies],
-    turns,
-    singleEnemyId: singleEnemyIdOf(def),
-    canEscape: def.canEscape,
-    companion,
-  }
 }
 
 /** 击败统计（§6：敌方死亡单位按 sourceId 聚合） */
@@ -239,12 +132,14 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
 
   /** 每场一次技能按 skillId 独立追踪（玩家 / 伙伴分开；TM-P2-003-R2 B2） */
   const [usedOnceSkillIds, setUsedOnceSkillIds] = useState<ReadonlySet<string>>(new Set())
-  const [usedOnceCompanionSkillIds, setUsedOnceCompanionSkillIds] = useState<ReadonlySet<string>>(new Set())
+  /** 伙伴 once-per-combat 按 companionId 隔离（R1：双伙伴各自独立，不串号） */
+  const [usedOnceCompanionSkillIds, setUsedOnceCompanionSkillIds] = useState<Record<string, ReadonlySet<string>>>({})
 
-  /** TM-P2-004 第 48/49 节：樱花魔法盾——target instanceId → 剩余减伤量（敌人命中该目标时消耗） */
-  const [shieldByTarget, setShieldByTarget] = useState<Record<string, number>>({})
-  /** 樱花轻舞：标记「下一个敌方行动被取消」（本场一次；cancel_next_enemy_counter） */
+  /** 护盾——target instanceId → 剩余减伤量 + 施术技能名（敌人命中时消耗；播报用技能名泛化） */
+  const [shieldByTarget, setShieldByTarget] = useState<Record<string, { amount: number; skillName: string }>>({})
+  /** 取消下一次敌方行动（cancel_next_enemy_counter；R1：记录触发技能名以泛化播报） */
   const [skipNextEnemy, setSkipNextEnemy] = useState(false)
+  const [skipSourceName, setSkipSourceName] = useState('轻舞')
 
   const [events, setEvents] = useState<CombatEvent[]>([])
   const [victoryLoot, setVictoryLoot] = useState<LootGrant | null>(null)
@@ -257,9 +152,23 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
 
   const eventSeqRef = useRef(0)
   const roundRef = useRef(0)
-  const pushEvent = (kind: CombatEventKind, actor: CombatEvent['actor'], summary: string, detail: string[] = []) => {
+  const pushEvent = (
+    kind: CombatEventKind,
+    actor: CombatEvent['actor'],
+    summary: string,
+    detail: string[] = [],
+    actorName?: string,
+  ) => {
     eventSeqRef.current += 1
-    const ev: CombatEvent = { id: combatEventId(eventSeqRef.current), round: roundRef.current, actor, kind, summary, detail }
+    const ev: CombatEvent = {
+      id: combatEventId(eventSeqRef.current),
+      round: roundRef.current,
+      actor,
+      kind,
+      summary,
+      detail,
+      actorName,
+    }
     setEvents((prev) => [...prev, ev])
   }
 
@@ -271,7 +180,7 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
     if (!actor || actor.side !== 'enemy' || !actor.isAlive) return
     if (skipNextEnemy) {
       setSkipNextEnemy(false)
-      pushEvent('companion_skip', 'companion', `${actor.name}被樱花轻舞牵走了注意力，本回合没有行动。`)
+      pushEvent('companion_skip', 'companion', `${actor.name}被${skipSourceName}牵走了注意力，本回合没有行动。`)
       setCurrentTurnIndex((idx) => advanceTurnIndex(idx))
       return
     }
@@ -325,7 +234,9 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
   const effectivePlayerAttrs = getEffectiveCharacterAttributes(player.attributes, gameState.equippedMountId)
   const enemyInstances = setup.enemies
   const friendlyInstances = setup.friendly
-  const companionInfo = setup.companion
+  const companionInfos = setup.companions
+  const companionInfoFor = (sourceId: string): CompanionCombatInfo | undefined =>
+    companionInfos.find((info) => info.companionId === sourceId)
   const canEscape = setup.canEscape
 
   // 当前行动单位（turns 内的引用；HP 变化以 combatants 为准）
@@ -336,7 +247,7 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
 
   // 玩家 / 伙伴当前 combatant（面板展示 + 行动）
   const playerCombatant = combatants.find((c) => c.sourceType === 'player')
-  const companionCombatant = combatants.find((c) => c.sourceType === 'companion')
+  const companionCombatants = combatants.filter((c) => c.sourceType === 'companion')
 
   const healingPotion = getItem('healing_potion')
   const healingPotionAmount = healingPotion?.healAmount
@@ -376,12 +287,13 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
   /** 战斗结束统一同步：玩家 HP/MP + 药水 + 伙伴 MP 写入 GameState；胜利再结算 XP/loot/flags */
   const finalizeCombatEnd = (next: Combatant[]) => {
     const playerC = next.find((c) => c.sourceType === 'player')
-    const companionC = next.find((c) => c.sourceType === 'companion')
     useGameStore.getState().applyPartyCombatEnd({
       playerHp: playerC?.currentHp ?? 0,
       playerMp: playerC?.currentMp ?? 0,
       potionsUsed: potionsUsedRef.current,
-      companion: companionC ? { companionId: companionC.sourceId, mp: companionC.currentMp } : undefined,
+      companions: next
+        .filter((c) => c.sourceType === 'companion')
+        .map((c) => ({ companionId: c.sourceId, mp: c.currentMp })),
     })
     if (!isEncounterWon(next)) return
     // 胜利结算（§6/§15/§16）：单敌委托 grantLoot + resolveCombatVictory；多敌整体事务一次写入并返回 summary
@@ -404,12 +316,13 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
   /** 逃跑成功同步（无任何奖励：§14） */
   const finalizeEscape = () => {
     const playerC = combatants.find((c) => c.sourceType === 'player')
-    const companionC = combatants.find((c) => c.sourceType === 'companion')
     useGameStore.getState().applyPartyCombatEnd({
       playerHp: playerC?.currentHp ?? 0,
       playerMp: playerC?.currentMp ?? 0,
       potionsUsed: potionsUsedRef.current,
-      companion: companionC ? { companionId: companionC.sourceId, mp: companionC.currentMp } : undefined,
+      companions: combatants
+        .filter((c) => c.sourceType === 'companion')
+        .map((c) => ({ companionId: c.sourceId, mp: c.currentMp })),
     })
   }
 
@@ -418,17 +331,19 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
     const skillName = action === 'basic' ? null : getSkill(action)?.name ?? '技能'
     const detail = formatAttackLog(result, target.name)
     const kind: CombatEventKind = actor.sourceType === 'companion' ? 'companion_attack' : 'player_attack'
+    const actorName = actor.sourceType === 'companion' ? actor.name : undefined
     if (result.outcome === 'critical_miss') {
-      pushEvent(kind, actor.sourceType, `${actor.name}的攻击落空了。`, detail)
+      pushEvent(kind, actor.sourceType, `${actor.name}的攻击落空了。`, detail, actorName)
     } else if (result.damage > 0) {
       pushEvent(
         kind,
         actor.sourceType,
         `${skillName ? `${skillName}命中` : `${actor.name}的攻击命中`}${target.name}，造成 ${result.damage} 点伤害。`,
         detail,
+        actorName,
       )
     } else {
-      pushEvent(kind, actor.sourceType, `${skillName ? `${skillName}没有` : `${actor.name}的攻击没有`}造成伤害。`, detail)
+      pushEvent(kind, actor.sourceType, `${skillName ? `${skillName}没有` : `${actor.name}的攻击没有`}造成伤害。`, detail, actorName)
     }
     const next = commitCombatantUpdate((cs) =>
       cs.map((c) => (c.instanceId === target.instanceId ? updateCombatantHp(c, c.currentHp - result.damage) : c)),
@@ -436,30 +351,34 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
     afterAction(next)
   }
 
-  /** 每场一次技能标记（玩家 / 伙伴分开） */
+  /** 每场一次技能标记（玩家一个 Set；伙伴按 companionId 隔离——R1：双伙伴不串号） */
   const markOnceUsed = (actor: Combatant, skillId: string) => {
     if (actor.sourceType === 'companion') {
-      setUsedOnceCompanionSkillIds((prev) => markOncePerCombatUsed(prev, skillId))
+      setUsedOnceCompanionSkillIds((prev) => ({
+        ...prev,
+        [actor.sourceId]: markOncePerCombatUsed(prev[actor.sourceId] ?? new Set(), skillId),
+      }))
     } else {
       setUsedOnceSkillIds((prev) => markOncePerCombatUsed(prev, skillId))
     }
   }
 
-  /** oncePerCombat 是否已用（按 actor 归属） */
+  /** oncePerCombat 是否已用（按 actor 归属；伙伴各自独立 Set） */
   const isOnceUsed = (actor: Combatant, skillId: string): boolean =>
     actor.sourceType === 'companion'
-      ? isOncePerCombatUsed(usedOnceCompanionSkillIds, skillId)
+      ? isOncePerCombatUsed(usedOnceCompanionSkillIds[actor.sourceId] ?? new Set(), skillId)
       : isOncePerCombatUsed(usedOnceSkillIds, skillId)
 
-  /** 伤害技能 rawDamage 上下文（玩家走装备加成；伙伴武器加成 0） */
-  const skillContextFor = (actor: Combatant) =>
-    actor.sourceType === 'companion'
+  /** 伤害技能 rawDamage 上下文（玩家走装备加成；伙伴武器加成 0，按 sourceId 独立取属性） */
+  const skillContextFor = (actor: Combatant) => {
+    const info = actor.sourceType === 'companion' ? companionInfoFor(actor.sourceId) : undefined
+    return actor.sourceType === 'companion'
       ? {
-          str: companionInfo?.attrs.str ?? 0,
-          agi: companionInfo?.attrs.agi ?? 0,
-          mnd: companionInfo?.attrs.mnd ?? 0,
+          str: info?.attrs.str ?? 0,
+          agi: info?.attrs.agi ?? 0,
+          mnd: info?.attrs.mnd ?? 0,
           weaponDamageBonus: 0,
-          level: companionInfo?.level ?? 1,
+          level: info?.level ?? 1,
         }
       : {
           str: effectivePlayerAttrs.str,
@@ -468,6 +387,7 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
           weaponDamageBonus: weaponDamageBonusOf(gameState),
           level: player.level,
         }
+  }
 
   /** 技能执行（伤害→目标 / 盾→友方目标 / 轻舞→自身无 picker） */
   const executeSkill = (actor: Combatant, skillId: string, target?: Combatant) => {
@@ -486,8 +406,11 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
         cs.map((c) => (c.instanceId === actor.instanceId ? { ...c, currentMp: c.currentMp - info.skill.mpCost } : c)),
       )
       if (info.oncePerCombat) markOnceUsed(actor, skillId)
-      setShieldByTarget((prev) => ({ ...prev, [target.instanceId]: support.amount }))
-      pushEvent('companion_support', 'companion', `${actor.name}为${target.name}展开了魔法盾（可抵消 ${support.amount} 点伤害）。`)
+      setShieldByTarget((prev) => ({
+        ...prev,
+        [target.instanceId]: { amount: support.amount, skillName: info.skill.name },
+      }))
+      pushEvent('companion_support', 'companion', `${actor.name}为${target.name}施展了${info.skill.name}（可抵消 ${support.amount} 点伤害）。`, [], actor.name)
       afterAction(next)
       return
     }
@@ -502,7 +425,8 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
       )
       if (info.oncePerCombat) markOnceUsed(actor, skillId)
       setSkipNextEnemy(true)
-      pushEvent('companion_support', 'companion', `${actor.name}施展了樱花轻舞，敌人的注意力被牵走，下一次攻势落空。`)
+      setSkipSourceName(info.skill.name)
+      pushEvent('companion_support', 'companion', `${actor.name}施展了${info.skill.name}，敌人的注意力被牵走，下一次攻势落空。`, [], actor.name)
       afterAction(next)
       return
     }
@@ -525,12 +449,14 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
     if (info.oncePerCombat) markOnceUsed(actor, skillId)
     const detail = formatAttackLog(result, target.name)
     const skillName = getSkill(skillId)?.name ?? '技能'
+    const actorName = actor.sourceType === 'companion' ? actor.name : undefined
+    const attackKind = actor.sourceType === 'companion' ? 'companion_attack' : 'player_attack'
     if (result.outcome === 'critical_miss') {
-      pushEvent(actor.sourceType === 'companion' ? 'companion_attack' : 'player_attack', actor.sourceType, `${actor.name}的攻击落空了。`, detail)
+      pushEvent(attackKind, actor.sourceType, `${actor.name}的攻击落空了。`, detail, actorName)
     } else if (result.damage > 0) {
-      pushEvent(actor.sourceType === 'companion' ? 'companion_attack' : 'player_attack', actor.sourceType, `${skillName}命中${target.name}，造成 ${result.damage} 点伤害。`, detail)
+      pushEvent(attackKind, actor.sourceType, `${skillName}命中${target.name}，造成 ${result.damage} 点伤害。`, detail, actorName)
     } else {
-      pushEvent(actor.sourceType === 'companion' ? 'companion_attack' : 'player_attack', actor.sourceType, `${skillName}没有造成伤害。`, detail)
+      pushEvent(attackKind, actor.sourceType, `${skillName}没有造成伤害。`, detail, actorName)
     }
     afterAction(next)
   }
@@ -610,7 +536,7 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
     if (phase !== 'active' || !currentCombatant || currentCombatant.sourceType !== 'companion') return
     setPendingTarget(null)
     setActionTray(null)
-    pushEvent('companion_skip', 'companion', `${currentCombatant.name}静静守在后方。`)
+    pushEvent('companion_skip', 'companion', `${currentCombatant.name}静静守在后方。`, [], currentCombatant.name)
     afterAction(combatants)
   }
 
@@ -649,11 +575,11 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
     const result = performAttack(enemy.agility, target.agility, enemy.attack, target.armor)
     const detail = formatAttackLog(result, target.name)
     // 盾（命中才消耗；miss 保留）
-    const shield = shieldByTarget[target.instanceId] ?? 0
+    const shield = shieldByTarget[target.instanceId]
     let damage = result.damage
     let absorbed = 0
-    if (result.hit && shield > 0) {
-      absorbed = Math.min(shield, damage)
+    if (result.hit && shield && shield.amount > 0) {
+      absorbed = Math.min(shield.amount, damage)
       damage = Math.max(0, damage - absorbed)
     }
     const next = commitCombatantUpdate((cs) =>
@@ -667,7 +593,7 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
       pushEvent('enemy_attack', 'enemy', `${enemy.name}的攻击落空了。`, detail)
     }
     if (absorbed > 0) {
-      pushEvent('shield', 'companion', `樱花魔法盾抵消了 ${absorbed} 点伤害。`)
+      pushEvent('shield', 'companion', `${shield?.skillName ?? '魔法盾'}抵消了 ${absorbed} 点伤害。`)
       setShieldByTarget((prev) => {
         const nextShield = { ...prev }
         delete nextShield[target.instanceId]
@@ -725,7 +651,8 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
 
   // ---- 单位卡渲染 ----
   const unitCardClass = (c: Combatant): string => {
-    const base = 'min-w-[240px] flex-1 rounded border p-3 text-sm text-bone-300 transition-colors'
+    // R1：3v3 单排 3 卡（min-w 200px）→ 1280 视口两栏各 ~620px 不换行不溢出
+    const base = 'min-w-[200px] flex-1 rounded border p-3 text-sm text-bone-300 transition-colors'
     if (!c.isAlive) return `${base} border-ink-800 bg-ink-950/40 text-bone-600 opacity-60`
     if (c.instanceId === currentCombatant?.instanceId) {
       return `${base} border-gold-400 bg-ink-800/70 ring-1 ring-gold-400`
@@ -748,6 +675,8 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
 
   const renderUnitCard = (c: Combatant, label: string, levelText: string) => {
     const isTarget = pendingTarget !== null && pendingTarget.mode === (c.side === 'enemy' ? 'enemy' : 'friendly') && c.isAlive
+    // 伙伴卡信息按 sourceId 独立（R1：多伙伴各自展示自己的技能/等级）
+    const companionInfo = c.sourceType === 'companion' ? companionInfoFor(c.sourceId) : undefined
     return (
       <div
         key={c.instanceId}
@@ -776,7 +705,7 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
           <span className="tabular-nums text-bone-100">{c.armor}</span> · 敏捷{' '}
           <span className="tabular-nums text-bone-100">{c.agility}</span>
         </p>
-        {c.sourceType === 'companion' && companionInfo && (
+        {companionInfo && (
           <div className="mt-2 border-t border-ink-600 pt-2 text-xs text-bone-500">
             <p>
               当前技能：{companionInfo.skills.length > 0 ? companionInfo.skills.map((s) => s.name).join('、') : '—'}
@@ -792,11 +721,12 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
 
   // 我方（玩家 + 伙伴）
   const renderFriendlyCard = (c: Combatant) => {
-    const label = c.sourceType === 'player' ? player.name : companionInfo ? getCompanion(c.sourceId)?.name ?? c.name : c.name
+    const info = c.sourceType === 'companion' ? companionInfoFor(c.sourceId) : undefined
+    const label = c.sourceType === 'player' ? player.name : info ? getCompanion(c.sourceId)?.name ?? c.name : c.name
     const levelText =
       c.sourceType === 'player'
         ? `Lv.${player.level}`
-        : `Lv.${companionInfo?.level ?? 1}${companionInfo ? (gameState.companions[c.sourceId]?.status === 'recruited' ? ' · 神契宠物' : ' · 临时同行') : ''}`
+        : `Lv.${info?.level ?? 1}${info ? (gameState.companions[c.sourceId]?.status === 'recruited' ? ' · 神契宠物' : ' · 临时同行') : ''}`
     return renderUnitCard(c, label, levelText)
   }
 
@@ -826,8 +756,13 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
   )
 
   // ---- 单位技能 tray ----
-  const unitSkills = currentCombatant?.sourceType === 'companion' ? companionInfo?.skills ?? [] : getUsableSkills(player.learnedSkillIds, player.profession)
-  const unitOnceUsed = (skillId: string) => (currentCombatant?.sourceType === 'companion' ? isOncePerCombatUsed(usedOnceCompanionSkillIds, skillId) : isOncePerCombatUsed(usedOnceSkillIds, skillId))
+  const currentCompanionInfo =
+    currentCombatant?.sourceType === 'companion' ? companionInfoFor(currentCombatant.sourceId) : undefined
+  const unitSkills = currentCompanionInfo ? currentCompanionInfo.skills : getUsableSkills(player.learnedSkillIds, player.profession)
+  const unitOnceUsed = (skillId: string) =>
+    currentCombatant?.sourceType === 'companion'
+      ? isOncePerCombatUsed(usedOnceCompanionSkillIds[currentCombatant.sourceId] ?? new Set(), skillId)
+      : isOncePerCombatUsed(usedOnceSkillIds, skillId)
 
   return (
     <div className="combat-page mx-auto flex h-full w-full max-w-[1600px] flex-col px-4 py-3">
@@ -873,7 +808,7 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
                   {ev.actor === 'enemy' ? (
                     <span className="text-gold-300">【敌方】</span>
                   ) : ev.actor === 'companion' ? (
-                    <span className="text-sakura-300">【樱花优子】</span>
+                    <span className="text-sakura-300">【{ev.actorName ?? '伙伴'}】</span>
                   ) : ev.actor === 'system' ? (
                     <span className="text-bone-500">【系统】</span>
                   ) : (
