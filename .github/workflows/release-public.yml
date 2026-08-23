@@ -91,7 +91,7 @@ jobs:
           VITE_CLOUD_SAVE_API_BASE: ${{ github.event.inputs.worker_url }}
         run: npm run build:public
 
-      - name: Deploy gh-pages (deploy(p2-007-r2): source <MAIN_FINAL_SHA>)
+      - name: 'Deploy gh-pages (deploy(p2-007-r2): source <MAIN_FINAL_SHA>)'
         env:
           VITE_CLOUD_SAVE_API_BASE: ${{ github.event.inputs.worker_url }}
           DEPLOY_TAG: p2-007-r2
