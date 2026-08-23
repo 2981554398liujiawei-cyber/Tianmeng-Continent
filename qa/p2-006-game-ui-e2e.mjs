@@ -192,9 +192,15 @@ try {
   // ---- G13：阶段播报不长期占中央 ----
   check('G13: 中央无「青石村阶段完成」大卡（该事件由右栏最近记录承载）', !(await mainColText()).includes('青石村阶段完成'))
 
-  // ---- G14：最近记录存在右栏/消息中心 ----
+  // ---- G14：最近记录存在右栏（TM-P2-008 §5 Tab 化：日志 Tab 内 Activity Feed） ----
+  await page.evaluate(() => {
+    const col = document.querySelector('[data-testid="quest-column"]')
+    const tab = col && [...col.querySelectorAll('button')].find((b) => b.textContent?.trim().startsWith('日志'))
+    if (tab) tab.click()
+  })
+  await sleep(300)
   const questColFor14 = await questColText()
-  check('G14: 右栏存在「最近记录」', questColFor14.includes('最近记录'))
+  check('G14: 右栏存在「最近记录」（日志 Tab）', questColFor14.includes('最近记录'))
   check('G14: 最近记录含已完成任务/等级成长条目', questColFor14.includes('《村外异动》已完成') || questColFor14.includes('达到 Lv.2'))
 
   // ---- G15：核心操作可达 ----

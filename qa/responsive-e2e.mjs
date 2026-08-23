@@ -127,9 +127,9 @@ try {
   await sleep(400)
   const r390 = await readColumnRects()
   check('390: 三栏均渲染（player/main/quest）', r390.player !== null && r390.main !== null && r390.quest !== null)
-  check('390: 单栏（三栏 left 相同）', r390.player && r390.main && r390.quest && r390.player.left === r390.main.left && r390.main.left === r390.quest.left)
-  // TM-P2-006：V4 单栏顺序 = 主玩法(order-1) → 玩家(order-2) → 任务(order-3)
-  check('390: 垂直排列（top 递增）', r390.player && r390.main && r390.quest && r390.main.top < r390.player.top && r390.player.top < r390.quest.top)
+  // TM-P2-008 §14：<768 时左右栏 CSS 隐藏（rect 全 0），主玩法为唯一可见单栏；角色/任务经底部 nav + Drawer 访问
+  check('390: 单栏（main 占满可见，player/quest 隐藏 rect 为 0）', r390.player && r390.main && r390.quest && r390.main.width > 0 && r390.player.width === 0 && r390.quest.width === 0)
+  check('390: 垂直排列（player/quest 隐藏 top=0，main 为可见主栏）', r390.player && r390.main && r390.quest && r390.player.top === 0 && r390.quest.top === 0 && r390.main.top >= 0 && r390.main.width > 0)
   check('390: 无横向滚动（scrollWidth <= 390）', r390.scrollWidth <= 390 && r390.docScrollWidth <= 390, `scrollWidth=${r390.scrollWidth} body=${r390.docScrollWidth}`)
   check('390: 三栏宽度不溢出（right <= 390）', r390.player && r390.main && r390.quest && r390.player.right <= 390 && r390.main.right <= 390 && r390.quest.right <= 390)
   // 手机角色概览：进入游戏页时完整角色详情默认折叠（不先滚两屏属性表），概览包含当前武器（V4 左栏战斗摘要「武器：」）
@@ -165,9 +165,9 @@ try {
   await createCharacterAndEnter()
   await sleep(400)
   const r1024 = await readColumnRects()
-  check('1024: 两栏（main 与 quest 左右分列）', r1024.main && r1024.quest && r1024.main.left < r1024.quest.left)
-  // TM-P2-006：V4 在 1024 两栏 = 左主玩法 + 右栏（上=玩家、下=任务）
-  check('1024: 角色信息在右侧任务栏上方（player.left >= quest.left 且 player.top < quest.top）', r1024.player && r1024.quest && r1024.player.left >= r1024.quest.left - 8 && r1024.player.top < r1024.quest.top)
+  // TM-P2-008 §15：1024（md~xl）两栏 = 左栏 player + 主玩法 main；右栏 quest 隐藏（Drawer 按钮访问）
+  check('1024: 两栏（player 与 main 左右分列，quest 隐藏）', r1024.player && r1024.main && r1024.quest && r1024.player.left < r1024.main.left && r1024.quest.width === 0)
+  check('1024: 角色信息在左栏（player.left < main.left）', r1024.player && r1024.main && r1024.player.left < r1024.main.left)
   check('1024: 无横向滚动', r1024.scrollWidth <= 1024)
   await page.screenshot({ path: 'qa/responsive-1024.png' })
 

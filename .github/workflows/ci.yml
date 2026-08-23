@@ -25,6 +25,9 @@ jobs:
       - run: npm run build
       - name: Cloud local contract smoke
         run: npm run qa:cloud
+      # TM-P2-008 §62：Worker 本地契约冒烟（wrangler dev --local，无需浏览器）
+      - name: Worker local contract smoke
+        run: npm run qa:worker
       # TM-P2-003-R3 H：生产浏览器 Smoke 门禁——真实构建 + preview + Puppeteer 验证主菜单
       # （preview 后台启动；循环 fetch 等待就绪，不用 wait-on / sleep 硬等；
       #  Chrome 可执行路径取自 runner 真实命令，不写死 /usr/bin/google-chrome）
@@ -73,3 +76,27 @@ jobs:
           fi
           echo "Using Chrome at $CHROME_PATH"
           CHROME_PATH="$CHROME_PATH" npm run qa:rc
+
+  qa-p2-008:
+    name: P2-008 E2E Regression
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # TM-P2-008 §47-57：AS1-12 / N1-15 / layout / MOB1-6 / full-journey / balance 全量回归。
+      # 各 E2E 脚本自备本地 dev server（--strictPort）；balance 无需浏览器。
+      - name: Run P2-008 E2E suite
+        run: |
+          CHROME_PATH="$(command -v google-chrome-stable || command -v google-chrome || command -v chromium || true)"
+          if [ -z "$CHROME_PATH" ]; then
+            echo "Chrome executable was not found on the runner"
+            exit 1
+          fi
+          echo "Using Chrome at $CHROME_PATH"
+          CHROME_PATH="$CHROME_PATH" npm run qa:p2-008
