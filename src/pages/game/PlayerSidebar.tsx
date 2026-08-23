@@ -7,7 +7,7 @@ import { getProfessionName, ATTRIBUTE_KEYS, ATTRIBUTE_LABELS } from '../../game/
 import { getItem, getMount } from '../../game/content'
 import { getPlayerArmor, getPlayerAttackPower, getPlayerAgility } from '../../game/rules/combat'
 import { getEffectiveCharacterAttributes } from '../../game/rules/mount'
-import { getXpRequiredForNextLevel, getXpThresholdForLevel } from '../../game/rules/character'
+import { getXpThresholdForLevel } from '../../game/rules/character'
 
 /**
  * 左栏：玩家栏（TM-P2-006）。
@@ -53,14 +53,14 @@ export default function PlayerSidebar() {
         .join(' · ')
     : ''
 
-  // ---- 冒险阅历（XP）条：总 XP / 下一等级阈值 + 距离下一等级（TM-P2-006 第 43 节）----
+  // ---- 冒险阅历（XP）条：总 XP / 下一等级阈值（TM-P2-006 第 43 节；TM-P2-009-R1 §13 统一 xpRatio = xp / nextThreshold）----
   const level = player.level
   const xp = player.adventureXp
   const nextThreshold = getXpThresholdForLevel(level + 1)
-  const requiredForNext = getXpRequiredForNextLevel(level)
   const isMaxLevel = level >= 15
   // 15 级封顶展示：等级已达到当前上限（不显示 NaN/Infinity/不存在的 Lv16 阈值）
-  const xpRatio = isMaxLevel ? 1 : Math.min(1, Math.max(0, (xp - getXpThresholdForLevel(level)) / requiredForNext))
+  // TM-P2-009-R1 §13：条填充与右侧数字同源（总 XP / 下一等级阈值），Lv3 XP250 → 250/450 ≈ 55.6%
+  const xpRatio = isMaxLevel ? 1 : Math.min(1, Math.max(0, xp / nextThreshold))
 
   const Bar = ({ label, value, max }: { label: string; value: number; max: number }) => {
     const ratio = max > 0 ? Math.min(100, Math.max(0, (value / max) * 100)) : 0
@@ -107,9 +107,8 @@ export default function PlayerSidebar() {
               {xp} / {isMaxLevel ? '上限' : nextThreshold}
             </span>
           </div>
-          <p className="mt-2 text-xs text-bone-500">
-            {isMaxLevel ? '等级已达到当前上限' : `距离 Lv.${level + 1}：${nextThreshold - xp}`}
-          </p>
+          {/* TM-P2-009-R1 §13：删除「距离 Lv.X：Y」；满级仅保留简短上限提示 */}
+          {isMaxLevel && <p className="mt-2 text-xs text-bone-500">等级已达到当前上限</p>}
         </div>
       </section>
 
