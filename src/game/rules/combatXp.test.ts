@@ -39,7 +39,7 @@ function baseState(): GameState {
   return useGameStore.getState().gameState!
 }
 
-describe('TM-P2-006：战斗阅历（Combat XP）规则（XP1-XP10）', () => {
+describe('TM-P2-006：战斗阅历（Combat XP）规则（XP1-XP13）', () => {
   it('XP1. 无 adventureXpReward 的敌人（伪造 id / 未注册）→ 0 XP', () => {
     const s = baseState()
     expect(getEnemyFirstKillXp(s, 'ghost_enemy')).toBe(0)
@@ -204,5 +204,50 @@ describe('TM-P2-006：战斗阅历（Combat XP）规则（XP1-XP10）', () => {
       }
     })
     expect(getEnemyFirstKillXp(gs(), 'sakura_calamity_fragment')).toBe(0)
+  })
+
+  it('XP11. wild_wolf：狼群未 defeated → 15；荒原狼群 defeated → 0（TM-P2-009 §13 修复 P2-008 缺口）', () => {
+    const s = baseState()
+    expect(getEnemyFirstKillXp(s, 'wild_wolf')).toBe(15)
+    // 荒原狼群 defeated → wild_wolf 视为已击败（0 XP）
+    useGameStore.setState((state) => {
+      if (!state.gameState) return {}
+      return {
+        gameState: {
+          ...state.gameState,
+          world: { ...state.gameState.world, flags: { ...state.gameState.world.flags, steppe_wolf_pack_defeated: true } },
+        },
+      }
+    })
+    expect(getEnemyFirstKillXp(gs(), 'wild_wolf')).toBe(0)
+  })
+
+  it('XP12. wild_wolf：驿站狼群 neutralized → 0（TM-P2-009 §13 驿站狼群 XP 门）', () => {
+    useGameStore.setState((state) => {
+      if (!state.gameState) return {}
+      return {
+        gameState: {
+          ...state.gameState,
+          world: {
+            ...state.gameState.world,
+            flags: { ...state.gameState.world.flags, waystation_wolf_pack_neutralized: true },
+          },
+        },
+      }
+    })
+    expect(getEnemyFirstKillXp(gs(), 'wild_wolf')).toBe(0)
+  })
+
+  it('XP13. wild_wolf：异常 flag（非 boolean）→ 0（防异常刷分）', () => {
+    useGameStore.setState((state) => {
+      if (!state.gameState) return {}
+      return {
+        gameState: {
+          ...state.gameState,
+          world: { ...state.gameState.world, flags: { ...state.gameState.world.flags, steppe_wolf_pack_defeated: 'yes' } },
+        },
+      }
+    })
+    expect(getEnemyFirstKillXp(gs(), 'wild_wolf')).toBe(0)
   })
 })

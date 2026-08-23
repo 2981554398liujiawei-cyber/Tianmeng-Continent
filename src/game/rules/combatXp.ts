@@ -11,6 +11,7 @@
  *   - corrupted_rat      → quest_mine_cleanup 已推进（矿洞余患属重复遭遇 → 0 XP）
  *   - corrupted_wolf     → quest_grassland_wolf 已推进
  *   - dudu_rabbit        → 背包已持有 rabbit_path（一次性 Boss 清场）
+ *   - wild_wolf          → 荒原狼群 defeated 或驿站狼群 neutralized（TM-P2-009 §13 修复 P2-008 缺口）
  *   - skeleton_* / black_mage / tower_zombie / black_mane_wolf → 对应 quest flag === true
  *   - sakura_calamity_fragment → world.flags.sakura_calamity_defeated === true
  *
@@ -67,6 +68,16 @@ function isFirstKillPending(gameState: GameState, enemyId: string): boolean {
     case 'black_mane_wolf': {
       const q = gameState.quests.find((quest) => quest.questId === 'quest_north_gate_missing_patrol')
       return q?.flags.north_gate_wolf_defeated !== true
+    }
+    case 'wild_wolf': {
+      // TM-P2-009 §13：荒原野狼首次正式击败给 XP。已击败判定复用狼群遭遇 defeated 标记：
+      // 荒原狼群（P2-008）defeated 或驿站狼群（P2-009）neutralized 任一已发生 → 视为已击败（0 XP）。
+      // 单敌落单狼（encounter_wild_wolf）无 defeated 标记，任何狼群尚未被击败时均算首次。
+      const steppe = gameState.world.flags.steppe_wolf_pack_defeated
+      const waystation = gameState.world.flags.waystation_wolf_pack_neutralized
+      const malformed = (v: unknown) => v !== undefined && typeof v !== 'boolean'
+      if (malformed(steppe) || malformed(waystation)) return false
+      return steppe !== true && waystation !== true
     }
     case 'sakura_calamity_fragment': {
       return gameState.world.flags.sakura_calamity_defeated !== true
