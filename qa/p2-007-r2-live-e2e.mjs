@@ -397,7 +397,7 @@ try {
     body = await bodyText(pageOff)
     check('LIVE-08a: 本地保存成功（游戏可玩）', body.includes('保存游戏'))
     check('LIVE-08b: 云状态非 synced（不显示「云端已同步」）', !body.includes('云端已同步'))
-    check('LIVE-08c: 云状态 offline/cloud_failed', body.includes('云同步未启用') || body.includes('仅本机模式') || body.includes('云存档暂时无法连接') || body.includes('云同步失败'))
+    check('LIVE-08c: 云状态 offline（顶部系统栏不误导为已同步）', body.includes('云：仅本机') || body.includes('云同步未启用') || body.includes('仅本机模式') || body.includes('云同步失败'))
     // 恢复网络：解除拦截 → 本地存档不被破坏
     await pageOff.setRequestInterception(false)
     await sleep(300)
