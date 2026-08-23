@@ -8,6 +8,7 @@ import { useGameStore } from '../../game/state/gameStore'
 import { getClue, getQuest, getNpc, getItem, getActivityEvent, QUESTS } from '../../game/content'
 import { getCurrentObjective, type CurrentObjective } from '../../game/rules/objective'
 import { getDiscoveredClueIds } from '../../game/rules/clue'
+import { isGoldenRabbitInvestigationComplete } from '../../game/rules/goldenRabbit'
 import type { ClueCategory } from '../../game/types'
 import type { GameState, QuestStatus } from '../../game/types'
 
@@ -505,6 +506,8 @@ function QuestRow({ questId, gameState, compact }: { questId: string; gameState:
   const goldenInvestigationCount = (goldenAskedBlacksmith ? 1 : 0) + (goldenAskedApothecary ? 1 : 0)
   const goldenVillageInquiryReported = goldenSearchQuest?.flags.village_inquiry_reported === true
   const goldenLairRechecked = goldenSearchQuest?.flags.rabbit_lair_rechecked === true
+  // TM-P2-009-R1 §12：Golden Rabbit 四调查全部完成 → 派生「待续」（内部 status 仍 in_progress，零状态修改）
+  const goldenRabbitInvestigationComplete = isGoldenRabbitInvestigationComplete(gameState)
   const northGateQuest = gameState.quests.find((q) => q.questId === 'quest_north_gate_missing_patrol')
   const northGateTrailChecked = northGateQuest?.flags.north_gate_trail_checked === true
   const northGateWolfDefeated = northGateQuest?.flags.north_gate_wolf_defeated === true
@@ -536,27 +539,41 @@ function QuestRow({ questId, gameState, compact }: { questId: string; gameState:
     <div className="rounded border border-ink-600 bg-ink-900/40 p-3">
       <div className="flex items-center justify-between gap-3">
         <p className="font-bold text-bone-100">{def?.title ?? '未知任务'}</p>
-        <span className="shrink-0 text-xs text-gold-300">进行中</span>
+        <span
+          className={`shrink-0 text-xs ${goldenRabbitInvestigationComplete ? 'text-bone-500' : 'text-gold-300'}`}
+        >
+          {goldenRabbitInvestigationComplete ? '待续' : '进行中'}
+        </span>
       </div>
       {!compact && <p className="mt-1 text-xs leading-relaxed text-bone-500">{def?.summary ?? '异常任务（无法识别）'}</p>}
-      {/* 进度提示（保持与 P2-005 语义一致） */}
+      {/* 进度提示（保持与 P2-005 语义一致）；TM-P2-009-R1 §12：四调查完成时派生「待续」，不再显示「还有一步没做」 */}
       {questId === 'quest_golden_rabbit_search' && qs.status === 'in_progress' && (
-        <p className="mt-1 text-xs text-bone-400">地图线索调查：{goldenInvestigationCount} / 2</p>
-      )}
-      {questId === 'quest_golden_rabbit_search' && goldenInvestigationCount === 2 && (
-        <div className="mt-2 rounded border border-gold-500/40 bg-ink-900/40 p-2 text-xs leading-relaxed text-bone-200">
-          <p>你已经向铁匠和药师打听过，但仍无法确认地图指向的具体地点。</p>
-          <p className="mt-1 text-bone-300">地图上的标记仍无法对应到任何已知地点。</p>
-        </div>
-      )}
-      {questId === 'quest_golden_rabbit_search' && goldenVillageInquiryReported && (
-        <p className="mt-1 text-xs text-gold-300">村内调查已汇报。</p>
-      )}
-      {questId === 'quest_golden_rabbit_search' && goldenVillageInquiryReported && !goldenLairRechecked && (
-        <p className="mt-1 text-xs text-bone-400">当前目标：返回兔王巢穴重新比对地图。</p>
-      )}
-      {questId === 'quest_golden_rabbit_search' && goldenLairRechecked && (
-        <p className="mt-1 text-xs text-gold-300">巢穴复查完成。</p>
+        goldenRabbitInvestigationComplete ? (
+          <div className="mt-2 rounded border border-bone-700/50 bg-ink-900/40 p-2 text-xs leading-relaxed">
+            <p className="font-bold text-bone-100">现阶段线索已收集 · 待续</p>
+            <p className="mt-1 text-bone-300">你已经完成目前可调查的内容。</p>
+            <p className="mt-1 text-bone-300">下一步线索尚未开放。</p>
+          </div>
+        ) : (
+          <>
+            <p className="mt-1 text-xs text-bone-400">地图线索调查：{goldenInvestigationCount} / 2</p>
+            {goldenInvestigationCount === 2 && (
+              <div className="mt-2 rounded border border-gold-500/40 bg-ink-900/40 p-2 text-xs leading-relaxed text-bone-200">
+                <p>你已经向铁匠和药师打听过，但仍无法确认地图指向的具体地点。</p>
+                <p className="mt-1 text-bone-300">地图上的标记仍无法对应到任何已知地点。</p>
+              </div>
+            )}
+            {goldenVillageInquiryReported && (
+              <p className="mt-1 text-xs text-gold-300">村内调查已汇报。</p>
+            )}
+            {goldenVillageInquiryReported && !goldenLairRechecked && (
+              <p className="mt-1 text-xs text-bone-400">当前目标：返回兔王巢穴重新比对地图。</p>
+            )}
+            {goldenLairRechecked && (
+              <p className="mt-1 text-xs text-gold-300">巢穴复查完成。</p>
+            )}
+          </>
+        )
       )}
       {questId === 'quest_apothecary_herb_route' && qs.status === 'in_progress' && (
         <p className="mt-1 text-xs text-bone-400">当前目标：前往村外草原查看采药区域。</p>

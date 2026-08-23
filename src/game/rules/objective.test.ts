@@ -130,3 +130,42 @@ describe('TM-P2-008 OBJ1-6：北郊追踪当前目标（§20）', () => {
     expect(getCurrentObjective(state)?.questId).toBe('quest_north_outskirts')
   })
 })
+
+/** TM-P2-009-R1 §12：Golden Rabbit 四调查完成 → 派生「待续」，不作为 Current Objective（零状态修改）。 */
+describe('TM-P2-009-R1 §12：Golden Rabbit 不作为当前目标', () => {
+  const goldenQuest = (flags: Record<string, boolean | number | string> = {}) => ({
+    questId: 'quest_golden_rabbit_search',
+    status: 'in_progress' as const,
+    stage: 0,
+    flags,
+  })
+  const allFourFlags = {
+    asked_blacksmith: true,
+    asked_apothecary: true,
+    village_inquiry_reported: true,
+    rabbit_lair_rechecked: true,
+  }
+
+  it('G1: 四调查未全部完成 → 仍作为当前目标（不误伤进行中状态）', () => {
+    const state = createInitialGameState()
+    state.quests = [
+      goldenQuest({ asked_blacksmith: true, asked_apothecary: true, village_inquiry_reported: true }),
+    ]
+    expect(getCurrentObjective(state)?.questId).toBe('quest_golden_rabbit_search')
+  })
+
+  it('G2: 四调查全部完成 → fall through 到下一优先 active（不选 golden rabbit）', () => {
+    const state = createInitialGameState()
+    state.quests = [
+      goldenQuest(allFourFlags),
+      { questId: 'quest_grassland_wolf', status: 'in_progress' as const, stage: 0, flags: {} },
+    ]
+    expect(getCurrentObjective(state)?.questId).toBe('quest_grassland_wolf')
+  })
+
+  it('G3: 四调查全部完成且无其他 active → 返回 null（不硬选「待续」任务）', () => {
+    const state = createInitialGameState()
+    state.quests = [goldenQuest(allFourFlags)]
+    expect(getCurrentObjective(state)).toBeNull()
+  })
+})

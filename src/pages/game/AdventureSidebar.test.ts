@@ -368,3 +368,53 @@ describe('TM-P2-009 S10-S14：Activity 上限与 event 文案', () => {
     expect(text).toContain('马科认可了你的北线表现，并准备安排正式骑士试炼。')
   })
 })
+
+/** TM-P2-009-R1 §12：Golden Rabbit「待续」UI（§12/§16；内部 HARD FREEZE 不变）。 */
+describe('TM-P2-009-R1 §12：Golden Rabbit 待续 UI', () => {
+  const allFourFlags = {
+    asked_blacksmith: true,
+    asked_apothecary: true,
+    village_inquiry_reported: true,
+    rabbit_lair_rechecked: true,
+  }
+  const goldenQuest = (flags: Record<string, boolean | number | string> = {}) => ({
+    questId: 'quest_golden_rabbit_search',
+    status: 'in_progress' as const,
+    stage: 0,
+    flags,
+  })
+
+  it('G-UI1: 四调查全部完成 → 任务 Tab 显示「待续」+ 待续文案，不显示旧「进行中」与进度提示', () => {
+    const state = useGameStore.getState().gameState!
+    state.quests = [goldenQuest({ ...allFourFlags })]
+    const dom = renderSidebarDom()
+    expect(dom.textContent).toContain('追寻黄金兔子王')
+    expect(dom.textContent).toContain('现阶段线索已收集 · 待续')
+    expect(dom.textContent).toContain('你已经完成目前可调查的内容。')
+    expect(dom.textContent).toContain('下一步线索尚未开放。')
+    expect(dom.textContent).toContain('待续')
+    expect(dom.textContent).not.toContain('地图线索调查')
+    expect(dom.textContent).not.toContain('巢穴复查完成')
+  })
+
+  it('G-UI2: 四调查未全部完成 → 仍显示「进行中」与进度提示（不误伤）', () => {
+    const state = useGameStore.getState().gameState!
+    state.quests = [goldenQuest({ asked_blacksmith: true, asked_apothecary: true })]
+    const dom = renderSidebarDom()
+    expect(dom.textContent).toContain('进行中')
+    expect(dom.textContent).toContain('地图线索调查：2 / 2')
+  })
+
+  it('G-UI3: 渲染后内部状态零修改（status 仍 in_progress / stage 0 / 四 flag 原值 / 无 rabbit_path 消耗）', () => {
+    const state = useGameStore.getState().gameState!
+    state.quests = [goldenQuest({ ...allFourFlags })]
+    renderSidebarDom()
+    const q = useGameStore.getState().gameState!.quests.find((x) => x.questId === 'quest_golden_rabbit_search')!
+    expect(q.questId).toBe('quest_golden_rabbit_search')
+    expect(q.status).toBe('in_progress')
+    expect(q.stage).toBe(0)
+    expect(q.flags).toEqual(allFourFlags)
+    // 背包不含 rabbit_path（不消耗 / 不新增）
+    expect(useGameStore.getState().gameState!.inventory.find((e) => e.itemId === 'rabbit_path')).toBeUndefined()
+  })
+})

@@ -1,5 +1,6 @@
 import type { GameState } from '../types'
 import { getQuest } from '../content'
+import { GOLDEN_RABBIT_QUEST_ID, isGoldenRabbitInvestigationComplete } from './goldenRabbit'
 export interface CurrentObjective { questId: string; title: string; objective: string; locationHint?: string }
 
 const MAIN_QUEST_PRIORITY = [
@@ -15,9 +16,13 @@ const MAIN_QUEST_PRIORITY = [
 
 export function getCurrentObjective(state: GameState): CurrentObjective | null {
   const active = state.quests.filter((x) => x.status === 'completable' || x.status === 'in_progress')
-  const q = MAIN_QUEST_PRIORITY.map((id) => active.find((x) => x.questId === id)).find(Boolean)
-    ?? active.find((x) => x.status === 'completable')
-    ?? active[0]
+  // TM-P2-009-R1 §12：Golden Rabbit 四调查全部完成 → 派生「待续」，不作为 Current Objective（fall through 到下一优先）
+  const eligible = active.filter(
+    (x) => !(x.questId === GOLDEN_RABBIT_QUEST_ID && isGoldenRabbitInvestigationComplete(state)),
+  )
+  const q = MAIN_QUEST_PRIORITY.map((id) => eligible.find((x) => x.questId === id)).find(Boolean)
+    ?? eligible.find((x) => x.status === 'completable')
+    ?? eligible[0]
   if (!q) return null
   const title = getQuest(q.questId)?.title ?? '当前任务'
   if (q.questId === 'quest_north_gate_missing_patrol') {
