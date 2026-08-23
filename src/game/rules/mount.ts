@@ -47,3 +47,16 @@ export function canExploreMountTrail(state: GameState): boolean {
     state.world.flags.mount_trail_explored === undefined
   )
 }
+
+/**
+ * 北郊「沿官道快速搜索」可否触发（TM-P2-008 §50）。
+ * 条件：在北郊 + 装备带 fast_travel 的坐骑 + 尚未搜索（一次性）。
+ * 坐骑不攻击、不进 initiative，仅作为袭击现场调查的 optional 补充手段（得巡逻队徽记线索，不推进任务）。
+ */
+export function canSearchNorthOutskirtsByMount(state: GameState): boolean {
+  return (
+    state.world.currentLocationId === 'tianlong_north_outskirts' &&
+    hasTravelTag(state, 'fast_travel') &&
+    state.world.flags.north_outskirts_mount_search === undefined
+  )
+}

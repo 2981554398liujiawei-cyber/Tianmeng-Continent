@@ -6,7 +6,13 @@ import { describe, expect, it } from 'vitest'
 import { createInitialGameState } from '../content/initial'
 import { CHI_TU_ID, FIRE_STALLION_ID, getMount } from '../content/mounts'
 import type { GameState } from '../types/game'
-import { canExploreMountTrail, getEffectiveCharacterAttributes, hasTravelTag, MOUNT_TRAIL_REWARD_GOLD } from './mount'
+import {
+  canExploreMountTrail,
+  canSearchNorthOutskirtsByMount,
+  getEffectiveCharacterAttributes,
+  hasTravelTag,
+  MOUNT_TRAIL_REWARD_GOLD,
+} from './mount'
 
 function atLocation(state: GameState, locationId: string): GameState {
   return { ...state, world: { ...state.world, currentLocationId: locationId } }
@@ -101,5 +107,40 @@ describe('canExploreMountTrail', () => {
   it('火焰驹定义满足 fast_travel 标签（registry 与规则一致）', () => {
     const mount = getMount(FIRE_STALLION_ID)
     expect(mount?.travelTags).toContain('fast_travel')
+  })
+})
+
+// ---- TM-P2-008 §50：北郊「沿官道快速搜索」（M1-4）----
+describe('TM-P2-008 M1-4：canSearchNorthOutskirtsByMount（北郊 fast_travel 快速搜索门槛）', () => {
+  it('M1：北郊 + 装备火焰驹 + 未搜索 → true', () => {
+    const state = withMount(atLocation(createInitialGameState(), 'tianlong_north_outskirts'), FIRE_STALLION_ID)
+    expect(canSearchNorthOutskirtsByMount(state)).toBe(true)
+  })
+
+  it('M2：不在北郊（天龙城）→ false', () => {
+    const state = withMount(atLocation(createInitialGameState(), 'tianlong_city'), FIRE_STALLION_ID)
+    expect(canSearchNorthOutskirtsByMount(state)).toBe(false)
+  })
+
+  it('M3：北郊但未装备坐骑 / 未知坐骑（无 fast_travel 兜底）→ false', () => {
+    expect(canSearchNorthOutskirtsByMount(atLocation(createInitialGameState(), 'tianlong_north_outskirts'))).toBe(false)
+    const state = withMount(atLocation(createInitialGameState(), 'tianlong_north_outskirts'), 'unknown_mount')
+    expect(canSearchNorthOutskirtsByMount(state)).toBe(false)
+  })
+
+  it('M4：已搜索（north_outskirts_mount_search 已固化）→ false（一次性）', () => {
+    const state = withMount(atLocation(createInitialGameState(), 'tianlong_north_outskirts'), FIRE_STALLION_ID)
+    const done = {
+      ...state,
+      world: { ...state.world, flags: { ...state.world.flags, north_outskirts_mount_search: true } },
+    }
+    expect(canSearchNorthOutskirtsByMount(done)).toBe(false)
+  })
+
+  it('坐骑不攻击不进 initiative：北郊搜索不改敌人/遭遇状态（纯标记）', () => {
+    const state = withMount(atLocation(createInitialGameState(), 'tianlong_north_outskirts'), FIRE_STALLION_ID)
+    expect(canSearchNorthOutskirtsByMount(state)).toBe(true)
+    // 无 encounter/combat 副作用字段被触碰（helper 只读）
+    expect(state.world.encounterVariants).toEqual(createInitialGameState().world.encounterVariants)
   })
 })

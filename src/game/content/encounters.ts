@@ -23,6 +23,8 @@ export const SINGLE_ENEMY_ENCOUNTERS: Record<string, string> = {
   skeleton_witch: 'encounter_skeleton_witch',
   black_mane_wolf: 'encounter_black_mane_wolf',
   sakura_calamity_fragment: 'encounter_sakura_calamity_fragment',
+  // TM-P2-008 §23：荒原野狼（北郊单只落单野狼 + 狼群 variants 成员）
+  wild_wolf: 'encounter_wild_wolf',
 }
 
 /** 残破巡逻队：非主线可选多怪遭遇（TM-P2-007 §7.5；骷髅战士×2 或 骷髅战士+黑法师，权重二选一） */
@@ -115,6 +117,14 @@ export const ENCOUNTERS: Record<string, EncounterDefinition> = {
     canEscape: true,
     encounterDefeatFlag: 'north_gate_wolf_defeated',
   },
+  // TM-P2-008 §23：北郊单只落单野狼（可重复遭遇；无 encounterDefeatFlag，不打不影响主线 flag）
+  encounter_wild_wolf: {
+    id: 'encounter_wild_wolf',
+    name: '落单野狼',
+    locationId: 'tianlong_north_outskirts',
+    fixedMembers: [{ enemyId: 'wild_wolf', count: 1 }],
+    canEscape: true,
+  },
   encounter_sakura_calamity_fragment: {
     id: 'encounter_sakura_calamity_fragment',
     name: '残灾之影',
@@ -136,6 +146,20 @@ export const ENCOUNTERS: Record<string, EncounterDefinition> = {
     ],
     canEscape: true,
     // 无 encounterDefeatFlag：可选遭遇，不打不影响主线 flag
+  },
+  // ---- TM-P2-008 §23：北郊荒原狼群（可选遭遇；首次胜利后不再出现；不阻塞主线）----
+  encounter_steppe_wolf_pack: {
+    id: 'encounter_steppe_wolf_pack',
+    name: '荒原狼群',
+    locationId: 'tianlong_north_outskirts',
+    variants: [
+      { id: 'steppe_wolf_pack_a', weight: 50, members: [{ enemyId: 'wild_wolf', count: 2 }] },
+      { id: 'steppe_wolf_pack_b', weight: 30, members: [{ enemyId: 'black_mane_wolf', count: 1 }, { enemyId: 'wild_wolf', count: 1 }] },
+      { id: 'steppe_wolf_pack_c', weight: 20, members: [{ enemyId: 'wild_wolf', count: 3 }] },
+    ],
+    canEscape: true,
+    // 首次胜利后写 world.flags.steppe_wolf_pack_defeated=true，不再刷出（§24；可选遭遇不阻塞主线）
+    encounterDefeatFlag: 'steppe_wolf_pack_defeated',
   },
 }
 

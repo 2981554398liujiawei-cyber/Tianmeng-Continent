@@ -180,6 +180,20 @@ export const ENEMIES: Record<string, EnemyDefinition> = {
     adventureXpReward: 25,
     dropTable: DROP_TABLES.black_mane_wolf,
   },
+  // TM-P2-008 §23：荒原野狼（北郊荒原狼群主力；Lv2 普通野兽，结构仿 corrupted_wolf；无技能系统）
+  wild_wolf: {
+    id: 'wild_wolf',
+    name: '荒原野狼',
+    level: 2,
+    description: '北郊荒原上成群出没的野狼，皮毛灰褐，眼瞳警觉而凶狠。',
+    tags: ['beast'],
+    maxHp: 10,
+    armor: 11,
+    attackPower: 14,
+    agility: 12,
+    adventureXpReward: 15,
+    dropTable: DROP_TABLES.wild_wolf,
+  },
   // TM-P2-004 第 40 节：残灾之影（樱华神域·破碎边界专属；不是八歧大蛇本体/世界 Boss/九尾妖狐）
   // TM-P2-006 第 35 节：剧情契约链核心战 → canEscape=false（强制战斗）
   sakura_calamity_fragment: {

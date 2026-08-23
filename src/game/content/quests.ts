@@ -82,4 +82,12 @@ export const QUESTS: Record<string, QuestDefinition> = {
     summary: '天龙城附近出现了不合时节的樱雨。花瓣背后的空间裂隙似乎连接着一个正在崩塌的陌生神域。',
     giverNpcId: 'sakura_yuko', adventureXpReward: 100,
   },
+  // TM-P2-008 §16：北郊余波主线《北郊追踪》（马科发布；仅《北门失联》完成后可发现；奖励走 generic 提交路径 100 XP + 40 金）
+  quest_north_outskirts: {
+    id: 'quest_north_outskirts',
+    title: '北郊追踪',
+    summary: '失联的巡逻队显然没有停在北门。沿着他们留下的足迹追到北郊，查明这里到底发生了什么。',
+    giverNpcId: 'knight_captain_make',
+    goldReward: 40, adventureXpReward: 100,
+  },
 }

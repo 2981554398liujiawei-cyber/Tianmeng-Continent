@@ -70,6 +70,23 @@ export const ITEMS: Record<string, ItemDefinition> = {
     value: 5,
     rarity: 'common',
   },
+  // TM-P2-008 §25：荒原野狼材料（普通狼牙/狼皮；北郊狼群掉落复用 wolf_meat）
+  wolf_fang: {
+    id: 'wolf_fang',
+    name: '狼牙',
+    type: 'material',
+    description: '从荒原野狼口中取下的普通狼牙，是常见的制作素材。',
+    value: 4,
+    rarity: 'common',
+  },
+  wolf_pelt: {
+    id: 'wolf_pelt',
+    name: '狼皮',
+    type: 'material',
+    description: '从荒原野狼身上剥下的完整狼皮，触感粗糙，可用于制甲与交易。',
+    value: 15,
+    rarity: 'common',
+  },
   black_mane_pelt: {
     id: 'black_mane_pelt',
     name: '黑鬃狼皮',

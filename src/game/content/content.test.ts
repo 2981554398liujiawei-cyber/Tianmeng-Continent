@@ -48,8 +48,8 @@ describe('TM-P0-002：内容注册表交叉引用一致性', () => {
 
 describe('TM-P0-002：内容数量与指定条目', () => {
   // TM-P2-004 第 33/34 节：新增樱华神域·破碎边界（特殊事件地点；connections=[] 只能特殊事件进入）
-  it('地点 11 个：青石村/村外草原/废弃矿洞/兔王巢穴/天龙城/武馆/黑石塔一层/黑石塔二层/黑石塔三层/天龙城北门/樱华神域·破碎边界', () => {
-    expect(Object.keys(LOCATIONS)).toHaveLength(11)
+  it('地点 12 个：青石村/村外草原/废弃矿洞/兔王巢穴/天龙城/武馆/黑石塔一层/黑石塔二层/黑石塔三层/天龙城北门/樱华神域·破碎边界/天龙城北郊', () => {
+    expect(Object.keys(LOCATIONS)).toHaveLength(12)
     expect(getLocation('qingshi_village')?.name).toBe('青石村')
     expect(getLocation('village_grassland')?.name).toBe('村外草原')
     expect(getLocation('abandoned_mine')?.name).toBe('废弃矿洞')
@@ -65,6 +65,11 @@ describe('TM-P0-002：内容数量与指定条目', () => {
     expect(getLocation('sakura_domain_fragment')?.name).toBe('樱华神域·破碎边界')
     expect(getLocation('sakura_domain_fragment')?.connections).toEqual([])
     expect(getLocation('sakura_domain_fragment')?.enemyIds).toEqual(['sakura_calamity_fragment'])
+    // TM-P2-008 §17：天龙城北郊（北门解锁后进入；连接北门）
+    expect(getLocation('tianlong_north_outskirts')?.name).toBe('天龙城北郊')
+    expect(getLocation('tianlong_north_outskirts')?.requiredFlag).toBe('north_outskirts_unlocked')
+    expect(getLocation('tianlong_north_outskirts')?.connections).toEqual(['tianlong_north_gate'])
+    expect(getLocation('tianlong_north_outskirts')?.enemyIds).toEqual(['wild_wolf'])
   })
 
   // TM-P1-023：天龙城落点锁定——本卡只做区域切换与落点；TM-P1-024 起 connections=['tianlong_martial_hall']（双向武馆）、enemyIds=[]（无假内容）
@@ -158,8 +163,8 @@ describe('TM-P0-002：内容数量与指定条目', () => {
     expect(getNpc('sakura_yuko')?.locationId).toBe('tianlong_city')
   })
 
-  it('敌人 12 个且等级符合设定', () => {
-    expect(Object.keys(ENEMIES)).toHaveLength(12)
+  it('敌人 13 个且等级符合设定', () => {
+    expect(Object.keys(ENEMIES)).toHaveLength(13)
     expect(getEnemy('corrupted_rabbit')?.level).toBe(1)
     expect(getEnemy('corrupted_rat')?.level).toBe(1)
     expect(getEnemy('corrupted_wolf')?.level).toBe(2)
@@ -175,6 +180,8 @@ describe('TM-P0-002：内容数量与指定条目', () => {
     // TM-P2-004 第 40 节：残灾之影（樱华神域专属；难度不高）
     expect(getEnemy('sakura_calamity_fragment')?.level).toBe(3)
     expect(getEnemy('sakura_calamity_fragment')?.maxHp).toBe(14)
+    // TM-P2-008 §23：荒原野狼 Lv.2（北郊狼群主力）
+    expect(getEnemy('wild_wolf')?.level).toBe(2)
   })
 
   // TM-P1-025：骷髅士兵完整锁定（普通战斗规则，无技能/状态/抗性/掉落）
@@ -288,7 +295,8 @@ describe('TM-P0-002：内容数量与指定条目', () => {
     expect(gate?.description).toContain('城门')
     expect(gate?.description).toContain('北方荒野')
     expect(gate?.requiredFlag).toBeUndefined()
-    expect(gate?.connections).toEqual(['tianlong_city'])
+    // TM-P2-008 §17：北门与北郊双向连接（北郊 requiredFlag 未解锁时 travel 拒绝）
+    expect(gate?.connections).toEqual(['tianlong_city', 'tianlong_north_outskirts'])
     expect(gate?.enemyIds).toEqual(['black_mane_wolf'])
   })
 
@@ -380,16 +388,17 @@ describe('TM-P0-002-R1：关键内容身份锁', () => {
     expect(necklace?.value).toBe(0)
   })
 
-  it('注册表数量与 ID 未被改动（无新增黄金兔子王条目；TM-P1-005 新增《矿洞清理》、TM-P1-010 新增《草原狼影》、TM-P1-017 新增《追寻黄金兔子王》、TM-P1-021 新增《采药受阻》、TM-P1-022 新增《矿洞余患》、TM-P1-024 新增《商人王财的麻烦》与马科/王财、TM-P1-025 新增骷髅士兵、TM-P1-026 新增骷髅队长、TM-P1-027 新增僵尸/黑法师与黑石塔二层、TM-P1-028 新增骷髅战士、TM-P1-029 新增骷髅女妖/黑石塔三层/夔峒项链、TM-P2-001 新增北门失联/天龙城北门/黑鬃魔狼、TM-P2-004 新增落樱越界/樱华神域/残灾之影/樱花优子/桂花糕）', () => {
-    // TM-P2-004：+残灾之影（12）
-    expect(Object.keys(ENEMIES)).toHaveLength(12)
+  it('注册表数量与 ID 未被改动（无新增黄金兔子王条目；TM-P1-005 新增《矿洞清理》、TM-P1-010 新增《草原狼影》、TM-P1-017 新增《追寻黄金兔子王》、TM-P1-021 新增《采药受阻》、TM-P1-022 新增《矿洞余患》、TM-P1-024 新增《商人王财的麻烦》与马科/王财、TM-P1-025 新增骷髅士兵、TM-P1-026 新增骷髅队长、TM-P1-027 新增僵尸/黑法师与黑石塔二层、TM-P1-028 新增骷髅战士、TM-P1-029 新增骷髅女妖/黑石塔三层/夔峒项链、TM-P2-001 新增北门失联/天龙城北门/黑鬃魔狼、TM-P2-004 新增落樱越界/樱华神域/残灾之影/樱花优子/桂花糕、TM-P2-008 新增北郊追踪/天龙城北郊/荒原野狼/狼牙/狼皮）', () => {
+    // TM-P2-004：+残灾之影（12）；TM-P2-008：+荒原野狼（13）
+    expect(Object.keys(ENEMIES)).toHaveLength(13)
     // TM-P2-004：+樱花优子（6）
     expect(Object.keys(NPCS)).toHaveLength(6)
-    // TM-P2-004：+《落樱越界》（9）
-    expect(Object.keys(QUESTS)).toHaveLength(9)
+    // TM-P2-004：+《落樱越界》（9）；TM-P2-008：+《北郊追踪》（10）
+    expect(Object.keys(QUESTS)).toHaveLength(10)
     // TM-P2-003 C：新增黑鬃狼牙（common）/黑鬃狼皮（uncommon）/精制铁剑（uncommon，+3）；TM-P2-004：+桂花糕（10）
     // TM-P2-007 §5.6：新增兽肉/鼠尾/破损骨片/残破布片/暗影粉尘/灵性碎片 6 种通用材料（20）
-    expect(Object.keys(ITEMS)).toHaveLength(20)
+    // TM-P2-008 §25：+狼牙/狼皮 2 种普通材料（22）
+    expect(Object.keys(ITEMS)).toHaveLength(22)
     expect(getEnemy('golden_rabbit_king')).toBeUndefined()
     // TM-P1-028/029：骷髅战士、骷髅女妖已注册（本卡新增）
     expect(getEnemy('skeleton_warrior')).toBeDefined()
@@ -404,6 +413,12 @@ describe('TM-P0-002-R1：关键内容身份锁', () => {
     expect(getEnemy('sakura_calamity_fragment')).toBeDefined()
     expect(getNpc('sakura_yuko')).toBeDefined()
     expect(getItem('tianlong_osmanthus_cake')).toBeDefined()
+    // TM-P2-008：《北郊追踪》/ 天龙城北郊 / 荒原野狼 / 狼牙 / 狼皮已注册
+    expect(getQuest('quest_north_outskirts')).toBeDefined()
+    expect(getLocation('tianlong_north_outskirts')).toBeDefined()
+    expect(getEnemy('wild_wolf')).toBeDefined()
+    expect(getItem('wolf_fang')).toBeDefined()
+    expect(getItem('wolf_pelt')).toBeDefined()
   })
 
   // TM-P1-024：第五正式主线 + 天龙城 NPC 注册表锁定（无 goldReward、本卡不完成任务；马科/王财无 relationship）

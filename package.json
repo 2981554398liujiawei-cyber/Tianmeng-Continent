@@ -35,6 +35,13 @@
     "qa:p2-007-r1": "node qa/p2-007-r1-e2e.mjs",
     "qa:live": "node qa/p2-007-r2-live-e2e.mjs",
     "qa:p2-007-r2": "node qa/p2-007-r2-static.mjs",
+    "qa:p2-008-as": "node qa/p2-008-adventure-sidebar-e2e.mjs",
+    "qa:p2-008-north": "node qa/p2-008-north-outskirts-e2e.mjs",
+    "qa:p2-008-layout": "node qa/p2-008-layout-e2e.mjs",
+    "qa:p2-008-mobile": "node qa/p2-008-mobile-e2e.mjs",
+    "qa:p2-008-full-journey": "node qa/p2-008-full-journey-e2e.mjs",
+    "qa:p2-008-balance": "node qa/p2-008-balance.mjs",
+    "qa:p2-008": "npm run qa:p2-008-as && npm run qa:p2-008-north && npm run qa:p2-008-layout && npm run qa:p2-008-mobile && npm run qa:p2-008-full-journey && npm run qa:p2-008-balance",
     "qa:rc": "npm run build && node qa/rc-e2e.mjs"
   },
   "dependencies": {

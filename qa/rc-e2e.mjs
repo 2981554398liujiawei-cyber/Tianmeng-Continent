@@ -9,7 +9,9 @@ const suites = [
   { name: 'P2-004-R1', script: 'qa/p2-004-r1-e2e.mjs', shared: true },
   { name: 'P2-004', script: 'qa/p2-004-e2e.mjs', shared: true },
   { name: 'Cloud', script: 'qa/p2-005-cloud-e2e.mjs' },
-  { name: 'Full Journey', script: 'qa/p2-005-full-journey-e2e.mjs', shared: true },
+  // TM-P2-008：完整主线 Journey（Golden Rabbit 冻结 + 北门失联 + 北郊追踪）改用 P2-008 版。
+  // 旧 qa/p2-005-full-journey-e2e.mjs（复用 phase1/phase2 旧脚本，含已移除的「第一阶段完成」大卡断言）不在门禁内。
+  { name: 'Full Journey', script: 'qa/p2-008-full-journey-e2e.mjs' },
   { name: 'Responsive', script: 'qa/responsive-e2e.mjs', shared: true },
   { name: 'GamePage/Layout', script: 'qa/p2-005-layout-e2e.mjs' },
   { name: 'Combat', script: 'qa/p2-005-combat-layout-e2e.mjs' },

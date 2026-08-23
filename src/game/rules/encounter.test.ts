@@ -443,3 +443,95 @@ describe('TM-P2-007 §7/44：Encounter V2 数据层（checkEncounter / 权重 / 
     }
   })
 })
+
+describe('TM-P2-008 EN1-8：北郊荒原狼群（§23-24）', () => {
+  it('EN1: 荒原狼群注册有效——variants 三档、成员总数 1-3、敌人已注册', () => {
+    const def = getEncounter('encounter_steppe_wolf_pack')
+    expect(def).toBeDefined()
+    expect(def!.fixedMembers).toBeUndefined()
+    expect(def!.variants).toHaveLength(3)
+    expect(def!.locationId).toBe('tianlong_north_outskirts')
+    for (const v of def!.variants!) {
+      expect(v.weight).toBeGreaterThan(0)
+      const total = v.members.reduce((sum, m) => sum + m.count, 0)
+      expect(total).toBeGreaterThanOrEqual(1)
+      expect(total).toBeLessThanOrEqual(3)
+      for (const m of v.members) {
+        expect(getEnemy(m.enemyId)).toBeDefined()
+      }
+    }
+    expect(def!.canEscape).toBe(true)
+  })
+
+  it('EN2: 荒原野狼单敌遭遇注册 + 迁移映射完整（EN12 全量覆盖）', () => {
+    expect(getEncounter('encounter_wild_wolf')).toBeDefined()
+    expect(SINGLE_ENEMY_ENCOUNTERS.wild_wolf).toBe('encounter_wild_wolf')
+    const def = getEncounter('encounter_wild_wolf')!
+    expect(def.fixedMembers).toEqual([{ enemyId: 'wild_wolf', count: 1 }])
+    expect(def.encounterDefeatFlag).toBeUndefined()
+  })
+
+  it('EN3: 荒原野狼掉表——狼牙 guaranteed + 狼皮 random + 兽肉 lucky（§25 复用）', () => {
+    const table = getEnemy('wild_wolf')?.dropTable
+    expect(table).toBeDefined()
+    expect(table!.guaranteed).toEqual([{ itemId: 'wolf_fang', quantity: [1, 1] }])
+    expect(table!.random).toContainEqual({ itemId: 'wolf_pelt', quantity: [1, 1], baseChance: 0.35 })
+    expect(table!.lucky).toContainEqual({ itemId: 'wolf_meat', quantity: [1, 1], dc: 12 })
+  })
+
+  it('EN4: 单敌落单野狼在北郊可进入（无任务前置、无 defeated 门）', () => {
+    const state = atLocation(createInitialGameState(), 'tianlong_north_outskirts')
+    const r = checkEncounter(state, 'encounter_wild_wolf')
+    expect(r.allowed).toBe(true)
+  })
+
+  it('EN5: 狼群 defeated 门——未击败允许；world.flags 已击败拒绝（already_defeated）', () => {
+    const fresh = atLocation(createInitialGameState(), 'tianlong_north_outskirts')
+    expect(checkEncounter(fresh, 'encounter_steppe_wolf_pack').allowed).toBe(true)
+    const defeated = withFlags(atLocation(createInitialGameState(), 'tianlong_north_outskirts'), {
+      steppe_wolf_pack_defeated: true,
+    })
+    const r = checkEncounter(defeated, 'encounter_steppe_wolf_pack')
+    expect(r.allowed).toBe(false)
+    expect(r.reason).toBe('already_defeated')
+    // 非 boolean 异常值 → invalid_story_state
+    const malformed = withFlags(atLocation(createInitialGameState(), 'tianlong_north_outskirts'), {
+      steppe_wolf_pack_defeated: 'yes',
+    })
+    const r2 = checkEncounter(malformed, 'encounter_steppe_wolf_pack')
+    expect(r2.allowed).toBe(false)
+    expect(r2.reason).toBe('invalid_story_state')
+  })
+
+  it('EN6: 权重选择——rng 边界正确映射三档', () => {
+    const def = getEncounter('encounter_steppe_wolf_pack')!
+    // 三档权重 50/30/20 → 累积边界：0-0.5→a、0.5-0.8→b、0.8-1→c
+    expect(resolveEncounterVariant(def, () => 0)).toBe('steppe_wolf_pack_a')
+    expect(resolveEncounterVariant(def, () => 0.49)).toBe('steppe_wolf_pack_a')
+    expect(resolveEncounterVariant(def, () => 0.5)).toBe('steppe_wolf_pack_b')
+    expect(resolveEncounterVariant(def, () => 0.79)).toBe('steppe_wolf_pack_b')
+    expect(resolveEncounterVariant(def, () => 0.8)).toBe('steppe_wolf_pack_c')
+    expect(resolveEncounterVariant(def, () => 0.999)).toBe('steppe_wolf_pack_c')
+  })
+
+  it('EN7: variant 固化——world.encounterVariants 已固化不 reroll；未固化 undefined', () => {
+    const def = getEncounter('encounter_steppe_wolf_pack')!
+    const persisted = withFlags(createInitialGameState(), {}) as GameState
+    persisted.world.encounterVariants = { encounter_steppe_wolf_pack: 'steppe_wolf_pack_b' }
+    expect(currentEncounterVariantId(persisted, def)).toBe('steppe_wolf_pack_b')
+    const fresh = atLocation(createInitialGameState(), 'tianlong_north_outskirts')
+    expect(currentEncounterVariantId(fresh, def)).toBeUndefined()
+  })
+
+  it('EN8: 狼群 members 含黑鬃魔狼变体（§23 B 档）且单敌迁移不受影响', () => {
+    const def = getEncounter('encounter_steppe_wolf_pack')!
+    const variantB = def.variants!.find((v) => v.id === 'steppe_wolf_pack_b')!
+    expect(variantB.members).toEqual([
+      { enemyId: 'black_mane_wolf', count: 1 },
+      { enemyId: 'wild_wolf', count: 1 },
+    ])
+    // 黑鬃魔狼单敌迁移仍指向北门遭遇
+    expect(SINGLE_ENEMY_ENCOUNTERS.black_mane_wolf).toBe('encounter_black_mane_wolf')
+    expect(getEncounter('encounter_black_mane_wolf')!.locationId).toBe('tianlong_north_gate')
+  })
+})

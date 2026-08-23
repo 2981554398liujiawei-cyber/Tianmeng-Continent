@@ -71,6 +71,13 @@ export const DROP_TABLES: Record<string, DropTable> = {
     random: [{ itemId: 'black_mane_pelt', quantity: [1, 1], baseChance: 0.5 }],
     lucky: [{ itemId: 'black_fang', quantity: [1, 1], dc: 12 }],
   },
+  // TM-P2-008 §25：荒原野狼——狼牙 guaranteed、狼皮 random、lucky 追加兽肉（DC 12）
+  wild_wolf: {
+    id: 'wild_wolf',
+    guaranteed: [{ itemId: 'wolf_fang', quantity: [1, 1] }],
+    random: [{ itemId: 'wolf_pelt', quantity: [1, 1], baseChance: 0.35 }],
+    lucky: [{ itemId: 'wolf_meat', quantity: [1, 1], dc: 12 }],
+  },
   // 残灾之影（剧情契约战）：掉落暗影/灵性材料，不涉及任务关键物
   sakura_calamity_fragment: {
     id: 'sakura_calamity_fragment',
