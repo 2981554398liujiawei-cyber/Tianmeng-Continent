@@ -5,13 +5,18 @@ import Drawer from '../../components/Drawer'
 import RelationshipPanel from '../../components/game/RelationshipPanel'
 import CompanionPanel from '../../components/game/CompanionPanel'
 import { useGameStore } from '../../game/state/gameStore'
-import { getQuest, getNpc, getItem, QUESTS } from '../../game/content'
+import { getClue, getQuest, getNpc, getItem, QUESTS } from '../../game/content'
 import { getCurrentObjective, type CurrentObjective } from '../../game/rules/objective'
+import { getDiscoveredClueIds } from '../../game/rules/clue'
+import type { ClueCategory } from '../../game/types'
 import type { GameState, QuestStatus } from '../../game/types'
 
 /**
- * 右栏：任务与记录中心（TM-P2-006）。
- * 结构：① 当前目标（固定顶部，仅一个）② 任务（进行中/可提交/附近委托/已完成折叠）③ 最近记录（Activity Feed + Drawer）。
+ * 右栏：冒险面板 V2（TM-P2-008 §5/§33-35）。
+ * 结构：① 当前目标（固定顶部，仅一个）② Tab 切换（任务 / 线索 / 日志）。
+ *   - 任务：进行中/可提交/附近委托/已完成折叠（原任务中心）
+ *   - 线索：Clue Journal（getDiscoveredClueIds，UI 只显示 title/description/source，杜绝生产 ID 泄漏）
+ *   - 日志：最近记录（Activity Feed + Drawer）+ 红颜录 + 伙伴
  * UI ephemeral state（useState）不进入 GameState。
  */
 export const QUEST_STATUS_LABELS: Record<QuestStatus, string> = {
@@ -22,6 +27,18 @@ export const QUEST_STATUS_LABELS: Record<QuestStatus, string> = {
   completed: '已完成',
   failed: '失败',
 }
+
+/** 线索分类中文标签（UI 展示；缺省 fallback） */
+const CLUE_CATEGORY_LABELS: Record<ClueCategory, string> = {
+  map: '地图',
+  north: '北郊',
+  investigation: '调查',
+  lore: '传闻',
+}
+const clueCategoryLabel = (category?: ClueCategory): string =>
+  category ? CLUE_CATEGORY_LABELS[category] ?? '线索' : '线索'
+
+type SidebarTab = 'quests' | 'clues' | 'log'
 
 interface TaskActivitySidebarProps {
   /** 任务提交（GamePage 包装升级检测） */
@@ -70,6 +87,7 @@ export default function TaskActivitySidebar({ onCompleteQuest, onViewQuest, onAc
   const gameState = useGameStore((s) => s.gameState)
   const acceptQuest = useGameStore((s) => s.acceptQuest)
   const discoverQuest = useGameStore((s) => s.discoverQuest)
+  const [activeTab, setActiveTab] = useState<SidebarTab>('quests')
   const [activityOpen, setActivityOpen] = useState(false)
   // 已完成任务详情展开（仅 UI）
   const [completedDetail, setCompletedDetail] = useState<string | null>(null)
@@ -111,6 +129,9 @@ export default function TaskActivitySidebar({ onCompleteQuest, onViewQuest, onAc
       if (quest.id === 'quest_north_gate_missing_patrol') {
         return gameState.quests.some((q) => q.questId === 'quest_wangcai_trouble' && q.status === 'completed')
       }
+      if (quest.id === 'quest_north_outskirts') {
+        return gameState.quests.some((q) => q.questId === 'quest_north_gate_missing_patrol' && q.status === 'completed')
+      }
       if (quest.id === 'quest_sakura_boundary') return false
       return true
     })
@@ -124,6 +145,9 @@ export default function TaskActivitySidebar({ onCompleteQuest, onViewQuest, onAc
 
   const activityItems = deriveActivityItems(gameState)
 
+  // ---- 线索 Journal ----
+  const discoveredClueIds = getDiscoveredClueIds(gameState)
+
   const handleNearbyAction = (questId: string, status: 'undiscovered' | 'available') => {
     if (status === 'undiscovered') {
       discoverQuest(questId)
@@ -133,6 +157,26 @@ export default function TaskActivitySidebar({ onCompleteQuest, onViewQuest, onAc
       acceptQuest(questId)
     }
   }
+
+  const tabButton = (key: SidebarTab, label: string, count?: number) => (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={activeTab === key}
+      data-active-tab={activeTab === key ? 'true' : 'false'}
+      onClick={() => setActiveTab(key)}
+      className={`flex items-center gap-1.5 rounded px-3 py-1.5 text-sm transition-colors ${
+        activeTab === key
+          ? 'bg-gold-500/20 font-bold text-gold-200'
+          : 'text-bone-500 hover:bg-ink-700/40 hover:text-bone-300'
+      }`}
+    >
+      {label}
+      {typeof count === 'number' && count > 0 && (
+        <span className="rounded-full bg-gold-500/30 px-1.5 text-xs text-gold-200">{count}</span>
+      )}
+    </button>
+  )
 
   return (
     <div data-testid="quest-column" className="flex h-full flex-col gap-4">
@@ -150,166 +194,182 @@ export default function TaskActivitySidebar({ onCompleteQuest, onViewQuest, onAc
         )}
       </section>
 
-      {/* ② 任务中心 */}
-      <div className="flex flex-col gap-3">
-        {/* 进行中 */}
-        {inProgress.length > 0 && (
-          <Accordion title={`进行中（${inProgress.length}）`} defaultOpen ariaLabel="进行中的任务">
-            <div className="flex flex-col gap-3">
-              {inProgress.map((qs) => (
-                <QuestRow key={qs.questId} questId={qs.questId} gameState={gameState} compact />
-              ))}
-            </div>
-          </Accordion>
-        )}
-
-        {/* 可提交 */}
-        {completable.length > 0 && (
-          <Accordion title={`可提交（${completable.length}）`} defaultOpen ariaLabel="可提交的任务">
-            <div className="flex flex-col gap-3">
-              {completable.map((qs) => {
-                const def = getQuest(qs.questId)
-                const giver = def ? getNpc(def.giverNpcId) : undefined
-                const canSubmit = giver?.locationId === world.currentLocationId
-                return (
-                  <div key={qs.questId} className="rounded border border-gold-500/40 bg-ink-900/40 p-3">
-                    <p className="font-bold text-bone-100">{def?.title ?? '未知任务'}</p>
-                    <p className="mt-1 text-xs text-bone-500">{def?.summary ?? '异常任务（无法识别）'}</p>
-                    {def?.goldReward !== undefined && (
-                      <p className="mt-1 text-xs text-gold-300">奖励：{def.goldReward} 金币</p>
-                    )}
-                    {qs.questId === 'quest_north_gate_missing_patrol' && (
-                      <p className="mt-1 text-xs text-gold-300">黑鬃魔狼已击败，找到了断裂的铜牌。返回武馆，将发现告诉马科。</p>
-                    )}
-                    {canSubmit ? (
-                      <Button variant="primary" className="mt-2" onClick={() => onCompleteQuest(qs.questId)}>
-                        提交任务
-                      </Button>
-                    ) : (
-                      <p className="mt-2 text-xs text-bone-500">前往任务发布者处提交</p>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          </Accordion>
-        )}
-
-        {/* 附近委托 */}
-        {nearbyQuests.length > 0 && (
-          <Accordion title={`附近委托（${nearbyQuests.length}）`} defaultOpen ariaLabel="附近委托">
-            <div className="flex flex-col gap-2">
-              {nearbyQuests.map(({ def, status }) => {
-                const giver = getNpc(def.giverNpcId)
-                const isDetail = nearbyDetail === def.id
-                return (
-                  <div key={def.id} className="rounded border border-ink-600 bg-ink-900/40 p-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-sm text-bone-200">
-                        {giver?.name ?? '异常人物'}：《{def.title}》
-                      </p>
-                      <Button variant="ghost" onClick={() => setNearbyDetail(isDetail ? null : def.id)}>
-                        {isDetail ? '收起' : '查看'}
-                      </Button>
-                    </div>
-                    {isDetail && (
-                      <div className="mt-2 text-xs leading-relaxed text-bone-400">
-                        <p>{def.summary}</p>
-                        <div className="mt-2 flex gap-2">
-                          {status === 'undiscovered' ? (
-                            <Button variant="primary" onClick={() => handleNearbyAction(def.id, 'undiscovered')}>
-                              查看委托
-                            </Button>
-                          ) : (
-                            <Button variant="primary" onClick={() => handleNearbyAction(def.id, 'available')}>
-                              接受任务
-                            </Button>
-                          )}
-                          <Button variant="ghost" onClick={() => onViewQuest(def.id)}>
-                            找到发布者
-                          </Button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          </Accordion>
-        )}
-
-        {/* 已完成（默认折叠） */}
-        {completed.length > 0 && (
-          <Accordion title={`已完成（${completed.length}）`} ariaLabel="已完成的任务">
-            <div className="flex flex-col gap-1">
-              {completed.map((qs) => {
-                const def = getQuest(qs.questId)
-                const isDetail = completedDetail === qs.questId
-                return (
-                  <div key={qs.questId}>
-                    <button
-                      type="button"
-                      className="flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left text-sm text-bone-300 hover:bg-ink-700/40"
-                      onClick={() => setCompletedDetail(isDetail ? null : qs.questId)}
-                    >
-                      <span>{def?.title ?? '未知任务'}</span>
-                      <span className="shrink-0 text-xs text-bone-500">已完成</span>
-                    </button>
-                    {isDetail && (
-                      <div className="mb-1 rounded border border-ink-600 bg-ink-900/40 px-3 py-2 text-xs leading-relaxed text-bone-400">
-                        <p>{def?.summary ?? '异常任务（无法识别）'}</p>
-                        {def?.goldReward !== undefined && <p className="mt-1 text-gold-300">奖励：{def.goldReward} 金币</p>}
-                        {qs.questId === 'quest_wangcai_trouble' && qs.status === 'completed' && (
-                          <p className="mt-1 text-bone-300">第一阶段主线已经告一段落。《追寻黄金兔子王》仍需等待新的线索。</p>
-                        )}
-                        {qs.questId === 'quest_north_gate_missing_patrol' && qs.status === 'completed' && (
-                          <p className="mt-1 text-bone-300">北门失联 · 已完成</p>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-              {failed.length > 0 && (
-                <div className="mt-2 border-t border-ink-600 pt-2">
-                  <p className="px-2 text-xs text-bone-500">失败（{failed.length}）</p>
-                  {failed.map((qs) => (
-                    <p key={qs.questId} className="px-2 py-1 text-sm text-bone-500">
-                      {getQuest(qs.questId)?.title ?? '未知任务'}
-                    </p>
-                  ))}
-                </div>
-              )}
-            </div>
-          </Accordion>
-        )}
+      {/* ② Tab 切换（任务 / 线索 / 日志；TM-P2-008 §5） */}
+      <div role="tablist" aria-label="冒险面板" className="flex gap-2 border-b border-ink-600 pb-2">
+        {tabButton('quests', '任务')}
+        {tabButton('clues', '线索', discoveredClueIds.length)}
+        {tabButton('log', '日志')}
       </div>
 
-      {/* ③ 最近记录（Activity Feed；3-5 条 + 查看全部 → Drawer） */}
-      <section className="rounded border border-ink-600 bg-ink-800/50 p-4 text-sm text-bone-300">
-        <h3 className="mb-2 text-xs font-bold tracking-wider text-bone-500">最近记录</h3>
-        {activityItems.length === 0 ? (
-          <p className="text-bone-500">暂无记录。</p>
-        ) : (
-          <ul className="flex flex-col gap-1.5">
-            {activityItems.slice(0, 5).map((item) => (
-              <li key={item.id} className="flex items-start gap-2 text-xs text-bone-400">
-                <span className="shrink-0 text-bone-500">[{item.category}]</span>
-                <span>{item.text}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-        {activityItems.length > 5 && (
-          <Button variant="ghost" className="mt-2" onClick={() => setActivityOpen(true)}>
-            查看全部
-          </Button>
-        )}
-      </section>
+      {/* ③ 任务 Tab */}
+      {activeTab === 'quests' && (
+        <div className="flex flex-col gap-3">
+          {/* 进行中 */}
+          {inProgress.length > 0 && (
+            <Accordion title={`进行中（${inProgress.length}）`} defaultOpen ariaLabel="进行中的任务">
+              <div className="flex flex-col gap-3">
+                {inProgress.map((qs) => (
+                  <QuestRow key={qs.questId} questId={qs.questId} gameState={gameState} compact />
+                ))}
+              </div>
+            </Accordion>
+          )}
 
-      {/* 红颜录 / 伙伴（保留原右栏面板） */}
-      <RelationshipPanel />
-      <CompanionPanel />
+          {/* 可提交 */}
+          {completable.length > 0 && (
+            <Accordion title={`可提交（${completable.length}）`} defaultOpen ariaLabel="可提交的任务">
+              <div className="flex flex-col gap-3">
+                {completable.map((qs) => {
+                  const def = getQuest(qs.questId)
+                  const giver = def ? getNpc(def.giverNpcId) : undefined
+                  const canSubmit = giver?.locationId === world.currentLocationId
+                  return (
+                    <div key={qs.questId} className="rounded border border-gold-500/40 bg-ink-900/40 p-3">
+                      <p className="font-bold text-bone-100">{def?.title ?? '未知任务'}</p>
+                      <p className="mt-1 text-xs text-bone-500">{def?.summary ?? '异常任务（无法识别）'}</p>
+                      {def?.goldReward !== undefined && (
+                        <p className="mt-1 text-xs text-gold-300">奖励：{def.goldReward} 金币</p>
+                      )}
+                      {qs.questId === 'quest_north_gate_missing_patrol' && (
+                        <p className="mt-1 text-xs text-gold-300">黑鬃魔狼已击败，找到了断裂的铜牌。返回武馆，将发现告诉马科。</p>
+                      )}
+                      {canSubmit ? (
+                        <Button variant="primary" className="mt-2" onClick={() => onCompleteQuest(qs.questId)}>
+                          提交任务
+                        </Button>
+                      ) : (
+                        <p className="mt-2 text-xs text-bone-500">前往任务发布者处提交</p>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </Accordion>
+          )}
+
+          {/* 附近委托 */}
+          {nearbyQuests.length > 0 && (
+            <Accordion title={`附近委托（${nearbyQuests.length}）`} defaultOpen ariaLabel="附近委托">
+              <div className="flex flex-col gap-2">
+                {nearbyQuests.map(({ def, status }) => {
+                  const giver = getNpc(def.giverNpcId)
+                  const isDetail = nearbyDetail === def.id
+                  return (
+                    <div key={def.id} className="rounded border border-ink-600 bg-ink-900/40 p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-sm text-bone-200">
+                          {giver?.name ?? '异常人物'}：《{def.title}》
+                        </p>
+                        <Button variant="ghost" onClick={() => setNearbyDetail(isDetail ? null : def.id)}>
+                          {isDetail ? '收起' : '查看'}
+                        </Button>
+                      </div>
+                      {isDetail && (
+                        <div className="mt-2 text-xs leading-relaxed text-bone-400">
+                          <p>{def.summary}</p>
+                          <div className="mt-2 flex gap-2">
+                            {status === 'undiscovered' ? (
+                              <Button variant="primary" onClick={() => handleNearbyAction(def.id, 'undiscovered')}>
+                                查看委托
+                              </Button>
+                            ) : (
+                              <Button variant="primary" onClick={() => handleNearbyAction(def.id, 'available')}>
+                                接受任务
+                              </Button>
+                            )}
+                            <Button variant="ghost" onClick={() => onViewQuest(def.id)}>
+                              找到发布者
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </Accordion>
+          )}
+
+          {/* 已完成（默认折叠） */}
+          {completed.length > 0 && (
+            <Accordion title={`已完成（${completed.length}）`} ariaLabel="已完成的任务">
+              <div className="flex flex-col gap-1">
+                {completed.map((qs) => {
+                  const def = getQuest(qs.questId)
+                  const isDetail = completedDetail === qs.questId
+                  return (
+                    <div key={qs.questId}>
+                      <button
+                        type="button"
+                        className="flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left text-sm text-bone-300 hover:bg-ink-700/40"
+                        onClick={() => setCompletedDetail(isDetail ? null : qs.questId)}
+                      >
+                        <span>{def?.title ?? '未知任务'}</span>
+                        <span className="shrink-0 text-xs text-bone-500">已完成</span>
+                      </button>
+                      {isDetail && (
+                        <div className="mb-1 rounded border border-ink-600 bg-ink-900/40 px-3 py-2 text-xs leading-relaxed text-bone-400">
+                          <p>{def?.summary ?? '异常任务（无法识别）'}</p>
+                          {def?.goldReward !== undefined && <p className="mt-1 text-gold-300">奖励：{def.goldReward} 金币</p>}
+                          {qs.questId === 'quest_wangcai_trouble' && qs.status === 'completed' && (
+                            <p className="mt-1 text-bone-300">第一阶段主线已经告一段落。《追寻黄金兔子王》仍需等待新的线索。</p>
+                          )}
+                          {qs.questId === 'quest_north_gate_missing_patrol' && qs.status === 'completed' && (
+                            <p className="mt-1 text-bone-300">北门失联 · 已完成</p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+                {failed.length > 0 && (
+                  <div className="mt-2 border-t border-ink-600 pt-2">
+                    <p className="px-2 text-xs text-bone-500">失败（{failed.length}）</p>
+                    {failed.map((qs) => (
+                      <p key={qs.questId} className="px-2 py-1 text-sm text-bone-500">
+                        {getQuest(qs.questId)?.title ?? '未知任务'}
+                      </p>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </Accordion>
+          )}
+        </div>
+      )}
+
+      {/* ④ 线索 Tab（Clue Journal V1；UI 只显示 title/description/source，杜绝生产 ID 泄漏） */}
+      {activeTab === 'clues' && <ClueJournalList gameState={gameState} />}
+
+      {/* ⑤ 日志 Tab（最近记录 + 红颜录 + 伙伴） */}
+      {activeTab === 'log' && (
+        <div className="flex flex-col gap-4">
+          <section className="rounded border border-ink-600 bg-ink-800/50 p-4 text-sm text-bone-300">
+            <h3 className="mb-2 text-xs font-bold tracking-wider text-bone-500">最近记录</h3>
+            {activityItems.length === 0 ? (
+              <p className="text-bone-500">暂无记录。</p>
+            ) : (
+              <ul className="flex flex-col gap-1.5">
+                {activityItems.slice(0, 5).map((item) => (
+                  <li key={item.id} className="flex items-start gap-2 text-xs text-bone-400">
+                    <span className="shrink-0 text-bone-500">[{item.category}]</span>
+                    <span>{item.text}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {activityItems.length > 5 && (
+              <Button variant="ghost" className="mt-2" onClick={() => setActivityOpen(true)}>
+                查看全部
+              </Button>
+            )}
+          </section>
+
+          {/* 红颜录 / 伙伴（保留原右栏面板） */}
+          <RelationshipPanel />
+          <CompanionPanel />
+        </div>
+      )}
 
       {/* Activity Drawer（消息中心） */}
       <Drawer open={activityOpen} onClose={() => setActivityOpen(false)} title="消息中心" ariaLabel="消息中心">
@@ -323,6 +383,39 @@ export default function TaskActivitySidebar({ onCompleteQuest, onViewQuest, onAc
         </div>
       </Drawer>
     </div>
+  )
+}
+
+/** 线索 Journal 列表（TM-P2-008 §7；UI 只显示 title/description/source/category 中文标签，杜绝生产 ID 泄漏）。
+ *  独立导出以便纯 SSR 组件测试（与 BackpackPanel 的导出纯函数模式一致）。 */
+export function ClueJournalList({ gameState }: { gameState: GameState }) {
+  const discoveredClueIds = getDiscoveredClueIds(gameState)
+  return (
+    <section className="rounded border border-ink-600 bg-ink-800/50 p-4 text-sm text-bone-300">
+      <h3 className="mb-2 text-xs font-bold tracking-wider text-gold-300">线索录</h3>
+      {discoveredClueIds.length === 0 ? (
+        <p className="text-bone-500">尚未发现任何线索。探索场景、与人交谈、调查现场，新发现会记录在这里。</p>
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {discoveredClueIds.map((id) => {
+            const def = getClue(id)
+            if (!def) return null
+            return (
+              <li key={def.id} className="rounded border border-ink-600 bg-ink-900/40 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="font-bold text-bone-100">{def.title}</p>
+                  <span className="shrink-0 rounded bg-gold-500/20 px-2 py-0.5 text-xs text-gold-300">
+                    {clueCategoryLabel(def.category)}
+                  </span>
+                </div>
+                <p className="mt-1 text-xs leading-relaxed text-bone-400">{def.description}</p>
+                {def.source && <p className="mt-1 text-xs text-bone-500">来源：{def.source}</p>}
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </section>
   )
 }
 
@@ -341,6 +434,10 @@ function QuestRow({ questId, gameState, compact }: { questId: string; gameState:
   const northGateQuest = gameState.quests.find((q) => q.questId === 'quest_north_gate_missing_patrol')
   const northGateTrailChecked = northGateQuest?.flags.north_gate_trail_checked === true
   const northGateWolfDefeated = northGateQuest?.flags.north_gate_wolf_defeated === true
+  const northOutskirtsQuest = gameState.quests.find((q) => q.questId === 'quest_north_outskirts')
+  const northOutskirtsTrailTracked = northOutskirtsQuest?.flags.north_outskirts_trail_tracked === true
+  const northOutskirtsAmbushFound = northOutskirtsQuest?.flags.north_outskirts_ambush_found === true
+  const northOutskirtsAmbushInvestigated = northOutskirtsQuest?.flags.north_outskirts_ambush_investigated === true
   const wangcaiQuest = gameState.quests.find((q) => q.questId === 'quest_wangcai_trouble')
   const wangcaiBriefed = wangcaiQuest?.flags.wangcai_briefed === true
   const towerUnlocked = world.flags.black_stone_tower_unlocked === true
@@ -488,6 +585,37 @@ function QuestRow({ questId, gameState, compact }: { questId: string; gameState:
       )}
       {northGateWolfDefeated && questId === 'quest_north_gate_missing_patrol' && (
         <p className="mt-1 text-xs text-bone-500">北门外的黑鬃魔狼已击败。</p>
+      )}
+      {questId === 'quest_north_outskirts' && qs.status === 'in_progress' && (
+        <div className="mt-1 text-xs text-bone-400">
+          {!northOutskirtsTrailTracked ? (
+            <>
+              <p>当前目标：返回天龙城北门，沿着巡逻队留下的足迹继续追踪。</p>
+              <p className="mt-1 text-bone-300">失联巡逻队显然没有停在这里。</p>
+            </>
+          ) : !northOutskirtsAmbushFound ? (
+            <>
+              <p className="text-gold-300">足迹已发现，向北郊延伸。</p>
+              <p className="mt-1">当前目标：前往北郊追踪足迹，找到袭击现场。</p>
+            </>
+          ) : !northOutskirtsAmbushInvestigated ? (
+            <>
+              <p className="text-gold-300">袭击现场已找到。</p>
+              <p className="mt-1">当前目标：调查袭击现场，查明巡逻队的遭遇。</p>
+            </>
+          ) : (
+            <>
+              <p className="text-gold-300">袭击现场已调查。</p>
+              <p className="mt-1">当前目标：返回北门或武馆，将发现告诉马科。</p>
+            </>
+          )}
+        </div>
+      )}
+      {questId === 'quest_north_outskirts' && qs.status === 'completable' && (
+        <div className="mt-1 text-xs text-bone-400">
+          <p className="text-gold-300">北郊的发现已汇总。</p>
+          <p className="mt-1">当前目标：返回武馆，向马科汇报。</p>
+        </div>
       )}
     </div>
   )
