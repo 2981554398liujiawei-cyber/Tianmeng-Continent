@@ -2,8 +2,12 @@ import { useState } from 'react'
 import Button from '../components/Button'
 import SakuraEncounterPanel from '../components/game/SakuraEncounterPanel'
 import MountStablePanel from '../components/game/MountStablePanel'
+import BackpackPanel from '../components/game/BackpackPanel'
+import Drawer from '../components/Drawer'
+import Toast from '../components/Toast'
+import MobileNav from '../components/MobileNav'
 import { useGameStore, VILLAGE_ELDER_POST_QUEST_EVENT_ID } from '../game/state/gameStore'
-import { getEnemy, getEncounter, getItem, getLocation, getNpc, allEncounterMembers, NPCS, QUESTS } from '../game/content'
+import { getClue, getEnemy, getEncounter, getItem, getLocation, getNpc, allEncounterMembers, NPCS, QUESTS } from '../game/content'
 import { CHECK_DC, type D20CheckResult } from '../game/rules/d20'
 import { checkEncounter, singleEnemyIdOf } from '../game/rules/encounter'
 import type { EncounterDefinition } from '../game/types/encounter'
@@ -16,6 +20,7 @@ import {
   isSakuraTriggerLocation,
   canTriggerSakuraBanter,
   isFirstRestTalkReady,
+  isSakuraPresent,
 } from '../game/rules/sakura'
 import type {
   NorthTowerClaimResult,
@@ -25,11 +30,12 @@ import type {
   OldTraderResult,
   SakuraBanterChoice,
   SakuraFirstRestChoice,
+  NorthOutskirtsInvestigateResult,
 } from '../game/state/gameStore'
 import PlayerSidebar from './game/PlayerSidebar'
 import TaskActivitySidebar from './game/TaskActivitySidebar'
 import NpcInteractionPanel, { type NearbyQuestInfo, type NpcShopExtras } from './game/NpcInteractionPanel'
-import { canExploreMountTrail, MOUNT_TRAIL_REWARD_GOLD } from '../game/rules/mount'
+import { canExploreMountTrail, canSearchNorthOutskirtsByMount, MOUNT_TRAIL_REWARD_GOLD } from '../game/rules/mount'
 import { useCloudSession } from '../cloud/cloudSessionStore'
 import Modal from '../components/Modal'
 import { getQuest as getQuestDef } from '../game/content'
@@ -120,6 +126,15 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
   // TM-P2-007 §21：城郊古驿道 optional 检定 action
   const exploreMountTrail = useGameStore((s) => s.exploreMountTrail)
   const investigateNorthGateTrail = useGameStore((s) => s.investigateNorthGateTrail)
+  // TM-P2-008：北郊余波主线（《北郊追踪》Stage A-D）actions
+  const discoverQuest = useGameStore((s) => s.discoverQuest)
+  const acceptQuest = useGameStore((s) => s.acceptQuest)
+  const trackNorthOutskirtsTrail = useGameStore((s) => s.trackNorthOutskirtsTrail)
+  const searchNorthOutskirtsAmbush = useGameStore((s) => s.searchNorthOutskirtsAmbush)
+  const investigateNorthOutskirtsAmbush = useGameStore((s) => s.investigateNorthOutskirtsAmbush)
+  const reportNorthOutskirts = useGameStore((s) => s.reportNorthOutskirts)
+  // 背包（移动端底部 [背包] Drawer / BackpackPanel 复用）
+  const useHealingPotion = useGameStore((s) => s.useHealingPotion)
   // TM-P2-004：Sakura / 伙伴 / 关系 / 休整 actions
   const startSakuraEncounter = useGameStore((s) => s.startSakuraEncounter)
   const sakuraBanter = useGameStore((s) => s.sakuraBanter)
@@ -143,6 +158,16 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
   const [mountStableOpen, setMountStableOpen] = useState(false)
   // TM-P2-007 §21：城郊古驿道 optional 检定结果（仅 UI 本地状态；一次性，flag 固化）
   const [lastMountTrail, setLastMountTrail] = useState<D20CheckResult | null>(null)
+  // TM-P2-008 §13/§32：轻量提示（获得新线索 / 任务推进；UI ephemeral，不进 GameState）
+  const [toast, setToast] = useState<string | null>(null)
+  // TM-P2-008 §14：移动端底部 tab 打开的抽屉面板（<768；UI ephemeral）
+  const [mobilePanel, setMobilePanel] = useState<'role' | 'adventure' | null>(null)
+  // TM-P2-008 §15：768–1279 右栏 → Drawer（「冒险」按钮打开 AdventureSidebar）
+  const [adventureDrawerOpen, setAdventureDrawerOpen] = useState(false)
+  // TM-P2-008 §14：移动端底部 [背包] tab（BackpackPanel 全屏抽屉）
+  const [backpackOpen, setBackpackOpen] = useState(false)
+  // TM-P2-008 §20/§22/§50：北郊袭击现场多解调查结果（仅 UI 本地状态）
+  const [northInvestigation, setNorthInvestigation] = useState<NorthOutskirtsInvestigateResult | null>(null)
   // 云同步状态（顶部薄系统栏轻量信息）
   const cloudStatus = useCloudSession((s) => s.status)
   const cloudSyncStatus = useCloudSession((s) => s.syncStatus)
@@ -276,6 +301,9 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
   const northGateInvestigateVisible =
     world.currentLocationId === 'tianlong_north_gate' && northGateQuestInProgress && northGateTrailPending
 
+  // TM-P2-008：《北郊追踪》任务状态（北门失联 completed 后由马科发布）
+  const northOutskirtsQuest = gameState.quests.find((q) => q.questId === 'quest_north_outskirts')
+
   // TM-P0-015：附近人物 = 常驻当前地点的注册 NPC（动态过滤；樱花优子不走普通对话系统，从列表排除）
   const localNpcs = Object.values(NPCS).filter(
     (npc) => npc.locationId === world.currentLocationId && npc.id !== 'sakura_yuko',
@@ -297,6 +325,45 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
   const handleExploreMountTrail = () => {
     const result = exploreMountTrail()
     if (result) setLastMountTrail(result)
+  }
+
+  /** TM-P2-008：接受北郊任务（undiscovered→available→in_progress 全链；store 负责窄前置） */
+  const handleAcceptNorthOutskirts = () => {
+    const status = northOutskirtsQuest?.status
+    if (status === 'undiscovered' || status === undefined) {
+      if (!discoverQuest('quest_north_outskirts')) return
+    }
+    const after = useGameStore.getState().gameState?.quests.find((q) => q.questId === 'quest_north_outskirts')
+    if (after?.status === 'available' && acceptQuest('quest_north_outskirts')) {
+      setToast('接受任务：北郊追踪')
+    }
+  }
+
+  /** TM-P2-008 Stage A：追踪足迹（北门）——guaranteed 线索「拖行痕迹」 */
+  const handleTrackNorthOutskirtsTrail = () => {
+    if (trackNorthOutskirtsTrail()) setToast('获得新线索：拖行痕迹')
+  }
+
+  /** TM-P2-008 Stage B：搜索袭击现场（北郊） */
+  const handleSearchNorthOutskirtsAmbush = () => {
+    if (searchNorthOutskirtsAmbush()) setToast('你找到了北郊的袭击现场')
+  }
+
+  /** TM-P2-008 Stage C：多解调查（MND / LCK / Sakura / Mount）——结果 UI ephemeral，展示在行动块内 */
+  const handleNorthOutskirtsInvestigate = (method: 'mnd' | 'lck' | 'sakura' | 'mount') => {
+    const result = investigateNorthOutskirtsAmbush(method)
+    if (!result || !result.ok) return
+    setNorthInvestigation(result)
+    if (result.clueAdded) {
+      setToast(`获得新线索：${getClue(result.clueAdded)?.title ?? '未知线索'}`)
+    } else if ((result.method === 'mnd' || result.method === 'lck') && result.progressed) {
+      setToast('你查明了北郊袭击现场的真相')
+    }
+  }
+
+  /** TM-P2-008 Stage D：回报发现（武馆/北门） */
+  const handleReportNorthOutskirts = () => {
+    if (reportNorthOutskirts()) setToast('任务更新：北郊追踪')
   }
 
   const activeNpc = activeNpcId ? getNpc(activeNpcId) : undefined
@@ -360,13 +427,15 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
       if (quest.id === 'quest_apothecary_herb_route' && !gameState.quests.some((q) => q.questId === 'quest_village_monsters' && q.status === 'completed')) continue
       if (quest.id === 'quest_blacksmith_mine_remnant' && !gameState.quests.some((q) => q.questId === 'quest_mine_cleanup' && q.status === 'completed')) continue
       if (quest.id === 'quest_north_gate_missing_patrol' && !gameState.quests.some((q) => q.questId === 'quest_wangcai_trouble' && q.status === 'completed')) continue
+      // TM-P2-008 §16：北郊追踪（与 Store discoverQuest 窄前置一致——要求北门失联 completed）
+      if (quest.id === 'quest_north_outskirts' && !gameState.quests.some((q) => q.questId === 'quest_north_gate_missing_patrol' && q.status === 'completed')) continue
       list.push({ questId: quest.id, title: quest.title, status: qs?.status === 'available' ? 'available' : 'undiscovered' })
     }
     return list
   })()
 
   return (
-    <div className="game-page mx-auto flex h-full w-full max-w-[1600px] flex-col px-4 py-3">
+    <div className="game-page mx-auto flex h-full w-full max-w-[1600px] flex-col px-4 pt-3 pb-16 md:pb-3">
       {/* 顶部薄系统栏（TM-P2-006：删除大 Logo/地点块） */}
       <header className="mb-3 flex items-center justify-between gap-3 border-b border-ink-600 pb-2">
         <p className="text-xs tracking-widest text-bone-500">
@@ -375,6 +444,15 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
           {cloudStatus === 'not_configured' && <span className="ml-3 text-bone-500">云：仅本机</span>}
         </p>
         <div className="flex items-center gap-2">
+          {/* TM-P2-008 §15：768–1279 右栏由「冒险」按钮打开 Drawer（≥1280 右栏常驻，隐藏按钮） */}
+          <Button
+            variant="ghost"
+            className="hidden md:inline-flex xl:hidden"
+            data-testid="open-adventure-drawer"
+            onClick={() => setAdventureDrawerOpen(true)}
+          >
+            冒险
+          </Button>
           <Button variant="primary" onClick={onOpenSaves}>
             保存游戏
           </Button>
@@ -383,6 +461,9 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
           </Button>
         </div>
       </header>
+
+      {/* 轻量提示（TM-P2-008 §13/§32：获得新线索 / 任务推进瞬时反馈） */}
+      <Toast message={toast} onDone={() => setToast(null)} />
 
       {showLevelUpNotice && (
         <section className="mb-3 rounded border border-gold-500/60 bg-gold-900/30 p-4 text-sm">
@@ -414,15 +495,15 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
         </Modal>
       )}
 
-      {/* 三栏布局（TM-P2-006）：左=玩家 / 中=当前场景 / 右=任务与记录 */}
-      <div className="game-grid grid flex-1 grid-cols-1 gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,360px)] xl:grid-cols-[280px_minmax(0,1fr)_340px]">
-        {/* 左栏：玩家 */}
-        <div className="game-col order-2 min-h-0 md:col-start-2 md:row-start-1 xl:order-1 xl:col-start-1 xl:col-span-1">
+      {/* 三栏布局（TM-P2-008 §14/§15）：<768 底部 tab（左右栏隐藏，Drawer 承载）；768–1279 左 compact + 中 main（右栏 Drawer）；≥1280 三列全展示 */}
+      <div className="game-grid grid flex-1 grid-cols-1 gap-4 md:grid-cols-[280px_minmax(0,1fr)] xl:grid-cols-[280px_minmax(0,1fr)_340px]">
+        {/* 左栏：玩家（<768 隐藏，由底部 [角色] Drawer 承载；data-testid 保持在 DOM） */}
+        <div className="game-col order-2 hidden min-h-0 md:order-1 md:col-start-1 md:block xl:col-start-1 xl:col-span-1">
           <PlayerSidebar />
         </div>
 
         {/* 中栏：当前场景（CURRENT SCENE） */}
-        <section data-testid="main-column" className="game-col order-1 min-h-0 md:col-start-1 md:row-span-2 xl:col-start-2">
+        <section data-testid="main-column" className="game-col order-1 min-h-0 md:order-2 md:col-start-2 md:row-span-2 xl:col-start-2">
           <div className="flex h-full flex-col gap-4">
             {/* 当前场景（地点名称为中央标题） */}
             <section
@@ -825,32 +906,22 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
               )
             )}
 
-            {/* TM-P0-019/P1-013：新的线索 —— 背包持有《兔子的路径》时的当前必要剧情（V4 重构必须保留此核心剧情步骤；Store 为唯一状态来源） */}
+            {/* TM-P2-008：兔子的路径——中间区只保留「展开地图」行动；地图信息迁右栏 Clue Journal（clue_rabbit_path），不再常驻信息卡（§2-6/§8；不改 Golden Rabbit 剧情状态） */}
             {(() => {
               const pathDef = getItem('rabbit_path')
               const hasPath =
                 pathDef !== undefined && gameState.inventory.some((e) => e.itemId === 'rabbit_path' && e.quantity >= 1)
               if (!hasPath) return null
-              const examined = world.flags.rabbit_path_examined === true
+              if (world.flags.rabbit_path_examined === true) return null
               return (
                 <section className="rounded border border-gold-500/40 bg-gold-500/5 p-5 text-sm text-bone-300">
-                  <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">新的线索</h3>
-                  <p className="font-bold text-bone-100">{pathDef.name}</p>
-                  <p className="mt-1 leading-relaxed text-bone-300">{pathDef.description}</p>
-                  {examined ? (
-                    <>
-                      <p className="mt-3 border-t border-gold-500/20 pt-3 text-bone-200">
-                        地图上的路线最终指向黄金兔子王所在之地。
-                      </p>
-                      <p className="mt-1 text-bone-300">地图上的标记仍无法对应到任何已知地点。</p>
-                    </>
-                  ) : (
-                    <div className="mt-3">
-                      <Button variant="primary" onClick={() => inspectRabbitPath()}>
-                        展开地图
-                      </Button>
-                    </div>
-                  )}
+                  <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">兔子的路径</h3>
+                  <p className="leading-relaxed text-bone-300">{pathDef.description}</p>
+                  <div className="mt-3">
+                    <Button variant="primary" onClick={() => inspectRabbitPath()}>
+                      展开地图
+                    </Button>
+                  </div>
                 </section>
               )
             })()}
@@ -1089,34 +1160,159 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
               </section>
             )}
 
-            {/* TM-P1-030：第一阶段完成（王财任务向马科复命成功后）——马科短剧情 + 阶段完成提示；
-                黄金兔子长期线不 completed/failed、不改 flag/stage/兔子的路径（冻结保留）。
-                TM-P2-006：作为「当前必要剧情」保留在中央场景（V4 不得删除核心剧情步骤）。 */}
-            {wangcaiQuest?.status === 'completed' && (
-              <section className="rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
-                <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">第一阶段完成</h3>
-                <p className="leading-relaxed text-bone-200">马科听完黑石塔里的经过，神情明显严肃起来。</p>
-                <p className="mt-1 leading-relaxed text-bone-200">“看来最近的魔物异动并不是偶然。”</p>
-                <p className="mt-1 leading-relaxed text-bone-200">“这件事我会向上面汇报。你先休息一下。”</p>
-                <p className="mt-1 text-bone-300">黑石塔的调查暂时告一段落。</p>
-                <div className="mt-3 rounded border border-gold-500/40 bg-ink-900/40 p-3">
-                  <p className="text-gold-300">第一阶段主线已经告一段落。</p>
-                  <p className="mt-1">《追寻黄金兔子王》仍需等待新的线索。</p>
-                </div>
-              </section>
-            )}
+            {/* TM-P2-008：北门失联完成——马科发布《北郊追踪》行动块（原常驻完成大卡改造；completed 长期信息迁右栏已完成详情 + 活动流，§2-6/§31） */}
+            {northGateQuest?.status === 'completed' && (() => {
+              const status = northOutskirtsQuest?.status
+              if (status === 'completable' || status === 'completed') return null
+              return (
+                <section className="rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
+                  <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">北门失联 · 调查终结</h3>
+                  <p className="leading-relaxed text-bone-200">马科接过断裂的铜牌，脸色沉了下来。</p>
+                  <p className="mt-1 leading-relaxed text-bone-200">“这是北门第三巡逻队的东西。”</p>
+                  <p className="mt-1 leading-relaxed text-bone-200">“看来黑石塔之外，北面的情况也不对劲。”</p>
+                  <p className="mt-1 leading-relaxed text-bone-200">“我会先派人封锁消息。下一步，我们得沿着他们留下的路线继续查。”</p>
+                  {status === 'in_progress' ? (
+                    <p className="mt-3 text-gold-300">当前目标：沿着巡逻队留下的足迹继续追踪。</p>
+                  ) : (
+                    <div className="mt-3">
+                      <Button
+                        variant="primary"
+                        data-testid="accept-north-outskirts"
+                        onClick={handleAcceptNorthOutskirts}
+                      >
+                        接受任务：前往北郊继续追查
+                      </Button>
+                    </div>
+                  )}
+                </section>
+              )
+            })()}
 
-            {/* TM-P2-001 D6/P1-032：北门失联完成——马科固定剧情（接过铜牌/第三巡逻队/封锁消息）。
-                TM-P2-006：作为「当前必要剧情」保留在中央场景（V4 不得删除核心剧情步骤）。 */}
-            {northGateQuest?.status === 'completed' && (
-              <section className="rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
-                <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">北门失联 · 调查终结</h3>
-                <p className="leading-relaxed text-bone-200">马科接过断裂的铜牌，脸色沉了下来。</p>
-                <p className="mt-1 leading-relaxed text-bone-200">“这是北门第三巡逻队的东西。”</p>
-                <p className="mt-1 leading-relaxed text-bone-200">“看来黑石塔之外，北面的情况也不对劲。”</p>
-                <p className="mt-1 leading-relaxed text-bone-200">“我会先派人封锁消息。下一步，我们得沿着他们留下的路线继续查。”</p>
-              </section>
-            )}
+            {/* TM-P2-008 §18-20/§26：北郊追踪——中间区只保留当前场景可执行行动（Stage A 追踪 / Stage B 搜索 / Stage C 多解调查 / Stage D 回报） */}
+            {(() => {
+              const nq = northOutskirtsQuest
+              if (nq?.status !== 'in_progress') return null
+              const trailTracked = nq.flags.north_outskirts_trail_tracked === true
+              const ambushFound = nq.flags.north_outskirts_ambush_found === true
+              const investigated = nq.flags.north_outskirts_ambush_investigated === true
+              const reported = nq.flags.north_outskirts_reported === true
+              const atNorthGate = world.currentLocationId === 'tianlong_north_gate'
+              const atOutskirts = world.currentLocationId === 'tianlong_north_outskirts'
+              const atMartialHall = world.currentLocationId === 'tianlong_martial_hall'
+              const mountSearchable = canSearchNorthOutskirtsByMount(gameState)
+              const sakuraHere = isSakuraPresent(gameState)
+
+              // Stage A：北门——沿着足迹继续追踪（写 trail_tracked + 解锁北郊 + 线索「拖行痕迹」）
+              if (!trailTracked && atNorthGate) {
+                return (
+                  <section className="rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
+                    <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">北郊追踪</h3>
+                    <p className="leading-relaxed text-bone-200">
+                      失联巡逻队的足迹没有停在北门——荒草间被拖拽的痕迹一路向北延伸。
+                    </p>
+                    <Button
+                      variant="primary"
+                      className="mt-3"
+                      data-testid="track-north-trail"
+                      onClick={handleTrackNorthOutskirtsTrail}
+                    >
+                      沿着足迹继续追踪
+                    </Button>
+                  </section>
+                )
+              }
+
+              // Stage B：北郊——搜索袭击现场（写 ambush_found）
+              if (trailTracked && !ambushFound && atOutskirts) {
+                return (
+                  <section className="rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
+                    <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">北郊追踪</h3>
+                    <p className="leading-relaxed text-bone-200">
+                      痕迹把你引向荒原深处一处被翻乱的袭击现场，草丛里散落着断裂的箭杆与碎甲片。
+                    </p>
+                    <Button
+                      variant="primary"
+                      className="mt-3"
+                      data-testid="search-north-ambush"
+                      onClick={handleSearchNorthOutskirtsAmbush}
+                    >
+                      搜索袭击现场
+                    </Button>
+                  </section>
+                )
+              }
+
+              // Stage C：北郊——多解调查（MND / LCK / Sakura / Mount；任一成功推进；Sakura/Mount 只补充线索不自动解决）
+              if (ambushFound && !investigated && atOutskirts) {
+                const checkFailed =
+                  northInvestigation?.ok === true &&
+                  (northInvestigation.method === 'mnd' || northInvestigation.method === 'lck') &&
+                  !northInvestigation.progressed
+                return (
+                  <section className="rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
+                    <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">北郊追踪 · 袭击现场</h3>
+                    <p className="leading-relaxed text-bone-200">现场一片狼藉。你可以用不同的方式找出这里发生了什么。</p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Button
+                        variant="primary"
+                        data-testid="investigate-mnd"
+                        onClick={() => handleNorthOutskirtsInvestigate('mnd')}
+                      >
+                        [MND 检定] 辨认拖拽方向
+                      </Button>
+                      <Button
+                        variant="primary"
+                        data-testid="investigate-lck"
+                        onClick={() => handleNorthOutskirtsInvestigate('lck')}
+                      >
+                        [LCK 检定] 搜索周边遗物
+                      </Button>
+                      {sakuraHere && (
+                        <Button
+                          variant="ghost"
+                          data-testid="investigate-sakura"
+                          onClick={() => handleNorthOutskirtsInvestigate('sakura')}
+                        >
+                          请樱花优子观察
+                        </Button>
+                      )}
+                      {mountSearchable && (
+                        <Button
+                          variant="ghost"
+                          data-testid="investigate-mount"
+                          onClick={() => handleNorthOutskirtsInvestigate('mount')}
+                        >
+                          沿官道快速搜索（坐骑）
+                        </Button>
+                      )}
+                    </div>
+                    {checkFailed && (
+                      <p className="mt-3 text-sm text-bone-400">你没有找到足够的线索，但可以再试一次。</p>
+                    )}
+                  </section>
+                )
+              }
+
+              // Stage D：武馆/北门——向马科汇报（写 reported + status→completable）
+              if (investigated && !reported && (atMartialHall || atNorthGate)) {
+                return (
+                  <section className="rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
+                    <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">北郊追踪</h3>
+                    <p className="leading-relaxed text-bone-200">你已查明北郊袭击现场的真相，是时候把发现告诉马科。</p>
+                    <Button
+                      variant="primary"
+                      className="mt-3"
+                      data-testid="report-north-outskirts"
+                      onClick={handleReportNorthOutskirts}
+                    >
+                      向马科汇报发现
+                    </Button>
+                  </section>
+                )
+              }
+
+              return null
+            })()}
 
             {/* 机缘型社交：路边旧货商 */}
             {world.currentLocationId === 'tianlong_city' && (() => {
@@ -1321,8 +1517,8 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
           </div>
         </section>
 
-        {/* 右栏：任务与记录中心 */}
-        <div className="game-col order-3 min-h-0 md:col-start-2 md:row-start-2 xl:col-start-3 xl:row-start-1">
+        {/* 右栏：任务与记录中心（TM-P2-008 §15：<1280 隐藏，由「冒险」Drawer 承载；data-testid 保持在 DOM） */}
+        <div className="game-col order-3 hidden min-h-0 xl:col-start-3 xl:row-start-1 xl:block">
           <TaskActivitySidebar onCompleteQuest={handleCompleteQuest} onViewQuest={handleViewQuest} />
         </div>
       </div>
@@ -1501,6 +1697,46 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
         onBuy={buyMount}
         onEquip={equipMount}
         onUnequip={unequipMount}
+      />
+
+      {/* TM-P2-008 §14：移动端底部 tab（<768；左右栏隐藏后通过 Drawer 访问） */}
+      <MobileNav
+        onOpenRole={() => setMobilePanel('role')}
+        onOpenAdventure={() => setMobilePanel('adventure')}
+        onOpenBackpack={() => setBackpackOpen(true)}
+      />
+
+      {/* TM-P2-008 §14：移动端 <768 Drawer（[角色] → PlayerSidebar / [冒险] → AdventureSidebar） */}
+      <Drawer
+        open={mobilePanel !== null}
+        onClose={() => setMobilePanel(null)}
+        title={mobilePanel === 'role' ? '角色' : '冒险'}
+        ariaLabel={mobilePanel === 'role' ? '角色' : '冒险'}
+      >
+        {mobilePanel === 'role' ? (
+          <PlayerSidebar />
+        ) : mobilePanel === 'adventure' ? (
+          <TaskActivitySidebar onCompleteQuest={handleCompleteQuest} onViewQuest={handleViewQuest} />
+        ) : null}
+      </Drawer>
+
+      {/* TM-P2-008 §15：768–1279 右栏 → Drawer（「冒险」按钮打开 AdventureSidebar） */}
+      <Drawer open={adventureDrawerOpen} onClose={() => setAdventureDrawerOpen(false)} title="冒险" ariaLabel="冒险">
+        <TaskActivitySidebar onCompleteQuest={handleCompleteQuest} onViewQuest={handleViewQuest} />
+      </Drawer>
+
+      {/* TM-P2-008 §14：移动端 [背包] tab → BackpackPanel（全屏 Drawer；复用桌面绑定模式） */}
+      <BackpackPanel
+        open={backpackOpen}
+        onClose={() => setBackpackOpen(false)}
+        inventory={gameState.inventory}
+        equipment={gameState.equipment}
+        playerHp={player.hp}
+        playerMaxHp={player.maxHp}
+        profession={player.profession}
+        onEquipItem={(itemId) => useGameStore.getState().equipItem(itemId)}
+        onUnequipSlot={(slot) => useGameStore.getState().unequipSlot(slot)}
+        onUseItem={(itemId) => (itemId === 'healing_potion' ? useHealingPotion() : false)}
       />
     </div>
   )
