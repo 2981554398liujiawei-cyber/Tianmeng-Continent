@@ -1,0 +1,144 @@
+name: P2-007-R2 Public Release
+
+# TM-P2-007-R2 §22-24：公网最终发布外部执行环境。
+# 本机网络无法访问 workers.dev/Cloudflare API 时的替代执行环境（§21），
+# 手动触发（workflow_dispatch），从最终 main 构建 → 发布 gh-pages → 公网 LIVE 验证。
+#
+# §23：CLOUDFLARE_API_TOKEN 缺失时报告 MISSING 并跳过需要 API 权限的步骤（D1/secret 审计），
+#       其余 HTTP smoke / 构建 / 发布 / qa:live 不需要 token，照常执行。
+# §24：不无意义 redeploy Worker —— Worker 健康由 worker-http-smoke + qa:live(LIVE-10) 验证；
+#       默认不执行 wrangler deploy（Worker 未变更时避免重复部署）。
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_release:
+        description: '确认从 main HEAD 发布公网（输入 yes 才能执行）'
+        required: true
+        type: string
+      worker_url:
+        description: 'Cloudflare Worker 公网 URL'
+        required: false
+        default: 'https://tianmeng-cloud-save.2981554398.workers.dev'
+      public_game_url:
+        description: 'GitHub Pages 公网游戏 URL'
+        required: false
+        default: 'https://2981554398liujiawei-cyber.github.io/Tianmeng-Continent/'
+
+permissions:
+  contents: write # 推送 gh-pages
+
+env:
+  CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
+jobs:
+  release:
+    name: P2-007-R2 Public Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Confirm release intent
+        run: |
+          if [ "${{ github.event.inputs.confirm_release }}" != "yes" ]; then
+            echo "RELEASE ABORTED: 需要 confirm_release=yes"
+            exit 1
+          fi
+          echo "RELEASE CONFIRMED: from main HEAD $(git rev-parse HEAD)"
+
+      - run: npm ci
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Production build
+        run: npm run build
+
+      - name: Cloud local contract smoke
+        run: npm run qa:cloud
+
+      - name: Worker local E2E (wrangler dev + Local D1)
+        run: npm run qa:worker
+
+      - name: R2 static gates (R2-01~10)
+        run: npm run qa:p2-007-r2
+
+      - name: Worker public HTTP smoke (pre-build, no API token needed)
+        env:
+          WORKER_URL: ${{ github.event.inputs.worker_url }}
+          PUBLIC_GAME_URL: ${{ github.event.inputs.public_game_url }}
+        run: node qa/worker-http-smoke.mjs
+
+      - name: Prepare git for gh-pages deploy
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin gh-pages
+          git rev-parse --verify gh-pages >/dev/null 2>&1 || git branch --track gh-pages origin/gh-pages
+          echo "HEAD=$(git rev-parse HEAD)"
+
+      - name: Build public bundle (exact main, public endpoint, secret gate)
+        env:
+          VITE_CLOUD_SAVE_API_BASE: ${{ github.event.inputs.worker_url }}
+        run: npm run build:public
+
+      - name: Deploy gh-pages (deploy(p2-007-r2): source <MAIN_FINAL_SHA>)
+        env:
+          VITE_CLOUD_SAVE_API_BASE: ${{ github.event.inputs.worker_url }}
+          DEPLOY_TAG: p2-007-r2
+        run: npm run deploy:public
+
+      - name: Wait GitHub Pages propagation (≤10 min, asset match)
+        env:
+          PUBLIC_GAME_URL: ${{ github.event.inputs.public_game_url }}
+        run: node qa/wait-pages.mjs
+
+      - name: Live QA (public cloud E2E, LIVE-01~10)
+        env:
+          PUBLIC_GAME_URL: ${{ github.event.inputs.public_game_url }}
+        run: npm run qa:live
+
+      - name: Public production smoke (§29)
+        env:
+          PUBLIC_GAME_URL: ${{ github.event.inputs.public_game_url }}
+        run: node qa/p2-007-r2-public-smoke.mjs
+
+      - name: Detect Cloudflare API token
+        run: |
+          if [ -n "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "CF_PRESENT=true" >> "$GITHUB_ENV"
+            echo "CLOUDFLARE_API_TOKEN: PRESENT"
+          else
+            echo "CF_PRESENT=false" >> "$GITHUB_ENV"
+            echo "CLOUDFLARE_API_TOKEN: MISSING"
+          fi
+
+      - name: D1 remote audit + SAVE_PEPPER presence (requires API token)
+        if: env.CF_PRESENT == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          echo "=== D1 cloud_saves (schema/rows, no payload values) ==="
+          npx wrangler d1 execute tianmeng-cloud-save --remote --command "SELECT key_hash, revision, protocol_version, slot_format_version, created_at, updated_at FROM cloud_saves"
+          echo "=== D1 migration status ==="
+          npx wrangler d1 execute tianmeng-cloud-save --remote --command "SELECT name, applied_at FROM d1_migrations" || echo "(migration table check skipped)"
+          echo "=== secret list: only PRESENT/MISSING for SAVE_PEPPER ==="
+          if npx wrangler secret list | grep -q "SAVE_PEPPER"; then echo "SAVE_PEPPER: PRESENT"; else echo "SAVE_PEPPER: MISSING"; fi
+
+      - name: Release summary
+        run: |
+          echo "=== P2-007-R2 PUBLIC RELEASE ==="
+          echo "source main SHA: $(git rev-parse HEAD)"
+          if [ "$CF_PRESENT" = "true" ]; then echo "CF_API_TOKEN: PRESENT"; else echo "CF_API_TOKEN: MISSING"; fi
+          echo "WORKER_URL: ${{ github.event.inputs.worker_url }}"
+          echo "PUBLIC_GAME_URL: ${{ github.event.inputs.public_game_url }}"
