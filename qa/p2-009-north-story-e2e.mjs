@@ -13,7 +13,7 @@
 //   NS9  Stage D 搜救幸存者 → 事件 north_survivor_rescued（日志仅用户文案）+ 线索黑篷车辙
 //   NS10 Stage E 向沈拓了解详情 → 线索魔化诱饵
 //   NS11 Stage F 武馆向马科汇报 → 可提交
-//   NS12 提交任务 → completed + 50 金 + 120 XP + 骑士试炼预告（§17 只预告不实现）
+//   NS12 提交任务 → completed + 50 金 + 120 XP + P2-010 正式试炼入口（兑现原 §17 预告）
 //   NS13 战斗解联动：驿站狼群 neutralized 后 barrier-combat 变「战斗已完成，进入后院」→ 推进 + 线索魔化诱饵
 //   NS14 全程无 Production ID leak + 无 JS exception
 //
@@ -334,7 +334,7 @@ try {
   check('NS11: 回报后任务进入「可提交（1）」', side.includes('可提交（1）') && side.includes('断旗余声'), side.slice(0, 120))
   check('NS11: 武馆可提交区显示「提交任务」按钮', side.includes('提交任务'))
 
-  // ---- NS12：提交任务 → completed + 50 金 + 120 XP + 骑士试炼预告 ----
+  // ---- NS12：提交任务 → completed + 50 金 + 120 XP + 正式试炼入口 ----
   await clickButton('提交任务')
   await sleep(500)
   const afterSubmit = await bodyText()
@@ -342,8 +342,8 @@ try {
   check('NS12: 提交反馈显示任务完成 + 金币 +50', afterSubmit.includes('任务完成') && afterSubmit.includes('金币 +50'), noticeSnippet)
   check('NS12: 冒险阅历 +120', afterSubmit.includes('冒险阅历 +120'))
   main = await mainColText()
-  check('NS12: 骑士试炼预告块出现（§17 只预告不实现）', main.includes('骑士试炼的预告') && main.includes('会有一场正式的骑士试炼等着你'))
-  check('NS12: 预告块标注「试炼内容尚待展开」', main.includes('试炼内容尚待展开'))
+  check('NS12: P2-010 正式试炼入口兑现 P2-009 预告', main.includes('天龙武备试炼') && main.includes('接受试炼'))
+  check('NS12: 旧「尚待展开」文案已替换为可操作入口', !main.includes('试炼内容尚待展开') && main.includes('武备场会观察'))
   const leaked12 = await leakedPrefixes()
   check('NS14b: 全程无 Production ID leak（stage 12）', leaked12.length === 0, leaked12.join(','))
 
