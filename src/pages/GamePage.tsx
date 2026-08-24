@@ -1795,9 +1795,16 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
                 ranger: 'encounter_trial_ranger', mage: 'encounter_trial_mage',
               }
               const encounterId = routeEncounter[player.profession]
+              const routeBrief: Record<string, string> = {
+                warrior: '战士路线 · 正面压制，以力量和耐力掌握强攻节奏。',
+                knight: '骑士路线 · 稳住阵脚，保护自己，用纪律控制风险。',
+                ranger: '游侠路线 · 抢占先机，选择目标并观察弱点。',
+                mage: '法师路线 · 管理灵力，判断施法窗口，不在一轮内耗尽资源。',
+              }
               return (
                 <section data-testid="martial-trial-ground-panel" className="rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
                   <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">天龙武备场</h3>
+                  <p data-testid="trial-route-brief" className="mb-2 text-gold-200">{routeBrief[player.profession]}</p>
                   <p className="leading-relaxed text-bone-200">{observed ? '教官示意你进入职业训练对抗。同行者可以登记参战。' : 'Stage B · 教官摆出一场模拟战局，要你先决定如何处理压力。'}</p>
                   {!observed && trial?.flags.trial_registered === true && (
                     <div data-testid="trial-observation-options" className="mt-3 flex flex-wrap gap-2">

@@ -337,7 +337,7 @@ export const SKILLS: Record<string, SkillDefinition> = {
     profession: 'knight',
     mpCost: 2,
     tags: ['divine', 'physical'],
-    combat: { damageFormula: '下一次敌方伤害降低 4', actionType: 'action', targetMode: 'friendly', oncePerCombat: true, supportEffect: { type: 'reduce_next_enemy_damage', amount: 4 } },
+    combat: { damageFormula: '下一次敌方伤害降低 4', actionType: 'action', targetMode: 'self', oncePerCombat: true, supportEffect: { type: 'reduce_next_enemy_damage', amount: 4 } },
   },
   ranger_windstep_strike: {
     id: 'ranger_windstep_strike',

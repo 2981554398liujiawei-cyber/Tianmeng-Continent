@@ -541,7 +541,8 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
     const support = info.skill.combat?.supportEffect
     // 盾：选友方目标，目标下次被敌人命中减伤
     if (support?.type === 'reduce_next_enemy_damage') {
-      if (!target || target.side !== 'friendly') return
+      const supportTarget = target ?? (skillTargetMode(info.skill) === 'self' ? actor : undefined)
+      if (!supportTarget || supportTarget.side !== 'friendly') return
       if (actor.currentMp < info.skill.mpCost) {
         pushEvent('system', 'system', '灵力不足，技能无法施展。')
         return
@@ -553,9 +554,9 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
       if (info.oncePerCombat) markOnceUsed(actor, skillId)
       setShieldByTarget((prev) => ({
         ...prev,
-        [target.instanceId]: { amount: support.amount, skillName: info.skill.name },
+        [supportTarget.instanceId]: { amount: support.amount, skillName: info.skill.name },
       }))
-      pushEvent('companion_support', 'companion', `${actor.name}为${target.name}施展了${info.skill.name}（可抵消 ${support.amount} 点伤害）。`, [], actor.name)
+      pushEvent('companion_support', actor.sourceType, `${actor.name}为${supportTarget.name}施展了${info.skill.name}（可抵消 ${support.amount} 点伤害）。`, [], actor.name)
       afterAction(next)
       return
     }

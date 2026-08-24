@@ -866,11 +866,15 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
         const inventory = medalIndex >= 0
           ? next.inventory.map((entry, index) => index === medalIndex ? { ...entry, quantity: entry.quantity + 1 } : entry)
           : [...next.inventory, { itemId: MARTIAL_TRIAL_BRONZE_MEDAL_ID, quantity: 1 }]
+        const quests = next.quests.map((quest) => quest.questId === MARTIAL_TRIAL_QUEST_ID
+          ? { ...quest, flags: { ...quest.flags, trial_reward_claimed: true } }
+          : quest)
         return {
           gameState: {
             ...next,
             player: { ...playerAfterLevel, learnedSkillIds },
             inventory,
+            quests,
             world: {
               ...next.world,
               flags: { ...next.world.flags, martial_trial_completed: true, martial_trial_bronze_medal_awarded: true, p2_011_hook_available: true },
@@ -1300,10 +1304,11 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
     if (!check.allowed) return null
     const variantId = currentEncounterVariantId(state, def)
     const variant = variantId ? def.variants?.find((v) => v.id === variantId) : undefined
-    if (!variant) return null
+    const encounterMembers = variant?.members ?? def.fixedMembers
+    if (!encounterMembers || encounterMembers.length === 0) return null
     let firstKillXp = 0
     const grants: LootGrant[] = []
-    for (const member of variant.members) {
+    for (const member of encounterMembers) {
       for (let i = 0; i < member.count; i += 1) {
         // 每个 EnemyInstance 独立结算（§16 pendingLoot；同 enemyId 多实例各算一次 XP）
         firstKillXp += getEnemyFirstKillXp(state, member.enemyId)
@@ -1316,7 +1321,7 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
     const xp = resolveEncounterVictoryXp(
       state,
       def,
-      variant.members.flatMap((m) => Array.from({ length: m.count }, () => ({ enemyId: m.enemyId }))),
+      encounterMembers.flatMap((m) => Array.from({ length: m.count }, () => ({ enemyId: m.enemyId }))),
     )
     let ok = false
     set((s) => {
@@ -1345,7 +1350,7 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
       // TM-P2-009-R1 §11：多敌可重复遭遇首次击败写入 first-kill 标记（仅 FIRST_KILL_FLAG_ENEMIES 需要 flag 记录）
       const firstKillFlags: Record<string, boolean> = {}
       if (firstKillXp > 0) {
-        for (const member of variant.members) {
+        for (const member of encounterMembers) {
           if (FIRST_KILL_FLAG_ENEMIES.has(member.enemyId) && getEnemyFirstKillXp(state, member.enemyId) > 0) {
             firstKillFlags[`${member.enemyId}_first_kill`] = true
           }

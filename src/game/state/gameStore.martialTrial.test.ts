@@ -29,4 +29,34 @@ describe('TM-P2-010 martial trial store flow', () => {
     expect(store.acceptMartialTrial()).toBe(true)
     expect(useGameStore.getState().gameState?.world.flags.knight_trial_invited).toBe(true)
   })
+
+  it('restores 2 MP on a successful observation and grants the registered reward exactly once', () => {
+    const store = useGameStore.getState()
+    store.newGame()
+    store.setCurrentLocation('tianlong_martial_hall')
+    store.setFlag('martial_trial_invited', true)
+    expect(store.acceptMartialTrial()).toBe(true)
+    expect(store.registerMartialTrial()).toBe(true)
+    expect(store.travelToLocation('tianlong_martial_trial_ground')).toBe(true)
+
+    const beforeObservation = useGameStore.getState().gameState!
+    useGameStore.setState({ gameState: { ...beforeObservation, player: { ...beforeObservation.player, mp: 0 } } })
+    expect(useGameStore.getState().resolveMartialTrialObservation('con', 20)).toMatchObject({ ok: true, success: true })
+    expect(useGameStore.getState().gameState?.player.mp).toBe(2)
+
+    expect(useGameStore.getState().resolveEncounterVictory('encounter_trial_knight')).not.toBeNull()
+    expect(useGameStore.getState().gameState?.quests.find((quest) => quest.questId === MARTIAL_TRIAL_QUEST_ID)?.flags.trial_combat_done).toBe(true)
+    expect(useGameStore.getState().travelToLocation('tianlong_martial_hall')).toBe(true)
+    expect(useGameStore.getState().reportMartialTrial()).toBe(true)
+    const beforeGold = useGameStore.getState().gameState!.player.gold
+    const beforeXp = useGameStore.getState().gameState!.player.adventureXp
+    expect(useGameStore.getState().completeMartialTrial()).toBe(true)
+    expect(useGameStore.getState().completeMartialTrial()).toBe(false)
+    const completed = useGameStore.getState().gameState!
+    expect(completed.player.gold).toBe(beforeGold + 50)
+    expect(completed.player.adventureXp).toBe(beforeXp + 120)
+    expect(completed.player.learnedSkillIds.filter((id) => id === 'knight_oath_guard')).toHaveLength(1)
+    expect(completed.inventory.find((entry) => entry.itemId === 'tianlong_martial_medal')?.quantity).toBe(1)
+    expect(completed.quests.find((quest) => quest.questId === MARTIAL_TRIAL_QUEST_ID)?.flags.trial_reward_claimed).toBe(true)
+  })
 })
