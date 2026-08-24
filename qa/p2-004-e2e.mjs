@@ -238,6 +238,8 @@ try {
   await sleep(300)
   await clickByText('残灾之影')
   await sleep(600)
+  // TM-P2-009-R1 §6/§8：Sakura 行动后停留原回合 → 显式结束回合推进到玩家
+  await clickByText('结束回合')
   body = await bodyText()
   check('P2-004-18: 樱花优子的攻击实际造成伤害（战斗日志）', body.includes('樱花飞斩') && (body.includes('造成') || body.includes('落空')))
   // 玩家阶段：普攻擦伤（roll=5 → 擦伤 2 伤，残灾 11→9）；敌人反击擦伤玩家（roll=5，残灾打玩家 3 伤）
@@ -245,6 +247,9 @@ try {
   await sleep(300)
   await clickByText('残灾之影')
   await sleep(600)
+  // §6/§8：玩家行动后停留原回合 → 显式结束回合触发敌人反击
+  await clickByText('结束回合')
+  await sleep(800)
   // Sakura 阶段：第二轮飞斩暴击（roll=20 → raw 18 → applyArmor(18,11,20)=12 伤）击杀残灾 9 HP
   setRandom(0.99)
   await clickByText('技能')

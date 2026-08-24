@@ -341,6 +341,9 @@ async function actForCurrentTurn() {
     await clickButton('普通攻击')
     await clickTarget('骷髅战士')
     await sleep(600)
+    // TM-P2-009-R1 §6/§8：行动只消耗资源不自动流转 → 显式结束回合推进到敌方
+    await clickButton('结束回合')
+    await sleep(600)
   } else {
     await sleep(300)
   }
@@ -362,7 +365,7 @@ async function partA() {
     check('A1: 敌方名/玩家满血/攻击值渲染', body.includes('魔化兔') && body.includes('22 / 22') && body.includes('攻击 8'))
 
     // 玩家先手（player ini 30 > rabbit 28）→ 行动栏
-    check('A2: 玩家先手行动栏', body.includes('验收员的回合') && body.includes('普通攻击') && body.includes('尝试逃跑'))
+    check('A2: 玩家先手行动栏', body.includes('验收员的回合') && body.includes('普通攻击') && body.includes('逃跑'))
 
     await clickButton('普通攻击')
     body = await bodyText()
@@ -418,7 +421,7 @@ async function partB() {
     body = await bodyText()
     check('§49-10: Sakura 樱花飞斩暴击 12 击杀', body.includes('樱花飞斩命中魔化兔，造成 12 点伤害。'))
 
-    await sleep(800)
+    await sleep(1200)
     body = await bodyText()
     check('B4: 伙伴击杀同样结算胜利', body.includes('战斗胜利'))
     check('B0: 无 JS exception', takeErrors().length === 0, takeErrors().join('; '))
@@ -456,6 +459,11 @@ async function partC() {
     body = await bodyText()
     check('C2: Sakura 攻击骷髅①（11）', body.includes('樱花飞斩命中骷髅战士，造成 11 点伤害。'))
 
+    // TM-P2-009-R1 §6/§8：Sakura 行动后停留原回合 → 显式结束回合推进到玩家
+    await clickButton('结束回合')
+    const turnAfterSakura = await waitForTurnType()
+    if (turnAfterSakura !== 'player') throw new Error(`Sakura 结束回合后预期玩家回合，实际 ${turnAfterSakura}`)
+
     // 玩家回合：点攻击 → §49-7b target selector（2 同名目标 + 取消）
     await clickButton('普通攻击')
     body = await bodyText()
@@ -463,13 +471,17 @@ async function partC() {
       () => [...document.querySelectorAll('button')].filter((b) => (b.textContent || '').trim() === '骷髅战士').length,
     )
     check('§49-7b: 玩家普通攻击目标选择（2 目标 + 取消）', atkTargets === 2 && body.includes('取消'))
-    // 玩家暴击击杀 enemy#1 后，立即切 0.5，确保 enemy#2 AI（400ms 延迟）用擦伤打 Sakura（避免暴击 24 秒杀）
-    await clickTargetThen('骷髅战士', 0.5)
+    // 玩家暴击击杀 enemy#1 后，立即切 0.9：R1 §10 骷髅战士 aggressive 0.7 → v>=rate 普攻保持原日志文案；
+    // chooseEnemyTarget floor(0.9*2)=1 仍选 Sakura（非暴击不秒杀）
+    await clickTargetThen('骷髅战士', 0.9)
     body = await bodyText()
     check('C3: 玩家击杀骷髅①（10）', body.includes('验收员的攻击命中骷髅战士，造成 10 点伤害。'))
 
-    // §49-8b：kill one 后剩余敌人继续行动（enemy#2 AI 打 Sakura 擦伤）
-    await sleep(1200)
+    // TM-P2-009-R1 §6/§8：玩家行动后停留原回合 → 显式结束回合触发 enemy#2 行动
+    await clickButton('结束回合')
+
+    // §49-8b：kill one 后剩余敌人继续行动（enemy#2 AI 打 Sakura）
+    await sleep(1500)
     body = await bodyText()
     check('§49-8b: 剩余骷髅继续行动打 Sakura', body.includes('骷髅战士的攻击命中樱花优子'))
 
@@ -501,7 +513,8 @@ async function partC() {
     await clickTarget('骷髅战士') // enemy#2 → 11
     await sleep(600)
 
-    // 玩家补刀骷髅② → 击杀 → victory
+    // TM-P2-009-R1 §6/§8：Sakura 结束回合 → 推进到玩家补刀
+    await clickButton('结束回合')
     const turnPlayer = await waitForTurnType()
     if (turnPlayer !== 'player') throw new Error(`预期玩家回合，实际 ${turnPlayer}`)
     await clickButton('普通攻击')
@@ -532,7 +545,12 @@ async function partC() {
 async function partD() {
   const label = 'Part D'
   try {
-    await enterCombat(brokenPatrolFixture(true), '残破巡逻队', 0.1)
+    // R1 §10 敌人技能化后敌方 DPS 上升（顺劈斩），标准 22HP 阵容约 4 轮战败凑不满 20 events；
+    // Part D 专测「大量播报后行动栏固定」，给玩家加厚生命延长战斗（仅本 Part，不影响他段）
+    const partDState = brokenPatrolFixture(true)
+    partDState.player.hp = 300
+    partDState.player.maxHp = 300
+    await enterCombat(partDState, '残破巡逻队', 0.1)
     takeErrors()
 
     let events = 0
@@ -580,12 +598,14 @@ async function partE() {
 
     // 逃跑失败：最高我方敏捷 16，D20=1 → (16+1)/3=5.67 < 10
     await setRandom(0)
-    await clickButton('尝试逃跑')
+    await clickButton('逃跑')
     await sleep(800)
     let body = await bodyText()
-    check('§49-11: 逃跑失败（消耗回合）', body.includes('逃跑失败，敌人封住了退路。'))
+    // R1 §6/§14：逃跑失败只消耗 Action，停留原回合（不再自动流转）
+    check('§49-11: 逃跑失败（消耗行动）', body.includes('逃跑失败，敌人封住了退路。'))
 
-    // 敌方 AI 行动（miss）→ 环回 Sakura → 跳过 → 玩家回合
+    // 显式结束回合 → 敌方 AI 行动（miss）→ 环回 Sakura → 跳过 → 玩家回合
+    await clickButton('结束回合')
     await sleep(1500)
     turn = await waitForTurnType()
     if (turn === 'companion') {
@@ -597,7 +617,7 @@ async function partE() {
 
     // 逃跑成功：D20=20 → (16+20)/3=12 >= 10 → onEscape 同步返回冒险页
     await setRandom(0.99)
-    await clickButton('尝试逃跑')
+    await clickButton('逃跑')
     await sleep(400)
     const backToGame = await page
       .waitForSelector('[data-testid="quest-column"]', { timeout: 6000 })

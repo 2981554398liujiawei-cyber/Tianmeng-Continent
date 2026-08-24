@@ -170,14 +170,18 @@ try {
       await enterCombat(sakura)
 
       if (sakura) {
+        // 玩家先手（fixture 固定高敏捷）打一轮 → TM-P2-009-R1 §6/§8 行动不自动流转，
+        // 显式结束回合推进（initiative 序：玩家 → Sakura）→ 等 Sakura 回合做伙伴侧布局断言。
+        // 注意不能由 Sakura 普攻打这轮：rng=0.99 必暴击会直接秒杀残灾进入 victory。
         await clickButton('普通攻击')
         await clickButton('残灾之影') // P2-007 普攻进 target selector 选敌
+        await clickButton('结束回合')
         await page.waitForFunction(() => document.body.textContent?.includes('樱花优子的回合'))
       }
 
       if (!sakura) {
         // V4：底部固定行动栏一级按钮直接可见可访问
-        const primary = await accessibleButtons(['普通攻击', '技能 ▾', '物品 ▾', '逃跑'])
+        const primary = await accessibleButtons(['普通攻击', '技能 ▾', '背包 ▾', '逃跑'])
         for (const button of primary) {
           const ok = button.present && button.visible && button.inViewport && button.focusable && !button.disabled
           check(`${width}x${height} ${stateName}: 行动栏 ${button.label} 可见可访问`, ok, JSON.stringify(button))
@@ -196,7 +200,7 @@ try {
         check(`${width}x${height} ${stateName}: 技能 tray 收起后消失`, true)
 
         // V4：物品 tray 展开 → tray 内药水按钮可见可访问 + 剩余数量文案 → 收起 → tray 消失
-        await clickBarButton('物品')
+        await clickBarButton('背包')
         await waitForTray('combat-item-tray')
         const itemButtons = await accessibleButtons(['使用治疗药水（+8 生命）'], '[data-testid="combat-item-tray"]')
         for (const button of itemButtons) {
@@ -205,7 +209,7 @@ try {
         }
         const itemTrayText = await page.evaluate(() => document.querySelector('[data-testid="combat-item-tray"]')?.textContent ?? '')
         check(`${width}x${height} ${stateName}: 物品 tray 显示剩余药水数量`, itemTrayText.includes('剩余：2'), `trayText=${itemTrayText}`)
-        await clickBarButton('物品')
+        await clickBarButton('背包')
         await waitForTrayGone('combat-item-tray')
         check(`${width}x${height} ${stateName}: 物品 tray 收起后消失`, true)
       } else {
