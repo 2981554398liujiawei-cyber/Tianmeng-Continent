@@ -1,12 +1,12 @@
 # §22 STOP-for-audit — TM-P2-009-R1 (Combat V6 + Encounter Diversity V1)
 
-## 1. Worktree / Branch / HEAD
+## 1. Worktree / Branch / evidence head
 - Worktree: vigorous-dirac-880948
 - Branch: codex/p2-009-north-story
-- HEAD SHA: dee93ac (merge of 4ed8c4f + 751c39c; 4ed8c4f now ancestor)
-- git status --short: clean (tmp-diag-itemtray.mjs excluded)
-- 4ed8c4f ancestor of HEAD: YES (git merge-base exit=0)
-- Commit message: test(qa-p2-009-r1): TM-P2-009-R1 §16 统一 QA 入口——balance 58 + combat 76 + sidebar 18 = 152 断言
+- RC product candidate: dee93ac7125864ee2659abd84908ed4c233004a2
+- Evidence artifact commit: ba365e88f2b527ab3414c943c5579dbf3e695748
+- 4ed8c4f ancestor of evidence head: YES (`git merge-base --is-ancestor`, exit 0)
+- Pre-existing untracked diagnostic preserved and excluded: qa/tmp-diag-itemtray.mjs
 
 ## 2. 本轮最终 diff (相对于主提交基线 eaa3648 / 13 commits fda840f→179f254)
 - R1 新增: qa/p2-009-r1-balance.mjs (58/58), qa/p2-009-r1-combat-e2e.mjs (76/76), qa/p2-009-r1-sidebar-e2e.mjs (18/18)
@@ -21,7 +21,7 @@
 - Sidebar E2E: 18/18 PASS
 - 总计: 152/152 PASS
 
-## 4. 历史关键回归实际结果（本轮验证 @ dee93ac）
+## 4. 历史关键回归实际结果（R2 evidence gate @ ba365e8）
 - P2-004 focused: 47/47 PASS
 - P2-004-R1 focused: 26/26 PASS (确认包含 End Turn 流转)
 - P2-005-R1 / CombatPage V4 (含 combat-layout): 45/45 PASS
@@ -45,23 +45,21 @@
 - p2-005-combat-layout (独立验证): 45/45 PASS (此前 13/14 timeout 已不再复现，判定为环境/构建路径抖动，已在正确树验证通过)
 
 ## 5. 完整 qa:rc 实际结果
-- RC 执行在正确树完成（exit=0），包含 P2-004-R1 / P2-005-R1 / P2-007 / P2-008 / P2-006 / P2-005-R1 45/45 全绿
+- 2026-08-25 R2 gate 在正确 worktree 完整执行，`qa:rc` exit=0；P2-004-R1 / P2-004 / Cloud / P2-008 Full Journey / Responsive / GamePage Layout / Combat / Merchant / Worker+D1 / P2-006 / P2-007 全绿
 - 构建：vite chunk size warning (>500KB) — 仅提示，无功能影响
-- 本地环境在完整链中出现以下 timeout（非代码回归，已记录）：
-  - qa:cloud (P2-005 Cloud focused): timeout（dev server 启动超时，非产品缺陷）
-  - qa:p2-009-r1-combat-e2e / sidebar-e2e 在完整链中 timeout（同一环境 Vite 启动超时）；独立脚本运行正常（58/58、76/76、18/18）
-  - qa:p2-008-full-journey-e2e 在完整链中 timeout（环境）；独立运行 43/43 PASS
-- 无 FAIL 断言（仅环境 timeout）；无 JS exception；无断言被删除/放宽
+- 本轮没有 timeout、FAIL、JS exception、skip、todo、only，也没有删除或放宽断言
+- 同轮额外执行：1592/1592 unit、build、R1 152/152、P2-008 全套、R2 screenshots 16/16，全部 exit=0
 
 ## 6. RC_CANDIDATE_SHA / EVIDENCE_HEAD_SHA / 截图证据
-- RC_CANDIDATE_SHA: dee93ac (当前 HEAD，包含 4ed8c4f + STOP audit + 截图)
-- EVIDENCE_HEAD_SHA: 同 RC_CANDIDATE_SHA（本次未分离；可接受，因为 audit 文档和截图同时提交在同一 commit，不存在候选与证据不匹配风险）
+- RC_CANDIDATE_SHA = dee93ac7125864ee2659abd84908ed4c233004a2
+- EVIDENCE_HEAD_SHA = ba365e88f2b527ab3414c943c5579dbf3e695748
+- SHA 说明：Git commit 不能在自身内容中预先写入自身 SHA，因此脚本与 PNG 先形成上述 evidence artifact commit；本文件随后仅记录该已存在 SHA，不修改产品源码或证据文件
 - 4ed8c4f 祖先验证: git merge-base --is-ancestor → exit 0 (已记录)
 - 截图目录: qa/screenshots/p2-009-r1/
-- 文件数: 31 PNG（A-O + 额外状态帧）
-- 标签: A-menu / B-combat-empty-tray / C-skill-tray-open / D-sakura-friend-tray / E-action-bar / F-enemy-card-target / G-end-turn-btn / H-skip-state / I-sidebar-golden-rabbit / J-xp-bar / K-encounter-roster / L-victory-panel / M-relationship-panel / N-item-tray / O-full-combat-layout
-- 截图来源: 由当前工作树 `dee93ac` 生成（使用 preview @ 5199 + puppeteer 快速捕捉）；截图脚本 `p2-009-r1-screenshots.mjs` 已提交
-- 截图验证标准（Fail-Fast 已应用到脚本）: 每个关键状态必须存在对应 DOM 元素后才截图；按钮缺失直接抛出 Error，不再继续无效截图
+- 文件数: 16 PNG（正式 A–O；G 含 G1/G2）
+- 标签: A_combat_1920 / B_multi_units / C_initiative_strip / D_unit_card_rows / E_skill_tray_open / F_item_tray_open / G1_actionbar_tray_closed / G2_actionbar_tray_expanded / H_detail_log / I_friendly_switch / J_enemy_skill_blackfire / K_variant_preview_unlocked / L_variant_preview_locked / M_golden_rabbit_pending / N_xp_bar_250_450 / O_combat_390
+- 截图来源: evidence commit `ba365e8` 的 `qa/p2-009-r1-screenshots.mjs` 自启 Vite、使用临时 Chrome profile 与 Save V6 fixtures 生成
+- 截图验证标准: 每个状态先做 DOM/状态断言；ActionBar Y 差 <=1px；按钮或状态缺失立即 throw、exit 1；目录在运行前重建，因此不会混入 stale evidence
 
 ## 7. HARD FREEZE 核验（未经修改，保存完整）
 - Combat V3 命中公式: (att+roll)/2 >= defAGI → hit；roll 1=critical_miss(0)，20=critical_hit(×2)；applyArmor=max(1,ceil(raw×roll/(armor+roll)))
@@ -73,11 +71,11 @@
 
 ## 8. Warning / Flaky / Skipped / NOT_RUN
 - 构建：vite chunk size warning (>500KB) — 仅提示，不影响功能/测试
-- p2-005-combat-layout：此前单独运行出现 13/14 timeout，切到正确树 + 重新构建后 45/45 PASS；判定为环境/构建路径问题，已修复验证，未做断言删除/timeout 放大/标准降低
-- 无 skipped 无 NOT_RUN；所有断言执行
+- 历史 timeout 记录保留在旧提交中；本轮 R2 gate 未复现，所有要求命令均 exit=0
+- 无 skipped / NOT_RUN；所有断言执行
 - 未授权发布/merge/部署
 
 ## 9. 独立审计等待
-- 当前状态: HOLD → 需 ChatGPT/审计方独立核对 commit、代码、CI、截图后决定封板
+- 当前状态: P2-009-R2 evidence sealed；PR #8 仍 Draft/Open，等待与 P2-010 一并最终审计
 - 未执行: merge / deploy / P2-010 / 额外截图替代
-- 建议下步: 审计方确认 521503c + 152 R1 断言 + 31 图 + RC exit=0 后给出 AUDIT PASS 才封板
+- 建议下步: 审计方确认 `dee93ac` product candidate + `ba365e8` evidence + R1 152 断言 + 16 formal screenshots + gate exit=0
