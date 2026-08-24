@@ -21,14 +21,15 @@ const suites = [
   ['p2-010-screenshots', ['run', 'qa:p2-010-screenshots']],
 ]
 
-const npmExecutable = process.platform === 'win32' ? 'npm.cmd' : 'npm'
+const npmExecutable = 'npm'
+const npmSpawnOptions = { shell: process.platform === 'win32' }
 
 async function runSuite(id, args, extraEnv = {}) {
   const heading = `\n===== SUITE ${id} | npm ${args.join(' ')} =====\n`
   process.stdout.write(heading)
   await appendFile(evidenceLog, heading)
   const started = Date.now()
-  const child = spawn(npmExecutable, args, { env: { ...process.env, ...extraEnv }, stdio: ['ignore', 'pipe', 'pipe'] })
+  const child = spawn(npmExecutable, args, { ...npmSpawnOptions, env: { ...process.env, ...extraEnv }, stdio: ['ignore', 'pipe', 'pipe'] })
   const forward = (stream, destination) => {
     stream.on('data', (chunk) => {
       destination.write(chunk)
@@ -50,6 +51,7 @@ async function runSuite(id, args, extraEnv = {}) {
 async function runProductionSmoke(id, args) {
   const port = 5198
   const preview = spawn(npmExecutable, ['run', 'preview', '--', '--host', '127.0.0.1', '--port', String(port), '--strictPort'], {
+    ...npmSpawnOptions,
     env: process.env,
     stdio: ['ignore', 'pipe', 'pipe'],
   })
