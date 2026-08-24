@@ -137,11 +137,6 @@ try {
   result = await request({ action: 'force_save', passphrase: 'revision-passphrase', payload: payload('forced-v3') })
   check('W11 force_save increments the existing vault to revision 3', result.response.status === 200 && result.json?.revision === 3)
 
-  const stored = query("SELECT key_hash, revision, previous_revision, json_extract(payload_json, '$.savesExport.slots.slot1.marker') AS marker, json_extract(previous_payload_json, '$.savesExport.slots.slot1.marker') AS previous_marker FROM cloud_saves WHERE revision = 3")
-  const row = stored.rows[0]
-  check('W12 Local D1 key_hash is a 64-char digest and never stores the plaintext passphrase', stored.result.status === 0 && /^[0-9a-f]{64}$/.test(row?.key_hash ?? '') && row?.key_hash !== 'revision-passphrase')
-  check('W13 Local D1 preserves previous_revision and previous_payload_json', row?.revision === 3 && row?.marker === 'forced-v3' && row?.previous_revision === 2 && row?.previous_marker === 'v2')
-
   result = await request(null, { raw: '{broken' })
   check('W14 malformed JSON is rejected', result.response.status === 400 && result.json?.code === 'invalid')
 
@@ -174,6 +169,13 @@ try {
   const wrongMethod = await request(null, { method: 'GET' })
   const caseSensitive = await request({ action: 'load', passphrase: 'alpha-normalized' })
   check('S3 method allowlist and passphrase case isolation remain enforced', wrongMethod.response.status === 405 && caseSensitive.json?.exists === false)
+
+  // The standalone D1 CLI briefly takes a second handle on the persisted local database.
+  // Keep this final so a Windows/Miniflare handle restart cannot interrupt subsequent HTTP contract cases.
+  const stored = query("SELECT key_hash, revision, previous_revision, json_extract(payload_json, '$.savesExport.slots.slot1.marker') AS marker, json_extract(previous_payload_json, '$.savesExport.slots.slot1.marker') AS previous_marker FROM cloud_saves WHERE revision = 3")
+  const row = stored.rows[0]
+  check('W12 Local D1 key_hash is a 64-char digest and never stores the plaintext passphrase', stored.result.status === 0 && /^[0-9a-f]{64}$/.test(row?.key_hash ?? '') && row?.key_hash !== 'revision-passphrase')
+  check('W13 Local D1 preserves previous_revision and previous_payload_json', row?.revision === 3 && row?.marker === 'forced-v3' && row?.previous_revision === 2 && row?.previous_marker === 'v2')
 } catch (error) {
   console.error(error)
   process.exitCode = 1
