@@ -23,12 +23,12 @@ const suites = [
 
 const npmExecutable = process.platform === 'win32' ? 'npm.cmd' : 'npm'
 
-async function runSuite(id, args) {
+async function runSuite(id, args, extraEnv = {}) {
   const heading = `\n===== SUITE ${id} | npm ${args.join(' ')} =====\n`
   process.stdout.write(heading)
   await appendFile(evidenceLog, heading)
   const started = Date.now()
-  const child = spawn(npmExecutable, args, { env: process.env, stdio: ['ignore', 'pipe', 'pipe'] })
+  const child = spawn(npmExecutable, args, { env: { ...process.env, ...extraEnv }, stdio: ['ignore', 'pipe', 'pipe'] })
   const forward = (stream, destination) => {
     stream.on('data', (chunk) => {
       destination.write(chunk)
@@ -47,5 +47,28 @@ async function runSuite(id, args) {
   if (exitCode !== 0) process.exit(exitCode)
 }
 
-for (const [id, args] of suites) await runSuite(id, args)
+async function runProductionSmoke(id, args) {
+  const port = 5198
+  const preview = spawn(npmExecutable, ['run', 'preview', '--', '--host', '127.0.0.1', '--port', String(port), '--strictPort'], {
+    env: process.env,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+  preview.stdout.on('data', (chunk) => { process.stdout.write(chunk); void appendFile(evidenceLog, chunk) })
+  preview.stderr.on('data', (chunk) => { process.stderr.write(chunk); void appendFile(evidenceLog, chunk) })
+  try {
+    let ready = false
+    for (let attempt = 0; attempt < 80; attempt += 1) {
+      try { await fetch(`http://127.0.0.1:${port}/`); ready = true; break } catch { await new Promise((resolve) => setTimeout(resolve, 250)) }
+    }
+    if (!ready) throw new Error('production preview did not become ready')
+    await runSuite(id, args, { BASE_URL: `http://127.0.0.1:${port}/` })
+  } finally {
+    preview.kill()
+  }
+}
+
+for (const [id, args] of suites) {
+  if (id === 'production-smoke') await runProductionSmoke(id, args)
+  else await runSuite(id, args)
+}
 await appendFile(evidenceLog, `\ncompleted=${new Date().toISOString()}\noverall=PASS\n`)
