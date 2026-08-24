@@ -1,9 +1,10 @@
 {
-  "status": "AUTOMATED_PASS_WITH_OBSERVATIONAL_NOT_RUN",
+  "status": "PASS_READY_FOR_AUDIT",
   "source": {
-    "commit": "46b21a0fcc5beb9fd426f2e11eff691234d92880",
-    "implementationTreeClean": true,
-    "note": "Only QA evidence files and an unrelated shared .gitignore change were present while evidence was updated."
+    "rcCandidateCommit": "c9e60b61ca013bc7c002c4643965e42adfa4f38a",
+    "branch": "codex/p2-010-martial-trial",
+    "parentBranch": "codex/p2-009-north-story",
+    "note": "The candidate commit contains all product code and QA logic. This verification file, the authoritative log, generated reports, and screenshots are committed afterward as evidence artifacts to avoid a self-referential candidate hash."
   },
   "environment": {
     "os": "Windows",
@@ -11,43 +12,62 @@
     "node": "v24.14.0",
     "npm": "11.9.0",
     "ciNode": "22",
-    "targetRuntime": "browser production build",
-    "testedRuntime": "Vite preview at http://127.0.0.1:5198 with Chrome/Puppeteer"
+    "vite": "8.2.1",
+    "react": "19.2.8",
+    "chrome": "151.0.7922.170",
+    "targetRuntime": "modern Chromium browser",
+    "testedRuntime": "local Vite production preview with Chrome/Puppeteer"
   },
   "verify": {
-    "command": "npm run qa:rc",
+    "command": "npm run verify:p2-010",
     "executed": true,
     "exitCode": 0,
-    "durationSeconds": null,
+    "started": "2026-08-24T19:58:36.471Z",
+    "completed": "2026-08-24T20:17:00.596Z",
+    "durationSeconds": 1104.125,
     "log": "qa/evidence/verify.log",
-    "result": "PASS 517/517",
-    "source": "E3 final result"
+    "result": "PASS"
   },
   "suites": [
-    { "id": "unit", "runner": "npm test", "executed": true, "exitCode": 0, "result": "PASS", "passed": 1261, "total": 1261, "source": "E3" },
-    { "id": "build", "runner": "npm run build", "executed": true, "exitCode": 0, "result": "PASS", "modules": 68, "durationSeconds": 1.19, "source": "independent final evidence card" },
-    { "id": "cloud-contract", "runner": "npm run qa:cloud", "executed": true, "exitCode": 0, "result": "PASS", "passed": 67, "total": 67, "source": "E3" },
-    { "id": "worker-local-d1", "runner": "npm run qa:worker", "executed": true, "exitCode": 0, "result": "PASS", "passed": 18, "total": 18, "cases": "W1-W15 + S1-S3", "source": "E3" },
-    { "id": "release-regression", "runner": "npm run qa:rc", "executed": true, "exitCode": 0, "result": "PASS", "passed": 517, "total": 517, "source": "E3" },
-    { "id": "production-smoke", "runner": "npm run qa:prod", "executed": true, "exitCode": 0, "result": "PASS", "passed": 6, "total": 6, "durationSeconds": 3.55, "source": "independent final evidence card" }
+    { "id": "unit", "runner": "npm test", "executed": true, "exitCode": 0, "result": "PASS", "passed": 1596, "total": 1596 },
+    { "id": "build", "runner": "npm run build", "executed": true, "exitCode": 0, "result": "PASS", "modules": 91 },
+    { "id": "cloud", "runner": "npm run qa:cloud", "executed": true, "exitCode": 0, "result": "PASS", "passed": 67, "total": 67 },
+    { "id": "worker", "runner": "npm run qa:worker", "executed": true, "exitCode": 0, "result": "PASS", "passed": 18, "total": 18, "taskCardCases": "15/15" },
+    { "id": "production-smoke", "runner": "npm run qa:prod", "executed": true, "exitCode": 0, "result": "PASS", "passed": 6, "total": 6 },
+    { "id": "p2-008", "runner": "npm run qa:p2-008", "executed": true, "exitCode": 0, "result": "PASS", "passed": 200, "total": 200 },
+    { "id": "p2-009", "runner": "npm run qa:p2-009", "executed": true, "exitCode": 0, "result": "PASS", "passed": 173, "total": 173 },
+    { "id": "p2-009-r1", "runner": "npm run qa:p2-009-r1", "executed": true, "exitCode": 0, "result": "PASS", "passed": 152, "total": 152 },
+    { "id": "p2-010", "runner": "npm run qa:p2-010", "executed": true, "exitCode": 0, "result": "PASS", "subsuiteResults": ["trial 53/53", "skills 28/28", "training 33/33", "layout 25/25", "full journey PASS", "balance 60/60"] },
+    { "id": "release-candidate", "runner": "npm run qa:rc", "executed": true, "exitCode": 0, "result": "PASS", "passed": 517, "total": 517 },
+    { "id": "p2-010-screenshots", "runner": "npm run qa:p2-010-screenshots", "executed": true, "exitCode": 0, "result": "PASS", "passed": 16, "total": 16 }
   ],
   "productionPreview": {
-    "command": "npm run preview -- --host 127.0.0.1 --port 5198",
+    "command": "npm run preview -- --host 127.0.0.1 --port 5198 --strictPort",
     "url": "http://127.0.0.1:5198/",
     "ready": true,
+    "ownedByVerificationCommand": true,
     "cleanedUp": true,
     "postCheck": "No TCP listener on port 5198"
   },
   "completeRun": {
-    "status": "PASS_BY_RC_AUTOMATION",
-    "state": "qa:rc 517/517 covers clean start, core actions, designed outcomes and persistence/restart scenarios",
-    "runtime": "Puppeteer browser suites aggregated by qa:rc",
-    "visual": "NOT_RUN: no new blind or signature-frame screenshots captured by this evidence card"
+    "status": "PASS",
+    "state": "P2-009 completed save -> invitation -> profession-specific trial -> reward -> Tier II skill -> regional training -> Save V6 reload -> Golden Rabbit remains pending",
+    "runtime": "Real Chromium interaction through Puppeteer against local Vite dev and production-preview servers",
+    "visual": "A-P PNG evidence captured after fail-fast state assertions; representative desktop and 390px frames inspected"
   },
-  "checkpoints": [],
-  "subjectiveVerdicts": {
-    "firstTimeOnboarding": "NOT_RUN: no new ordered cold-start screenshots or clean-context adjudicator",
-    "coreFantasy": "NOT_RUN: no new normal-speed observational playtest",
-    "signatureFrames": "NOT_RUN: no newly captured clean trigger-time frames"
-  }
+  "checkpoints": [
+    { "id": "trial-entry", "state": "P2-009 completion and either invitation flag expose the actionable trial entry", "runtime": "trial E2E for warrior, knight, ranger, mage", "visual": ["qa/screenshots/p2-010/A_trial_intro_1920.png", "qa/screenshots/p2-010/B_trial_ground.png"] },
+    { "id": "profession-routes", "state": "Exactly one authored route is registered and each route resolves its fixed roster", "runtime": "trial and balance E2E", "visual": ["qa/screenshots/p2-010/C_warrior_trial.png", "qa/screenshots/p2-010/D_knight_trial.png", "qa/screenshots/p2-010/E_ranger_trial.png", "qa/screenshots/p2-010/F_mage_trial.png"] },
+    { "id": "observation-fail-forward", "state": "Success restores 2 MP; failure still advances; escape does not mark trial combat complete", "runtime": "trial E2E and rule tests", "visual": ["qa/screenshots/p2-010/B_trial_ground.png"] },
+    { "id": "tier-ii", "state": "Trial completion unlocks the profession Tier II skill once and Save V6 preserves it", "runtime": "skills E2E and full journey", "visual": ["qa/screenshots/p2-010/G_skill_tree_locked.png", "qa/screenshots/p2-010/H_skill_tree_unlocked.png", "qa/screenshots/p2-010/I_new_skill_combat.png", "qa/screenshots/p2-010/P_skill_tree_390.png"] },
+    { "id": "reward-once", "state": "120 XP, 50 gold, correct profession skill, martial medal, and P2-011 text hook are awarded once", "runtime": "four-route trial E2E", "visual": ["qa/screenshots/p2-010/H_skill_tree_unlocked.png"] },
+    { "id": "regional-training", "state": "Three regions expose at least two legal authored encounters; variant preview matches persisted lock; escape and defeat do not settle rewards", "runtime": "training E2E and full journey", "visual": ["qa/screenshots/p2-010/J_training_panel.png", "qa/screenshots/p2-010/K_low_risk.png", "qa/screenshots/p2-010/L_high_risk.png", "qa/screenshots/p2-010/M_variant_preview.png"] },
+    { "id": "companion-and-mobile", "state": "Sakura remains optional; combat and skill tree have no 390px horizontal overflow and ActionBar remains fixed", "runtime": "layout E2E", "visual": ["qa/screenshots/p2-010/N_sakura_trial.png", "qa/screenshots/p2-010/O_combat_390.png", "qa/screenshots/p2-010/P_skill_tree_390.png"] },
+    { "id": "persistence-and-freeze", "state": "Save V6 reload keeps the learned skill while Golden Rabbit remains in_progress/stage 0 with its four flags and rabbit_path x1", "runtime": "full journey and P2-009-R1 sidebar E2E", "visual": ["qa/screenshots/p2-010/P_skill_tree_390.png"] }
+  ],
+  "limitations": [
+    "Vite reports a non-blocking warning for a 563.38 kB minified JavaScript chunk.",
+    "No deployment or public-runtime verification was performed before audit approval.",
+    "P2-011 is represented only by the approved text hook and was not implemented."
+  ]
 }

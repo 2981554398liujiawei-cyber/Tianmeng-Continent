@@ -1,53 +1,2318 @@
-Tianmeng Continent final QA evidence ledger
-Implementation commit: 46b21a0fcc5beb9fd426f2e11eff691234d92880
-Final automated gate: PASS
+TM-P2-010 authoritative verification
+started=2026-08-24T19:58:36.471Z
+node=v24.14.0
+platform=win32
 
-[E3 FINAL] npm test
-exit_code=0
-result=PASS
-tests=1261/1261
 
-[INDEPENDENT FINAL CARD] npm run build
-exit_code=0
-result=PASS
-modules_transformed=68
-wall_seconds=1.19
-vite_build_seconds=0.135
-artifacts=dist/index.html, dist/assets/index-BPRU2VIP.css, dist/assets/index-CcfP6Lyt.js
+===== SUITE unit | npm test =====
 
-[E3 FINAL] npm run qa:cloud
-exit_code=0
-result=PASS
-assertions=67/67
+> tianmeng-continent@0.1.0 test
+> vitest run
 
-[E3 FINAL] npm run qa:worker
-exit_code=0
-result=PASS
-assertions=18/18
-cases=W1-W15 + S1-S3
 
-[E3 FINAL] npm run qa:rc
-exit_code=0
-result=PASS
-assertions=517/517
+ RUN  v4.1.10 C:/Users/cruelworld/Desktop/DeepSeek/dnd游戏--天梦大陆/.claude/worktrees/vigorous-dirac-880948
 
-[INDEPENDENT FINAL CARD] npm run preview -- --host 127.0.0.1 --port 5198
-ready=true
-url=http://127.0.0.1:5198/
 
-[INDEPENDENT FINAL CARD] npm run qa:prod
-exit_code=0
-result=PASS
-assertions=6/6
-wall_seconds=3.55
-checks=title visible; new game visible; continue visible; developer console hidden; developer console button absent; no save-state writes
+ Test Files  44 passed (44)
+      Tests  1596 passed (1596)
+   Start at  03:58:36
+   Duration  1.59s (transform 8.34s, setup 0ms, import 12.43s, tests 1.53s, environment 1.36s)
 
-[INDEPENDENT FINAL CARD] preview cleanup
-result=PASS
-postcondition=no TCP listener on port 5198
 
-[NOT_RUN] blind onboarding screenshots / premise gate / two-minute comprehension
-reason=No new ordered normal-speed cold-start frames or clean-context adjudicator were produced in this task.
+===== RESULT unit: PASS exit=0 durationMs=2101 =====
 
-[NOT_RUN] core-fantasy observational adjudication / signature frames
-reason=No new normal-speed subjective playtest or clean trigger-time frame capture was performed; automated assertions are not substituted for visual evidence.
+===== SUITE build | npm run build =====
+
+> tianmeng-continent@0.1.0 build
+> tsc -b && vite build
+
+vite v8.2.1 building client environment for production...
+[2Ktransforming...✓ 91 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                   0.52 kB │ gzip:   0.36 kB
+dist/assets/index-DrUcQeAq.css   36.62 kB │ gzip:   7.15 kB
+dist/assets/index-c-8tNib8.js   563.38 kB │ gzip: 150.90 kB
+
+✓ built in 170ms
+[plugin builtin:vite-reporter]
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+
+===== RESULT build: PASS exit=0 durationMs=895 =====
+
+===== SUITE cloud | npm run qa:cloud =====
+
+> tianmeng-continent@0.1.0 qa:cloud
+> node qa/p2-005-cloud-e2e.mjs
+
+cloud-save mock server on 5200
+
+  VITE v8.2.1  ready in 163 ms
+
+  ➜  Local:   http://localhost:5201/
+  ➜  Network: use --host to expose
+[cloud-save mock] GET ? -> 405
+PASS | C1: 首屏是云口令页（云存档口令 + 进入天梦大陆）
+PASS | C2: 已配置端点 → 不出现「仅本机模式」
+[cloud-save mock] OPTIONS preflight -> 204
+[cloud-save mock] POST load -> 200
+[cloud-save mock] POST save -> 200
+PASS | C3: 新口令自动创建空云空间并进入主菜单（云存档已连接）
+PASS | C4: 新角色进入游戏页（青石村）
+[cloud-save mock] POST save -> 200
+[cloud-save mock] POST load -> 200
+PASS | C5: A 保存后云端 revision=2 且 slot1 有档 | revision=2
+[cloud-save mock] OPTIONS preflight -> 204
+[cloud-save mock] POST load -> 200
+PASS | C6: B 输入同一口令 → 云档导入 → 主菜单可继续游戏
+PASS | C7: B Continue → 与 A 相同的存档（位置/玩家名）
+PASS | C8: 口令页 390×844 无横向溢出
+[cloud-save mock] POST save -> 200
+[cloud-save mock] POST load -> 200
+PASS | C9: B 保存后云端 revision=3 | revision=3
+[cloud-save mock] POST save -> 409
+PASS | C10: A 保存遇冲突 → 冲突对话框（云端存档已在另一台设备更新）
+PASS | C11: 冲突不自动覆盖（无确认覆盖按钮直通）
+[cloud-save mock] POST load -> 200
+PASS | C12: A 读取云端最新版后回到保存页（同步成功）
+[cloud-save mock] POST save -> 200
+[cloud-save mock] POST load -> 200
+PASS | C13: A 再保存（expectedRevision=3）→ revision=4 | revision=4
+[cloud-save mock] POST save -> 409
+[cloud-save mock] POST load -> 200
+[cloud-save mock] POST save -> 200
+[cloud-save mock] POST load -> 200
+[cloud-save mock] POST save -> 409
+PASS | C14: force 覆盖前二次确认（这会覆盖另一台设备的新进度）
+[cloud-save mock] POST force_save -> 200
+[cloud-save mock] POST load -> 200
+PASS | C15: force_save 后 revision=6（5→6） | revision=6
+PASS | C16: force 覆盖的 payload 合法（slot1 非空）
+PASS | C17: 清空本地后回到云口令页
+[cloud-save mock] POST load -> 200
+PASS | C18: 云档独立于本地/部署 → 重新输入口令档仍在
+PASS | C19: 网站更新后 Continue 数据保持（玩家名）
+[cloud-save mock] POST save -> 200
+PASS | C20: V3 payload 直接注入云端（revision 1）
+[cloud-save mock] OPTIONS preflight -> 204
+[cloud-save mock] POST load -> 200
+PASS | C21: V3 云档解锁成功（客户端迁移链升级）
+PASS | C22: V3→V6 迁移后正常进入游戏（青石村）
+PASS | C23: 迁移后本地已是 V6（companions/relationships/party/restCount/XP）
+PASS | C24: 黄金兔冻结线保持（in_progress/stage0/四 flags/rabbit_path 不受云迁移影响）
+[cloud-save mock] POST save -> 200
+[cloud-save mock] POST load -> 200
+PASS | C25: 迁移后保存 → 云端已是 V6 且 revision 2
+[cloud-save mock] POST save -> 200
+PASS | C30: C2 云端冲突基线创建成功（revision 1）
+[cloud-save mock] OPTIONS preflight -> 204
+[cloud-save mock] POST load -> 200
+PASS | C31: divergent 解锁不覆盖本机并停留在冲突页
+PASS | C32: 冲突页显示双方最新摘要（角色/等级/地点/保存时间）
+PASS | C33: 冲突页显示双选择按钮
+[cloud-save mock] POST load -> 200
+PASS | C34: 选择云端后显式导入并完成解锁
+[cloud-save mock] POST load -> 200
+PASS | C35: 仅 exportedAt 不同不误判冲突，可安全连接
+[cloud-save mock] POST load -> 200
+PASS | C36: 本机再次 divergent 时仍进入冲突页且本机保持
+[cloud-save mock] POST load -> 200
+PASS | C37: 本机覆盖云端先二次确认，首次点击不更新 revision
+[cloud-save mock] POST force_save -> 200
+[cloud-save mock] POST load -> 200
+PASS | C38: 二次确认后 force 成功并完成解锁
+PASS | C39: 解锁 force_save 后云 revision 更新（1→2） | revision=2
+[cloud-save mock] OPTIONS preflight -> 204
+[cloud-save mock] POST load -> 200
+PASS | C40: fresh cloud + 合法 V5 local 保持 CloudUnlock
+PASS | C41: fresh cloud 显示迁移提示和双路径按钮
+PASS | C42: 迁移选择前 MainMenu 未出现
+[cloud-save mock] POST save -> 200
+[cloud-save mock] POST load -> 200
+PASS | C43: 路径A上传 local 后云 revision=1 | revision=1
+PASS | C44: 路径A cloud slot 与 local slot 一致
+PASS | C45: 路径A上传后进入 MainMenu
+PASS | C46: 路径A MainMenu 可 Continue
+[cloud-save mock] OPTIONS preflight -> 204
+[cloud-save mock] POST load -> 200
+[cloud-save mock] POST load -> 200
+PASS | C47: 路径B首次点击仅显示空白云二次确认
+PASS | C48: 路径B二次确认显示任务卡精确完整文案
+[cloud-save mock] POST save -> 200
+[cloud-save mock] POST load -> 200
+PASS | C49: 路径B确认后 cloud revision=1 且五槽为空
+PASS | C50: 路径B确认后 local slot 仍保留
+PASS | C51: 路径B确认后进入 MainMenu
+[cloud-save mock] OPTIONS preflight -> 204
+[cloud-save mock] POST load -> 200
+PASS | C52: offline/not_configured 显示本地已保存与云同步未启用
+PASS | C53: offline/not_configured 不得显示云端已同步
+[cloud-save mock] POST save -> 200
+[cloud-save mock] OPTIONS preflight -> 204
+[cloud-save mock] POST load -> 200
+PASS | C54: load 删除首轮 cloud_failed 显示失败与重试
+[cloud-save mock] POST save -> 200
+PASS | C55: load 删除 retry success 仍留读取存档页
+PASS | C56: load 删除 retry success 后显示 synced truth
+[cloud-save mock] POST save -> 200
+[cloud-save mock] OPTIONS preflight -> 204
+[cloud-save mock] POST load -> 200
+[cloud-save mock] POST save -> 200
+PASS | C57: MainMenu 读取存档导入 JSON 后仍留存档列表
+PASS | C58: 导入后列表仍提供可用的显式读取入口
+PASS | C59: 导入后只有显式读取才进入 GamePage
+[cloud-save mock] OPTIONS preflight -> 204
+[cloud-save mock] POST load -> 200
+[cloud-save mock] POST save -> 200
+[cloud-save mock] POST save -> 409
+[cloud-save mock] POST load -> 200
+[cloud-save mock] POST load -> 200
+PASS | C60: 创建空白云期间被抢先建 vault 后进入正常冲突页
+PASS | C61: 创建竞态显示标准本机/云端双选择
+PASS | C62: 创建竞态不覆盖合法 local
+PASS | C63: 创建竞态不覆盖抢先建立的 cloud vault
+[cloud-save mock] OPTIONS preflight -> 204
+[cloud-save mock] POST load -> 200
+[cloud-save mock] POST save -> 200
+[cloud-save mock] POST save -> 409
+[cloud-save mock] POST load -> 200
+[cloud-save mock] POST load -> 200
+PASS | C64: 上传本机档期间被抢先建 vault 后进入正常冲突页
+PASS | C65: 上传竞态显示标准本机/云端双选择
+PASS | C66: 上传竞态不覆盖合法 local
+PASS | C67: 上传竞态不覆盖抢先建立的 cloud vault
+[cloud-e2e] mock server exited code=null
+PASS | C26: 服务器不可达 → 云存档暂时无法连接 + 本地降级入口
+PASS | C27: 降级进入主菜单（当前不会跨设备同步）
+PASS | C28: 服务器挂掉时本地保存仍正常（游戏可玩）
+PASS | C29: 全程无 JS exception
+[cloud-e2e] dev server exited code=null
+===== P2-005 Cloud focused 结果：67/67 通过 =====
+
+===== RESULT cloud: PASS exit=0 durationMs=109383 =====
+
+===== SUITE worker | npm run qa:worker =====
+
+> tianmeng-continent@0.1.0 qa:worker
+> node qa/p2-005-worker-e2e.mjs
+
+PASS W1 OPTIONS returns 204 with the complete CORS method/header contract
+PASS W2 invalid content-type is rejected
+PASS W3 passphrases shorter than 8 characters are rejected
+PASS W4 passphrases are trim+NFKC normalized
+PASS W5 absent vault loads as exists=false, revision=0 and payload=null
+PASS W6 first save creates revision 1
+PASS W7 load returns the revision-1 payload from Local D1
+PASS W8 save with expectedRevision=1 creates revision 2
+PASS W9 stale save returns HTTP 409 and current revision 2
+PASS W10 stale save does not overwrite the revision-2 payload
+PASS W11 force_save increments the existing vault to revision 3
+PASS W14 malformed JSON is rejected
+PASS W15 request bodies larger than 1 MB are rejected
+PASS S1 missing or empty SAVE_PEPPER fails closed with code=server_error
+PASS S2 default CORS is exact project GitHub Pages plus localhost/loopback; CORS_ORIGINS extends it
+PASS S3 method allowlist and passphrase case isolation remain enforced
+PASS W12 Local D1 key_hash is a 64-char digest and never stores the plaintext passphrase
+PASS W13 Local D1 preserves previous_revision and previous_payload_json
+Worker task card W1-W15: 15/15 passed
+Worker + Local D1 total: 18/18 passed
+
+===== RESULT worker: PASS exit=0 durationMs=26749 =====
+
+> tianmeng-continent@0.1.0 preview
+> vite preview --host 127.0.0.1 --port 5198 --strictPort
+
+  ➜  Local:   http://127.0.0.1:5198/
+
+===== SUITE production-smoke | npm run qa:prod =====
+
+> tianmeng-continent@0.1.0 qa:prod
+> node qa/prod-smoke.mjs
+
+PASS | Prod: 显示天梦大陆
+PASS | Prod: 显示新游戏
+PASS | Prod: 显示继续游戏
+PASS | Prod: 不显示开发者控制台
+PASS | Prod: 主菜单无开发者控制台按钮
+PASS | Prod: 未写入任何存档状态 | keys=
+===== 结果：6/6 通过 =====
+
+===== RESULT production-smoke: PASS exit=0 durationMs=2976 =====
+
+===== SUITE p2-008 | npm run qa:p2-008 =====
+
+> tianmeng-continent@0.1.0 qa:p2-008
+> npm run qa:p2-008-as && npm run qa:p2-008-north && npm run qa:p2-008-layout && npm run qa:p2-008-mobile && npm run qa:p2-008-full-journey && npm run qa:p2-008-balance
+
+
+> tianmeng-continent@0.1.0 qa:p2-008-as
+> node qa/p2-008-adventure-sidebar-e2e.mjs
+
+
+  VITE v8.2.1  ready in 187 ms
+
+  ➜  Local:   http://localhost:5237/
+  ➜  Network: use --host to expose
+PASS | AS2: 右栏存在三个 Tab（任务/线索/日志） | 任务,线索,日志
+PASS | AS3: 任务 Tab 展示「进行中（1）」分组
+PASS | AS3: 任务 Tab 展示「可提交（1）」分组
+PASS | AS3: 任务 Tab 展示「已完成（1）」分组
+PASS | AS3: 进行中分组含《北门失联》
+PASS | AS12: 可提交任务在右栏显示「提交任务」按钮
+PASS | AS12: 可提交分组展示奖励（40 金币）
+PASS | AS9: 全程无 Production ID leak（场景 A · 任务 Tab）
+PASS | AS8: 已发现线索含「兔子的路径」
+PASS | AS4: 线索卡含描述（指向黄金兔子王所在之地）
+PASS | AS4: 线索卡含来源「来源：兔王巢穴」
+PASS | AS4: 线索卡含分类 tag「地图」
+PASS | AS6: 日志 Tab 存在 Activity Feed（最近记录）
+PASS | AS6: Activity Feed 含已完成任务条目《村外异动》已完成
+PASS | AS6: Activity Feed 含成长条目（达到 Lv.2）
+PASS | AS11: 切换 Tab 无 JS 错误
+PASS | AS9: 全程无 Production ID leak（切 Tab 后）
+PASS | AS10: 提交前当前目标为《北郊追踪》（返回武馆向马科汇报北郊的发现）
+PASS | AS10: 提交后当前目标更新为《北门失联》（调查天龙城北门外巡逻队留下的痕迹）
+PASS | AS10: 提交后可提交分组消失（已完成分组更新为 2）
+PASS | AS9: 全程无 Production ID leak（提交后）
+PASS | AS1: 顶部存在「当前目标」区块
+PASS | AS1: 当前目标展示 in_progress 任务《北门失联》
+PASS | AS1: 当前目标描述为调查北门外巡逻队痕迹
+PASS | AS1: 当前目标含地点提示（天龙城北门）
+PASS | AS7: 附近委托区块存在
+PASS | AS7: 附近委托仍展示其它可接委托《商人王财的麻烦》
+PASS | AS7: 北门失联未 completed 时附近委托不含《北郊追踪》
+PASS | AS5: 无线索时线索 Tab 空态（尚未发现任何线索）
+PASS | AS9: 全程无 Production ID leak（场景 B）
+PASS | AS: 全程无 JS exception
+===== TM-P2-008 §5/§33-35 AdventureSidebar E2E 结果：31/31 通过 =====
+
+> tianmeng-continent@0.1.0 qa:p2-008-north
+> node qa/p2-008-north-outskirts-e2e.mjs
+
+
+  VITE v8.2.1  ready in 191 ms
+
+  ➜  Local:   http://localhost:5235/
+  ➜  Network: use --host to expose
+PASS | N1: 北门场景显示马科发布块（北门失联 · 调查终结）
+PASS | N1: 发布块显示「接受任务：前往北郊继续追查」
+PASS | N1: 全程无 Production ID leak（stage 1）
+PASS | N2: 接受后任务 in_progress（右栏当前目标更新）
+PASS | N2: 发布块切换为当前目标（不再显示接受按钮）
+PASS | N3: 北门出现「沿着足迹继续追踪」（track-north-trail）
+PASS | N3: 追踪后按钮消失（Stage A 完成）
+PASS | N3: 北郊连接变为可点（解锁）
+PASS | N3: toast 提示获得线索「拖行痕迹」 | toast=获得新线索：拖行痕迹
+PASS | N4: 进入天龙城北郊场景
+PASS | N5: 北郊出现「搜索袭击现场」
+PASS | N5: 搜索后进入 Stage C（调查按钮出现）
+PASS | N6: MND 检定按钮可见
+PASS | N6: LCK 检定按钮可见
+PASS | N6: 无 Sakura 在场时 Sakura 按钮隐藏
+PASS | N6: 未装备坐骑时 Mount 按钮隐藏
+PASS | N7: 检定失败提示「再试一次」
+PASS | N7: 失败后按钮保留（可重试，不软阻断）
+PASS | N8: 成功后调查按钮消失
+PASS | N8: LCK 按钮同步消失
+PASS | N12: 北门出现「向马科汇报发现」
+PASS | N12: 汇报后任务进入「可提交」
+PASS | N13: 提交前存在「提交任务」按钮（武馆） | [{"text":"可提交（1）▼","disabled":false},{"text":"提交任务","disabled":false}]
+PASS | N13: 提交反馈显示任务完成 + 金币 +40 | 任务完成关闭《北郊追踪》金币 +40冒险阅历 +100知道了北郊验收员Lv.2 · 骑士生命20 / 24灵
+PASS | N13: 冒险阅历 +100
+PASS | N13: 提交后可提交区消失 | 当前目标暂无当前目标。任务线索1日志附近委托（3）▼马科：《商人王财的麻烦》查看马科：《断旗余声》查看马科：《天龙武备试炼》查看已完成（2）▼
+PASS | N14: 北郊展示附近威胁「荒原狼群」
+PASS | N14: 荒原狼群 variants 摘要（×2 或 黑鬃魔狼+荒原野狼 或 ×3）
+PASS | N14: 荒原狼群「迎战」按钮存在
+PASS | N14: 北郊同时展示单敌「落单野狼 · Lv.2」
+PASS | N14: 全程无 Production ID leak（stage 2）
+PASS | N9: LCK 检定成功推进（调查按钮消失）
+PASS | N9: 右栏线索录包含「巡逻队徽记」
+PASS | N9: 全程无 Production ID leak（LCK 分支）
+PASS | N10: Sakura 在场时显示「请樱花优子观察」
+PASS | N10: Sakura 额外线索「黑色鬃毛」进入线索录
+PASS | N10: Sakura 观察不自动解决（调查按钮仍保留）
+PASS | N10: 全程无 Production ID leak（Sakura 分支）
+PASS | N11: 装备坐骑时显示「沿官道快速搜索（坐骑）」
+PASS | N11: Mount 搜索得线索「巡逻队徽记」
+PASS | N11: Mount 搜索不自动解决（调查按钮仍保留）
+PASS | N11: 全程无 Production ID leak（Mount 分支）
+PASS | N15: 全程无 JS exception
+===== TM-P2-008 §16-29 North Outskirts E2E 结果：43/43 通过 =====
+
+> tianmeng-continent@0.1.0 qa:p2-008-layout
+> node qa/p2-008-layout-e2e.mjs
+
+
+  VITE v8.2.1  ready in 188 ms
+
+  ➜  Local:   http://localhost:5239/
+  ➜  Network: use --host to expose
+PASS | L7 [1920×1080] 无 Production ID leak
+PASS | L1 [1920×1080] 左栏 PlayerSidebar 可见
+PASS | L1 [1920×1080] 左栏含玩家名字「布局验收员」
+PASS | L1 [1920×1080] 中间场景列可见
+PASS | L1 [1920×1080] 右栏 quest-column 可见 | flex/340px
+PASS | L2 [1920×1080] 底部 MobileNav 隐藏
+PASS | L2 [1920×1080] 顶部「冒险」按钮隐藏
+PASS | L6 [1920×1080] GamePage outer 无滚动 | {"sh":1080,"ch":1080}
+PASS | L7 [1600×900] 无 Production ID leak
+PASS | L1 [1600×900] 左栏 PlayerSidebar 可见
+PASS | L1 [1600×900] 左栏含玩家名字「布局验收员」
+PASS | L1 [1600×900] 中间场景列可见
+PASS | L1 [1600×900] 右栏 quest-column 可见 | flex/340px
+PASS | L2 [1600×900] 底部 MobileNav 隐藏
+PASS | L2 [1600×900] 顶部「冒险」按钮隐藏
+PASS | L6 [1600×900] GamePage outer 无滚动 | {"sh":900,"ch":900}
+PASS | L7 [1366×768] 无 Production ID leak
+PASS | L1 [1366×768] 左栏 PlayerSidebar 可见
+PASS | L1 [1366×768] 左栏含玩家名字「布局验收员」
+PASS | L1 [1366×768] 中间场景列可见
+PASS | L1 [1366×768] 右栏 quest-column 可见 | flex/340px
+PASS | L2 [1366×768] 底部 MobileNav 隐藏
+PASS | L2 [1366×768] 顶部「冒险」按钮隐藏
+PASS | L6 [1366×768] GamePage outer 无滚动 | {"sh":768,"ch":768}
+PASS | L7 [1024×768] 无 Production ID leak
+PASS | L3 [1024×768] 右栏 quest-column 隐藏 | flex/0px
+PASS | L3 [1024×768] 底部 MobileNav 隐藏
+PASS | L3 [1024×768] 顶部「冒险」按钮可见 | flex/63px
+PASS | L3 [1024×768] 点击「冒险」Drawer 打开且含 AdventureSidebar
+PASS | L3 [1024×768] Drawer 含当前目标/任务/线索/日志 | {"hasQuestColumn":true,"hasObjective":true,"hasQuestsTab":true,"hasCluesTab":true,"hasLogTab":true}
+PASS | L3 [1024×768] 关闭后 Drawer 消失
+PASS | L7 [390×844] 无 Production ID leak
+PASS | L4 [390×844] 底部 MobileNav 可见 | block/390px
+PASS | L4 [390×844] MobileNav 含[角色][冒险][背包]三按钮 | {"role":true,"adventure":true,"backpack":true}
+PASS | L4 [390×844] 右栏 quest-column 隐藏 | flex/0px
+PASS | L4 [390×844] 顶部「冒险」按钮隐藏
+PASS | L5 [390×844] [冒险] Drawer 打开含 AdventureSidebar
+PASS | L5 [390×844] Drawer 含当前目标/任务/线索/日志 | {"hasQuestColumn":true,"hasObjective":true,"hasQuestsTab":true,"hasCluesTab":true,"hasLogTab":true}
+PASS | L5 [390×844] [背包] BackpackPanel 打开
+PASS | L5 [390×844] BackpackPanel 含背包物品（铁剑/治疗药水） | {"hasIronSword":true,"hasPotion":true}
+PASS | L8: 全程无 JS exception
+===== TM-P2-008 §14/§15 Layout E2E 结果：41/41 通过 =====
+
+> tianmeng-continent@0.1.0 qa:p2-008-mobile
+> node qa/p2-008-mobile-e2e.mjs
+
+
+  VITE v8.2.1  ready in 181 ms
+
+  ➜  Local:   http://localhost:5238/
+  ➜  Network: use --host to expose
+PASS | MOB1: 底部导航 [角色] 按钮可见 | block/visible/130x44/844
+PASS | MOB1: 底部导航 [冒险] 按钮可见 | block/visible/130x44/844
+PASS | MOB1: 底部导航 [背包] 按钮可见 | block/visible/130x44/844
+PASS | MOB1: 导航贴底（bottom 在视口高度 844 附近） | block/visible/130x44/844 | block/visible/130x44/844 | block/visible/130x44/844
+PASS | MOB2: <768 时顶部「冒险」按钮（open-adventure-drawer）隐藏（display none） | display=none
+PASS | MOB3: [角色] Drawer 打开且含玩家名字
+PASS | MOB3: [角色] Drawer 含玩家等级（Lv.2）
+PASS | MOB3: [角色] Drawer 含职业（骑士）
+PASS | MOB4: [冒险] Drawer 打开且含「当前目标」区块
+PASS | MOB4: [冒险] Drawer 含当前任务目标《村外异动》
+PASS | MOB4: [冒险] Drawer 含任务 Tab
+PASS | MOB4: [冒险] Drawer 含线索 Tab
+PASS | MOB4: [冒险] Drawer 含日志 Tab
+PASS | MOB5: [背包] Drawer 打开（backpack-panel 存在）
+PASS | MOB5: 背包含「治疗药水」
+PASS | MOB5: 背包含「旅行布衣」
+PASS | MOB5: 背包含「铁剑」
+PASS | MOB6: 全程无 Production ID leak
+PASS | MOB6: 全程无 JS exception
+===== TM-P2-008 §14 移动端底部导航 E2E 结果：19/19 通过 =====
+
+> tianmeng-continent@0.1.0 qa:p2-008-full-journey
+> node qa/p2-008-full-journey-e2e.mjs
+
+
+  VITE v8.2.1  ready in 202 ms
+
+  ➜  Local:   http://localhost:5240/
+  ➜  Network: use --host to expose
+PASS | FJ1: Golden Rabbit 冻结存档合法（in_progress/stage 0）
+PASS | FJ1: 四调查 flags 保持（铁匠/药师/村长汇报/巢穴复查）
+PASS | FJ1: rabbit_path ×1
+PASS | FJ1: 北门失联 available（马科附近委托）
+PASS | FJ2: 武馆场景加载（马科）
+PASS | FJ2: 《北门失联》附近委托可见（发布者马科）
+PASS | FJ2: 《北门失联》进行中 + 目标更新
+PASS | FJ3: 到达北门（tianlong_north_gate）
+PASS | FJ3: 「查看巡逻队留下的痕迹」可用
+PASS | FJ3: 痕迹剧情（凌乱马蹄印）
+PASS | FJ3: 调查后黑鬃魔狼 Lv.3 出现（迎战）
+PASS | 进入黑鬃魔狼战斗（Lv.3）
+PASS | 击败黑鬃魔狼（战斗胜利）
+PASS | FJ4: 北门胜利剧情（黑鬃魔狼倒在荒草之间）
+PASS | FJ4: 铜牌剧情（断裂铜牌）
+PASS | FJ4: 日志显示黑鬃魔狼已击败
+PASS | FJ4: 《北门失联》可提交（右栏）
+PASS | FJ5: 「提交任务」按钮可用（武馆）
+PASS | FJ5: 《北门失联》已完成（右栏已完成区）
+PASS | FJ5: 马科固定剧情（接过断裂的铜牌）
+PASS | FJ5: 马科固定剧情（封锁消息继续查）
+PASS | FJ5: 提交《北门失联》金币 +30 | 金币 100→130
+PASS | FJ6: 北门失联完成后马科发布块（北门失联 · 调查终结）
+PASS | FJ6: 「接受任务：前往北郊继续追查」
+PASS | FJ6: 《北郊追踪》进行中 + 目标更新
+PASS | FJ7: 北门「沿着足迹继续追踪」
+PASS | FJ7: 追踪后北郊连接解锁可点
+PASS | FJ7: toast 获得线索「拖行痕迹」 | toast=获得新线索：拖行痕迹
+PASS | FJ8: 进入天龙城北郊
+PASS | FJ8: 「搜索袭击现场」
+PASS | FJ8: Stage C 多解按钮（MND 检定）
+PASS | FJ9: 调查成功推进（按钮消失）
+PASS | FJ10: 北门「向马科汇报发现」
+PASS | FJ10: 汇报后进入「可提交」
+PASS | FJ11: 「提交任务」按钮可用（武馆）
+PASS | FJ11: 提交反馈任务完成 + 金币 +40 + 冒险阅历 +100
+PASS | FJ11: 右栏可提交区消失
+PASS | FJ12: 主线完成后 UI 中黄金兔子王仍进行中
+PASS | FJ12: 存档仍 in_progress / stage 0
+PASS | FJ12: 存档四 flags 保持
+PASS | FJ12: 存档 rabbit_path ×1 保持
+PASS | FJ13: 全程无 Production ID leak
+PASS | FJ13: 全程无 JS exception
+===== TM-P2-008 Full Journey E2E 结果：43/43 通过 =====
+
+> tianmeng-continent@0.1.0 qa:p2-008-balance
+> node qa/p2-008-balance.mjs
+
+  PASS  B1.1 荒原狼群已注册
+  PASS  B1.2 采用 variants（3 档）且无 fixedMembers
+  PASS  B1.3 权重为 50/30/20
+  PASS  B1.4 任意 variant 成员总数 ≤ 3（§23 ≤3 敌人）
+  PASS  B2.1 变体 A = 2×wild_wolf
+  PASS  B2.2 变体 B = 1×black_mane_wolf + 1×wild_wolf
+  PASS  B2.3 变体 C = 3×wild_wolf
+  PASS  B3.1 wild_wolf Lv2
+  PASS  B3.2 wild_wolf maxHp=10
+  PASS  B3.3 wild_wolf armor=11
+  PASS  B3.4 wild_wolf attackPower=14
+  PASS  B3.5 wild_wolf adventureXpReward=15
+  PASS  B3.6 black_mane_wolf Lv3
+  PASS  B3.7 black_mane_wolf maxHp=15
+  PASS  B3.8 black_mane_wolf armor=12
+  PASS  B3.9 black_mane_wolf attackPower=16
+  PASS  B3.10 black_mane_wolf adventureXpReward=25
+  PASS  B4 wolf_fang/wolf_pelt/wolf_meat 至少 2 种出现在狼类掉落表
+  PASS  B5.1 变体 A 胜率 ≥ 同级单敌参照×60%
+  PASS  B5.2 变体 A 胜率 ≤ 95%（可打但不无脑）
+  PASS  B6.1 变体 C 胜率 < 变体 A（多敌更难）
+  PASS  B6.2 Δ(A−C) ≥ 5pp（显著可感知）
+  PASS  B7 同 seed 两次运行结果完全一致
+
+====================================================================================================
+TM-P2-008 §23-25 荒原狼群 Balance Regression
+运行环境: Node v24.14.0 | 每 pairing 模拟 5000 次 | 种子 20260823
+====================================================================================================
+
+【主配对 knight+Sakura（p2-007 多敌 pairing 结构，B5/B6 断言目标）】
+  参照（同级单敌）: 1×黑鬃魔狼      99.7%  失败 0.3%  回合 3.0
+  变体 A（狼群×2）: 2×荒原野狼       91.7%  失败 8.3%  回合 3.9
+  变体 C（狼群×3）: 3×荒原野狼       38.5%  失败 61.5%  回合 5.3
+  判定: A≥参照×60%(59.8%) 且 A≤95% ｜ C−A=53.2pp（负=多敌更难）
+
+【单挑对照 solo knight（透明报告；不作断言）】
+  参照（同级单敌）: Lv2 vs 1×黑鬃魔狼    31.2%  失败 68.8%  回合 4.5
+  变体 A（狼群×2）: Lv2 vs 2×荒原野狼      2.9%  失败 97.1%  回合 4.9
+
+====================================================================================================
+断言汇总：PASS 23 ｜ FAIL 0
+全部断言通过。
+退出码：0（非 0 = 存在 FAIL）
+
+报告已写入：C:\Users\cruelworld\Desktop\DeepSeek\dnd游戏--天梦大陆\.claude\worktrees\vigorous-dirac-880948\qa\P2_008_BALANCE_REPORT.md
+
+===== RESULT p2-008: PASS exit=0 durationMs=81392 =====
+
+===== SUITE p2-009 | npm run qa:p2-009 =====
+
+> tianmeng-continent@0.1.0 qa:p2-009
+> npm run qa:p2-009-sidebar && npm run qa:p2-009-north-story && npm run qa:p2-009-full-journey && npm run qa:p2-009-layout && npm run qa:p2-009-balance
+
+
+> tianmeng-continent@0.1.0 qa:p2-009-sidebar
+> node qa/p2-009-sidebar-e2e.mjs
+
+
+  VITE v8.2.1  ready in 192 ms
+
+  ➜  Local:   http://localhost:5241/
+  ➜  Network: use --host to expose
+PASS | S8a: 全程无 Production ID leak（进入场景）
+PASS | S4: 存量线索视为已读（线索 Tab 无数字角标） | tab="线索"
+PASS | S4: 旧驿站处于 Stage B（搜索驿站按钮存在）
+PASS | S4: 搜索驿站 toast 提示获得线索「断裂队旗」 | toast=获得新线索：断裂队旗
+PASS | S4: 新发现线索后线索 Tab 角标变为「线索1」 | tab="线索1"
+PASS | S4: 搜索后 Stage C 屏障按钮出现（barrier-mnd）
+PASS | S4: 打开线索 Tab 后未读角标消失 | tab="线索"
+PASS | S1: 线索卡默认折叠（「兔子的路径」描述不显示） | 兔子的路径地图展开
+PASS | S1: 线索卡默认折叠（「断裂队旗」描述不显示） | 断裂队旗北郊展开
+PASS | S2: 展开后描述显示（指向黄金兔子王所在之地） | 兔子的路径地图收起一份指向黄金兔子王所在之地的藏宝图，上面以景物和路标标记着前往目标地点的路线。来源：兔王巢穴
+PASS | S2: 展开后来源显示（来源：兔王巢穴）
+PASS | S2: 展开后按钮变「收起」
+PASS | S3: 展开断裂队旗后兔子路径自动收起（同时最多 1 条展开）
+PASS | S3: 断裂队旗展开后显示描述 | 断裂队旗北郊收起一面被撕成两半的骑士团战旗，绣着北门第三巡逻队的徽记。断裂处边缘平整——这不是野兽所为，更像是被利器斩断。来源：北郊旧驿站
+PASS | S4: 再次获得新线索（魔化诱饵）后角标再现「线索1」 | tab="线索1"
+PASS | S5: 最近记录上限 5 条（活动项 34 条只显示 5） | li=5
+PASS | S5: 超过 5 条时显示「查看全部」按钮
+PASS | S6: 消息中心打开（aria-label=消息中心）
+PASS | S7: 消息中心展示沈拓用户文案（north_survivor_rescued 只显示文案）
+PASS | S7: 消息中心展示马科试炼预告用户文案（knight_trial_invited 只显示文案）
+PASS | S7: 消息中心含 6 条已完成任务项 | quest 项=6
+PASS | S6: 消息中心上限 20 条 = 6 任务 + north + knight + 12 村长事件（25 条截断 13 条） | 村长事件=12
+PASS | S7: 消息中心内部 event id 不泄露（无 north_survivor_rescued / knight_trial_invited）
+PASS | S8: 全程无 JS exception
+===== TM-P2-009 §4-8 AdventureSidebar 封板修复 E2E 结果：24/24 通过 =====
+
+> tianmeng-continent@0.1.0 qa:p2-009-north-story
+> node qa/p2-009-north-story-e2e.mjs
+
+
+  VITE v8.2.1  ready in 183 ms
+
+  ➜  Local:   http://localhost:5242/
+  ➜  Network: use --host to expose
+PASS | NS1: 武馆显示马科发布块「北郊驿站的传闻」
+PASS | NS1: 发布块显示「接受任务：断旗余声」按钮
+PASS | NS14a: 全程无 Production ID leak（stage 1）
+PASS | NS2: 接受后右栏「进行中（1）」含《断旗余声》
+PASS | NS2: 接受后发布块切换当前目标（接受按钮消失）
+PASS | NS3: 武馆出现「听马科说明驿站情况」
+PASS | NS3: 简报 toast「任务更新：前往北郊旧驿站」 | toast=任务更新：前往北郊旧驿站
+PASS | NS3: 简报后 Stage A 按钮消失
+PASS | NS4: 到达北郊场景（天龙城北郊）
+PASS | NS4: 北郊 travel 区出现「北郊旧驿站」（解锁）
+PASS | NS4: 进入北郊旧驿站场景
+PASS | NS5: 旧驿站出现「搜索驿站」
+PASS | NS5: 搜索 toast「获得新线索：断裂队旗」 | toast=获得新线索：断裂队旗
+PASS | NS5: 搜索后 Stage C 出现（barrier-mnd）
+PASS | NS5: 线索录含「断裂队旗」
+PASS | NS6: combat 解按钮可见
+PASS | NS6: MND 检定按钮可见
+PASS | NS6: LCK 检定按钮可见
+PASS | NS6: 无 Sakura 在场时 Sakura 按钮隐藏
+PASS | NS6: 未装备坐骑时 Mount 按钮隐藏
+PASS | NS7: 检定失败提示「狼群没有散开，但你可以再试一次」
+PASS | NS7: 失败后按钮保留（可重试，不软阻断）
+PASS | NS8: 成功后 Stage C 按钮消失
+PASS | NS8: 推进 Stage D（搜救按钮出现）
+PASS | NS9: 搜救 toast「你救出了一名幸存的巡逻骑士」 | toast=你救出了一名幸存的巡逻骑士
+PASS | NS9: 推进 Stage E（询问沈拓按钮出现）
+PASS | NS9: 搜救后线索录含「黑篷车辙」
+PASS | NS10: 询问沈拓 toast「获得新线索：魔化诱饵」 | toast=获得新线索：魔化诱饵
+PASS | NS10: 推进 Stage F（武馆回报按钮——需回武馆）
+PASS | NS11: 回到武馆
+PASS | NS11: 武馆出现「向马科汇报」
+PASS | NS11: 回报后任务进入「可提交（1）」 | 当前目标《断旗余声》返回武馆向马科提交任务地点提示：天龙城武馆任务线索日志可提交（1）▼断旗余声北郊深处一座废弃的驿站，挂着被斩断的巡逻队战旗。失联的第三巡逻队，似乎在这里留下了最后的痕迹。奖励：50 金币提交任务附近委托（2）▼马科：《商
+PASS | NS11: 武馆可提交区显示「提交任务」按钮
+PASS | NS12: 提交反馈显示任务完成 + 金币 +50 | 任务完成关闭《断旗余声》金币 +50冒险阅历 +120知道了断旗余声验收员Lv.3 · 骑士生命20 / 26灵力7 / 8冒险
+PASS | NS12: 冒险阅历 +120
+PASS | NS12: P2-010 正式试炼入口兑现 P2-009 预告
+PASS | NS12: 旧「尚待展开」文案已替换为可操作入口
+PASS | NS14b: 全程无 Production ID leak（stage 12）
+PASS | NS9b: 日志展示「你在北郊旧驿站救出了失联巡逻骑士沈拓」
+PASS | NS9b: 日志展示「马科认可了你的北线表现，并准备安排正式骑士试炼」
+PASS | NS9b: 事件内部 id 不出现在 DOM
+PASS | NS13: 狼群已击退时 barrier-combat 变「战斗已完成，进入后院」
+PASS | NS13: 遭遇卡「驿站狼群」消失（neutralized 门）
+PASS | NS13: combat 解 toast「获得新线索：魔化诱饵」 | toast=获得新线索：魔化诱饵
+PASS | NS13: combat 解推进 Stage D（搜救按钮出现）
+PASS | NS13: 全程无 Production ID leak（combat 解）
+PASS | NS14c: Sakura 在场时显示「请樱花优子寻找安全路线」
+PASS | NS14c: Sakura 反馈 toast「找到绕过狼群的安全路线」 | toast=樱花优子找到了绕过狼群的安全路线
+PASS | NS14c: Sakura 路线真正解决（推进 Stage D，搜救按钮出现）
+PASS | NS14c: Sakura 路线得线索「魔化诱饵」
+PASS | NS14c: 全程无 Production ID leak（Sakura 解）
+PASS | NS14d: 装备坐骑时显示「骑马引开狼群后从另一侧进入」
+PASS | NS14d: Mount 反馈 toast「骑马引开狼群后从另一侧进入」 | toast=你骑马引开狼群后从另一侧进入了后院
+PASS | NS14d: Mount 路线真正解决（推进 Stage D，搜救按钮出现）
+PASS | NS14d: Mount 路线得线索「黑篷车辙」
+PASS | NS14d: 全程无 Production ID leak（Mount 解）
+PASS | NS14e: LCK 检定成功推进 Stage D
+PASS | NS14e: LCK 解得线索「黑篷车辙」
+PASS | NS14e: 全程无 Production ID leak（LCK 解）
+PASS | NS14f: 旧驿站展示遭遇「驿站狼群」
+PASS | NS14f: 遭遇成员摘要「荒原野狼×2+魔化狼」
+PASS | NS14f: 遭遇「迎战」按钮存在
+PASS | NS14f: 全程无 Production ID leak（遭遇卡）
+PASS | NS14: 全程无 JS exception
+===== TM-P2-009 §9-19 断旗余声全流程 E2E 结果：64/64 通过 =====
+
+> tianmeng-continent@0.1.0 qa:p2-009-full-journey
+> node qa/p2-009-full-journey-e2e.mjs
+
+
+  VITE v8.2.1  ready in 183 ms
+
+  ➜  Local:   http://localhost:5243/
+  ➜  Network: use --host to expose
+PASS | FJ1: 武馆存在「提交任务」按钮（北门失联 completable）
+PASS | FJ1: 提交后出现《北郊追踪》接受按钮（accept-north-outskirts）
+PASS | FJ2: 北郊未 completed 时断旗余声发布块不出现
+PASS | FJ1: 北郊追踪提交完成（冒险阅历 +100） | 任务完成关闭《北郊追踪》金币 +40冒险阅历 +100知道了北线全程验收员Lv.3 · 骑士生命20 / 26灵力7 / 8冒险
+PASS | FJ3: 北郊 completed 后《断旗余声》接受按钮出现
+PASS | FJ4: 进入北郊旧驿站场景
+PASS | FJ4: 屏障解除推进搜救（rescue-survivor 出现）
+PASS | FJ4: 断旗余声提交完成（冒险阅历 +120） | 任务完成关闭《断旗余声》金币 +50冒险阅历 +120知道了北线全程验收员Lv.4 · 骑士生命20 / 28灵力7 / 9冒险
+PASS | FJ4: P2-010 正式试炼入口兑现原 §17 预告
+PASS | FJ5: 全程无 Production ID leak
+PASS | FJ6: 全程无 JS exception
+PASS | FJ2b: 北郊 in_progress（非 completed）时断旗余声发布块不出现
+PASS | FJ5b: 全程无 Production ID leak（窄前置场景）
+===== TM-P2-009 §9/§31 北线完整旅程 E2E 结果：13/13 通过 =====
+
+> tianmeng-continent@0.1.0 qa:p2-009-layout
+> node qa/p2-009-layout-e2e.mjs
+
+
+  VITE v8.2.1  ready in 200 ms
+
+  ➜  Local:   http://localhost:5244/
+  ➜  Network: use --host to expose
+PASS | L7 [1920×1080] 无 Production ID leak
+PASS | L1 [1920×1080] 左栏 PlayerSidebar 可见
+PASS | L1 [1920×1080] 中间场景列可见
+PASS | L1 [1920×1080] 右栏 quest-column 可见 | flex/340px
+PASS | L1 [1920×1080] 底部 MobileNav 隐藏
+PASS | L1 [1920×1080] 顶部「冒险」按钮隐藏
+PASS | L2 [1920×1080] 主场景列展示马科发布块「北郊驿站的传闻」
+PASS | L2 [1920×1080] 发布块含「接受任务：断旗余声」按钮
+PASS | L1 [1920×1080] GamePage outer 无滚动 | {"sh":1080,"ch":1080}
+PASS | L7 [1600×900] 无 Production ID leak
+PASS | L1 [1600×900] 左栏 PlayerSidebar 可见
+PASS | L1 [1600×900] 中间场景列可见
+PASS | L1 [1600×900] 右栏 quest-column 可见 | flex/340px
+PASS | L1 [1600×900] 底部 MobileNav 隐藏
+PASS | L1 [1600×900] 顶部「冒险」按钮隐藏
+PASS | L2 [1600×900] 主场景列展示马科发布块「北郊驿站的传闻」
+PASS | L2 [1600×900] 发布块含「接受任务：断旗余声」按钮
+PASS | L1 [1600×900] GamePage outer 无滚动 | {"sh":900,"ch":900}
+PASS | L7 [1366×768] 无 Production ID leak
+PASS | L1 [1366×768] 左栏 PlayerSidebar 可见
+PASS | L1 [1366×768] 中间场景列可见
+PASS | L1 [1366×768] 右栏 quest-column 可见 | flex/340px
+PASS | L1 [1366×768] 底部 MobileNav 隐藏
+PASS | L1 [1366×768] 顶部「冒险」按钮隐藏
+PASS | L2 [1366×768] 主场景列展示马科发布块「北郊驿站的传闻」
+PASS | L2 [1366×768] 发布块含「接受任务：断旗余声」按钮
+PASS | L1 [1366×768] GamePage outer 无滚动 | {"sh":768,"ch":768}
+PASS | L7 [1024×768] 无 Production ID leak
+PASS | L3 [1024×768] 右栏 quest-column 隐藏 | flex/0px
+PASS | L3 [1024×768] 底部 MobileNav 隐藏
+PASS | L3 [1024×768] 顶部「冒险」按钮可见 | flex/63px
+PASS | L3 [1024×768] 主场景列仍展示发布块
+PASS | L3 [1024×768] 点击「冒险」Drawer 打开且含 AdventureSidebar
+PASS | L3 [1024×768] Drawer 含当前目标/任务/线索/日志 | {"hasQuestColumn":true,"hasObjective":true,"hasQuestsTab":true,"hasCluesTab":true,"hasLogTab":true}
+PASS | L3 [1024×768] 关闭后 Drawer 消失
+PASS | L7 [390×844] 无 Production ID leak
+PASS | L4 [390×844] 底部 MobileNav 可见 | block/390px
+PASS | L4 [390×844] MobileNav 含[角色][冒险][背包]三按钮 | {"role":true,"adventure":true,"backpack":true}
+PASS | L4 [390×844] 右栏 quest-column 隐藏 | flex/0px
+PASS | L4 [390×844] 顶部「冒险」按钮隐藏
+PASS | L5 [390×844] [冒险] Drawer 打开含 AdventureSidebar
+PASS | L5 [390×844] Drawer 含当前目标/任务/线索/日志 | {"hasQuestColumn":true,"hasObjective":true,"hasQuestsTab":true,"hasCluesTab":true,"hasLogTab":true}
+PASS | L5 [390×844] [背包] BackpackPanel 打开
+PASS | L5 [390×844] BackpackPanel 含背包物品（铁剑/治疗药水） | {"hasIronSword":true,"hasPotion":true}
+PASS | L6 [1366×900] 旧驿站场景渲染「驿站狼群」遭遇卡
+PASS | L6 [1366×900] 遭遇成员摘要「荒原野狼×2+魔化狼」
+PASS | L6 [1366×900] 遭遇「迎战」按钮存在
+PASS | L6 [1366×900] 旧驿站页面级无滚动 | {"sh":900,"ch":900}
+PASS | L7 [1366×900] 旧驿站场景无 Production ID leak
+PASS | L7: 全程无 JS exception
+===== TM-P2-009 Layout E2E 结果：50/50 通过 =====
+
+> tianmeng-continent@0.1.0 qa:p2-009-balance
+> node qa/p2-009-balance.mjs
+
+  PASS  B1.1 驿站狼群已注册
+  PASS  B1.2 采用单一 weighted variant 且无 fixedMembers
+  PASS  B1.3 canEscape=true（可逃跑）
+  PASS  B1.4 encounterDefeatFlag=waystation_wolf_pack_neutralized
+  PASS  B1.5 任意 variant 成员总数 ≤ 3（§13 ≤3 敌人）
+  PASS  B2 固定阵容 = 2×wild_wolf + 1×corrupted_wolf
+  PASS  B3.1 wild_wolf Lv2
+  PASS  B3.2 wild_wolf maxHp=10
+  PASS  B3.3 wild_wolf armor=11
+  PASS  B3.4 wild_wolf attackPower=14
+  PASS  B3.5 wild_wolf adventureXpReward=15
+  PASS  B3.6 corrupted_wolf Lv2
+  PASS  B3.7 corrupted_wolf maxHp=12
+  PASS  B3.8 corrupted_wolf armor=12
+  PASS  B3.9 corrupted_wolf attackPower=14
+  PASS  B3.10 corrupted_wolf adventureXpReward=15
+  PASS  B4 wolf_fang/wolf_pelt/wolf_meat 至少 2 种出现在狼类掉落表
+  PASS  B5.1 驿站狼群胜率 > 0（可挑战，非必败）
+  PASS  B5.2 驿站狼群胜率 ≤ 95%（可打但不无脑）
+  PASS  B6.1 驿站狼群胜率 < 荒原狼群 A（含魔化狼更难）
+  PASS  B6.2 Δ(荒原A−驿站) ≥ 5pp（难度差异可感知）
+  PASS  B7 同 seed 两次运行结果完全一致
+
+====================================================================================================
+TM-P2-009 §13 驿站狼群 Balance Regression
+运行环境: Node v24.14.0 | 每 pairing 模拟 5000 次 | 种子 20260823
+====================================================================================================
+
+【主配对 knight+Sakura（p2-007 多敌 pairing 结构）】
+  参照（同级单敌）: 1×黑鬃魔狼        99.7%  失败 0.3%  回合 3.0
+  荒原狼群 A: 2×荒原野狼             92.2%  失败 7.8%  回合 3.9
+  驿站狼群: 2×荒原野狼+1×魔化狼     29.9%  失败 70.1%  回合 5.4
+  判定: 驿站 >0% 且 ≤95% ｜ Δ(荒原A−驿站)=62.3pp（正=驿站更难）
+
+====================================================================================================
+断言汇总：PASS 22 ｜ FAIL 0
+全部断言通过。
+退出码：0（非 0 = 存在 FAIL）
+
+报告已写入：C:\Users\cruelworld\Desktop\DeepSeek\dnd游戏--天梦大陆\.claude\worktrees\vigorous-dirac-880948\qa\P2_009_BALANCE_REPORT.md
+
+===== RESULT p2-009: PASS exit=0 durationMs=85206 =====
+
+===== SUITE p2-009-r1 | npm run qa:p2-009-r1 =====
+
+> tianmeng-continent@0.1.0 qa:p2-009-r1
+> npm run qa:p2-009-r1-balance && npm run qa:p2-009-r1-combat && npm run qa:p2-009-r1-sidebar
+
+
+> tianmeng-continent@0.1.0 qa:p2-009-r1-balance
+> node qa/p2-009-r1-balance.mjs
+
+PASS | A5: 空 flags → wild_wolf first-kill 待授予
+PASS | A5: 荒原狼群 defeated → 不消耗（不再给 first-kill）
+PASS | A5: 驿站狼群 combat → 不消耗
+PASS | A7: 驿站狼群 neutralized（非战斗绕开）→ 仍待首次击败（不消耗）
+PASS | A7: malformed flag（非 boolean）→ 安全降级为已击败（不误授 XP）
+PASS | A5: FIRST_KILL_FLAG_ENEMIES 含 cave_bat / wild_boar
+PASS | A5: 首次击败洞穴蝙蝠 → 给 first-kill XP（8）
+PASS | A5: 洞穴蝙蝠已首次击败 → 只给 repeatable 低额 4
+PASS | A5: 非 repeatable 遭遇重复胜利 → 0 XP（黑法师已击败标记在 quest_wangcai_trouble）
+PASS | B1: Initiative = D20 + AGI（9 + 9 = 18） | {"ini":18,"roll":9}
+PASS | B1: 高骰可反超（28 > 10） | [28,10]
+PASS | B5: 平手 tie-break friendly 先
+PASS | C5: broken_patrol 任意变体 ≤2 敌人，绝无 2+1 假三人组 | counts=[2,2]
+PASS | G1: 黑法师 skillIds 全部注册（enemy_dark_bolt/enemy_black_fire） | ["enemy_dark_bolt","enemy_black_fire"]
+PASS | G2: 暗影箭 raw = 6+10 = 16 | raw=16
+PASS | G2: 黑火球 raw = 6+12 = 18 | raw=18
+PASS | G3: 无可用技能 → 恒普攻
+PASS | G3: v >= rate → 普攻（caster 0.9 ≥ 0.85）
+PASS | G3: v < rate → 施法，并按比例归一选技能（0.5/0.85*2 → 黑火球） | {"type":"skill","skillId":"enemy_black_fire"}
+PASS | G3: 单技能 aggressive 0.5 < 0.7 → 技能 index 0 | {"type":"skill","skillId":"enemy_dark_bolt"}
+PASS | G3: 双技能 aggressive 0.5 < 0.7 → index 1（黑火球） | {"type":"skill","skillId":"enemy_black_fire"}
+PASS | G3: 非法 rng（>=1）→ RangeError
+PASS | G4: 无冷却无 once → 全可用
+PASS | G4: 黑火球冷却中 → 只剩暗影箭
+PASS | G4: once 技能未用 → 可用
+PASS | G4: once 技能已用 → 被过滤
+PASS | G4: skillCooldownTurns(黑火球) = 2
+PASS | H1: encounter_grassland_rabbit_pair repeatable + 低额重复 XP（4 < 首次 20）
+PASS | H1: encounter_cave_bat repeatable + 低额重复 XP（4 < 首次 8）
+PASS | H1: encounter_mine_mixed repeatable + 低额重复 XP（5 < 首次 18）
+PASS | H1: encounter_floor1_soldier_pair repeatable + 低额重复 XP（8 < 首次 40）
+PASS | H1: encounter_floor3_witch_escort repeatable + 低额重复 XP（10 < 首次 85）
+PASS | H1: encounter_north_boar repeatable + 低额重复 XP（5 < 首次 12）
+PASS | H1: encounter_north_mane_pack repeatable + 低额重复 XP（8 < 首次 40）
+PASS | H2: cave_bat → encounter_cave_bat
+PASS | H2: wild_boar → encounter_north_boar
+PASS | H2: encounter_cave_bat 反查 singleEnemyId = cave_bat
+PASS | H2: encounter_north_boar 反查 singleEnemyId = wild_boar
+PASS | H3: 未固化 preview locked=false + 2 候选 | candidates=2
+PASS | H3: 候选文案「骷髅战士×2」/「骷髅战士+黑法师」 | 骷髅战士×2 | 骷髅战士+黑法师
+PASS | H4: 固化 A → locked=true + 骷髅战士×2 | 骷髅战士×2
+PASS | H4: 固化 B → locked=true + 骷髅战士+黑法师 | 骷髅战士+黑法师
+PASS | H5: broken_patrol 权重和 = 100 | sum=100
+PASS | H5: broken_patrol repeatable + 重复 XP 低于首次 | repeat=10
+PASS | H6: encounter_grassland_rabbit_pair 成员 ≤3 | n=2
+PASS | H6: encounter_grassland_rabbit_pair repeatable 不设 encounterDefeatFlag
+PASS | H6: encounter_cave_bat 成员 ≤3 | n=1
+PASS | H6: encounter_cave_bat repeatable 不设 encounterDefeatFlag
+PASS | H6: encounter_mine_mixed 成员 ≤3 | n=2
+PASS | H6: encounter_mine_mixed repeatable 不设 encounterDefeatFlag
+PASS | H6: encounter_floor1_soldier_pair 成员 ≤3 | n=2
+PASS | H6: encounter_floor1_soldier_pair repeatable 不设 encounterDefeatFlag
+PASS | H6: encounter_floor3_witch_escort 成员 ≤3 | n=2
+PASS | H6: encounter_floor3_witch_escort repeatable 不设 encounterDefeatFlag
+PASS | H6: encounter_north_boar 成员 ≤3 | n=1
+PASS | H6: encounter_north_boar repeatable 不设 encounterDefeatFlag
+PASS | H6: encounter_north_mane_pack 成员 ≤3 | n=2
+PASS | H6: encounter_north_mane_pack repeatable 不设 encounterDefeatFlag
+===== TM-P2-009-R1 Balance 结果：58/58 通过 =====
+
+> tianmeng-continent@0.1.0 qa:p2-009-r1-combat
+> node qa/p2-009-r1-combat-e2e.mjs
+
+
+  VITE v8.2.1  ready in 164 ms
+
+  ➜  Local:   http://localhost:5251/
+  ➜  Network: use --host to expose
+PASS | B1: Initiative = D20 + AGI（公式） | {"roll":9,"initiative":18,"agility":9}
+PASS | B2: 敏捷9可被敏捷8高骰击败（28 > 10） | [{"id":"e","roll":20,"initiative":28},{"id":"p","roll":1,"initiative":10}]
+PASS | B5: 平手 tie-break friendly 先 | f1,f2,e1,e2
+PASS | B3: 开场简报「骷髅战士先行动」
+PASS | B3: Initiative Strip 显示双方 initiative 数值 | 先手：骷髅战士 28>骷髅战士① 28>雅各布 10
+PASS | B4: 详细日志显示 D20(骰面) + 敏捷 = 总和 | 详细战斗日志回合 1战斗开始——骷髅战士先行动。骷髅战士：D20(20) + 敏捷8 = 28骷髅战士①：D20(20) + 敏捷8 = 28雅各布：D20(1) + 敏捷9 = 10骷髅战士的攻击命中雅各布，造成 23 点伤害。天然20：暴击，不进行普通命中阈值比较。攻击力 18 × 2 = 36；雅各布护甲 12；
+PASS | B3b: 战斗页无 raw ID leak
+PASS | C1: 未固化显示「可能遭遇」双候选 | 未找到双候选文案
+PASS | C1b: 未固化不显示「本次遭遇」假阵容
+PASS | C2: 固化 A → 本次遭遇：骷髅战士×2
+PASS | C2b: 固化 A 不含黑法师
+PASS | C3: 固化 B → 本次遭遇：骷髅战士+黑法师
+PASS | C4a: 固化 A 战斗 2 敌方卡
+PASS | C4b: 固化 A 战斗阵容全是骷髅战士
+PASS | C4c: 固化 B 战斗 2 敌方卡
+PASS | C4d: 固化 B 战斗阵容 骷髅+黑法师
+PASS | C5: 不允许 2 骷髅 + 1 黑法师假阵容 | {"counts":[2,2],"hasFakeTrio":false,"anyComboHasMageTrio":false}
+PASS | D1/D2: 1920x1080 我方≤3 敌方≤3 | 我方1 敌方2
+PASS | D3: 1920x1080 三行单位卡（攻击/护甲/敏捷）
+PASS | D4: 1920x1080 当前单位高亮 ring-gold-400
+PASS | D5: 1920x1080 详细日志可见
+PASS | D6/D7: 1920x1080 技能 tray 展开 ActionBar Y 不位移 | y 1030→1030
+PASS | D6/D8: 1920x1080 背包 tray 展开 ActionBar Y 不位移 | y 1030→1030
+PASS | D9: 1920x1080 外层无滚动 | doc 1920x1080 client 1920x1080
+PASS | D1/D2: 1600x900 我方≤3 敌方≤3 | 我方1 敌方2
+PASS | D3: 1600x900 三行单位卡（攻击/护甲/敏捷）
+PASS | D4: 1600x900 当前单位高亮 ring-gold-400
+PASS | D5: 1600x900 详细日志可见
+PASS | D6/D7: 1600x900 技能 tray 展开 ActionBar Y 不位移 | y 850→850
+PASS | D6/D8: 1600x900 背包 tray 展开 ActionBar Y 不位移 | y 850→850
+PASS | D9: 1600x900 外层无滚动 | doc 1600x900 client 1600x900
+PASS | D1/D2: 1366x768 我方≤3 敌方≤3 | 我方1 敌方2
+PASS | D3: 1366x768 三行单位卡（攻击/护甲/敏捷）
+PASS | D4: 1366x768 当前单位高亮 ring-gold-400
+PASS | D5: 1366x768 详细日志可见
+PASS | D6/D7: 1366x768 技能 tray 展开 ActionBar Y 不位移 | y 718→718
+PASS | D6/D8: 1366x768 背包 tray 展开 ActionBar Y 不位移 | y 718→718
+PASS | D9: 1366x768 外层无滚动 | doc 1366x768 client 1366x768
+PASS | D1/D2: 1024x768 我方≤3 敌方≤3 | 我方1 敌方2
+PASS | D3: 1024x768 三行单位卡（攻击/护甲/敏捷）
+PASS | D4: 1024x768 当前单位高亮 ring-gold-400
+PASS | D5: 1024x768 详细日志隐藏
+PASS | D6/D7: 1024x768 技能 tray 展开 ActionBar Y 不位移 | y 361.75→361.75
+PASS | D6/D8: 1024x768 背包 tray 展开 ActionBar Y 不位移 | y 361.75→361.75
+PASS | D1/D2: 390x844 我方≤3 敌方≤3 | 我方1 敌方2
+PASS | D3: 390x844 三行单位卡（攻击/护甲/敏捷）
+PASS | D4: 390x844 当前单位高亮 ring-gold-400
+PASS | D5: 390x844 详细日志隐藏
+PASS | D6/D7: 390x844 技能 tray 展开 ActionBar Y 不位移 | y 581.75→581.75
+PASS | D6/D8: 390x844 背包 tray 展开 ActionBar Y 不位移 | y 581.75→581.75
+PASS | D10: 390 无横向 overflow | docW 390 clientW 390
+PASS | E1: 初始行动栏可攻击/技能/背包/逃跑
+PASS | E2a: 普攻命中（crit）
+PASS | E3: 攻击后技能 tray「本回合行动已用完」
+PASS | E3b: 攻击后技能按钮禁用（action 消耗）
+PASS | E5: 攻击后仍可喝药（Bonus 保留）
+PASS | E5b: 药水使用成功
+PASS | E4: 喝药后「本回合附赠行动已用完」
+PASS | E6: 喝药后仍可普通攻击（Action 独立）
+PASS | E6b: 喝药后攻击成功结算
+PASS | E7: End Turn 后推进到敌方回合（行动栏消失） | 行动栏仍可见
+PASS | E10a: 新回合回到玩家（敌方 miss） | turn=player
+PASS | E10b: 新回合 Action/Bonus 重置（攻击与药水均可用） | attack=false potion=false
+PASS | E8: 逃跑失败（消耗回合）
+PASS | E8b: 逃跑失败后普通攻击禁用（Action 已消耗） | attack=true
+PASS | F0: Sakura 先行动
+PASS | F1: 连续 friendly 段内玩家卡可点击切换
+PASS | F2: 点击伙伴/玩家卡切换控制（到玩家）
+PASS | F2b: 双向切换（回到 Sakura）
+PASS | F3: friendly 段内 End Turn 不跨 enemy（到玩家） | 未推进到玩家
+PASS | F4: 已结束单位弱化（opacity-70）且不可点击 | class=min-w-[200px] flex-1 rounded border p-3 text-sm text-bone-300 transition-colors  role=null
+PASS | F5: 死亡单位不进入可切换集 | {"block":[0,1],"switchable":["f1"]}
+PASS | G5: 黑法师真实施用技能（黑火球命中） |  战斗 · 残破巡逻队第 2 回合 · 战斗进行中详细战斗日志先手：雅各布 21>骷髅战士 19>黑法师 19我方雅各布 · 骑士 · Lv.2生命 11 / 22 · 灵力 8 / 8攻击 8 · 护甲 12 · 敏捷 10敌方骷髅战士 · Lv.5生命 20 / 20攻击 18 · 护甲 13 · 敏捷 8黑法师 · Lv.4生命 10 / 14攻击 14 · 护甲 11 · 敏捷 8战况播报
+PASS | G5b: 详细日志包含技能名 黑火球
+PASS | G6: 敌方技能日志无 raw ID
+PASS | 全程无 JS exception
+===== TM-P2-009-R1 Combat E2E 结果：76/76 通过 =====
+
+> tianmeng-continent@0.1.0 qa:p2-009-r1-sidebar
+> node qa/p2-009-r1-sidebar-e2e.mjs
+
+
+  VITE v8.2.1  ready in 165 ms
+
+  ➜  Local:   http://localhost:5252/
+  ➜  Network: use --host to expose
+PASS | I1: 任务 Tab 显示「追寻黄金兔子王」进行中
+PASS | I1: 状态标签「待续」
+PASS | I1: 待续文案「现阶段线索已收集 · 待续」
+PASS | I1: 无旧进度提示「还有一步没做」
+PASS | I2: 当前目标不选 Golden Rabbit（仅显示暂无） | 当前目标暂无当前目标。
+PASS | I3: 存档仍 in_progress / stage 0
+PASS | I3: 存档四 flags 保持
+PASS | I3: 存档 rabbit_path ×1 保持
+PASS | I4: 渲染后内部状态零修改（HARD FREEZE）
+PASS | J1: Lv3 XP250 显示「250 / 450」 | 冒险阅历250 / 450
+PASS | J1: 填充约 55.6% | fill=55.5556%
+PASS | J1: 无「距离 Lv」文本
+PASS | J2: Lv3 XP450 显示「450 / 450」
+PASS | J2: 填充 100% | fill=100%
+PASS | J3: 满级显示「上限」+ 等级已达到当前上限
+PASS | J3: 满级填充 100% | fill=100%
+PASS | J4: 满级无虚构 Lv16 / 无「距离 Lv」
+PASS | 全程无 JS exception
+===== TM-P2-009-R1 Sidebar E2E 结果：18/18 通过 =====
+
+===== RESULT p2-009-r1: PASS exit=0 durationMs=88773 =====
+
+===== SUITE p2-010 | npm run qa:p2-010 =====
+
+> tianmeng-continent@0.1.0 qa:p2-010
+> npm run qa:p2-010-trial && npm run qa:p2-010-skills && npm run qa:p2-010-training && npm run qa:p2-010-layout && npm run qa:p2-010-full-journey && npm run qa:p2-010-balance
+
+
+> tianmeng-continent@0.1.0 qa:p2-010-trial
+> node qa/p2-010-trial-e2e.mjs
+
+
+  VITE v8.2.1  ready in 186 ms
+
+  ➜  Local:   http://127.0.0.1:5250/
+PASS | T1/T2 warrior: P2-009 completed fixture and invitation visible
+PASS | T3 warrior: accept
+PASS | T4/T5 warrior: trial ground unlocked
+PASS | T6/T7 warrior: observation success state
+PASS | T8 warrior: observation failure still progresses
+PASS | T9-T12 warrior: preview, roster, initiative and combat entered
+PASS | T13 warrior: skill tray
+PASS | T14 warrior: bonus item tray
+PASS | T15 warrior: End Turn action reachable
+PASS | T17/T18: CombatPage victory state reached
+PASS | T19-T21 warrior: report/completable
+PASS | T22-T24 warrior: reward and hook
+PASS | T24 warrior: reward once
+PASS | T1/T2 knight: P2-009 completed fixture and invitation visible
+PASS | T3 knight: accept
+PASS | T4/T5 knight: trial ground unlocked
+PASS | T6/T7 knight: observation success state
+PASS | T8 knight: observation failure still progresses
+PASS | T9-T12 knight: preview, roster, initiative and combat entered
+PASS | T13 knight: skill tray
+PASS | T14 knight: bonus item tray
+PASS | T15 knight: End Turn action reachable
+PASS | T17/T18: CombatPage victory state reached
+PASS | T19-T21 knight: report/completable
+PASS | T22-T24 knight: reward and hook
+PASS | T24 knight: reward once
+PASS | T1/T2 ranger: P2-009 completed fixture and invitation visible
+PASS | T3 ranger: accept
+PASS | T4/T5 ranger: trial ground unlocked
+PASS | T6/T7 ranger: observation success state
+PASS | T8 ranger: observation failure still progresses
+PASS | T9-T12 ranger: preview, roster, initiative and combat entered
+PASS | T13 ranger: skill tray
+PASS | T14 ranger: bonus item tray
+PASS | T15 ranger: End Turn action reachable
+PASS | T17/T18: CombatPage victory state reached
+PASS | T19-T21 ranger: report/completable
+PASS | T22-T24 ranger: reward and hook
+PASS | T24 ranger: reward once
+PASS | T1/T2 mage: P2-009 completed fixture and invitation visible
+PASS | T3 mage: accept
+PASS | T4/T5 mage: trial ground unlocked
+PASS | T6/T7 mage: observation success state
+PASS | T8 mage: observation failure still progresses
+PASS | T9-T12 mage: preview, roster, initiative and combat entered
+PASS | T13 mage: skill tray
+PASS | T14 mage: bonus item tray
+PASS | T15 mage: End Turn action reachable
+PASS | T17/T18: CombatPage victory state reached
+PASS | T19-T21 mage: report/completable
+PASS | T22-T24 mage: reward and hook
+PASS | T24 mage: reward once
+PASS | T-FINAL: no page exceptions
+TRIAL_E2E_GREEN | 53/53
+
+> tianmeng-continent@0.1.0 qa:p2-010-skills
+> node qa/p2-010-skills-e2e.mjs
+
+
+  VITE v8.2.1  ready in 168 ms
+
+  ➜  Local:   http://localhost:5271/
+  ➜  Network: use --host to expose
+PASS | warrior: Tier II unlocked
+PASS | warrior: skill tree has no raw IDs
+PASS | warrior: combat log contains skill name
+PASS | warrior: Action consumed after skill
+PASS | warrior: cooldown/once skill unavailable immediately
+PASS | warrior: save preserves learned Tier II skill
+PASS | warrior: locked Tier II is not marked learned
+PASS | knight: Tier II unlocked
+PASS | knight: skill tree has no raw IDs
+PASS | knight: combat log contains skill name
+PASS | knight: Action consumed after skill
+PASS | knight: cooldown/once skill unavailable immediately
+PASS | knight: save preserves learned Tier II skill
+PASS | knight: locked Tier II is not marked learned
+PASS | ranger: Tier II unlocked
+PASS | ranger: skill tree has no raw IDs
+PASS | ranger: combat log contains skill name
+PASS | ranger: Action consumed after skill
+PASS | ranger: cooldown/once skill unavailable immediately
+PASS | ranger: save preserves learned Tier II skill
+PASS | ranger: locked Tier II is not marked learned
+PASS | mage: Tier II unlocked
+PASS | mage: skill tree has no raw IDs
+PASS | mage: combat log contains skill name
+PASS | mage: Action consumed after skill
+PASS | mage: cooldown/once skill unavailable immediately
+PASS | mage: save preserves learned Tier II skill
+PASS | mage: locked Tier II is not marked learned
+===== P2-010 Skills E2E: 28/28 =====
+
+> tianmeng-continent@0.1.0 qa:p2-010-training
+> node qa/p2-010-training-e2e.mjs
+
+PASS | TR1 repeatable encounters discoverable from registry | count=9
+PASS | TR1 region village_grassland: at least 2 configured choices | configured=3
+PASS | TR1 region village_grassland: at least 2 legal fixture choices | legal=2
+PASS | TR1 region abandoned_mine: at least 2 configured choices | configured=3
+PASS | TR1 region abandoned_mine: at least 2 legal fixture choices | legal=3
+PASS | TR1 region tianlong_north_outskirts: at least 2 configured choices | configured=4
+PASS | TR1 region tianlong_north_outskirts: at least 2 legal fixture choices | legal=4
+PASS | TR2 low-risk metadata exists
+PASS | TR3 standard metadata exists
+PASS | TR4 dangerous metadata exists
+PASS | TR5 every repeatable encounter has recommendation
+PASS | TR6 under-level remains playable by rule (no level gate)
+PASS | TR7 over-level remains playable by rule (no scaling gate)
+PASS | TR8 first victory uses first-kill XP | xp=8
+PASS | TR9 repeat victory uses repeat XP | xp=4
+PASS | TR10 repeat XP lower than first-kill XP
+PASS | TR11 escape has no victory settlement path
+PASS | TR12 defeat has no victory settlement path
+PASS | TR13 repeatable definitions have no encounterDefeatFlag quest completion hook
+PASS | TR14 repeatable definitions do not carry mandatory quest item metadata
+PASS | TR15 pre-lock preview exposes alternatives
+PASS | TR16 persisted lock exposes one roster
+PASS | TR17 locked preview roster matches encounter member resolver
+PASS | TR18 refresh does not reroll persisted variant
+PASS | TR trial warrior: <=3 enemies
+PASS | TR trial warrior: all loot IDs registered
+PASS | TR trial knight: <=3 enemies
+PASS | TR trial knight: all loot IDs registered
+PASS | TR trial ranger: <=3 enemies
+PASS | TR trial ranger: all loot IDs registered
+PASS | TR trial mage: <=3 enemies
+PASS | TR trial mage: all loot IDs registered
+PASS | TR trial reward item is registered
+===== P2-010 training: 33/33 PASS =====
+
+> tianmeng-continent@0.1.0 qa:p2-010-layout
+> node qa/p2-010-layout-e2e.mjs
+
+
+  VITE v8.2.1  ready in 195 ms
+
+  ➜  Local:   http://localhost:5272/
+  ➜  Network: use --host to expose
+PASS | 1920: no horizontal overflow | {"width":1920,"docWidth":1920,"bodyWidth":1920}
+PASS | 1920: skill tree no overflow | {"docWidth":1920,"bodyWidth":1920,"treeWidth":246}
+PASS | 1920: trial ground panel visible
+PASS | 1920: ActionBar fixed while skill tray opens | 917 -> 917
+PASS | 1920: combat no horizontal overflow | {"docWidth":1920,"bodyWidth":1920}
+PASS | 1600: no horizontal overflow | {"width":1600,"docWidth":1600,"bodyWidth":1600}
+PASS | 1600: skill tree no overflow | {"docWidth":1600,"bodyWidth":1600,"treeWidth":246}
+PASS | 1600: trial ground panel visible
+PASS | 1600: ActionBar fixed while skill tray opens | 737 -> 737
+PASS | 1600: combat no horizontal overflow | {"docWidth":1600,"bodyWidth":1600}
+PASS | 1366: no horizontal overflow | {"width":1366,"docWidth":1366,"bodyWidth":1366}
+PASS | 1366: skill tree no overflow | {"docWidth":1366,"bodyWidth":1366,"treeWidth":246}
+PASS | 1366: trial ground panel visible
+PASS | 1366: ActionBar fixed while skill tray opens | 605 -> 605
+PASS | 1366: combat no horizontal overflow | {"docWidth":1366,"bodyWidth":1366}
+PASS | 1024: no horizontal overflow | {"width":1024,"docWidth":1024,"bodyWidth":1024}
+PASS | 1024: skill tree no overflow | {"docWidth":1024,"bodyWidth":1024,"treeWidth":246}
+PASS | 1024: trial ground panel visible
+PASS | 1024: ActionBar fixed while skill tray opens | 346.75 -> 346.75
+PASS | 1024: combat no horizontal overflow | {"docWidth":1024,"bodyWidth":1024}
+PASS | 390: no horizontal overflow | {"width":390,"docWidth":390,"bodyWidth":390}
+PASS | 390: skill tree no overflow | {"docWidth":390,"bodyWidth":390,"treeWidth":291.796875}
+PASS | 390: trial ground panel visible
+PASS | 390: ActionBar fixed while skill tray opens | 586.75 -> 586.75
+PASS | 390: combat no horizontal overflow | {"docWidth":390,"bodyWidth":390}
+===== P2-010 Layout E2E: 25/25 =====
+
+> tianmeng-continent@0.1.0 qa:p2-010-full-journey
+> node qa/p2-010-full-journey-e2e.mjs
+
+
+  VITE v8.2.1  ready in 215 ms
+
+  ➜  Local:   http://127.0.0.1:5251/
+PASS | J1: P2-009 completed + trial task visible
+PASS | J2: report moves task to reward state
+PASS | J3: reward and P2-011 hook visible
+PASS | J4: Tier II skill tree opens after completion
+PASS | J5: regional training panel appears
+PASS | J6: at least one authored training encounter card
+PASS | J6b: player actively enters regional training
+PASS | J6c: newly learned skill is used in combat
+PASS | J7: training combat victory
+PASS | J8: save returns to game
+PASS | J9: Save V6 reload preserves Tier II skill
+PASS | J10: Golden Rabbit remains pending
+PASS | J11: no Golden Rabbit progression leak
+PASS | J12: no page exceptions
+FULL_JOURNEY_E2E_GREEN | P2-009 end save -> trial -> skill tree -> training -> Save V6 reload -> Golden pending
+
+> tianmeng-continent@0.1.0 qa:p2-010-balance
+> node qa/p2-010-balance.mjs
+
+PASS | TRwarrior: fixed authored roster | [["trial_soldier",2],["trial_duelist",1]]
+PASS | TRwarrior: escape enabled and <=3
+PASS | TRwarrior: all enemies registered
+PASS | TRknight: fixed authored roster | [["trial_duelist",1],["trial_soldier",1]]
+PASS | TRknight: escape enabled and <=3
+PASS | TRknight: all enemies registered
+PASS | TRranger: fixed authored roster | [["trial_scout",2],["trial_soldier",1]]
+PASS | TRranger: escape enabled and <=3
+PASS | TRranger: all enemies registered
+PASS | TRmage: fixed authored roster | [["trial_apprentice_mage",1],["trial_soldier",1]]
+PASS | TRmage: escape enabled and <=3
+PASS | TRmage: all enemies registered
+PASS | TR: all trial definitions have authored level/difficulty
+PASS | CF1 initiative d20+agi
+PASS | CF2 AGI9 can lose to AGI8 on natural rolls
+PASS | CF3 initiative tie resolves by AGI then friendly
+PASS | CF4 action attack resolves through V3 resolver
+PASS | CF5 nat20 is critical hit
+PASS | CF6 nat1 is critical miss
+PASS | CF7 damage is non-negative
+PASS | CF8 armor participates in damage
+PASS | CF9 initiative queue contains every unit
+PASS | CF10 initiative queue has stable instance IDs
+PASS | CF11 enemy does not automatically become friendly
+PASS | CF12 encounter count guard
+PASS | CF13 escape flag is authored, not inferred
+PASS | CF14 no dynamic scaling metadata exists
+PASS | CF15 V3 hit formula remains AGI-vs-AGI
+PASS | BAL warrior Lv3 solo Monte Carlo | wins=63/200 rate=31.50%
+PASS | BAL warrior Lv3 +companion Monte Carlo | wins=195/200 rate=97.50%
+PASS | BAL warrior Lv4 solo Monte Carlo | wins=111/200 rate=55.50%
+PASS | BAL warrior Lv4 +companion Monte Carlo | wins=200/200 rate=100.00%
+PASS | BAL warrior Lv5 solo Monte Carlo | wins=148/200 rate=74.00%
+PASS | BAL warrior Lv5 +companion Monte Carlo | wins=200/200 rate=100.00%
+PASS | BAL knight Lv3 solo Monte Carlo | wins=148/200 rate=74.00%
+PASS | BAL knight Lv3 +companion Monte Carlo | wins=200/200 rate=100.00%
+PASS | BAL knight Lv4 solo Monte Carlo | wins=187/200 rate=93.50%
+PASS | BAL knight Lv4 +companion Monte Carlo | wins=200/200 rate=100.00%
+PASS | BAL knight Lv5 solo Monte Carlo | wins=194/200 rate=97.00%
+PASS | BAL knight Lv5 +companion Monte Carlo | wins=200/200 rate=100.00%
+PASS | BAL ranger Lv3 solo Monte Carlo | wins=49/200 rate=24.50%
+PASS | BAL ranger Lv3 +companion Monte Carlo | wins=196/200 rate=98.00%
+PASS | BAL ranger Lv4 solo Monte Carlo | wins=82/200 rate=41.00%
+PASS | BAL ranger Lv4 +companion Monte Carlo | wins=199/200 rate=99.50%
+PASS | BAL ranger Lv5 solo Monte Carlo | wins=115/200 rate=57.50%
+PASS | BAL ranger Lv5 +companion Monte Carlo | wins=200/200 rate=100.00%
+PASS | BAL mage Lv3 solo Monte Carlo | wins=157/200 rate=78.50%
+PASS | BAL mage Lv3 +companion Monte Carlo | wins=200/200 rate=100.00%
+PASS | BAL mage Lv4 solo Monte Carlo | wins=180/200 rate=90.00%
+PASS | BAL mage Lv4 +companion Monte Carlo | wins=200/200 rate=100.00%
+PASS | BAL mage Lv5 solo Monte Carlo | wins=196/200 rate=98.00%
+PASS | BAL mage Lv5 +companion Monte Carlo | wins=200/200 rate=100.00%
+PASS | BAL warrior Lv3 solo minimum 10% | rate=31.50%
+PASS | BAL warrior solo progression broadly monotonic | {"3":0.315,"4":0.555,"5":0.74}
+PASS | BAL knight Lv3 solo minimum 10% | rate=74.00%
+PASS | BAL knight solo progression broadly monotonic | {"3":0.74,"4":0.935,"5":0.97}
+PASS | BAL ranger Lv3 solo minimum 10% | rate=24.50%
+PASS | BAL ranger solo progression broadly monotonic | {"3":0.245,"4":0.41,"5":0.575}
+PASS | BAL mage Lv3 solo minimum 10% | rate=78.50%
+PASS | BAL mage solo progression broadly monotonic | {"3":0.785,"4":0.9,"5":0.98}
+===== P2-010 balance: 60/60 PASS =====
+
+===== RESULT p2-010: PASS exit=0 durationMs=118409 =====
+
+===== SUITE release-candidate | npm run qa:rc =====
+
+> tianmeng-continent@0.1.0 qa:rc
+> npm run build && node qa/rc-e2e.mjs
+
+
+> tianmeng-continent@0.1.0 build
+> tsc -b && vite build
+
+vite v8.2.1 building client environment for production...
+[2Ktransforming...✓ 91 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                   0.52 kB │ gzip:   0.36 kB
+dist/assets/index-DrUcQeAq.css   36.62 kB │ gzip:   7.15 kB
+dist/assets/index-c-8tNib8.js   563.38 kB │ gzip: 150.90 kB
+
+✓ built in 187ms
+[plugin builtin:vite-reporter]
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+
+  VITE v8.2.1  ready in 182 ms
+
+  ➜  Local:   http://127.0.0.1:5199/
+===== RC shared Vite ready: http://localhost:5199/ =====
+
+===== RC suite start: P2-004-R1 =====
+PASS | R1-01: Continue 后到达天龙城且樱雨入口出现
+PASS | R1-02: 临时同行（神域崩塌前兆 + 残灾威胁）
+PASS | R1-02b: 神域状态已保存（存档位置 = sakura_domain_fragment） | loc=sakura_domain_fragment
+PASS | R1-03: 进入残灾战斗（Lv.3 + 樱花优子伙伴面板）
+PASS | R1-04: Sakura 先手（AGI 最高 → 樱花优子的回合）
+PASS | R1-05: 三个伙伴技能按钮真实出现
+PASS | R1-06: B2a 敌人反击 miss → 玩家 HP 不变 | before=23 after=23
+PASS | R1-07: B2a 盾未消耗仍展开（可抵消 3 点伤害）
+PASS | R1-08: B2a 无抵消日志（miss 不吸收）
+PASS | R1-09: B2b 盾保留期间仍显示展开状态（跨轮保持）
+DIAG-B2b-feed: ["战况播报","【系统】 战斗开始——樱花优子先行动。","【樱花优子】 樱花优子为P2004R1测试骑士施展了樱花魔法盾（可抵消 3 点伤害）。","【你】 P2004R1测试骑士的攻击落空了。","【敌方】 残灾之影的技能残影突袭落空了。","【樱花优子】 樱花优子静静守在后方。","【你】 P2004R1测试骑士的攻击命中残灾之影，造成 3 点伤害。","【敌方】 残灾之影的攻击命中P2004R1测试骑士，造成 1 点伤害。","【伙伴】 樱花魔法盾抵消了 3 点伤害。"]
+DIAG-B2b-hp: {"hp":22,"max":26} hp0: {"hp":23,"max":26}
+PASS | R1-10: B2b 敌人命中 → 盾抵消 3 点伤害（日志）
+PASS | R1-11: B2b 盾减伤后 HP 变化 = 日志伤害（盾吸收 3 点已计入） | before=23 after=22 logDealt=1
+PASS | R1-13: 盾施放只扣一次 MP（灵力 6→4） | mp=4
+PASS | R1-14: B3 轻舞日志（敌人注意力被牵走，下一次攻势落空）
+PASS | R1-15: B3 本轮敌人未反击（玩家 HP 不变） | before=22 after=22
+PASS | R1-16: 轻舞后可继续下一轮（敌人反击后回樱花优子的回合）
+PASS | R1-17: 轻舞只取消本轮（下一轮反击恢复，HP 下降） | before=22 after=13
+PASS | R1-18: 刷新后仍在神域且残灾威胁可再迎战（未击败）
+PASS | R1-19: 第二场战斗玩家 HP 恢复存档值（23/26） | hp=23
+PASS | R1-20: B1 施盾后敌人立即命中 → 抵消 3 点伤害（DOM 日志）
+PASS | R1-21: B1 即时吸收生效（HP 变化 = 日志伤害，盾吸收 3 点） | before=23 after=21 logDealt=2
+PASS | R1-23: B4 樱花优子的攻击实际结算（战斗日志）
+PASS | R1-24: B4 飞斩暴击击杀 → 战斗胜利
+PASS | R1-25: 神域崩塌 → 寄灵神契（她自主提出）
+PASS | R1-26: 神契已缔结 → 回天龙城（伙伴面板 + 红颜录）
+PASS | R1-27: 全程无 JS exception
+===== P2-004-R1 focused 结果：26/26 通过 =====
+===== RC suite end: P2-004-R1 (exit=0) =====
+
+===== RC suite start: P2-004 =====
+PASS | P2-004-1: Continue 后到达天龙城（tianlong_city）
+PASS | P2-004-2: 反季樱雨入口出现（触发条件满足）
+PASS | P2-004-3: 樱雨场景展开（踏入裂隙入口）
+PASS | P2-004-4: 《落樱越界》进入冒险日志（进行中）
+PASS | P2-004-5: 进入樱华神域·破碎边界（sakura_domain_fragment）
+PASS | P2-004-6: 初见后关系变化短提示（好感 +2 信任 +3）
+PASS | P2-004-7: 初见后她出现在红颜录（已相识）
+PASS | P2-004-8: 职业对话后骑士专属回应 + 关系变化
+PASS | P2-004-9: MND 检定成功（DC 12 展示）
+PASS | P2-004-10: MND 成功后不再出现 LUCK 补救入口
+PASS | P2-004-11: 临时同行（神域崩塌前兆 + 并肩而立）
+PASS | P2-004-12: 残灾之影威胁出现（可迎战）
+PASS | P2-004-13: 进入残灾战斗（残灾之影 Lv.3）
+PASS | P2-004-14: 战斗页出现樱花优子伙伴面板（临时同行）
+PASS | P2-004-15: Sakura 先手（AGI 最高 → 樱花优子的回合）
+PASS | P2-004-16: 伙伴技能按钮真实出现（樱花飞斩/魔法盾/轻舞）
+PASS | P2-004-17: 伙伴面板展示封印技能（未恢复）
+PASS | P2-004-18: 樱花优子的攻击实际造成伤害（战斗日志）
+PASS | P2-004-19: 战斗胜利（残灾被击破）
+PASS | P2-004-20: 神域崩塌剧情（她主动提出寄灵神契）
+PASS | P2-004-21: 神契已缔结（正式成为神契宠物）
+PASS | D2-01: 接受神契后用户可见任务完成提示
+PASS | D2-02: 接受神契后用户可见固定阅历奖励
+PASS | P2-004-22: 《落樱越界》已完成
+PASS | P2-004-23: 回天龙城（sakura_domain_fragment 已离场）
+PASS | P2-004-24: 同行伙伴面板（神契宠物 · Lv.4）
+PASS | P2-004-25: 红颜录显示阶段/好感/信任/同行中
+PASS | P2-004-26: 天龙城同行 banter 出现（第一次见市井）
+PASS | P2-004-27: banter 后好感 +1（关系短提示）
+PASS | P2-004-28: banter 一次性（不再出现）
+PASS | P2-004-29: 前 2 次交谈好感 +1/+2（MND 成功伤口话题 +2） | before=11 after=14
+PASS | P2-004-30: 第 3 次交谈周期限制（不刷分） | after3=14
+PASS | P2-004-31: 天龙城桂花糕铺可购买（8 金币）
+PASS | P2-004-32: 红颜录出现桂花糕赠礼按钮（买 2 个 → ×2）
+PASS | P2-004-33: 赠礼成功（好感 +2）
+PASS | P2-004-34: 好感数值实际 +2 | before=14
+PASS | P2-004-35: 到达武馆（tianlong_martial_hall）可休整
+PASS | P2-004-36: Long Rest 后首次休整谈话就绪（第一夜）
+PASS | P2-004-37: 第一夜 respect 回应 + 关系变化（信任 +4 好感 +2）
+PASS | P2-004-38: 信任数值实际 +4 | before=18
+PASS | P2-004-39: 刷新后 Continue → 剧情状态保持（神契宠物同行）
+PASS | P2-004-40: 刷新后红颜录好感/信任保持（>5）
+PASS | P2-004-41: 刷新后不重复初见/不重复契约（无神域入口）
+PASS | D2-03: 刷新 Continue 后奖励提示不再次显示
+PASS | D2-04: 重复路径不可再次接受神契且不重复发奖 | first=585 repeat=585
+PASS | P2-004-42: 刷新后桂花糕仍在背包（可再赠）
+PASS | P2-004-43: 全程无 JS exception
+===== P2-004 focused 结果：47/47 通过 =====
+===== RC suite end: P2-004 (exit=0) =====
+
+===== RC suite start: Cloud =====
+cloud-save mock server on 5200
+
+  VITE v8.2.1  ready in 189 ms
+
+  ➜  Local:   http://localhost:5201/
+  ➜  Network: use --host to expose
+[cloud-save mock] GET ? -> 405
+PASS | C1: 首屏是云口令页（云存档口令 + 进入天梦大陆）
+PASS | C2: 已配置端点 → 不出现「仅本机模式」
+[cloud-save mock] OPTIONS preflight -> 204
+[cloud-save mock] POST load -> 200
+[cloud-save mock] POST save -> 200
+PASS | C3: 新口令自动创建空云空间并进入主菜单（云存档已连接）
+PASS | C4: 新角色进入游戏页（青石村）
+[cloud-save mock] POST save -> 200
+[cloud-save mock] POST load -> 200
+PASS | C5: A 保存后云端 revision=2 且 slot1 有档 | revision=2
+[cloud-save mock] OPTIONS preflight -> 204
+[cloud-save mock] POST load -> 200
+PASS | C6: B 输入同一口令 → 云档导入 → 主菜单可继续游戏
+PASS | C7: B Continue → 与 A 相同的存档（位置/玩家名）
+PASS | C8: 口令页 390×844 无横向溢出
+[cloud-save mock] POST save -> 200
+[cloud-save mock] POST load -> 200
+PASS | C9: B 保存后云端 revision=3 | revision=3
+[cloud-save mock] POST save -> 409
+PASS | C10: A 保存遇冲突 → 冲突对话框（云端存档已在另一台设备更新）
+PASS | C11: 冲突不自动覆盖（无确认覆盖按钮直通）
+[cloud-save mock] POST load -> 200
+PASS | C12: A 读取云端最新版后回到保存页（同步成功）
+[cloud-save mock] POST save -> 200
+[cloud-save mock] POST load -> 200
+PASS | C13: A 再保存（expectedRevision=3）→ revision=4 | revision=4
+[cloud-save mock] POST save -> 409
+[cloud-save mock] POST load -> 200
+[cloud-save mock] POST save -> 200
+[cloud-save mock] POST load -> 200
+[cloud-save mock] POST save -> 409
+PASS | C14: force 覆盖前二次确认（这会覆盖另一台设备的新进度）
+[cloud-save mock] POST force_save -> 200
+[cloud-save mock] POST load -> 200
+PASS | C15: force_save 后 revision=6（5→6） | revision=6
+PASS | C16: force 覆盖的 payload 合法（slot1 非空）
+PASS | C17: 清空本地后回到云口令页
+[cloud-save mock] POST load -> 200
+PASS | C18: 云档独立于本地/部署 → 重新输入口令档仍在
+PASS | C19: 网站更新后 Continue 数据保持（玩家名）
+[cloud-save mock] POST save -> 200
+PASS | C20: V3 payload 直接注入云端（revision 1）
+[cloud-save mock] OPTIONS preflight -> 204
+[cloud-save mock] POST load -> 200
+PASS | C21: V3 云档解锁成功（客户端迁移链升级）
+PASS | C22: V3→V6 迁移后正常进入游戏（青石村）
+PASS | C23: 迁移后本地已是 V6（companions/relationships/party/restCount/XP）
+PASS | C24: 黄金兔冻结线保持（in_progress/stage0/四 flags/rabbit_path 不受云迁移影响）
+[cloud-save mock] POST save -> 200
+[cloud-save mock] POST load -> 200
+PASS | C25: 迁移后保存 → 云端已是 V6 且 revision 2
+[cloud-save mock] POST save -> 200
+PASS | C30: C2 云端冲突基线创建成功（revision 1）
+[cloud-save mock] OPTIONS preflight -> 204
+[cloud-save mock] POST load -> 200
+PASS | C31: divergent 解锁不覆盖本机并停留在冲突页
+PASS | C32: 冲突页显示双方最新摘要（角色/等级/地点/保存时间）
+PASS | C33: 冲突页显示双选择按钮
+[cloud-save mock] POST load -> 200
+PASS | C34: 选择云端后显式导入并完成解锁
+[cloud-save mock] POST load -> 200
+PASS | C35: 仅 exportedAt 不同不误判冲突，可安全连接
+[cloud-save mock] POST load -> 200
+PASS | C36: 本机再次 divergent 时仍进入冲突页且本机保持
+[cloud-save mock] POST load -> 200
+PASS | C37: 本机覆盖云端先二次确认，首次点击不更新 revision
+[cloud-save mock] POST force_save -> 200
+[cloud-save mock] POST load -> 200
+PASS | C38: 二次确认后 force 成功并完成解锁
+PASS | C39: 解锁 force_save 后云 revision 更新（1→2） | revision=2
+[cloud-save mock] OPTIONS preflight -> 204
+[cloud-save mock] POST load -> 200
+PASS | C40: fresh cloud + 合法 V5 local 保持 CloudUnlock
+PASS | C41: fresh cloud 显示迁移提示和双路径按钮
+PASS | C42: 迁移选择前 MainMenu 未出现
+[cloud-save mock] POST save -> 200
+[cloud-save mock] POST load -> 200
+PASS | C43: 路径A上传 local 后云 revision=1 | revision=1
+PASS | C44: 路径A cloud slot 与 local slot 一致
+PASS | C45: 路径A上传后进入 MainMenu
+PASS | C46: 路径A MainMenu 可 Continue
+[cloud-save mock] OPTIONS preflight -> 204
+[cloud-save mock] POST load -> 200
+[cloud-save mock] POST load -> 200
+PASS | C47: 路径B首次点击仅显示空白云二次确认
+PASS | C48: 路径B二次确认显示任务卡精确完整文案
+[cloud-save mock] POST save -> 200
+[cloud-save mock] POST load -> 200
+PASS | C49: 路径B确认后 cloud revision=1 且五槽为空
+PASS | C50: 路径B确认后 local slot 仍保留
+PASS | C51: 路径B确认后进入 MainMenu
+[cloud-save mock] OPTIONS preflight -> 204
+[cloud-save mock] POST load -> 200
+PASS | C52: offline/not_configured 显示本地已保存与云同步未启用
+PASS | C53: offline/not_configured 不得显示云端已同步
+[cloud-save mock] POST save -> 200
+[cloud-save mock] OPTIONS preflight -> 204
+[cloud-save mock] POST load -> 200
+PASS | C54: load 删除首轮 cloud_failed 显示失败与重试
+[cloud-save mock] POST save -> 200
+PASS | C55: load 删除 retry success 仍留读取存档页
+PASS | C56: load 删除 retry success 后显示 synced truth
+[cloud-save mock] POST save -> 200
+[cloud-save mock] OPTIONS preflight -> 204
+[cloud-save mock] POST load -> 200
+[cloud-save mock] POST save -> 200
+PASS | C57: MainMenu 读取存档导入 JSON 后仍留存档列表
+PASS | C58: 导入后列表仍提供可用的显式读取入口
+PASS | C59: 导入后只有显式读取才进入 GamePage
+[cloud-save mock] OPTIONS preflight -> 204
+[cloud-save mock] POST load -> 200
+[cloud-save mock] POST save -> 200
+[cloud-save mock] POST save -> 409
+[cloud-save mock] POST load -> 200
+[cloud-save mock] POST load -> 200
+PASS | C60: 创建空白云期间被抢先建 vault 后进入正常冲突页
+PASS | C61: 创建竞态显示标准本机/云端双选择
+PASS | C62: 创建竞态不覆盖合法 local
+PASS | C63: 创建竞态不覆盖抢先建立的 cloud vault
+[cloud-save mock] OPTIONS preflight -> 204
+[cloud-save mock] POST load -> 200
+[cloud-save mock] POST save -> 200
+[cloud-save mock] POST save -> 409
+[cloud-save mock] POST load -> 200
+[cloud-save mock] POST load -> 200
+PASS | C65: 上传竞态显示标准本机/云端双选择
+PASS | C64: 上传本机档期间被抢先建 vault 后进入正常冲突页
+PASS | C66: 上传竞态不覆盖合法 local
+PASS | C67: 上传竞态不覆盖抢先建立的 cloud vault
+[cloud-e2e] mock server exited code=null
+PASS | C26: 服务器不可达 → 云存档暂时无法连接 + 本地降级入口
+PASS | C27: 降级进入主菜单（当前不会跨设备同步）
+PASS | C28: 服务器挂掉时本地保存仍正常（游戏可玩）
+PASS | C29: 全程无 JS exception
+[cloud-e2e] dev server exited code=null
+===== P2-005 Cloud focused 结果：67/67 通过 =====
+===== RC suite end: Cloud (exit=0) =====
+
+===== RC suite start: Full Journey =====
+
+  VITE v8.2.1  ready in 210 ms
+
+  ➜  Local:   http://localhost:5240/
+  ➜  Network: use --host to expose
+PASS | FJ1: Golden Rabbit 冻结存档合法（in_progress/stage 0）
+PASS | FJ1: 四调查 flags 保持（铁匠/药师/村长汇报/巢穴复查）
+PASS | FJ1: rabbit_path ×1
+PASS | FJ1: 北门失联 available（马科附近委托）
+PASS | FJ2: 武馆场景加载（马科）
+PASS | FJ2: 《北门失联》附近委托可见（发布者马科）
+PASS | FJ2: 《北门失联》进行中 + 目标更新
+PASS | FJ3: 到达北门（tianlong_north_gate）
+PASS | FJ3: 「查看巡逻队留下的痕迹」可用
+PASS | FJ3: 痕迹剧情（凌乱马蹄印）
+PASS | FJ3: 调查后黑鬃魔狼 Lv.3 出现（迎战）
+PASS | 进入黑鬃魔狼战斗（Lv.3）
+PASS | 击败黑鬃魔狼（战斗胜利）
+PASS | FJ4: 北门胜利剧情（黑鬃魔狼倒在荒草之间）
+PASS | FJ4: 铜牌剧情（断裂铜牌）
+PASS | FJ4: 日志显示黑鬃魔狼已击败
+PASS | FJ4: 《北门失联》可提交（右栏）
+PASS | FJ5: 「提交任务」按钮可用（武馆）
+PASS | FJ5: 《北门失联》已完成（右栏已完成区）
+PASS | FJ5: 马科固定剧情（接过断裂的铜牌）
+PASS | FJ5: 马科固定剧情（封锁消息继续查）
+PASS | FJ5: 提交《北门失联》金币 +30 | 金币 100→130
+PASS | FJ6: 北门失联完成后马科发布块（北门失联 · 调查终结）
+PASS | FJ6: 「接受任务：前往北郊继续追查」
+PASS | FJ6: 《北郊追踪》进行中 + 目标更新
+PASS | FJ7: 北门「沿着足迹继续追踪」
+PASS | FJ7: 追踪后北郊连接解锁可点
+PASS | FJ7: toast 获得线索「拖行痕迹」 | toast=获得新线索：拖行痕迹
+PASS | FJ8: 进入天龙城北郊
+PASS | FJ8: 「搜索袭击现场」
+PASS | FJ8: Stage C 多解按钮（MND 检定）
+PASS | FJ9: 调查成功推进（按钮消失）
+PASS | FJ10: 北门「向马科汇报发现」
+PASS | FJ10: 汇报后进入「可提交」
+PASS | FJ11: 「提交任务」按钮可用（武馆）
+PASS | FJ11: 提交反馈任务完成 + 金币 +40 + 冒险阅历 +100
+PASS | FJ11: 右栏可提交区消失
+PASS | FJ12: 主线完成后 UI 中黄金兔子王仍进行中
+PASS | FJ12: 存档仍 in_progress / stage 0
+PASS | FJ12: 存档四 flags 保持
+PASS | FJ12: 存档 rabbit_path ×1 保持
+PASS | FJ13: 全程无 Production ID leak
+PASS | FJ13: 全程无 JS exception
+===== TM-P2-008 Full Journey E2E 结果：43/43 通过 =====
+===== RC suite end: Full Journey (exit=0) =====
+
+===== RC suite start: Responsive =====
+PASS | 390: 三栏均渲染（player/main/quest）
+PASS | 390: 单栏（main 占满可见，player/quest 隐藏 rect 为 0）
+PASS | 390: 垂直排列（player/quest 隐藏 top=0，main 为可见主栏）
+PASS | 390: 无横向滚动（scrollWidth <= 390） | scrollWidth=390 body=390
+PASS | 390: 三栏宽度不溢出（right <= 390）
+PASS | 390: 角色概览显示当前武器
+PASS | 390: 查看角色详情按钮存在
+PASS | 390: 主要玩法按钮不溢出（保存游戏/主菜单按钮存在）
+PASS | 390: 折叠时 mobile-character-details display === none
+PASS | 390: 展开后 mobile-character-details display !== none
+PASS | 390: 收起后 mobile-character-details display === none
+PASS | 390: 再展开后 display !== none
+PASS | 1024: 两栏（player 与 main 左右分列，quest 隐藏）
+PASS | 1024: 角色信息在左栏（player.left < main.left）
+PASS | 1024: 无横向滚动
+PASS | 1440: 三栏 left 递增（player < main < quest）
+PASS | 1440: 三栏同一行（top 相同）
+PASS | 1440: 左栏宽度约 260-300 | width=280
+PASS | 1440: 右栏宽度约 320-360 | width=340
+PASS | 1440: 无横向滚动
+
+===== 结果：20/20 通过 =====
+===== RC suite end: Responsive (exit=0) =====
+
+===== RC suite start: GamePage/Layout =====
+
+  VITE v8.2.1  ready in 220 ms
+
+  ➜  Local:   http://localhost:5212/
+  ➜  Network: use --host to expose
+PASS | 1920x1080: 无横向滚动 | doc=1920 body=1920
+PASS | 1920x1080: 无元素越过视口
+PASS | 1920x1080: 游戏三栏与防具 UI 可渲染
+PASS | 1920x1080: header/player/current objective 均在首屏
+PASS | 1920x1080: 浏览器外层无纵向滚动 | scroll=1080 client=1080
+PASS | 1600x900: 无横向滚动 | doc=1600 body=1600
+PASS | 1600x900: 无元素越过视口
+PASS | 1600x900: 游戏三栏与防具 UI 可渲染
+PASS | 1600x900: header/player/current objective 均在首屏
+PASS | 1600x900: 浏览器外层无纵向滚动 | scroll=900 client=900
+PASS | 1366x768: 无横向滚动 | doc=1366 body=1366
+PASS | 1366x768: 无元素越过视口
+PASS | 1366x768: 游戏三栏与防具 UI 可渲染
+PASS | 1366x768: header/player/current objective 均在首屏
+PASS | 1366x768: 浏览器外层无纵向滚动 | scroll=768 client=768
+PASS | 1024x768: 无横向滚动 | doc=1024 body=1024
+PASS | 1024x768: 无元素越过视口
+PASS | 1024x768: 游戏三栏与防具 UI 可渲染
+PASS | 1024x768: header/中央场景在首屏（移动端单栏滚动）
+PASS | 390x844: 无横向滚动 | doc=390 body=390
+PASS | 390x844: 无元素越过视口
+PASS | 390x844: 游戏三栏与防具 UI 可渲染
+PASS | 390x844: header/中央场景在首屏（移动端单栏滚动）
+===== 结果：23/23 通过 =====
+===== RC suite end: GamePage/Layout (exit=0) =====
+
+===== RC suite start: Combat =====
+
+  VITE v8.2.1  ready in 204 ms
+
+  ➜  Local:   http://localhost:5213/
+  ➜  Network: use --host to expose
+PASS | 1366x768 普通玩家无 companion: 行动栏 普通攻击 可见可访问 | {"label":"普通攻击","present":true,"disabled":false,"visible":true,"inViewport":true,"focusable":true}
+PASS | 1366x768 普通玩家无 companion: 行动栏 技能 ▾ 可见可访问 | {"label":"技能 ▾","present":true,"disabled":false,"visible":true,"inViewport":true,"focusable":true}
+PASS | 1366x768 普通玩家无 companion: 行动栏 背包 ▾ 可见可访问 | {"label":"背包 ▾","present":true,"disabled":false,"visible":true,"inViewport":true,"focusable":true}
+PASS | 1366x768 普通玩家无 companion: 行动栏 逃跑 可见可访问 | {"label":"逃跑","present":true,"disabled":false,"visible":true,"inViewport":true,"focusable":true}
+PASS | 1366x768 普通玩家无 companion: 技能 tray 内 骑士重击（2 灵力）可见可访问 | {"label":"骑士重击（2 灵力）","present":true,"disabled":false,"visible":true,"inViewport":true,"focusable":true}
+PASS | 1366x768 普通玩家无 companion: 技能 tray 收起后消失
+PASS | 1366x768 普通玩家无 companion: 物品 tray 内 使用治疗药水 可见可访问 | {"label":"使用治疗药水（+8 生命）","present":true,"disabled":false,"visible":true,"inViewport":true,"focusable":true}
+PASS | 1366x768 普通玩家无 companion: 物品 tray 显示剩余药水数量 | trayText=使用治疗药水（+8 生命）剩余：2
+PASS | 1366x768 普通玩家无 companion: 物品 tray 收起后消失
+PASS | 1366x768 普通玩家无 companion: 战斗页真实渲染帧 | bytes=81540
+PASS | 1366x768 普通玩家无 companion: browser outer 无横向溢出 | doc=1366 client=1366
+PASS | 1366x768 普通玩家无 companion: browser outer 无纵向溢出 | doc=768 client=768
+PASS | 1366x768 普通玩家无 companion: 访问按钮未滚动 browser outer | x=0 y=0
+PASS | 1366x768 Sakura active: 樱花飞斩（1 灵力） 可见可访问 | {"label":"樱花飞斩（1 灵力）","present":true,"disabled":false,"visible":true,"inViewport":true,"focusable":true}
+PASS | 1366x768 Sakura active: 樱花魔法盾（2 灵力） 可见可访问 | {"label":"樱花魔法盾（2 灵力）","present":true,"disabled":false,"visible":true,"inViewport":true,"focusable":true}
+PASS | 1366x768 Sakura active: 樱花轻舞（2 灵力） 可见可访问 | {"label":"樱花轻舞（2 灵力）","present":true,"disabled":false,"visible":true,"inViewport":true,"focusable":true}
+PASS | 1366x768 Sakura active: 技能 tray 收起后消失
+PASS | 1366x768 Sakura active: 跳过 可见可访问 | {"label":"跳过","present":true,"disabled":false,"visible":true,"inViewport":true,"focusable":true}
+PASS | 1366x768 Sakura active: 战斗页真实渲染帧 | bytes=95524
+PASS | 1366x768 Sakura active: browser outer 无横向溢出 | doc=1366 client=1366
+PASS | 1366x768 Sakura active: browser outer 无纵向溢出 | doc=768 client=768
+PASS | 1366x768 Sakura active: 访问按钮未滚动 browser outer | x=0 y=0
+PASS | 1920x1080 普通玩家无 companion: 行动栏 普通攻击 可见可访问 | {"label":"普通攻击","present":true,"disabled":false,"visible":true,"inViewport":true,"focusable":true}
+PASS | 1920x1080 普通玩家无 companion: 行动栏 技能 ▾ 可见可访问 | {"label":"技能 ▾","present":true,"disabled":false,"visible":true,"inViewport":true,"focusable":true}
+PASS | 1920x1080 普通玩家无 companion: 行动栏 背包 ▾ 可见可访问 | {"label":"背包 ▾","present":true,"disabled":false,"visible":true,"inViewport":true,"focusable":true}
+PASS | 1920x1080 普通玩家无 companion: 行动栏 逃跑 可见可访问 | {"label":"逃跑","present":true,"disabled":false,"visible":true,"inViewport":true,"focusable":true}
+PASS | 1920x1080 普通玩家无 companion: 技能 tray 内 骑士重击（2 灵力）可见可访问 | {"label":"骑士重击（2 灵力）","present":true,"disabled":false,"visible":true,"inViewport":true,"focusable":true}
+PASS | 1920x1080 普通玩家无 companion: 技能 tray 收起后消失
+PASS | 1920x1080 普通玩家无 companion: 物品 tray 内 使用治疗药水 可见可访问 | {"label":"使用治疗药水（+8 生命）","present":true,"disabled":false,"visible":true,"inViewport":true,"focusable":true}
+PASS | 1920x1080 普通玩家无 companion: 物品 tray 显示剩余药水数量 | trayText=使用治疗药水（+8 生命）剩余：2
+PASS | 1920x1080 普通玩家无 companion: 物品 tray 收起后消失
+PASS | 1920x1080 普通玩家无 companion: 战斗页真实渲染帧 | bytes=124052
+PASS | 1920x1080 普通玩家无 companion: browser outer 无横向溢出 | doc=1920 client=1920
+PASS | 1920x1080 普通玩家无 companion: browser outer 无纵向溢出 | doc=1080 client=1080
+PASS | 1920x1080 普通玩家无 companion: 访问按钮未滚动 browser outer | x=0 y=0
+PASS | 1920x1080 Sakura active: 樱花飞斩（1 灵力） 可见可访问 | {"label":"樱花飞斩（1 灵力）","present":true,"disabled":false,"visible":true,"inViewport":true,"focusable":true}
+PASS | 1920x1080 Sakura active: 樱花魔法盾（2 灵力） 可见可访问 | {"label":"樱花魔法盾（2 灵力）","present":true,"disabled":false,"visible":true,"inViewport":true,"focusable":true}
+PASS | 1920x1080 Sakura active: 樱花轻舞（2 灵力） 可见可访问 | {"label":"樱花轻舞（2 灵力）","present":true,"disabled":false,"visible":true,"inViewport":true,"focusable":true}
+PASS | 1920x1080 Sakura active: 技能 tray 收起后消失
+PASS | 1920x1080 Sakura active: 跳过 可见可访问 | {"label":"跳过","present":true,"disabled":false,"visible":true,"inViewport":true,"focusable":true}
+PASS | 1920x1080 Sakura active: 战斗页真实渲染帧 | bytes=140198
+PASS | 1920x1080 Sakura active: browser outer 无横向溢出 | doc=1920 client=1920
+PASS | 1920x1080 Sakura active: browser outer 无纵向溢出 | doc=1080 client=1080
+PASS | 1920x1080 Sakura active: 访问按钮未滚动 browser outer | x=0 y=0
+PASS | 全程无 JS exception
+===== TM-P2-005-R1 / TM-P2-006 CombatPage V4 结果：45/45 通过 =====
+===== RC suite end: Combat (exit=0) =====
+
+===== RC suite start: Merchant =====
+
+  VITE v8.2.1  ready in 215 ms
+
+  ➜  Local:   http://localhost:5215/
+  ➜  Network: use --host to expose
+PASS | V5 青石村铁匠经「交谈」打开 NPC 交互面板
+PASS | V5 青石村铁匠经「购买装备」打开 MerchantPanel
+PASS | 青石村铁匠出售三件商品 | 实际 3 件
+PASS | 铁匠三件商品为旅行布衣/硬皮甲/锁子甲
+PASS | 法师职业不符的硬皮甲购买按钮 disabled
+PASS | 法师看硬皮甲行提示「职业无法使用」
+PASS | 铁匠面板内可通过购买按钮购买旅行布衣
+PASS | 购买旅行布衣扣除 12 金币
+PASS | 购买旅行布衣后数量 +1
+PASS | 购买后经「关闭」按钮关闭商店面板
+PASS | V5 天龙城王财经「交谈」打开 NPC 交互面板
+PASS | V5 天龙城王财经「购买装备」打开 MerchantPanel
+PASS | 王财出售四件防具与天龙桂花糕（共五件） | 实际 5 件
+PASS | 王财的天龙桂花糕标价 8 金
+PASS | 通过王财 MerchantPanel 购买天龙桂花糕
+PASS | 购买桂花糕扣除 8 金币
+PASS | 购买桂花糕后背包数量为 1
+PASS | 购买后经「关闭」按钮关闭商店面板
+PASS | 旧 V4 存档经正式 Continue 迁移后进入王财商店
+PASS | 旧 V4 存档迁移后可购买防具
+PASS | 旧 V4 存档购买硬皮甲扣 30 金币且数量为 1
+PASS | 购买后经「关闭」按钮关闭商店面板
+===== TM-P2-005 merchant E2E 结果：22/22 通过 =====
+===== RC suite end: Merchant (exit=0) =====
+
+===== RC suite start: Worker + Local D1 =====
+PASS W1 OPTIONS returns 204 with the complete CORS method/header contract
+PASS W2 invalid content-type is rejected
+PASS W3 passphrases shorter than 8 characters are rejected
+PASS W4 passphrases are trim+NFKC normalized
+PASS W5 absent vault loads as exists=false, revision=0 and payload=null
+PASS W6 first save creates revision 1
+PASS W7 load returns the revision-1 payload from Local D1
+PASS W8 save with expectedRevision=1 creates revision 2
+PASS W9 stale save returns HTTP 409 and current revision 2
+PASS W10 stale save does not overwrite the revision-2 payload
+PASS W11 force_save increments the existing vault to revision 3
+PASS W14 malformed JSON is rejected
+PASS W15 request bodies larger than 1 MB are rejected
+PASS S1 missing or empty SAVE_PEPPER fails closed with code=server_error
+PASS S2 default CORS is exact project GitHub Pages plus localhost/loopback; CORS_ORIGINS extends it
+PASS S3 method allowlist and passphrase case isolation remain enforced
+PASS W12 Local D1 key_hash is a 64-char digest and never stores the plaintext passphrase
+PASS W13 Local D1 preserves previous_revision and previous_payload_json
+Worker task card W1-W15: 15/15 passed
+Worker + Local D1 total: 18/18 passed
+===== RC suite end: Worker + Local D1 (exit=0) =====
+
+===== RC suite start: P2-006 Game UI =====
+
+  VITE v8.2.1  ready in 216 ms
+
+  ➜  Local:   http://localhost:5222/
+  ➜  Network: use --host to expose
+PASS | G1: 顶部不再显示大「天梦大陆 / 当前位置」地点块
+PASS | G1: 顶部为薄系统栏（保存游戏/返回主菜单）
+PASS | G2: 中央显示当前 location 名称（青石村）
+PASS | G2: 中央含场景描述
+PASS | G3: 左栏显示角色名/等级/职业
+PASS | G3: XP 条可见（总 XP / 下一等级阈值）
+PASS | G3: 显示距离下一等级
+PASS | G4: 当前目标在右栏（草原狼影）
+PASS | G5: 进行中任务在右栏
+PASS | G6: 附近委托在右栏（采药受阻/矿洞余患）
+PASS | G7: 中央不存在「附近委托」大板块
+PASS | G8: 已完成任务默认折叠（任务行不在 DOM）
+PASS | G9: 点击已完成展开后任务名可见
+PASS | G10: 中央默认不存在商品列表（无「铁匠的货架/购买装备」常驻）
+PASS | G10: 商品表默认不存在（MerchantPanel 未打开）
+PASS | G11: 交谈面板出现「购买装备」入口
+PASS | G11: MerchantPanel 显示商品（旅行布衣/硬皮甲/锁子甲）
+PASS | G11: MerchantPanel 含价格
+PASS | G12: 关闭商店后 MerchantPanel 消失
+PASS | G12: 关闭后恢复场景（中央仍显示青石村）
+PASS | G13: 中央无「青石村阶段完成」大卡（该事件由右栏最近记录承载）
+PASS | G14: 右栏存在「最近记录」（日志 Tab）
+PASS | G14: 最近记录含已完成任务/等级成长条目
+PASS | G15: 核心操作可达（保存游戏）
+PASS | G15: 核心操作可达（返回主菜单）
+PASS | G15: 核心操作可达（交谈）
+PASS | G15: 核心操作可达（村外草原）
+PASS | G15: 核心操作可达（废弃矿洞）
+PASS | 全程无 JS exception
+===== TM-P2-006 Game UI E2E 结果：29/29 通过 =====
+===== RC suite end: P2-006 Game UI (exit=0) =====
+
+===== RC suite start: P2-006 Combat UI =====
+
+  VITE v8.2.1  ready in 212 ms
+
+  ➜  Local:   http://localhost:5223/
+  ➜  Network: use --host to expose
+PASS | CUI1(1366): 主播报区不含「D20/承伤率/护甲」公式
+PASS | CUI2(1366): 主区出现攻击播报（命中/伤害）
+PASS | CUI2(1366): 详细日志含完整公式（命中值=(D20 / 天然20 / 承伤率）
+PASS | CUI2(1366): 详细日志按回合分组（回合 N）
+PASS | CUI3(1366): 行动栏在视口内 | top=668 bottom=756 vh=768
+PASS | CUI4(1366): 多回合后行动栏未位移 | top 668→668
+PASS | CUI5(1366): 一级行动栏含「技能」
+PASS | CUI5(1366): 技能 tray 含骑士重击
+PASS | CUI5(1366): 再次点击收起 tray
+PASS | CUI6(1366): 物品 tray 含治疗药水
+PASS | CUI6(1366): 物品 tray 收起
+PASS | CUI7(1366): 行动栏含「逃跑」
+PASS | CUI1(1920): 主播报区不含「D20/承伤率/护甲」公式
+PASS | CUI2(1920): 主区出现攻击播报（命中/伤害）
+PASS | CUI2(1920): 详细日志含完整公式（命中值=(D20 / 天然20 / 承伤率）
+PASS | CUI2(1920): 详细日志按回合分组（回合 N）
+PASS | CUI3(1920): 行动栏在视口内 | top=980 bottom=1068 vh=1080
+PASS | CUI4(1920): 多回合后行动栏未位移 | top 980→980
+PASS | CUI5(1920): 一级行动栏含「技能」
+PASS | CUI5(1920): 技能 tray 含骑士重击
+PASS | CUI5(1920): 再次点击收起 tray
+PASS | CUI6(1920): 物品 tray 含治疗药水
+PASS | CUI6(1920): 物品 tray 收起
+PASS | CUI7(1920): 行动栏含「逃跑」
+PASS | CUI4b: 长战斗达到 8+ 回合（日志充分增长） | turns=12
+PASS | CUI4b: 长战斗后行动栏未位移（P0） | top 668→668
+PASS | CUI8: 伙伴回合显示「樱花优子的回合」
+PASS | CUI8: 伙伴技能 tray 内含飞斩/魔法盾/轻舞
+PASS | CUI8: 行动栏含「跳过」（伙伴回合）
+PASS | CUI8: 伙伴行动栏在视口内
+PASS | CUI9(1366): 战斗页 outer 无滚动
+PASS | CUI9(1920): 战斗页 outer 无滚动
+PASS | CUI10: 1366/1920 战斗页全程无 JS exception
+PASS | CUI11: 390px 下主播报区仍在（单列布局）
+PASS | CUI11: 390px 下详细日志区仍在
+PASS | CUI11: 390px 下行动栏在视口内
+PASS | CUI12: 390px 下玩家/敌人面板可见
+PASS | CUI13: 390px 无横向溢出
+PASS | CUI14: 390px 点「详细战斗日志」打开抽屉
+PASS | CUI14: 抽屉含按回合分组的详细日志
+PASS | CUI15: 抽屉打开时行动栏在视口内
+PASS | CUI15: 抽屉打开时行动栏未位移 | top 487→487
+PASS | CUI16: ESC 关闭抽屉
+PASS | CUI16: 关闭后回战斗（主播报区仍在）
+PASS | CUI16: ESC 关闭后行动栏未位移
+PASS | CUI17: 关闭按钮关闭抽屉
+PASS | CUI-R1: StrictMode 下开场播报仅插入 1 次 | count=1
+PASS | CUI-R1: 回合分组未被 StrictMode 重复计数 | rounds=1
+PASS | 全程无 JS exception（390）
+===== TM-P2-006 Combat UI E2E 结果：49/49 通过 =====
+===== RC suite end: P2-006 Combat UI (exit=0) =====
+
+===== RC suite start: P2-006 Balance =====
+TM-P2-006 数值平衡 Monte Carlo 模拟器（after 表）
+运行环境: Node v24.14.0 | 每 pairing 模拟 10000 次 | 种子 20250206 | 药水策略: 关闭
+====================================================================================================
+
+【After 胜率矩阵】四职业 × Lv1–5（战斗向 build，初始装备）vs 代表敌人（胜率% | 平均回合 | 胜均剩余HP）
+warrior Lv1 vs 魔化兔   (Lv1)  胜率   90.5%  回合  2.3  胜余HP  15.3
+warrior Lv1 vs 魔化狼   (Lv2)  胜率   68.7%  回合  3.2  胜余HP  11.6
+warrior Lv1 vs 骷髅士兵  (Lv3)  胜率   83.2%  回合  3.4  胜余HP  16.2
+warrior Lv1 vs 骷髅队长  (Lv4)  胜率   73.6%  回合  5.0  胜余HP  12.9
+warrior Lv1 vs 骷髅战士  (Lv5)  胜率   68.9%  回合  4.5  胜余HP  14.0
+warrior Lv2 vs 魔化兔   (Lv1)  胜率   93.0%  回合  2.3  胜余HP  17.0
+warrior Lv2 vs 魔化狼   (Lv2)  胜率   72.0%  回合  3.2  胜余HP  13.0
+warrior Lv2 vs 骷髅士兵  (Lv3)  胜率   85.3%  回合  3.4  胜余HP  17.8
+warrior Lv2 vs 骷髅队长  (Lv4)  胜率   76.6%  回合  5.1  胜余HP  14.2
+warrior Lv2 vs 骷髅战士  (Lv5)  胜率   73.6%  回合  4.6  胜余HP  15.2
+warrior Lv3 vs 魔化兔   (Lv1)  胜率   94.6%  回合  2.2  胜余HP  19.0
+warrior Lv3 vs 魔化狼   (Lv2)  胜率   81.2%  回合  3.1  胜余HP  14.6
+warrior Lv3 vs 骷髅士兵  (Lv3)  胜率   93.3%  回合  3.2  胜余HP  19.1
+warrior Lv3 vs 骷髅队长  (Lv4)  胜率   90.4%  回合  4.8  胜余HP  18.5
+warrior Lv3 vs 骷髅战士  (Lv5)  胜率   87.9%  回合  4.3  胜余HP  18.3
+warrior Lv4 vs 魔化兔   (Lv1)  胜率   95.1%  回合  2.2  胜余HP  20.8
+warrior Lv4 vs 魔化狼   (Lv2)  胜率   86.0%  回合  3.2  胜余HP  15.8
+warrior Lv4 vs 骷髅士兵  (Lv3)  胜率   94.1%  回合  3.2  胜余HP  21.0
+warrior Lv4 vs 骷髅队长  (Lv4)  胜率   92.3%  回合  4.8  胜余HP  20.1
+warrior Lv4 vs 骷髅战士  (Lv5)  胜率   89.9%  回合  4.3  胜余HP  20.0
+warrior Lv5 vs 魔化兔   (Lv1)  胜率   97.0%  回合  2.0  胜余HP  22.5
+warrior Lv5 vs 魔化狼   (Lv2)  胜率   88.7%  回合  3.1  胜余HP  17.7
+warrior Lv5 vs 骷髅士兵  (Lv3)  胜率   95.8%  回合  3.0  胜余HP  23.0
+warrior Lv5 vs 骷髅队长  (Lv4)  胜率   96.7%  回合  4.6  胜余HP  22.5
+warrior Lv5 vs 骷髅战士  (Lv5)  胜率   93.5%  回合  4.1  胜余HP  21.9
+knight  Lv1 vs 魔化兔   (Lv1)  胜率   91.5%  回合  2.4  胜余HP  15.6
+knight  Lv1 vs 魔化狼   (Lv2)  胜率   67.8%  回合  3.4  胜余HP  11.2
+knight  Lv1 vs 骷髅士兵  (Lv3)  胜率   59.9%  回合  3.4  胜余HP  10.9
+knight  Lv1 vs 骷髅队长  (Lv4)  胜率   39.7%  回合  5.4  胜余HP   7.7
+knight  Lv1 vs 骷髅战士  (Lv5)  胜率   32.6%  回合  4.6  胜余HP   8.2
+knight  Lv2 vs 魔化兔   (Lv1)  胜率   94.1%  回合  2.4  胜余HP  17.0
+knight  Lv2 vs 魔化狼   (Lv2)  胜率   73.0%  回合  3.5  胜余HP  12.2
+knight  Lv2 vs 骷髅士兵  (Lv3)  胜率   65.7%  回合  3.5  胜余HP  12.0
+knight  Lv2 vs 骷髅队长  (Lv4)  胜率   47.1%  回合  5.5  胜余HP   8.7
+knight  Lv2 vs 骷髅战士  (Lv5)  胜率   38.6%  回合  4.7  胜余HP   9.1
+knight  Lv3 vs 魔化兔   (Lv1)  胜率   96.7%  回合  2.4  胜余HP  18.9
+knight  Lv3 vs 魔化狼   (Lv2)  胜率   81.0%  回合  3.4  胜余HP  14.2
+knight  Lv3 vs 骷髅士兵  (Lv3)  胜率   77.0%  回合  3.3  胜余HP  13.8
+knight  Lv3 vs 骷髅队长  (Lv4)  胜率   66.2%  回合  5.0  胜余HP  11.0
+knight  Lv3 vs 骷髅战士  (Lv5)  胜率   56.3%  回合  4.4  胜余HP  10.8
+knight  Lv4 vs 魔化兔   (Lv1)  胜率   97.7%  回合  2.4  胜余HP  21.0
+knight  Lv4 vs 魔化狼   (Lv2)  胜率   84.6%  回合  3.5  胜余HP  15.5
+knight  Lv4 vs 骷髅士兵  (Lv3)  胜率   79.1%  回合  3.4  胜余HP  15.0
+knight  Lv4 vs 骷髅队长  (Lv4)  胜率   72.4%  回合  5.0  胜余HP  12.0
+knight  Lv4 vs 骷髅战士  (Lv5)  胜率   61.1%  回合  4.5  胜余HP  11.8
+knight  Lv5 vs 魔化兔   (Lv1)  胜率   98.7%  回合  2.3  胜余HP  23.3
+knight  Lv5 vs 魔化狼   (Lv2)  胜率   92.4%  回合  3.3  胜余HP  17.8
+knight  Lv5 vs 骷髅士兵  (Lv3)  胜率   87.5%  回合  3.1  胜余HP  18.0
+knight  Lv5 vs 骷髅队长  (Lv4)  胜率   84.4%  回合  4.7  胜余HP  14.7
+knight  Lv5 vs 骷髅战士  (Lv5)  胜率   74.5%  回合  4.2  胜余HP  14.5
+ranger  Lv1 vs 魔化兔   (Lv1)  胜率   94.3%  回合  2.4  胜余HP  15.8
+ranger  Lv1 vs 魔化狼   (Lv2)  胜率   83.7%  回合  3.8  胜余HP  11.7
+ranger  Lv1 vs 骷髅士兵  (Lv3)  胜率   73.6%  回合  3.8  胜余HP   9.3
+ranger  Lv1 vs 骷髅队长  (Lv4)  胜率   47.1%  回合  6.0  胜余HP   5.9
+ranger  Lv1 vs 骷髅战士  (Lv5)  胜率   36.5%  回合  5.2  胜余HP   5.9
+ranger  Lv2 vs 魔化兔   (Lv1)  胜率   95.2%  回合  2.4  胜余HP  17.5
+ranger  Lv2 vs 魔化狼   (Lv2)  胜率   86.9%  回合  3.8  胜余HP  13.3
+ranger  Lv2 vs 骷髅士兵  (Lv3)  胜率   77.8%  回合  3.9  胜余HP  10.8
+ranger  Lv2 vs 骷髅队长  (Lv4)  胜率   56.6%  回合  6.2  胜余HP   6.9
+ranger  Lv2 vs 骷髅战士  (Lv5)  胜率   45.2%  回合  5.4  胜余HP   6.7
+ranger  Lv3 vs 魔化兔   (Lv1)  胜率   98.4%  回合  2.0  胜余HP  20.6
+ranger  Lv3 vs 魔化狼   (Lv2)  胜率   92.5%  回合  3.4  胜余HP  16.2
+ranger  Lv3 vs 骷髅士兵  (Lv3)  胜率   84.5%  回合  3.6  胜余HP  13.8
+ranger  Lv3 vs 骷髅队长  (Lv4)  胜率   72.3%  回合  5.8  胜余HP   9.5
+ranger  Lv3 vs 骷髅战士  (Lv5)  胜率   66.1%  回合  5.2  胜余HP   8.7
+ranger  Lv4 vs 魔化兔   (Lv1)  胜率   98.8%  回合  2.1  胜余HP  22.4
+ranger  Lv4 vs 魔化狼   (Lv2)  胜率   94.9%  回合  3.4  胜余HP  17.8
+ranger  Lv4 vs 骷髅士兵  (Lv3)  胜率   85.2%  回合  3.6  胜余HP  15.5
+ranger  Lv4 vs 骷髅队长  (Lv4)  胜率   76.5%  回合  5.9  胜余HP  11.0
+ranger  Lv4 vs 骷髅战士  (Lv5)  胜率   70.3%  回合  5.3  胜余HP   9.9
+ranger  Lv5 vs 魔化兔   (Lv1)  胜率   99.5%  回合  1.8  胜余HP  25.3
+ranger  Lv5 vs 魔化狼   (Lv2)  胜率   97.5%  回合  3.1  胜余HP  20.6
+ranger  Lv5 vs 骷髅士兵  (Lv3)  胜率   88.7%  回合  3.4  胜余HP  18.2
+ranger  Lv5 vs 骷髅队长  (Lv4)  胜率   86.3%  回合  5.4  胜余HP  13.8
+ranger  Lv5 vs 骷髅战士  (Lv5)  胜率   80.1%  回合  4.8  胜余HP  13.3
+mage    Lv1 vs 魔化兔   (Lv1)  胜率   84.4%  回合  2.3  胜余HP  11.8
+mage    Lv1 vs 魔化狼   (Lv2)  胜率   51.8%  回合  3.1  胜余HP   9.1
+mage    Lv1 vs 骷髅士兵  (Lv3)  胜率   46.8%  回合  3.2  胜余HP   8.8
+mage    Lv1 vs 骷髅队长  (Lv4)  胜率   29.6%  回合  4.9  胜余HP   6.3
+mage    Lv1 vs 骷髅战士  (Lv5)  胜率   22.8%  回合  4.3  胜余HP   6.5
+mage    Lv2 vs 魔化兔   (Lv1)  胜率   88.3%  回合  2.4  胜余HP  13.2
+mage    Lv2 vs 魔化狼   (Lv2)  胜率   58.2%  回合  3.3  胜余HP  10.0
+mage    Lv2 vs 骷髅士兵  (Lv3)  胜率   52.2%  回合  3.3  胜余HP   9.8
+mage    Lv2 vs 骷髅队长  (Lv4)  胜率   36.5%  回合  5.0  胜余HP   7.0
+mage    Lv2 vs 骷髅战士  (Lv5)  胜率   28.5%  回合  4.4  胜余HP   7.2
+mage    Lv3 vs 魔化兔   (Lv1)  胜率   90.7%  回合  2.3  胜余HP  15.2
+mage    Lv3 vs 魔化狼   (Lv2)  胜率   69.0%  回合  3.2  胜余HP  11.4
+mage    Lv3 vs 骷髅士兵  (Lv3)  胜率   62.5%  回合  3.2  胜余HP  11.1
+mage    Lv3 vs 骷髅队长  (Lv4)  胜率   52.1%  回合  4.7  胜余HP   8.7
+mage    Lv3 vs 骷髅战士  (Lv5)  胜率   40.1%  回合  4.2  胜余HP   8.5
+mage    Lv4 vs 魔化兔   (Lv1)  胜率   92.0%  回合  2.3  胜余HP  17.1
+mage    Lv4 vs 魔化狼   (Lv2)  胜率   74.9%  回合  3.3  胜余HP  12.5
+mage    Lv4 vs 骷髅士兵  (Lv3)  胜率   68.4%  回合  3.3  胜余HP  12.1
+mage    Lv4 vs 骷髅队长  (Lv4)  胜率   58.0%  回合  4.8  胜余HP   9.7
+mage    Lv4 vs 骷髅战士  (Lv5)  胜率   47.0%  回合  4.3  胜余HP   9.4
+mage    Lv5 vs 魔化兔   (Lv1)  胜率   96.0%  回合  2.3  胜余HP  19.1
+mage    Lv5 vs 魔化狼   (Lv2)  胜率   84.6%  回合  3.2  胜余HP  14.5
+mage    Lv5 vs 骷髅士兵  (Lv3)  胜率   79.6%  回合  3.0  胜余HP  14.4
+mage    Lv5 vs 骷髅队长  (Lv4)  胜率   71.7%  回合  4.6  胜余HP  11.4
+mage    Lv5 vs 骷髅战士  (Lv5)  胜率   59.9%  回合  4.0  胜余HP  11.4
+
+【强制用例】Lv2 LUCK-heavy build vs Lv5 骷髅战士（验证不碾压）
+warrior LUCK Lv2 vs 骷髅战士 胜率   38.0%  回合 5.6  胜余HP 10.5
+knight  LUCK Lv2 vs 骷髅战士 胜率   11.4%  回合 4.5  胜余HP 6.2
+ranger  LUCK Lv2 vs 骷髅战士 胜率    2.5%  回合 5.3  胜余HP 5.0
+mage    LUCK Lv2 vs 骷髅战士 胜率    8.0%  回合 4.8  胜余HP 5.6
+
+【装备对照】可购防具 vs 初始装备（胜率%）
+warrior Lv3 vs 骷髅士兵    初始(甲12) 93.0%  →  可购(甲14) 94.2%   Δ1.2pp
+warrior Lv5 vs 骷髅战士    初始(甲12) 93.8%  →  可购(甲14) 95.2%   Δ1.4pp
+knight  Lv3 vs 骷髅士兵    初始(甲14) 76.6%  →  可购(甲16) 80.0%   Δ3.4pp
+knight  Lv5 vs 骷髅战士    初始(甲14) 75.3%  →  可购(甲16) 80.0%   Δ4.8pp
+ranger  Lv3 vs 骷髅士兵    初始(甲12) 84.6%  →  可购(甲13) 84.4%   Δ-0.2pp
+ranger  Lv5 vs 骷髅战士    初始(甲12) 79.8%  →  可购(甲13) 81.0%   Δ1.3pp
+mage    Lv3 vs 骷髅士兵    初始(甲12) 62.9%  →  可购(甲13) 63.6%   Δ0.7pp
+mage    Lv5 vs 骷髅战士    初始(甲12) 60.5%  →  可购(甲13) 63.9%   Δ3.4pp
+
+【期望伤害（解析期望：遍历 1–20 骰面 × resolveAttack）】技能 vs 普攻 vs 敌人每击（战斗向 build）
+warrior Lv1 vs 魔化兔     普攻  4.25  技能  4.55  敌人每击  6.70  期望击杀 2 击
+warrior Lv1 vs 魔化狼     普攻  3.65  技能  3.85  敌人每击  6.20  期望击杀 4 击
+warrior Lv1 vs 骷髅士兵    普攻  4.35  技能  4.70  敌人每击  7.75  期望击杀 3 击
+warrior Lv1 vs 骷髅队长    普攻  4.20  技能  4.60  敌人每击  5.60  期望击杀 5 击
+warrior Lv1 vs 骷髅战士    普攻  4.20  技能  4.60  敌人每击  7.10  期望击杀 5 击
+warrior Lv3 vs 魔化兔     普攻  4.55  技能  5.00  敌人每击  6.70  期望击杀 2 击
+warrior Lv3 vs 魔化狼     普攻  3.85  技能  4.30  敌人每击  6.20  期望击杀 3 击
+warrior Lv3 vs 骷髅士兵    普攻  4.70  技能  5.20  敌人每击  7.75  期望击杀 3 击
+warrior Lv3 vs 骷髅队长    普攻  4.60  技能  5.10  敌人每击  5.60  期望击杀 5 击
+warrior Lv3 vs 骷髅战士    普攻  4.60  技能  5.10  敌人每击  7.10  期望击杀 4 击
+warrior Lv5 vs 魔化兔     普攻  5.00  技能  5.35  敌人每击  6.70  期望击杀 2 击
+warrior Lv5 vs 魔化狼     普攻  4.30  技能  4.55  敌人每击  6.20  期望击杀 3 击
+warrior Lv5 vs 骷髅士兵    普攻  5.20  技能  5.60  敌人每击  7.75  期望击杀 3 击
+warrior Lv5 vs 骷髅队长    普攻  5.10  技能  5.40  敌人每击  5.60  期望击杀 5 击
+warrior Lv5 vs 骷髅战士    普攻  5.10  技能  5.40  敌人每击  7.10  期望击杀 4 击
+knight  Lv1 vs 魔化兔     普攻  3.45  技能  4.25  敌人每击  6.25  期望击杀 2 击
+knight  Lv1 vs 魔化狼     普攻  2.90  技能  3.65  敌人每击  5.85  期望击杀 4 击
+knight  Lv1 vs 骷髅士兵    普攻  3.45  技能  4.35  敌人每击  7.30  期望击杀 4 击
+knight  Lv1 vs 骷髅队长    普攻  3.40  技能  4.20  敌人每击  5.25  期望击杀 6 击
+knight  Lv1 vs 骷髅战士    普攻  3.40  技能  4.20  敌人每击  6.60  期望击杀 5 击
+knight  Lv3 vs 魔化兔     普攻  3.70  技能  4.55  敌人每击  6.25  期望击杀 2 击
+knight  Lv3 vs 魔化狼     普攻  3.10  技能  3.85  敌人每击  5.85  期望击杀 4 击
+knight  Lv3 vs 骷髅士兵    普攻  3.80  技能  4.70  敌人每击  7.30  期望击杀 3 击
+knight  Lv3 vs 骷髅队长    普攻  3.75  技能  4.60  敌人每击  5.25  期望击杀 5 击
+knight  Lv3 vs 骷髅战士    普攻  3.75  技能  4.60  敌人每击  6.60  期望击杀 5 击
+knight  Lv5 vs 魔化兔     普攻  4.25  技能  5.00  敌人每击  6.25  期望击杀 2 击
+knight  Lv5 vs 魔化狼     普攻  3.65  技能  4.30  敌人每击  5.85  期望击杀 3 击
+knight  Lv5 vs 骷髅士兵    普攻  4.35  技能  5.20  敌人每击  7.30  期望击杀 3 击
+knight  Lv5 vs 骷髅队长    普攻  4.20  技能  5.10  敌人每击  5.25  期望击杀 5 击
+knight  Lv5 vs 骷髅战士    普攻  4.20  技能  5.10  敌人每击  6.60  期望击杀 4 击
+ranger  Lv1 vs 魔化兔     普攻  3.20  技能  5.50  敌人每击  4.50  期望击杀 2 击
+ranger  Lv1 vs 魔化狼     普攻  2.90  技能  5.00  敌人每击  4.05  期望击杀 3 击
+ranger  Lv1 vs 骷髅士兵    普攻  3.15  技能  5.45  敌人每击  5.50  期望击杀 3 击
+ranger  Lv1 vs 骷髅队长    普攻  3.10  技能  5.35  敌人每击  4.05  期望击杀 5 击
+ranger  Lv1 vs 骷髅战士    普攻  3.10  技能  5.35  敌人每击  5.10  期望击杀 4 击
+ranger  Lv3 vs 魔化兔     普攻  3.75  技能  6.05  敌人每击  4.50  期望击杀 2 击
+ranger  Lv3 vs 魔化狼     普攻  3.35  技能  5.40  敌人每击  4.05  期望击杀 3 击
+ranger  Lv3 vs 骷髅士兵    普攻  3.60  技能  5.85  敌人每击  5.50  期望击杀 3 击
+ranger  Lv3 vs 骷髅队长    普攻  3.50  技能  5.65  敌人每击  4.05  期望击杀 4 击
+ranger  Lv3 vs 骷髅战士    普攻  3.50  技能  5.65  敌人每击  5.10  期望击杀 4 击
+ranger  Lv5 vs 魔化兔     普攻  4.15  技能  6.60  敌人每击  4.50  期望击杀 2 击
+ranger  Lv5 vs 魔化狼     普攻  3.70  技能  5.85  敌人每击  4.05  期望击杀 3 击
+ranger  Lv5 vs 骷髅士兵    普攻  4.00  技能  6.30  敌人每击  5.50  期望击杀 3 击
+ranger  Lv5 vs 骷髅队长    普攻  3.95  技能  6.10  敌人每击  4.05  期望击杀 4 击
+ranger  Lv5 vs 骷髅战士    普攻  3.95  技能  6.10  敌人每击  5.10  期望击杀 4 击
+mage    Lv1 vs 魔化兔     普攻  2.60  技能  4.25  敌人每击  6.70  期望击杀 2 击
+mage    Lv1 vs 魔化狼     普攻  2.25  技能  3.65  敌人每击  6.20  期望击杀 4 击
+mage    Lv1 vs 骷髅士兵    普攻  2.55  技能  4.35  敌人每击  7.75  期望击杀 4 击
+mage    Lv1 vs 骷髅队长    普攻  2.50  技能  4.20  敌人每击  5.60  期望击杀 6 击
+mage    Lv1 vs 骷髅战士    普攻  2.50  技能  4.20  敌人每击  7.10  期望击杀 5 击
+mage    Lv3 vs 魔化兔     普攻  2.90  技能  4.55  敌人每击  6.70  期望击杀 2 击
+mage    Lv3 vs 魔化狼     普攻  2.55  技能  3.85  敌人每击  6.20  期望击杀 4 击
+mage    Lv3 vs 骷髅士兵    普攻  3.00  技能  4.70  敌人每击  7.75  期望击杀 3 击
+mage    Lv3 vs 骷髅队长    普攻  2.95  技能  4.60  敌人每击  5.60  期望击杀 5 击
+mage    Lv3 vs 骷髅战士    普攻  2.95  技能  4.60  敌人每击  7.10  期望击杀 5 击
+mage    Lv5 vs 魔化兔     普攻  3.45  技能  5.00  敌人每击  6.70  期望击杀 2 击
+mage    Lv5 vs 魔化狼     普攻  2.90  技能  4.30  敌人每击  6.20  期望击杀 3 击
+mage    Lv5 vs 骷髅士兵    普攻  3.45  技能  5.20  敌人每击  7.75  期望击杀 3 击
+mage    Lv5 vs 骷髅队长    普攻  3.40  技能  5.10  敌人每击  5.60  期望击杀 5 击
+mage    Lv5 vs 骷髅战士    普攻  3.40  技能  5.10  敌人每击  7.10  期望击杀 4 击
+
+====================================================================================================
+未发现显著异常（After 表（调参后）：同级胜率 55%–95%、跨级 ≤90%、高级 ≥60%）。
+退出码：0（非 0 = 存在显著异常）
+
+报告已写入：C:\Users\cruelworld\Desktop\DeepSeek\dnd游戏--天梦大陆\.claude\worktrees\vigorous-dirac-880948\qa\P2_006_BALANCE_REPORT_AFTER.md
+===== RC suite end: P2-006 Balance (exit=0) =====
+
+===== RC suite start: P2-007 Backpack/Loot =====
+
+  VITE v8.2.1  ready in 227 ms
+
+  ➜  Local:   http://localhost:5225/
+  ➜  Network: use --host to expose
+PASS | S1: 左栏含背包 compact 入口（打开背包按钮）
+PASS | S1: 左栏不常驻完整背包面板（backpack-panel 不在 DOM）
+PASS | S1: 左栏无背包分类 tabs（完整背包不在左栏展开）
+PASS | S1: 左栏背包预览为 compact（6 物品仅显示 5 行，非全量） | previewRows=5
+PASS | S2: 打开 BackpackPanel（backpack-panel 出现）
+PASS | S2: 面板显示物品总数（6 种物品） | 6 种物品
+PASS | S3: 六个 tab 按钮齐全
+PASS | S3: 全部 tab 物品列表正确 | 实际=test_artifact,refined_iron_sword,chainmail_armor,iron_sword,iron_ore,healing_potion 期望=iron_sword,healing_potion,iron_ore,test_artifact,refined_iron_sword,chainmail_armor
+PASS | S3: 装备 tab 物品列表正确 | 实际=refined_iron_sword,chainmail_armor,iron_sword 期望=iron_sword,refined_iron_sword,chainmail_armor
+PASS | S3: 消耗品 tab 物品列表正确 | 实际=healing_potion 期望=healing_potion
+PASS | S3: 材料 tab 物品列表正确 | 实际=iron_ore 期望=iron_ore
+PASS | S3: 任务 tab 物品列表正确 | 实际=test_artifact 期望=test_artifact
+PASS | S3: 特殊 tab 物品列表正确 | 实际=空 期望=空
+PASS | S4: 材料 tab 显示材料物品（铁矿石）
+PASS | S5: 打开装备详情（精制铁剑 + 装备按钮）
+PASS | S5: 点击装备成功（按钮变为卸下）
+PASS | S5: 装备后左栏武器显示精制铁剑
+PASS | S5: 返回列表视图（详情消失，物品行恢复）
+PASS | S9: 关闭 BackpackPanel（面板消失）
+PASS | S9: 关闭后主场景仍在（天龙城北门）
+PASS | S10: GamePage outer 无滚动 | {"sh":900,"ch":900}
+PASS | S6: 战斗入口可用（点击迎战进入 CombatPage）
+PASS | S10: CombatPage outer 无滚动 | {"sh":900,"ch":900}
+PASS | S6: 玩家先手攻击命中目标
+PASS | S6: 战斗胜利面板显示
+PASS | S6: 胜利显示掉落（战利品：黑鬃狼牙）
+PASS | S6: 胜利显示「已收入背包」
+PASS | S8: 幸运检定大成功（D20 20 + 幸运修正 0 = 20 → 大成功）
+PASS | S8: 大成功必得额外掉落（黑鬃狼牙 ≥2：guaranteed 1 + lucky 1） | 黑鬃狼牙 出现 2 次
+PASS | S9: 战斗后返回 GamePage（主场景仍在）
+PASS | S7: 胜利掉落已进入背包（黑鬃狼牙 ×2） | qty=×2
+PASS | S7: 背包总数 +1（6→7 种物品） | 7 种物品
+PASS | S7: 左栏背包计数同步 7 种物品 | 7 种物品
+PASS | 全程无 JS exception
+===== TM-P2-007 Backpack/Loot E2E 结果：34/34 通过 =====
+===== RC suite end: P2-007 Backpack/Loot (exit=0) =====
+
+===== RC suite start: P2-007 Party Combat =====
+
+  VITE v8.2.1  ready in 187 ms
+
+  ➜  Local:   http://localhost:5226/
+  ➜  Network: use --host to expose
+PASS | A0: 无 JS exception
+PASS | §49-1a: 1v1 无伙伴卡
+PASS | §49-1b: 1v1 敌方 1 卡
+PASS | A1: 敌方名/玩家满血/攻击值渲染
+PASS | A2: 玩家先手行动栏
+PASS | A3: target selector（单敌）
+PASS | A4: 暴击击杀魔化兔
+PASS | A5: 战斗胜利面板
+PASS | §49-13: 胜利 XP 累计 +10
+PASS | §49-14a: 单敌 loot 兽肉 ×1
+PASS | A6: 返回冒险后 XP 140/250
+PASS | A7: 背包 4 种物品
+PASS | A0b: 无 JS exception
+PASS | §49-2a: 2v1 伙伴卡存在
+PASS | §49-2b: 2v1 敌方 1 卡
+PASS | §49-9: Sakura 独立回合先手
+PASS | B1: 伙伴卡渲染
+PASS | B2: 技能 tray 三技能
+PASS | B3: 技能进入目标选择
+PASS | §49-10: Sakura 樱花飞斩暴击 12 击杀
+PASS | B4: 伙伴击杀同样结算胜利
+PASS | B0: 无 JS exception
+PASS | §49-3a: 2v2 我方 Sakura
+PASS | §49-3b: 2v2 敌方 2 卡
+PASS | §49-6: 生产 2 敌遭遇（残破巡逻队）
+PASS | C1: 多敌胜利前战斗进行中
+PASS | §49-7a: 技能目标选择（2 个骷髅战士目标 + 取消）
+PASS | C2: Sakura 攻击骷髅①（11）
+PASS | §49-7b: 玩家普通攻击目标选择（2 目标 + 取消）
+PASS | C3: 玩家击杀骷髅①（10）
+PASS | §49-8b: 剩余骷髅继续行动打 Sakura
+PASS | §49-8a: kill one 后存活目标只剩 1 个 | 1 个目标
+PASS | §49-8a: 击杀后敌方卡 HP 实时刷新（0/20 + 20/20） | 0/20,20/20
+PASS | C4: 2v2 战斗胜利
+PASS | §49-13: 多敌胜利 XP 聚合 +80
+PASS | §49-14b: 多敌 loot 聚合（骨片×4+粉尘×2）
+PASS | C5: 已收入背包
+PASS | C6: XP 210/250
+PASS | C7: 背包 5 种物品（3 初始 + 2 掉落）
+PASS | C0: 无 JS exception
+PASS | §49-15a: 战况播报累计 >= 20 events | 21 events
+PASS | D1: 行动栏在视口内
+PASS | §49-15b: 滚动后行动栏位置固定
+PASS | §49-16: detail log 含回合/战斗开始/事件
+PASS | D0: 无 JS exception
+PASS | §49-11: 逃跑失败（消耗行动）
+PASS | §49-12: 逃跑成功返回冒险页（无结算）
+PASS | E1: 逃跑成功无战斗胜利结算
+PASS | E0: 无 JS exception
+PASS | F1: 移动端抽屉按钮可见
+PASS | §49-17a: 抽屉打开含详细日志
+PASS | §49-17b: 抽屉可关闭
+PASS | F0: 无 JS exception
+PASS | §49-4a: 3v2 敌方 2 卡
+PASS | §49-4b: 3v2 UI 我方 2 人（产品限制：只渲染 Sakura）
+PASS | G1: 3v2 战斗进行中（Sakura 回合）
+PASS | §49-5a: 引擎构建 3 敌实例（enemy#1/2/3） | enemy#1,enemy#2,enemy#3
+PASS | §49-5b: 先手队列 3 单位 | enemy:骷髅战士,enemy:骷髅战士,enemy:骷髅战士
+PASS | §49-5c: 满血非胜利/全灭判胜利
+PASS | G2: 上限 3 / 敌方定义
+PASS | G0: 无 JS exception
+
+==== P2-007 PARTY COMBAT E2E ====
+TOTAL 61 | PASS 61 | FAIL 0
+===== RC suite end: P2-007 Party Combat (exit=0) =====
+
+===== RC suite start: P2-007 Mount =====
+cloud-save mock server on 5203
+
+  VITE v8.2.1  ready in 179 ms
+
+  ➜  Local:   http://localhost:5204/
+  ➜  Network: use --host to expose
+
+  VITE v8.2.1  ready in 184 ms
+
+  ➜  Local:   http://localhost:5227/
+  ➜  Network: use --host to expose
+[cloud-save mock] GET ? -> 405
+PASS | M13: 未装备时左栏坐骑区显示「未装备」
+PASS | M13: 左栏存在坐骑管理入口（open-mount-stable）
+PASS | M1: 中央当前地点为天龙城
+PASS | M1: 中央存在天龙城马厩入口（open-mount-stable-entry）
+PASS | M13: 未装备时战斗摘要存在攻击/敏捷数值 | 攻击=7 敏捷=10
+PASS | M13: 角色详情显示原始五维（力量=13，未装备坐骑不受影响） | str=13
+PASS | M2: 马厩面板显示「火焰驹」
+PASS | M2: 火焰驹价格 80 金可见（购买 80 金）
+PASS | M2: 火焰驹加成说明可见（力量+1 · 敏捷+1）
+PASS | M13: 未拥有时火焰驹无「已装备/已拥有」状态标签
+PASS | M13: 未拥有时火焰驹显示购买按钮
+PASS | M3: 购买成功反馈（已收入马厩）
+PASS | M3: 购买后金币 150 → 70 | 金币=70
+PASS | M4: 火焰驹状态变为「已拥有」
+PASS | M4: 已拥有后出现「装备」按钮
+PASS | M5: 装备后状态变为「已装备」
+PASS | M5: 装备后出现「卸下」按钮
+PASS | M6: 左栏坐骑区显示「火焰驹」
+PASS | M6: 左栏显示坐骑加成（力量+1 · 敏捷+1）
+PASS | M8: 装备后攻击 +1（str 13→14 修正 +1→+2） | 攻击 7 → 8
+PASS | M8: 装备后敏捷 +1（agi 10→11） | 敏捷 10 → 11
+PASS | M7: 装备坐骑后角色详情仍显示原始力量 13（详情=原始五维） | str=13
+PASS | M7: 详情不变但战斗摘要攻击/敏捷已变 → 详情与战斗摘要分离
+PASS | M9: 卸下后左栏回到「未装备」
+PASS | M9: 卸下后攻击还原到基线 | 攻击 7 → 7
+PASS | M9: 卸下后敏捷还原到基线 | 敏捷 10 → 10
+PASS | M9: 重新装备后左栏再次显示火焰驹
+PASS | M9: 重新装备后攻击/敏捷恢复为装备值
+PASS | M: 关闭马厩后面板消失
+PASS | M10: 保存后回到游戏页
+PASS | M10: 保存的 slot1 版本为 V6 | version=6
+PASS | M10: 保存的 slot1 含坐骑字段（ownedMountIds/equippedMountId）
+PASS | M10: 保存的 slot1 金币为 70（购买扣款已落盘） | gold=70
+PASS | M11: 重新载入后左栏仍显示已装备火焰驹
+PASS | M11: 重新载入后仍带坐骑加成（力量+1 · 敏捷+1）
+PASS | M11: 重新载入后战斗数值仍为装备后值
+[cloud-save mock] OPTIONS preflight -> 204
+[cloud-save mock] POST load -> 200
+PASS | M12: 云模式检测到本地存档并显示迁移选择
+[cloud-save mock] POST save -> 200
+[cloud-save mock] POST load -> 200
+PASS | M12: 上传本机档后云端 revision=1 且 slot1 非空 | revision=1
+PASS | M12: 导出到云的坐骑字段保留（ownedMountIds 含 fire_stallion / equippedMountId 为 fire_stallion）
+PASS | M12: 创建云存档后进入主菜单
+PASS | M12: 上传后本机继续游戏，坐骑仍装备
+[cloud-save mock] OPTIONS preflight -> 204
+[cloud-save mock] POST load -> 200
+PASS | M12: 另一设备输入同一口令 → 云档导入 → 主菜单可继续
+PASS | M12: 云导入后本地坐骑保留（火焰驹 + 加成）
+PASS | M12: 云导入后本地战斗数值为装备后值
+PASS | M12: 云导入后金币 70 保留 | 金币=70
+PASS | M: 全程无 JS exception
+===== TM-P2-007 §50 Mount E2E 结果：46/46 通过 =====
+===== RC suite end: P2-007 Mount (exit=0) =====
+
+===== RC suite start: P2-007 Save V6 =====
+PASS | V1: migrateSave 触发迁移
+PASS | V1: 迁移后 slot1 可加载
+PASS | V1: 版本号升至 6 | version=6
+PASS | V1: V6 三字段补齐（ownedMountIds/equippedMountId/encounterVariants）
+PASS | V1: V4 字段补齐（learnedSkillIds/companions/relationships/party/restCount）
+PASS | V1: 持久迁移后 raw slot1.version === 6
+PASS | V1: 迁移保留玩家名/位置
+PASS | V2: migrateSave 触发迁移
+PASS | V2: 迁移后 slot1 可加载且版本 6
+PASS | V2: 补齐 learnedSkillIds 与 V6 三字段
+PASS | V2(无版本): migrateSave 触发迁移
+PASS | V2(无版本): 迁移后版本 6 且 V4/V6 字段齐全
+PASS | V3: migrateSave 触发迁移
+PASS | V3: 迁移后版本 6 且可加载
+PASS | V3: V4 字段（companions/relationships/party/restCount）+ V6 三字段补齐
+PASS | V4: migrateSave 触发迁移
+PASS | V4: 迁移后版本 6 且可加载
+PASS | V4: V4 字段保留 + V6 三字段补齐
+PASS | V4: 迁移保留玩家名/金币
+PASS | V5: loadSlot 内存迁移 → 版本 6 且可加载
+PASS | V5: loadSlot 迁移后 XP 仍为 130 | xp=130
+PASS | V5: loadSlot 迁移后 level 不变（2）
+PASS | V5: migrateSave 触发迁移
+PASS | V5: 持久迁移后 raw slot1.version === 6
+PASS | V5: 持久迁移后 XP 仍为 130（不重算） | xp=130
+PASS | V5: 持久迁移后 level 仍为 2
+PASS | V5: V6 三字段补齐且无坐骑
+PASS | V5: 其余数据原样保留（金币 150 / 位置天龙城）
+PASS | V5: 迁移后 reload 仍 130
+PASS | V6: saveSlot(slot1, 含坐骑 V6) 成功
+PASS | V6: loadSlot 后版本 6
+PASS | V6: ownedMountIds 保留 [fire_stallion]
+PASS | V6: equippedMountId 保留 fire_stallion
+PASS | V6: world.encounterVariants 保留
+PASS | V6: 其他字段保留（玩家名/金币/XP）
+PASS | V6: exportSaves → importSaves 成功
+PASS | V6: 导入后版本 6 且可加载
+PASS | V6: 导入后坐骑字段保留
+PASS | V6: 导入后 XP 130 保留
+===== TM-P2-007 §51 Save V6 迁移结果：39/39 通过 =====
+===== RC suite end: P2-007 Save V6 (exit=0) =====
+
+===== RC suite start: P2-007 Layout/IDLeak =====
+
+  VITE v8.2.1  ready in 218 ms
+
+  ➜  Local:   http://localhost:5231/
+  ➜  Network: use --host to expose
+PASS | §55 [1920×1080] 主菜单无 ID 泄露
+PASS | §55 [1920×1080] 游戏页无 ID 泄露
+PASS | §54 [1920×1080] GamePage outer 无滚动 | {"sh":1080,"ch":1080}
+PASS | §55 [1920×1080] 背包面板无 ID 泄露
+PASS | §54 [1920×1080] BackpackPanel 内部可滚
+PASS | §54 [1920×1080] 背包打开时 GamePage outer 仍无滚动 | {"sh":1080,"ch":1080}
+PASS | §55 [1920×1080] 马厩面板无 ID 泄露
+PASS | §54 [1920×1080] MountStablePanel 内部可滚
+PASS | [1920×1080] 战斗入口可用
+PASS | §55 [1920×1080] CombatPage 无 ID 泄露
+PASS | §54 [1920×1080] CombatPage outer 无滚动 | {"sh":1080,"ch":1080}
+PASS | [1920×1080] 战斗胜利
+PASS | §55 [1920×1080] 战斗胜利面板无 ID 泄露
+PASS | [1920×1080] 战斗胜利后返回冒险
+PASS | §55 [1600×900] 主菜单无 ID 泄露
+PASS | §55 [1600×900] 游戏页无 ID 泄露
+PASS | §54 [1600×900] GamePage outer 无滚动 | {"sh":900,"ch":900}
+PASS | §55 [1600×900] 背包面板无 ID 泄露
+PASS | §54 [1600×900] BackpackPanel 内部可滚
+PASS | §54 [1600×900] 背包打开时 GamePage outer 仍无滚动 | {"sh":900,"ch":900}
+PASS | §55 [1600×900] 马厩面板无 ID 泄露
+PASS | §54 [1600×900] MountStablePanel 内部可滚
+PASS | [1600×900] 战斗入口可用
+PASS | §55 [1600×900] CombatPage 无 ID 泄露
+PASS | §54 [1600×900] CombatPage outer 无滚动 | {"sh":900,"ch":900}
+PASS | [1600×900] 战斗胜利
+PASS | §55 [1600×900] 战斗胜利面板无 ID 泄露
+PASS | [1600×900] 战斗胜利后返回冒险
+PASS | §55 [1366×768] 主菜单无 ID 泄露
+PASS | §55 [1366×768] 游戏页无 ID 泄露
+PASS | §54 [1366×768] GamePage outer 无滚动 | {"sh":768,"ch":768}
+PASS | §55 [1366×768] 背包面板无 ID 泄露
+PASS | §54 [1366×768] BackpackPanel 内部可滚
+PASS | §54 [1366×768] 背包打开时 GamePage outer 仍无滚动 | {"sh":768,"ch":768}
+PASS | §55 [1366×768] 马厩面板无 ID 泄露
+PASS | §54 [1366×768] MountStablePanel 内部可滚
+PASS | [1366×768] 战斗入口可用
+PASS | §55 [1366×768] CombatPage 无 ID 泄露
+PASS | §54 [1366×768] CombatPage outer 无滚动 | {"sh":768,"ch":768}
+PASS | [1366×768] 战斗胜利
+PASS | §55 [1366×768] 战斗胜利面板无 ID 泄露
+PASS | [1366×768] 战斗胜利后返回冒险
+PASS | §55 [1024×768] 主菜单无 ID 泄露
+PASS | §55 [1024×768] 游戏页无 ID 泄露
+PASS | §55 [1024×768] 背包面板无 ID 泄露
+PASS | §54 [1024×768] BackpackPanel 内部可滚
+PASS | §55 [1024×768] 马厩面板无 ID 泄露
+PASS | §54 [1024×768] MountStablePanel 内部可滚
+PASS | [1024×768] 战斗入口可用
+PASS | §55 [1024×768] CombatPage 无 ID 泄露
+PASS | [1024×768] 战斗胜利
+PASS | §55 [1024×768] 战斗胜利面板无 ID 泄露
+PASS | [1024×768] 战斗胜利后返回冒险
+PASS | §55 [390×844] 主菜单无 ID 泄露
+PASS | §55 [390×844] 游戏页无 ID 泄露
+PASS | §55 [390×844] 背包面板无 ID 泄露
+PASS | §54 [390×844] BackpackPanel 内部可滚
+PASS | §55 [390×844] 马厩面板无 ID 泄露
+PASS | §54 [390×844] MountStablePanel 内部可滚
+PASS | [390×844] 战斗入口可用
+PASS | §55 [390×844] CombatPage 无 ID 泄露
+PASS | [390×844] 战斗胜利
+PASS | §55 [390×844] 战斗胜利面板无 ID 泄露
+PASS | [390×844] 战斗胜利后返回冒险
+PASS | 全程无 JS exception
+===== TM-P2-007 §54/§55 Layout + ID Leak E2E 结果：65/65 通过 =====
+===== RC suite end: P2-007 Layout/IDLeak (exit=0) =====
+===== RC shared Vite stopped =====
+
+===== RESULT release-candidate: PASS exit=0 durationMs=540858 =====
+
+===== SUITE p2-010-screenshots | npm run qa:p2-010-screenshots =====
+
+> tianmeng-continent@0.1.0 qa:p2-010-screenshots
+> node qa/p2-010-screenshots.mjs
+
+PASS | 截图 A_trial_intro_1920 | bytes=155866
+PASS | 截图 B_trial_ground | bytes=151980
+PASS | 截图 C_warrior_trial | bytes=186143
+PASS | 截图 D_knight_trial | bytes=186171
+PASS | 截图 E_ranger_trial | bytes=186070
+PASS | 截图 F_mage_trial | bytes=186477
+PASS | 截图 G_skill_tree_locked | bytes=165059
+PASS | 截图 H_skill_tree_unlocked | bytes=172190
+PASS | 截图 I_new_skill_combat | bytes=128210
+PASS | 截图 J_training_panel | bytes=186171
+PASS | 截图 K_low_risk | bytes=8116
+PASS | 截图 L_high_risk | bytes=7563
+PASS | 截图 M_variant_preview | bytes=155481
+PASS | 截图 N_sakura_trial | bytes=195183
+PASS | 截图 O_combat_390 | bytes=49007
+PASS | 截图 P_skill_tree_390 | bytes=24114
+===== P2-010 Screenshots: 16/16; output=16 =====
+
+===== RESULT p2-010-screenshots: PASS exit=0 durationMs=46436 =====
+
+completed=2026-08-24T20:17:00.596Z
+overall=PASS

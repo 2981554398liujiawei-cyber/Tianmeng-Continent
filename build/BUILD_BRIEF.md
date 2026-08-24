@@ -47,7 +47,7 @@ toolchain:
   runtime: Node.js
   runtimeVersion: v24.14.0
   packageManager: npm@11.9.0
-  browser: TO_BE_RECORDED_AFTER_RUNTIME_VERIFICATION
+  browser: Google Chrome 151.0.7922.170
 commands:
   install: npm ci
   buildOrExport: npm run build
@@ -79,4 +79,7 @@ verification:
 
 ## 最终范围对照
 
-开发中；完成前逐项回写。当前没有批准的范围变化。
+- 已交付任务卡要求的试炼任务、四职业路线、观察考 fail-forward、四组固定试炼阵容、一次性奖励、Tier II 技能与技能树、区域历练 V2、P2-011 文字钩子、A-P 截图、六个 P2-010 QA 入口及 CI 回归任务。
+- 权威命令 `npm run verify:p2-010` 在候选 `c9e60b61ca013bc7c002c4643965e42adfa4f38a` 上退出 0；完整日志为 `qa/evidence/verify.log`，结构化索引为 `qa/verification.json`。
+- 没有批准或实施范围增删；Save 仍为 V6，Combat V3 公式和黄金兔冻结线保持不变，P2-011 未启动。
+- 已知非阻塞限制：Vite 报告单个 minified JavaScript chunk 为 563.38 kB；审计通过前未部署，也未做公网运行验证。
