@@ -24,6 +24,22 @@ const suites = [
 const npmExecutable = 'npm'
 const npmSpawnOptions = { shell: process.platform === 'win32' }
 
+async function terminateProcessTree(child) {
+  if (!child.pid || child.exitCode !== null) return
+  if (process.platform !== 'win32') {
+    child.kill('SIGTERM')
+    return
+  }
+  await new Promise((resolveTermination) => {
+    const killer = spawn('taskkill', ['/PID', String(child.pid), '/T', '/F'], {
+      windowsHide: true,
+      stdio: 'ignore',
+    })
+    killer.once('error', resolveTermination)
+    killer.once('close', resolveTermination)
+  })
+}
+
 async function runSuite(id, args, extraEnv = {}) {
   const heading = `\n===== SUITE ${id} | npm ${args.join(' ')} =====\n`
   process.stdout.write(heading)
@@ -55,17 +71,34 @@ async function runProductionSmoke(id, args) {
     env: process.env,
     stdio: ['ignore', 'pipe', 'pipe'],
   })
+  let previewEnded = false
+  let previewFailure = null
+  preview.once('error', (error) => { previewFailure = error; previewEnded = true })
+  preview.once('close', (code) => {
+    previewEnded = true
+    if (code !== 0) previewFailure ??= new Error(`production preview exited before verification (exit=${code ?? 1})`)
+  })
   preview.stdout.on('data', (chunk) => { process.stdout.write(chunk); void appendFile(evidenceLog, chunk) })
   preview.stderr.on('data', (chunk) => { process.stderr.write(chunk); void appendFile(evidenceLog, chunk) })
   try {
     let ready = false
     for (let attempt = 0; attempt < 80; attempt += 1) {
-      try { await fetch(`http://127.0.0.1:${port}/`); ready = true; break } catch { await new Promise((resolve) => setTimeout(resolve, 250)) }
+      if (previewEnded) throw previewFailure ?? new Error('production preview exited before verification')
+      try {
+        await fetch(`http://127.0.0.1:${port}/`)
+        await new Promise((resolveReady) => setTimeout(resolveReady, 300))
+        if (previewEnded) throw previewFailure ?? new Error('production preview exited before verification')
+        ready = true
+        break
+      } catch (error) {
+        if (previewEnded) throw previewFailure ?? error
+        await new Promise((resolveRetry) => setTimeout(resolveRetry, 250))
+      }
     }
     if (!ready) throw new Error('production preview did not become ready')
     await runSuite(id, args, { BASE_URL: `http://127.0.0.1:${port}/` })
   } finally {
-    preview.kill()
+    await terminateProcessTree(preview)
   }
 }
 
