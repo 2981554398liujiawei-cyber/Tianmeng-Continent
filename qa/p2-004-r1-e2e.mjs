@@ -44,20 +44,25 @@ const clickByText = async (text) => {
 }
 
 // ---- TM-P2-007 适配：CombatPage 战斗操作（玩家普攻/伙伴技能均进 target selector；技能收敛进「技能」tray）----
+// TM-P2-009-R1 §6/§8：friendly 行动只消耗资源不自动流转 → 每个动作后显式「结束回合」推进。
 const playerAttack = async () => {
   await clickByText('普通攻击')
   await clickByText('残灾之影') // 单敌 target selector
+  await clickByText('结束回合') // 触发敌方行动
 }
 const sakuraShield = async () => {
   await clickByText('技能')
   await clickByText('樱花魔法盾')
   await clickByText('P2004R1测试骑士') // 盾选友方（玩家）
+  await clickByText('结束回合') // 推进到玩家
 }
 const sakuraDance = async () => {
   await clickByText('技能')
   await clickByText('樱花轻舞') // 自身技能，无 picker
+  await clickByText('结束回合')
 }
 const sakuraSlash = async () => {
+  // 击杀场景：飞斩暴击直接战斗胜利，不点结束回合（victory 后按钮不存在）
   await clickByText('技能')
   await clickByText('樱花飞斩')
   await clickByText('残灾之影') // 伤害技能选敌方
@@ -238,10 +243,12 @@ try {
   await sleep(600)
   body = await bodyText()
   const hpAfterShieldAbsorb = await readPlayerHp()
+  console.log('DIAG-B2b-feed:', JSON.stringify(await page.evaluate(() => [...document.querySelectorAll('[data-testid="combat-summary-feed"] p')].map((p) => p.textContent.trim()))))
+  console.log('DIAG-B2b-hp:', JSON.stringify(hpAfterShieldAbsorb), 'hp0:', JSON.stringify(hp0))
   check('R1-10: B2b 敌人命中 → 盾抵消 3 点伤害（日志）', body.includes('樱花魔法盾抵消了 3 点伤害'))
   // TM-P2-006 数值平衡：残灾之影 attackPower 3→14（Combat V3 公式冻结不动）。不再硬编码 raw=4，
   // 改为相对断言：日志中的造成伤害（已含盾减伤）必须恰好等于实际 HP 变化（盾确实吸收 3 点）。
-  const absorbedDealt = Number((body.match(/残灾之影的攻击命中.*?，造成 (\d+) 点伤害/) ?? [])[1] ?? -1)
+  const absorbedDealt = Number((body.match(/残灾之影的(?:技能|攻击)[^，。]{0,12}命中[^，。]{1,24}，造成 (\d+) 点伤害/) ?? [])[1] ?? -1)
   check('R1-11: B2b 盾减伤后 HP 变化 = 日志伤害（盾吸收 3 点已计入）', hpAfterShieldAbsorb.hp === hp0.hp - absorbedDealt && absorbedDealt >= 0, `before=${hp0.hp} after=${hpAfterShieldAbsorb.hp} logDealt=${absorbedDealt}`)
   check('R1-13: 盾施放只扣一次 MP（灵力 6→4）', (await readSakuraMp()) === 4, `mp=${await readSakuraMp()}`)
 
@@ -299,7 +306,7 @@ try {
   const hpAfterImmediateAbsorb = await readPlayerHp()
   check('R1-20: B1 施盾后敌人立即命中 → 抵消 3 点伤害（DOM 日志）', body.includes('樱花魔法盾抵消了 3 点伤害'))
   // TM-P2-006 数值平衡：与 R1-11 相同，改为相对断言（日志伤害已含盾减伤 == 实际 HP 变化）
-  const immediateDealt = Number((body.match(/残灾之影的攻击命中.*?，造成 (\d+) 点伤害/) ?? [])[1] ?? -1)
+  const immediateDealt = Number((body.match(/残灾之影的(?:技能|攻击)[^，。]{0,12}命中[^，。]{1,24}，造成 (\d+) 点伤害/) ?? [])[1] ?? -1)
   check('R1-21: B1 即时吸收生效（HP 变化 = 日志伤害，盾吸收 3 点）', hpAfterImmediateAbsorb.hp === hp1.hp - immediateDealt && immediateDealt >= 0, `before=${hp1.hp} after=${hpAfterImmediateAbsorb.hp} logDealt=${immediateDealt}`)
   // ---- B4：樱花飞斩暴击击杀（保留真实攻击/击杀） ----
   // B1 后残灾 HP = 14 - 3(玩家擦伤) = 11；Sakura 先手第二轮飞斩暴击 = applyArmor(16,11,20) = 11 → 击杀
