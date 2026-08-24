@@ -97,6 +97,10 @@ export const DROP_TABLES: Record<string, DropTable> = {
     guaranteed: [{ itemId: 'wolf_meat', quantity: [1, 2] }],
     random: [{ itemId: 'wolf_pelt', quantity: [1, 1], baseChance: 0.35 }],
   },
+  trial_soldier: { id: 'trial_soldier', guaranteed: [{ itemId: 'broken_bone_shard', quantity: [1, 1] }] },
+  trial_duelist: { id: 'trial_duelist', guaranteed: [{ itemId: 'iron_ore', quantity: [1, 1] }] },
+  trial_scout: { id: 'trial_scout', guaranteed: [{ itemId: 'wolf_meat', quantity: [1, 1] }] },
+  trial_apprentice_mage: { id: 'trial_apprentice_mage', guaranteed: [{ itemId: 'spirit_shard', quantity: [1, 1] }] },
 }
 
 /** 查询掉落表；无表返回 undefined */

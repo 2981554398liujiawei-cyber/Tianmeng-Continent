@@ -278,6 +278,16 @@ export function checkEncounter(gameState: GameState, encounterId: string): Encou
     return { allowed: false, reason: 'enemy_not_in_location' }
   }
 
+  // TM-P2-010：武备试炼遭遇只能在武备场、获得新/旧邀请资格且完成观察考后开战。
+  // 旧 knight_trial_invited 作为兼容资格读取，但新流程只写 martial_trial_invited。
+  if (encounterId.startsWith('encounter_trial_')) {
+    const trialQuest = gameState.quests.find((q) => q.questId === 'quest_tianlong_martial_trial')
+    const invited = gameState.world.flags.martial_trial_invited === true || gameState.world.flags.knight_trial_invited === true
+    if (location.id !== 'tianlong_martial_trial_ground' || !invited || trialQuest?.status !== 'in_progress' || trialQuest.flags.trial_registered !== true || trialQuest.flags.trial_observation_done !== true) {
+      return { allowed: false, reason: 'missing_prerequisite' }
+    }
+  }
+
   // 单敌遭遇：委托现有 checkEnemyEncounter（特殊敌人前置 + defeated 门原样复用）
   const singleEnemyId = singleEnemyIdOf(def)
   if (singleEnemyId) {

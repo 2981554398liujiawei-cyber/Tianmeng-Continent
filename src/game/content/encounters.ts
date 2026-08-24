@@ -28,6 +28,10 @@ export const SINGLE_ENEMY_ENCOUNTERS: Record<string, string> = {
   // TM-P2-009-R1 §11：新增单敌可重复遭遇（反查用：重复 XP 授予 + checkEnemyEncounter 委托）
   cave_bat: 'encounter_cave_bat',
   wild_boar: 'encounter_north_boar',
+  trial_soldier: 'encounter_trial_soldier',
+  trial_duelist: 'encounter_trial_duelist',
+  trial_scout: 'encounter_trial_scout',
+  trial_apprentice_mage: 'encounter_trial_apprentice_mage',
 }
 
 /** 残破巡逻队：非主线可选多怪遭遇（TM-P2-007 §7.5；骷髅战士×2 或 骷髅战士+黑法师，权重二选一） */
@@ -350,6 +354,31 @@ export const ENCOUNTERS: Record<string, EncounterDefinition> = {
     repeatable: true,
     repeatAdventureXpReward: 8,
   },
+  encounter_trial_warrior: {
+    id: 'encounter_trial_warrior', name: '战士武备试炼', locationId: 'tianlong_martial_trial_ground',
+    fixedMembers: [{ enemyId: 'trial_soldier', count: 2 }, { enemyId: 'trial_duelist', count: 1 }],
+    canEscape: true, difficulty: 'dangerous', recommendedLevelMin: 3, recommendedLevelMax: 5,
+  },
+  encounter_trial_knight: {
+    id: 'encounter_trial_knight', name: '骑士武备试炼', locationId: 'tianlong_martial_trial_ground',
+    fixedMembers: [{ enemyId: 'trial_duelist', count: 1 }, { enemyId: 'trial_soldier', count: 1 }],
+    canEscape: true, difficulty: 'standard', recommendedLevelMin: 3, recommendedLevelMax: 5,
+  },
+  encounter_trial_ranger: {
+    id: 'encounter_trial_ranger', name: '游侠武备试炼', locationId: 'tianlong_martial_trial_ground',
+    fixedMembers: [{ enemyId: 'trial_scout', count: 2 }, { enemyId: 'trial_soldier', count: 1 }],
+    canEscape: true, difficulty: 'standard', recommendedLevelMin: 3, recommendedLevelMax: 5,
+  },
+  encounter_trial_mage: {
+    id: 'encounter_trial_mage', name: '法师武备试炼', locationId: 'tianlong_martial_trial_ground',
+    fixedMembers: [{ enemyId: 'trial_apprentice_mage', count: 1 }, { enemyId: 'trial_soldier', count: 1 }],
+    canEscape: true, difficulty: 'standard', recommendedLevelMin: 3, recommendedLevelMax: 5,
+  },
+  // 单敌迁移映射只供通用校验/XP 规则使用；正式入口使用上方四个职业试炼。
+  encounter_trial_soldier: { id: 'encounter_trial_soldier', name: '武备场士兵', locationId: 'tianlong_martial_trial_ground', fixedMembers: [{ enemyId: 'trial_soldier', count: 1 }], canEscape: true, difficulty: 'low', recommendedLevelMin: 3, recommendedLevelMax: 4 },
+  encounter_trial_duelist: { id: 'encounter_trial_duelist', name: '武备场教习', locationId: 'tianlong_martial_trial_ground', fixedMembers: [{ enemyId: 'trial_duelist', count: 1 }], canEscape: true, difficulty: 'standard', recommendedLevelMin: 3, recommendedLevelMax: 5 },
+  encounter_trial_scout: { id: 'encounter_trial_scout', name: '武备场斥候', locationId: 'tianlong_martial_trial_ground', fixedMembers: [{ enemyId: 'trial_scout', count: 1 }], canEscape: true, difficulty: 'low', recommendedLevelMin: 3, recommendedLevelMax: 4 },
+  encounter_trial_apprentice_mage: { id: 'encounter_trial_apprentice_mage', name: '武备场术士', locationId: 'tianlong_martial_trial_ground', fixedMembers: [{ enemyId: 'trial_apprentice_mage', count: 1 }], canEscape: true, difficulty: 'dangerous', recommendedLevelMin: 4, recommendedLevelMax: 5 },
 }
 
 export function getEncounter(id: string): EncounterDefinition | undefined {

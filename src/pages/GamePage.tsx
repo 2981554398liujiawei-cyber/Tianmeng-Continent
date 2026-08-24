@@ -32,6 +32,7 @@ import type {
   SakuraFirstRestChoice,
   NorthOutskirtsInvestigateResult,
   WaystationBarrierResult,
+  MartialTrialObservationMethod,
 } from '../game/state/gameStore'
 import PlayerSidebar from './game/PlayerSidebar'
 import TaskActivitySidebar from './game/TaskActivitySidebar'
@@ -62,6 +63,25 @@ function encounterLevelHint(def: EncounterDefinition): string | null {
   return def.recommendedLevelMax !== undefined
     ? `建议等级 Lv.${def.recommendedLevelMin}–${def.recommendedLevelMax}`
     : `建议等级 Lv.${def.recommendedLevelMin} 起`
+}
+
+function encounterRecommendation(def: EncounterDefinition, level: number): string | null {
+  if (def.recommendedLevelMin !== undefined && level < def.recommendedLevelMin) return '⚠ 高于当前推荐强度'
+  if (def.recommendedLevelMax !== undefined && level > def.recommendedLevelMax) return '✓ 当前威胁较低'
+  return null
+}
+
+function encounterLootPreview(def: EncounterDefinition): string[] {
+  const ids = (def.fixedMembers ?? def.variants?.[0]?.members ?? []).map((member) => member.enemyId)
+  const names = ids.flatMap((id) => {
+    const enemy = getEnemy(id)
+    return enemy?.dropTable?.guaranteed?.flatMap((drop) => {
+      if (!drop.itemId) return []
+      const item = getItem(drop.itemId)
+      return item ? [item.name] : []
+    }) ?? []
+  })
+  return Array.from(new Set(names.filter(Boolean))).slice(0, 3)
 }
 
 interface GamePageProps {
@@ -144,6 +164,11 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
   const rescueWaystationSurvivor = useGameStore((s) => s.rescueWaystationSurvivor)
   const debriefWaystationSurvivor = useGameStore((s) => s.debriefWaystationSurvivor)
   const reportNorthBrokenBanner = useGameStore((s) => s.reportNorthBrokenBanner)
+  const acceptMartialTrial = useGameStore((s) => s.acceptMartialTrial)
+  const registerMartialTrial = useGameStore((s) => s.registerMartialTrial)
+  const resolveMartialTrialObservation = useGameStore((s) => s.resolveMartialTrialObservation)
+  const reportMartialTrial = useGameStore((s) => s.reportMartialTrial)
+  const completeMartialTrial = useGameStore((s) => s.completeMartialTrial)
   // 背包（移动端底部 [背包] Drawer / BackpackPanel 复用）
   const useHealingPotion = useGameStore((s) => s.useHealingPotion)
   // TM-P2-004：Sakura / 伙伴 / 关系 / 休整 actions
@@ -181,6 +206,7 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
   const [northInvestigation, setNorthInvestigation] = useState<NorthOutskirtsInvestigateResult | null>(null)
   // TM-P2-009 §13：北郊旧驿站屏障多解结果（仅 UI 本地状态；战斗/MND/LCK 推进，Sakura/Mount 只补线索）
   const [waystationBarrier, setWaystationBarrier] = useState<WaystationBarrierResult | null>(null)
+  const [trialNotice, setTrialNotice] = useState<string | null>(null)
   // 云同步状态（顶部薄系统栏轻量信息）
   const cloudStatus = useCloudSession((s) => s.status)
   const cloudSyncStatus = useCloudSession((s) => s.syncStatus)
@@ -1604,17 +1630,57 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
               return null
             })()}
 
-            {/* TM-P2-009 §17：断旗余声完成——马科预告正式骑士试炼（只引出下一阶段，试炼本体不实现） */}
-            {world.currentLocationId === 'tianlong_martial_hall' && world.flags.knight_trial_invited === true && (
-              <section className="rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
-                <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">骑士试炼的预告</h3>
-                <p className="leading-relaxed text-bone-200">马科听完沈拓的证词，久久没有说话。</p>
-                <p className="mt-1 leading-relaxed text-bone-200">“黑篷车、魔化诱饵……有人在故意引狼群去驿站。”</p>
-                <p className="mt-1 leading-relaxed text-bone-200">“你救回沈拓，立了大功。”</p>
-                <p className="mt-1 leading-relaxed text-bone-200">“等我把城防的事处理完，会有一场正式的骑士试炼等着你。”</p>
-                <p className="mt-2 text-gold-300">（试炼内容尚待展开）</p>
-              </section>
-            )}
+            {/* TM-P2-010：天龙武备试炼。旧 knight_trial_invited 仍作为兼容入口。 */}
+            {world.currentLocationId === 'tianlong_martial_hall' && (world.flags.martial_trial_invited === true || world.flags.knight_trial_invited === true) && (() => {
+              const trial = gameState.quests.find((quest) => quest.questId === 'quest_tianlong_martial_trial')
+              const accepted = trial?.status === 'in_progress' || trial?.status === 'completable' || trial?.status === 'completed'
+              const registered = trial?.flags.trial_registered === true
+              const completed = trial?.status === 'completed' || trial?.flags.trial_reward_claimed === true
+              const observed = trial?.flags.trial_observation_done === true
+              return (
+                <section data-testid="martial-trial-panel" className="rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
+                  <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">天龙武备试炼</h3>
+                  {!accepted && !completed ? (
+                    <>
+                      <p className="leading-relaxed text-bone-200">马科已经为你登记试炼资格。武备场会观察你如何判断、战斗与管理资源。</p>
+                      <Button variant="primary" data-testid="accept-martial-trial" className="mt-3" onClick={() => {
+                        const ok = acceptMartialTrial()
+                        if (ok) setTrialNotice('已登记：前往天龙武备场')
+                      }}>接受试炼</Button>
+                    </>
+                  ) : accepted && !registered && !completed ? (
+                    <>
+                      <p className="leading-relaxed text-bone-200">Stage A · 武馆报到：登记同行资格，随后前往武备场。</p>
+                      <Button variant="primary" data-testid="register-martial-trial" className="mt-3" onClick={() => {
+                        const ok = registerMartialTrial()
+                        if (ok) setTrialNotice('报到完成：前往天龙武备场')
+                      }}>完成武馆报到</Button>
+                    </>
+                  ) : trial?.flags.trial_combat_done === true && trial.status === 'in_progress' ? (
+                    <>
+                      <p className="leading-relaxed text-bone-200">Stage D · 职业复盘：马科想听听你如何处理这场对抗。</p>
+                      <Button variant="primary" data-testid="report-martial-trial" className="mt-3" onClick={() => reportMartialTrial()}>向马科复盘</Button>
+                    </>
+                  ) : trial?.status === 'completable' ? (
+                    <>
+                      <p className="leading-relaxed text-bone-200">复盘完成。马科递来天龙武备铜章与新的职业技艺。</p>
+                      <Button variant="primary" data-testid="complete-martial-trial" className="mt-3" onClick={() => completeMartialTrial()}>领取试炼奖励</Button>
+                    </>
+                  ) : completed ? (
+                    <>
+                      <p className="leading-relaxed text-bone-200">试炼已完成。马科点头认可了你的判断与节奏。</p>
+                      <p className="mt-2 text-gold-300">天龙城外最近有人打听“神泉之水”——暂时还没有正式命令。</p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="leading-relaxed text-bone-200">{observed ? '观察考已完成，前往武备场接受职业训练对抗。' : 'Stage A · 武馆报到已完成。前往武备场参加职业观察考。'}</p>
+                      {observed && <p className="mt-2 text-xs text-bone-500">允许同行者参与；教官评价的是你的指挥，而不只是单挑。</p>}
+                      {trialNotice && <p data-testid="trial-notice" className="mt-2 text-gold-300">{trialNotice}</p>}
+                    </>
+                  )}
+                </section>
+              )
+            })()}
 
             {/* 机缘型社交：路边旧货商 */}
             {world.currentLocationId === 'tianlong_city' && (() => {
@@ -1721,6 +1787,42 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
                 )
               })()}
 
+            {world.currentLocationId === 'tianlong_martial_trial_ground' && (() => {
+              const trial = gameState.quests.find((quest) => quest.questId === 'quest_tianlong_martial_trial')
+              const observed = trial?.flags.trial_observation_done === true
+              const routeEncounter: Record<string, string> = {
+                warrior: 'encounter_trial_warrior', knight: 'encounter_trial_knight',
+                ranger: 'encounter_trial_ranger', mage: 'encounter_trial_mage',
+              }
+              const encounterId = routeEncounter[player.profession]
+              return (
+                <section data-testid="martial-trial-ground-panel" className="rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
+                  <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">天龙武备场</h3>
+                  <p className="leading-relaxed text-bone-200">{observed ? '教官示意你进入职业训练对抗。同行者可以登记参战。' : 'Stage B · 教官摆出一场模拟战局，要你先决定如何处理压力。'}</p>
+                  {!observed && trial?.flags.trial_registered === true && (
+                    <div data-testid="trial-observation-options" className="mt-3 flex flex-wrap gap-2">
+                      {(({
+                        warrior: [['str', '力量'], ['lck', '幸运']], knight: [['con', '体质'], ['lck', '幸运']],
+                        ranger: [['agi', '敏捷'], ['lck', '幸运']], mage: [['mnd', '冥想'], ['lck', '幸运']],
+                      } as Record<string, [MartialTrialObservationMethod, string][]>) [player.profession] ?? [['lck', '幸运']]).map(([method, label]) => (
+                        <Button key={method} variant="primary" data-testid={`trial-observe-${method}`} onClick={() => {
+                          const result = resolveMartialTrialObservation(method)
+                          if (result.ok) setTrialNotice(result.success ? '观察成功：恢复 2 点灵力，获得有利准备' : '观察未通过，但试炼仍会继续')
+                        }}>{label}观察</Button>
+                      ))}
+                    </div>
+                  )}
+                  {trialNotice && <p data-testid="trial-notice" className="mt-2 text-gold-300">{trialNotice}</p>}
+                  {observed && encounterId && (
+                    <Button variant="primary" data-testid="start-profession-trial" className="mt-3" disabled={player.hp <= 0} onClick={() => onEngage(encounterId)}>
+                      开始职业试炼
+                    </Button>
+                  )}
+                  {isSakuraPresent(gameState) && observed && <p data-testid="sakura-trial-banter" className="mt-3 rounded bg-ink-950/50 p-2 text-xs text-bone-400">樱花优子看了一眼武备场：“这里考的不只是胜负。”</p>}
+                </section>
+              )
+            })()}
+
             {/* 附近威胁 */}
             {(() => {
               const configuredEncounters = location?.encounters ?? []
@@ -1733,7 +1835,7 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
               if (visibleEncounters.length === 0) return null
               return (
                 <section className="rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
-                  <h3 className="mb-3 text-sm font-bold tracking-wider text-bone-500">附近威胁</h3>
+                  <h3 data-testid="regional-training-heading" className="mb-3 text-sm font-bold tracking-wider text-bone-500">区域历练</h3>
                   <div className="flex flex-col gap-3">
                     {visibleEncounters.map((def) => {
                       const cannotFight = player.hp <= 0
@@ -1745,8 +1847,10 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
                       // TM-P2-009-R1 §11：难度徽章 + 推荐等级（UI 文案，不泄露内部 ID）
                       const diffMeta = DIFFICULTY_META[def.difficulty ?? 'standard']
                       const levelHint = encounterLevelHint(def)
+                      const loot = encounterLootPreview(def)
+                      const recommendation = encounterRecommendation(def, player.level)
                       return (
-                        <div key={def.id} className="rounded border border-ink-600 bg-ink-900/40 p-3">
+                        <div key={def.id} data-testid="training-encounter-card" className="rounded border border-ink-600 bg-ink-900/40 p-3">
                           <div className="flex items-center justify-between gap-3">
                             <div>
                               <p className="font-bold text-bone-100">
@@ -1761,6 +1865,7 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
                                 </span>
                               </p>
                               {levelHint && <p className="mt-1 text-xs text-bone-500">{levelHint}</p>}
+                              {recommendation && <p className="mt-1 text-xs text-gold-300">{recommendation}</p>}
                               {singleEnemy ? (
                                 <p className="mt-1 text-xs text-bone-500">
                                   HP {singleEnemy.maxHp} · 护甲 {singleEnemy.armor}
@@ -1772,6 +1877,11 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
                                   可能遭遇：{roster.candidates.map((members) => `• ${formatEncounterMembers(members)}`).join(' 或 ')}
                                 </p>
                               )}
+                              <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-bone-500">
+                                <span>{def.repeatable ? `可重复 · 重复阅历 ${def.repeatAdventureXpReward ?? 0}` : '一次性挑战'}</span>
+                                <span>可逃跑</span>
+                                {loot.length > 0 && <span>可能掉落：{loot.join('、')}</span>}
+                              </div>
                             </div>
                             <Button variant="primary" disabled={cannotFight} onClick={() => onEngage(def.id)}>
                               迎战

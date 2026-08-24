@@ -51,7 +51,7 @@ describe('TM-P0-002：内容注册表交叉引用一致性', () => {
 describe('TM-P0-002：内容数量与指定条目', () => {
   // TM-P2-004 第 33/34 节：新增樱华神域·破碎边界（特殊事件地点；connections=[] 只能特殊事件进入）；TM-P2-009 §11：新增北郊旧驿站（13）
   it('地点 13 个：青石村/村外草原/废弃矿洞/兔王巢穴/天龙城/武馆/黑石塔一层/黑石塔二层/黑石塔三层/天龙城北门/樱华神域·破碎边界/天龙城北郊/北郊旧驿站', () => {
-    expect(Object.keys(LOCATIONS)).toHaveLength(13)
+    expect(Object.keys(LOCATIONS)).toHaveLength(14)
     expect(getLocation('qingshi_village')?.name).toBe('青石村')
     expect(getLocation('village_grassland')?.name).toBe('村外草原')
     expect(getLocation('abandoned_mine')?.name).toBe('废弃矿洞')
@@ -97,7 +97,7 @@ describe('TM-P0-002：内容数量与指定条目', () => {
     expect(hall).toBeDefined()
     expect(hall?.id).toBe('tianlong_martial_hall')
     expect(hall?.name).toBe('武馆')
-    expect(hall?.connections).toEqual(['tianlong_city'])
+    expect(hall?.connections).toEqual(['tianlong_city', 'tianlong_martial_trial_ground'])
     expect(hall?.enemyIds).toEqual([])
     expect(hall?.requiredFlag).toBeUndefined()
     expect(getLocation('tianlong_city')?.connections).toContain('tianlong_martial_hall')
@@ -173,7 +173,11 @@ describe('TM-P0-002：内容数量与指定条目', () => {
   })
 
   it('敌人 15 个且等级符合设定', () => {
-    expect(Object.keys(ENEMIES)).toHaveLength(15)
+    expect(Object.keys(ENEMIES)).toHaveLength(19)
+    expect(getEnemy('trial_soldier')?.level).toBe(3)
+    expect(getEnemy('trial_duelist')?.level).toBe(4)
+    expect(getEnemy('trial_scout')?.level).toBe(3)
+    expect(getEnemy('trial_apprentice_mage')?.level).toBe(4)
     expect(getEnemy('corrupted_rabbit')?.level).toBe(1)
     expect(getEnemy('corrupted_rat')?.level).toBe(1)
     expect(getEnemy('corrupted_wolf')?.level).toBe(2)
@@ -402,15 +406,17 @@ describe('TM-P0-002-R1：关键内容身份锁', () => {
 
   it('注册表数量与 ID 未被改动（无新增黄金兔子王条目；TM-P1-005 新增《矿洞清理》、TM-P1-010 新增《草原狼影》、TM-P1-017 新增《追寻黄金兔子王》、TM-P1-021 新增《采药受阻》、TM-P1-022 新增《矿洞余患》、TM-P1-024 新增《商人王财的麻烦》与马科/王财、TM-P1-025 新增骷髅士兵、TM-P1-026 新增骷髅队长、TM-P1-027 新增僵尸/黑法师与黑石塔二层、TM-P1-028 新增骷髅战士、TM-P1-029 新增骷髅女妖/黑石塔三层/夔峒项链、TM-P2-001 新增北门失联/天龙城北门/黑鬃魔狼、TM-P2-004 新增落樱越界/樱华神域/残灾之影/樱花优子/桂花糕、TM-P2-008 新增北郊追踪/天龙城北郊/荒原野狼/狼牙/狼皮、TM-P2-009 新增断旗余声/北郊旧驿站/沈拓/驿站狼群/断裂队旗）', () => {
     // TM-P2-004：+残灾之影（12）；TM-P2-008：+荒原野狼（13）；TM-P2-009-R1：+洞穴蝙蝠/荒原野猪（15）
-    expect(Object.keys(ENEMIES)).toHaveLength(15)
+    expect(Object.keys(ENEMIES)).toHaveLength(19)
     // TM-P2-004：+樱花优子（6）；TM-P2-009：+沈拓（7）
     expect(Object.keys(NPCS)).toHaveLength(7)
     // TM-P2-004：+《落樱越界》（9）；TM-P2-008：+《北郊追踪》（10）；TM-P2-009：+《断旗余声》（11）
-    expect(Object.keys(QUESTS)).toHaveLength(11)
+    expect(Object.keys(QUESTS)).toHaveLength(12)
+    expect(QUESTS.quest_tianlong_martial_trial).toBeDefined()
     // TM-P2-003 C：新增黑鬃狼牙（common）/黑鬃狼皮（uncommon）/精制铁剑（uncommon，+3）；TM-P2-004：+桂花糕（10）
     // TM-P2-007 §5.6：新增兽肉/鼠尾/破损骨片/残破布片/暗影粉尘/灵性碎片 6 种通用材料（20）
     // TM-P2-008 §25：+狼牙/狼皮 2 种普通材料（22）
-    expect(Object.keys(ITEMS)).toHaveLength(22)
+    expect(Object.keys(ITEMS)).toHaveLength(23)
+    expect(getItem('tianlong_martial_medal')?.name).toBe('天龙武备铜章')
     expect(getEnemy('golden_rabbit_king')).toBeUndefined()
     // TM-P1-028/029：骷髅战士、骷髅女妖已注册（本卡新增）
     expect(getEnemy('skeleton_warrior')).toBeDefined()

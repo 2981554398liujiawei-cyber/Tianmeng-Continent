@@ -34,6 +34,8 @@ export type { ClueDefinition, ClueCategory } from '../types/clue'
 export { CLUES, getClue } from './clues'
 export type { ActivityEventDefinition } from './activityEvents'
 export { ACTIVITY_EVENTS, getActivityEvent } from './activityEvents'
+export { SKILL_PROGRESSION, skillProgressionFor, tier2SkillFor } from './skillProgression'
+export type { ProfessionSkillNode } from './skillProgression'
 
 import type { ProfessionId } from '../types'
 import { LOCATIONS, type LocationDefinition } from './locations'

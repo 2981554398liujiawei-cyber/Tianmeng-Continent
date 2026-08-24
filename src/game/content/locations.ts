@@ -63,8 +63,17 @@ export const LOCATIONS: Record<string, LocationDefinition> = {
     id: 'tianlong_martial_hall',
     name: '武馆',
     description: '天龙城中的武馆，来往的武者与守卫在这里操练，兵器碰撞声不时从场中传来。',
-    connections: ['tianlong_city'],
+    connections: ['tianlong_city', 'tianlong_martial_trial_ground'],
     enemyIds: [],
+  },
+  tianlong_martial_trial_ground: {
+    id: 'tianlong_martial_trial_ground',
+    name: '天龙武备场',
+    description: '武馆后方的封闭演武场，木桩、沙地与练习兵器记录着一代代武者的步伐。',
+    requiredFlag: 'martial_trial_invited',
+    connections: ['tianlong_martial_hall'],
+    enemyIds: ['trial_soldier', 'trial_duelist', 'trial_scout', 'trial_apprentice_mage'],
+    encounters: ['encounter_trial_warrior', 'encounter_trial_knight', 'encounter_trial_ranger', 'encounter_trial_mage'],
   },
   // TM-P1-025：黑石塔一层（第二地区第一段地牢——解锁路线+骷髅士兵战斗；未解锁时移动按钮可见但 disabled，复用 requiredFlag；不建独立入口节点/城外道路）
   black_stone_tower_floor1: {
