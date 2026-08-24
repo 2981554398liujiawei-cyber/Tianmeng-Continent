@@ -52,7 +52,16 @@
     "qa:p2-009-r1-combat": "node qa/p2-009-r1-combat-e2e.mjs",
     "qa:p2-009-r1-sidebar": "node qa/p2-009-r1-sidebar-e2e.mjs",
     "qa:p2-009-r1": "npm run qa:p2-009-r1-balance && npm run qa:p2-009-r1-combat && npm run qa:p2-009-r1-sidebar",
-    "qa:rc": "npm run build && node qa/rc-e2e.mjs"
+    "qa:p2-010-trial": "node qa/p2-010-trial-e2e.mjs",
+    "qa:p2-010-skills": "node qa/p2-010-skills-e2e.mjs",
+    "qa:p2-010-training": "node qa/p2-010-training-e2e.mjs",
+    "qa:p2-010-layout": "node qa/p2-010-layout-e2e.mjs",
+    "qa:p2-010-full-journey": "node qa/p2-010-full-journey-e2e.mjs",
+    "qa:p2-010-balance": "node qa/p2-010-balance.mjs",
+    "qa:p2-010": "npm run qa:p2-010-trial && npm run qa:p2-010-skills && npm run qa:p2-010-training && npm run qa:p2-010-layout && npm run qa:p2-010-full-journey && npm run qa:p2-010-balance",
+    "qa:p2-010-screenshots": "node qa/p2-010-screenshots.mjs",
+    "qa:rc": "npm run build && node qa/rc-e2e.mjs",
+    "verify:p2-010": "node qa/verify-p2-010.mjs"
   },
   "dependencies": {
     "react": "^19.2.8",
