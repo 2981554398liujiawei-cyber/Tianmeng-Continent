@@ -32,4 +32,3 @@ export function skillProgressionFor(profession: ProfessionId): ProfessionSkillNo
 export function tier2SkillFor(profession: ProfessionId): string {
   return SKILL_PROGRESSION[profession].find((node) => node.tier === 2)!.skillId
 }
-
