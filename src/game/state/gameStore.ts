@@ -1293,6 +1293,10 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
     if (!state) return null
     const def = getEncounter(encounterId)
     if (!def) return null
+    // 结算入口必须重复执行 Encounter 权威守卫，不能只依赖 UI/startEncounter。
+    // 尤其 Trial 完成后必须在计算 XP/loot 之前拒绝重复结算。
+    const check = checkEncounter(state, encounterId)
+    if (!check.allowed) return null
     // 单敌遭遇：委托现有 resolveCombatVictory（quest flags / 固定战利品 / first-kill XP 全复用）；返回 null（loot 展示由 CombatPage 走 grantLoot）
     const singleEnemyId = singleEnemyIdOf(def)
     if (singleEnemyId) {
@@ -1300,8 +1304,6 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
       return null
     }
     // 多敌遭遇：整体胜利事务（§6/§15/§16）——XP sum + loot 聚合 + encounterDefeatFlag 一次性写入
-    const check = checkEncounter(state, encounterId)
-    if (!check.allowed) return null
     const variantId = currentEncounterVariantId(state, def)
     const variant = variantId ? def.variants?.find((v) => v.id === variantId) : undefined
     const encounterMembers = variant?.members ?? def.fixedMembers

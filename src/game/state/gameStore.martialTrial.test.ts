@@ -46,6 +46,13 @@ describe('TM-P2-010 martial trial store flow', () => {
 
     expect(useGameStore.getState().resolveEncounterVictory('encounter_trial_knight')).not.toBeNull()
     expect(useGameStore.getState().gameState?.quests.find((quest) => quest.questId === MARTIAL_TRIAL_QUEST_ID)?.flags.trial_combat_done).toBe(true)
+    const afterFirstVictory = useGameStore.getState().gameState!
+    expect(useGameStore.getState().startEncounter('encounter_trial_knight')).toBe(false)
+    expect(useGameStore.getState().resolveEncounterVictory('encounter_trial_knight')).toBeNull()
+    const afterRepeatedVictory = useGameStore.getState().gameState!
+    expect(afterRepeatedVictory.player.gold).toBe(afterFirstVictory.player.gold)
+    expect(afterRepeatedVictory.player.adventureXp).toBe(afterFirstVictory.player.adventureXp)
+    expect(afterRepeatedVictory.inventory).toEqual(afterFirstVictory.inventory)
     expect(useGameStore.getState().travelToLocation('tianlong_martial_hall')).toBe(true)
     expect(useGameStore.getState().reportMartialTrial()).toBe(true)
     const beforeGold = useGameStore.getState().gameState!.player.gold

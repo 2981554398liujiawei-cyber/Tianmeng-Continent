@@ -283,6 +283,9 @@ export function checkEncounter(gameState: GameState, encounterId: string): Encou
   if (encounterId.startsWith('encounter_trial_')) {
     const trialQuest = gameState.quests.find((q) => q.questId === 'quest_tianlong_martial_trial')
     const invited = gameState.world.flags.martial_trial_invited === true || gameState.world.flags.knight_trial_invited === true
+    if (trialQuest?.flags.trial_combat_done === true) {
+      return { allowed: false, reason: 'already_defeated' }
+    }
     if (location.id !== 'tianlong_martial_trial_ground' || !invited || trialQuest?.status !== 'in_progress' || trialQuest.flags.trial_registered !== true || trialQuest.flags.trial_observation_done !== true) {
       return { allowed: false, reason: 'missing_prerequisite' }
     }

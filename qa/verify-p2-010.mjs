@@ -24,6 +24,13 @@ const suites = [
 const npmExecutable = 'npm'
 const npmSpawnOptions = { shell: process.platform === 'win32' }
 
+class SuiteFailure extends Error {
+  constructor(id, exitCode) {
+    super(`${id} failed with exit code ${exitCode}`)
+    this.exitCode = exitCode
+  }
+}
+
 async function terminateProcessTree(child) {
   if (!child.pid || child.exitCode !== null) return
   if (process.platform !== 'win32') {
@@ -61,7 +68,7 @@ async function runSuite(id, args, extraEnv = {}) {
   const footer = `\n===== RESULT ${id}: ${exitCode === 0 ? 'PASS' : 'FAIL'} exit=${exitCode} durationMs=${Date.now() - started} =====\n`
   process.stdout.write(footer)
   await appendFile(evidenceLog, footer)
-  if (exitCode !== 0) process.exit(exitCode)
+  if (exitCode !== 0) throw new SuiteFailure(id, exitCode)
 }
 
 async function runProductionSmoke(id, args) {
@@ -102,8 +109,16 @@ async function runProductionSmoke(id, args) {
   }
 }
 
-for (const [id, args] of suites) {
-  if (id === 'production-smoke') await runProductionSmoke(id, args)
-  else await runSuite(id, args)
+try {
+  for (const [id, args] of suites) {
+    if (id === 'production-smoke') await runProductionSmoke(id, args)
+    else await runSuite(id, args)
+  }
+  await appendFile(evidenceLog, `\ncompleted=${new Date().toISOString()}\noverall=PASS\n`)
+} catch (error) {
+  const exitCode = error instanceof SuiteFailure ? error.exitCode : 1
+  const message = error instanceof Error ? error.stack ?? error.message : String(error)
+  process.stderr.write(`${message}\n`)
+  await appendFile(evidenceLog, `\ncompleted=${new Date().toISOString()}\noverall=FAIL\nexit=${exitCode}\nerror=${message}\n`)
+  process.exitCode = exitCode
 }
-await appendFile(evidenceLog, `\ncompleted=${new Date().toISOString()}\noverall=PASS\n`)
