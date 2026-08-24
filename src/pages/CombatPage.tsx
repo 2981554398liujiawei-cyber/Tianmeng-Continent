@@ -198,6 +198,7 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
     if (skipNextEnemy) {
       setSkipNextEnemy(false)
       pushEvent('companion_skip', 'companion', `${actor.name}被${skipSourceName}牵走了注意力，本回合没有行动。`)
+      setEndedByInstance((prev) => ({ ...prev, [actor.instanceId]: true }))
       advanceTurn(currentTurnIndex)
       return
     }
@@ -336,8 +337,8 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
     return true
   }
 
-  /** §8：下一个「可行动」单位（turns 环）。friendly 要求未 ended；enemy 恒可行动。
-   *  整圈扫描遇到 fromIndex 自身 → 说明所有 friendly 已 ended（或全场只剩 fromIndex）→ 返回 null 进入新回合。
+  /** §8：下一个「可行动」单位（turns 环）。friendly 要求未 ended；enemy 行动后也标记 ended（本轮只行动一次）。
+   *  整圈扫描遇到 fromIndex 自身 → 说明全场 friendly/enemy 均已 ended → 返回 null 进入新回合。
    *  绝不能返回 fromIndex 自己，否则 enemy 行动完会无限循环。 */
   const nextActorIndex = (fromIndex: number): number | null => {
     const n = turns.length
@@ -345,7 +346,7 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
       const idx = (fromIndex + step) % n
       if (idx === fromIndex) return null
       const c = turns[idx]!.combatant
-      if (c.isAlive && (c.side === 'enemy' || !(endedByInstance[c.instanceId] ?? false))) return idx
+      if (c.isAlive && !(endedByInstance[c.instanceId] ?? false)) return idx
     }
     return null
   }
@@ -802,7 +803,8 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
       finalizeCombatEnd(next)
       return
     }
-    // TM-P2-009-R1 §7/§8：敌方不占 Action/Bonus，行动完推进到下一未结束存活单位
+    // TM-P2-009-R1 §7/§8：敌方不占 Action/Bonus，行动完标记本轮已行动并推进到下一未结束存活单位
+    setEndedByInstance((prev) => ({ ...prev, [enemy.instanceId]: true }))
     advanceTurn(currentTurnIndex)
   }
 
@@ -1058,10 +1060,11 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
       <footer className="relative z-[60] mt-3 border-t border-ink-600 pt-3">
         {phase === 'active' && isFriendlyTurn && !pendingTarget && (
           <div className="flex flex-col items-center gap-2">
-            {/* TM-P2-009-R1 §5.3：Action Tray（固定高度，技能/背包内容内部滚动；空时占位保持 Action Bar Y 不动） */}
+            {/* TM-P2-009-R1 §5.3：Action Tray（脱离流内，absolute 弹出在 Action Bar 上方；
+                内容高矮不影响 footer 高度 → Action Bar 主按钮行 Y 恒定；内容超限内部滚动） */}
             <div
               data-testid="combat-action-tray"
-              className="combat-action-tray flex min-h-[56px] w-full max-h-[168px] flex-col items-center justify-start gap-2 overflow-y-auto"
+              className="combat-action-tray absolute bottom-full left-0 right-0 mb-2 flex min-h-[56px] max-h-[168px] w-full flex-col items-center justify-start gap-2 overflow-y-auto"
             >
               {!currentEnded && !hasAction && !hasBonus && (
                 <p className="text-center text-xs text-bone-500">本回合已无可用行动——点击「结束回合」继续。</p>
