@@ -94,9 +94,9 @@ try {
     await waitButton('结束回合'); await clickButton('结束回合'); check(`T15 ${profession}: End Turn action reachable`, true)
     await winCombat()
     await clickButton('武馆'); await clickTestId('report-martial-trial'); check(`T19-T21 ${profession}: report/completable`, (await body()).includes('领取试炼奖励'))
-    await clickTestId('complete-martial-trial'); const completed = await body(); check(`T22-T24 ${profession}: reward and hook`, completed.includes('试炼已完成') && completed.includes('神泉之水'))
-    // Re-render must not expose a second reward action.
-    check(`T24 ${profession}: reward once`, (await page.$('[data-testid="complete-martial-trial"]')) === null)
+    await clickTestId('complete-martial-trial'); const completed = await body(); check(`T22-T23 ${profession}: one-time reward feedback`, completed.includes('试炼完成') && completed.includes('Tier II') && completed.includes('天龙武备铜章'))
+    await clickButton('知道了')
+    check(`T24 ${profession}: reward once and completed card removed`, (await page.$('[data-testid="complete-martial-trial"]')) === null && (await page.$('[data-testid="martial-trial-panel"]')) === null && (await page.$('[data-testid="martial-trial-reward-notice"]')) === null)
   }
   check('T-FINAL: no page exceptions', errors.length === 0, errors.slice(0, 3).join(' | '))
   console.log(`TRIAL_E2E_GREEN | ${results.filter(Boolean).length}/${results.length}`)

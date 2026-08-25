@@ -194,6 +194,38 @@ export function nextAliveTurnIndex(turns: readonly InitiativeTurn[], fromIndex: 
   return fromIndex
 }
 
+/**
+ * 从固定先手槽位解析实时战斗单位。InitiativeTurn 中的 combatant 只是开战快照，
+ * HP / isAlive 必须始终以战斗中的 combatants 为准。
+ */
+export function getLiveCombatant(
+  turn: InitiativeTurn | undefined,
+  combatants: readonly Combatant[],
+): Combatant | undefined {
+  if (!turn) return undefined
+  return combatants.find((combatant) => combatant.instanceId === turn.combatant.instanceId)
+}
+
+/** 固定先手顺序中，从 fromIndex 之后寻找下一个实时存活且未结束回合的槽位。 */
+export function nextLiveTurnIndex(
+  turns: readonly InitiativeTurn[],
+  combatants: readonly Combatant[],
+  fromIndex: number,
+  endedByInstance: Readonly<Record<string, boolean>> = {},
+): number | null {
+  const n = turns.length
+  if (n === 0) throw new RangeError('先手队列不能为空')
+  if (!Number.isInteger(fromIndex) || fromIndex < 0 || fromIndex >= n) {
+    throw new RangeError('当前行动索引越界')
+  }
+  for (let step = 1; step <= n; step += 1) {
+    const idx = (fromIndex + step) % n
+    const live = getLiveCombatant(turns[idx], combatants)
+    if (live?.isAlive && endedByInstance[live.instanceId] !== true) return idx
+  }
+  return null
+}
+
 /** 是否已进入新一轮：nextIndex 回绕到 fromIndex 或更小（nextAliveTurnIndex 环状前进） */
 export function didTurnLoop(fromIndex: number, nextIndex: number): boolean {
   return nextIndex <= fromIndex

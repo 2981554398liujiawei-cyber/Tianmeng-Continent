@@ -8,7 +8,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createEmptyCloudVaultPayload, CLOUD_SAVE_FORMAT_VERSION } from './cloudSaveTypes'
 import { callCloudSave, normalizePassphrase, validatePassphrase } from './cloudSaveApi'
-import { cloudVaultsContainSameSaves, getLatestCloudSaveSummary, isCloudVaultPayloadShape, importCloudPayloadToLocal, useCloudSession } from './cloudSessionStore'
+import { cloudVaultsContainSameSaves, getLatestCloudSaveSummary, isCloudVaultPayloadShape, importCloudPayloadToLocal, loadCloudSaveWithRetry, useCloudSession } from './cloudSessionStore'
 // QA handler is a Node-only .mjs module; its runtime is covered by the cloud E2E.
 // @ts-expect-error no browser-side declaration is emitted for the Node QA helper.
 import { createMockCloudStore, handleCloudRequest } from '../../qa/cloud-save-mock-handler.mjs'
@@ -50,6 +50,39 @@ describe('TM-P2-005：口令标准化与校验（7.2/19 节）', () => {
     expect(a.status).toBe(200)
     expect(b.json).toMatchObject({ ok: true, exists: false })
   })
+})
+
+describe('TM-P2-010-R1：LOAD retry policy（CLD1-CLD6）', () => {
+  it('transient server_error retries at most twice, then succeeds', async () => {
+    const responses = [
+      { ok: false, code: 'server_error', message: 'temporary' } as const,
+      { ok: false, code: 'server_error', message: 'temporary' } as const,
+      { ok: true, exists: false, revision: 0 } as const,
+    ]
+    const calls: string[] = []
+    const result = await loadCloudSaveWithRetry('RetryPass', async (passphrase) => { calls.push(passphrase); return responses.shift()! })
+    expect(result).toMatchObject({ ok: true, exists: false })
+    expect(calls).toEqual(['RetryPass', 'RetryPass', 'RetryPass'])
+  }, 5000)
+
+  it('validation and conflict are never retried', async () => {
+    for (const response of [
+      { ok: false, code: 'invalid', message: 'bad' } as const,
+      { ok: false, code: 'conflict', revision: 2 } as const,
+    ]) {
+      let calls = 0
+      const result = await loadCloudSaveWithRetry('NoRetryPass', async () => { calls += 1; return response })
+      expect(result).toEqual(response)
+      expect(calls).toBe(1)
+    }
+  })
+
+  it('final transient failure is returned after exactly three attempts', async () => {
+    let calls = 0
+    const result = await loadCloudSaveWithRetry('FailPass', async () => { calls += 1; return { ok: false, code: 'server_error', message: 'down' } as const })
+    expect(result).toMatchObject({ ok: false, code: 'server_error' })
+    expect(calls).toBe(3)
+  }, 5000)
 })
 
 describe('TM-P2-005：云信封构造与形状（9/18/62 节）', () => {

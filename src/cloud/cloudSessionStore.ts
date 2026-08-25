@@ -12,6 +12,7 @@ import {
   type CloudSession,
   type CloudSyncStatus,
   type CloudVaultPayload,
+  type CloudSaveResponse,
 } from './cloudSaveTypes'
 import { exportSaves, importSaves, hasAnySave } from '../game/utils/storage'
 import { useGameStore } from '../game/state/gameStore'
@@ -75,7 +76,7 @@ export const useCloudSession = create<CloudSessionStore>()((set, get) => ({
     const passphrase = normalizePassphrase(rawPassphrase)
     if (validatePassphrase(passphrase)) return 'invalid'
     set({ status: 'loading', passphrase, unlockConflict: null })
-    const res = await callCloudSave({ action: 'load', passphrase })
+    const res = await loadCloudSaveWithRetry(passphrase)
     if (!res.ok || !('exists' in res)) {
       set({ status: 'error', passphrase: null })
       return 'error'
@@ -161,7 +162,7 @@ export const useCloudSession = create<CloudSessionStore>()((set, get) => ({
   loadCloudLatest: async () => {
     const passphrase = get().passphrase
     if (!passphrase || validatePassphrase(passphrase)) return 'error'
-    const res = await callCloudSave({ action: 'load', passphrase })
+    const res = await loadCloudSaveWithRetry(passphrase)
     if (!res.ok || !('exists' in res) || !res.exists || !res.payload) {
       set({ syncStatus: 'cloud_failed' })
       return 'error'
@@ -233,7 +234,7 @@ async function enterVaultCreationConflict(
   conflictRevision: number,
   set: (partial: Partial<CloudSessionStore>) => void,
 ): Promise<'conflict' | 'error'> {
-  const latest = await callCloudSave({ action: 'load', passphrase })
+  const latest = await loadCloudSaveWithRetry(passphrase)
   if (!latest.ok || !('exists' in latest) || !latest.exists || !latest.payload) {
     set({ status: 'error', revision: conflictRevision, passphrase: null, syncStatus: 'cloud_failed' })
     return 'error'
@@ -342,6 +343,26 @@ function deepEqualJson(a: unknown, b: unknown): boolean {
   const bKeys = Object.keys(bRecord).sort()
   return aKeys.length === bKeys.length &&
     aKeys.every((key, index) => key === bKeys[index] && deepEqualJson(aRecord[key], bRecord[key]))
+}
+
+/**
+ * LOAD-only resilience policy (TM-P2-010-R1 CLD1-CLD6).
+ * Retry only transient server/network failures, with the two prescribed waits.
+ * Save, force_save, conflicts, validation failures and malformed successful
+ * responses are returned immediately to their caller.
+ */
+export async function loadCloudSaveWithRetry(
+  passphrase: string,
+  loadCall: (value: string) => Promise<CloudSaveResponse> = (value) => callCloudSave({ action: 'load', passphrase: value }),
+): Promise<CloudSaveResponse> {
+  const waits = [500, 1200]
+  let result = await loadCall(passphrase)
+  for (const wait of waits) {
+    if (result.ok || result.code !== 'server_error') return result
+    await new Promise((resolve) => setTimeout(resolve, wait))
+    result = await loadCall(passphrase)
+  }
+  return result
 }
 
 export type { CloudSyncStatus }

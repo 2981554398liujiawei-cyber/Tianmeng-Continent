@@ -19,11 +19,13 @@ import {
   chooseEnemyTarget,
   didTurnLoop,
   friendlyBlockIndices,
+  getLiveCombatant,
   instanceDisplaySuffix,
   isEncounterLost,
   isEncounterWon,
   MAX_ENCOUNTER_MEMBERS,
   nextAliveTurnIndex,
+  nextLiveTurnIndex,
   resolveEncounterLoot,
   resolveEncounterXp,
   resolvePartyEscape,
@@ -237,6 +239,53 @@ describe('回合推进（§9.4 死亡跳过 / round）', () => {
     const turns = rollInitiativeQueue([makePlayer()], seqRng(0))
     expect(() => nextAliveTurnIndex(turns, -1)).toThrow(RangeError)
     expect(() => nextAliveTurnIndex(turns, 5)).toThrow(RangeError)
+  })
+})
+
+describe('TM-P2-011 实时死亡单位回合跳过', () => {
+  const turnOf = (combatant: Combatant, order: number): InitiativeTurn => ({
+    combatant,
+    roll: 1,
+    initiative: combatant.agility + 1,
+    order,
+  })
+
+  it('CB1/CB2：先手快照仍存活时，按实时状态跳过死亡玩家与伙伴', () => {
+    const sakura = makeSakura()
+    const player = makePlayer()
+    const companion = makeSakura({ instanceId: 'companion#2', sourceId: 'companion#2' })
+    const enemy = makeEnemyCombatants({ enemyId: 'corrupted_wolf', count: 1 })[0]!
+    const turns = [turnOf(sakura, 0), turnOf(player, 1), turnOf(companion, 2), turnOf(enemy, 3)]
+    const live = [sakura, updateCombatantHp(player, 0), updateCombatantHp(companion, 0), enemy]
+    expect(turns[1]!.combatant.isAlive).toBe(true)
+    expect(getLiveCombatant(turns[1], live)?.isAlive).toBe(false)
+    expect(nextLiveTurnIndex(turns, live, 0)).toBe(3)
+  })
+
+  it('CB3：敌人在行动前死亡时不再执行该 initiative slot', () => {
+    const player = makePlayer()
+    const enemies = makeEnemyCombatants({ enemyId: 'corrupted_rat', count: 2 })
+    const turns = [turnOf(player, 0), turnOf(enemies[0]!, 1), turnOf(enemies[1]!, 2)]
+    const live = [player, updateCombatantHp(enemies[0]!, 0), enemies[1]!]
+    expect(nextLiveTurnIndex(turns, live, 0)).toBe(2)
+  })
+
+  it('CB5/CB6：4v4 可连续跨越多个死亡槽位并保持固定先手顺序', () => {
+    const friendlies = [makePlayer(), makeSakura(), makeSakura({ instanceId: 'companion#2' }), makeSakura({ instanceId: 'companion#3' })]
+    const enemies = makeEnemyCombatants({ enemyId: 'corrupted_rat', count: 4 })
+    const roster = [...friendlies, ...enemies]
+    const turns = roster.map(turnOf)
+    const live = roster.map((combatant, index) => (index === 0 || index >= 4 && index <= 6 ? updateCombatantHp(combatant, 0) : combatant))
+    expect(nextLiveTurnIndex(turns, live, 7)).toBe(1)
+    expect(nextLiveTurnIndex(turns, live, 3, { [enemies[3]!.instanceId]: true })).toBe(1)
+  })
+
+  it('CB4：玩家死亡但伙伴存活不判失败；全友军死亡才判失败', () => {
+    const enemy = makeEnemyCombatants({ enemyId: 'corrupted_wolf', count: 1 })[0]!
+    const playerDead = updateCombatantHp(makePlayer(), 0)
+    const sakura = makeSakura()
+    expect(isEncounterLost([playerDead, sakura, enemy])).toBe(false)
+    expect(isEncounterLost([playerDead, updateCombatantHp(sakura, 0), enemy])).toBe(true)
   })
 })
 
