@@ -1,6 +1,6 @@
 # TM-P2-009 §13 驿站狼群 Balance Regression 报告
 
-> 生成时间：2026-08-24T05:35:50.612Z ｜ Node v24.14.0 ｜ 每 pairing 模拟 **5000** 次 ｜ 种子 **20260823**
+> 生成时间：2026-08-25T00:30:35.414Z ｜ Node v24.14.0 ｜ 每 pairing 模拟 **5000** 次 ｜ 种子 **20260823**
 > 全部结算调用 `src/game/rules/partyCombat.ts` + `src/game/rules/combat.ts` 正式纯函数；数据断言读 `encounters.ts` / `enemies.ts` / `lootTables.ts`；骰面由 mulberry32 seeded PRNG 生成，可复现。
 
 ## 1. 校验对象（B1–B4 数据层断言）

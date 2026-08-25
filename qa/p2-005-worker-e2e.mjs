@@ -1,19 +1,26 @@
 import assert from 'node:assert/strict'
-import { spawn, spawnSync } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { Miniflare } from 'miniflare'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
-const wranglerCli = join(root, 'node_modules', 'wrangler', 'bin', 'wrangler.js')
-const config = 'cloud/wrangler.jsonc'
+const tscCli = join(root, 'node_modules', 'typescript', 'bin', 'tsc')
+const cloudRoot = join(root, 'cloud')
 const persistence = mkdtempSync(join(tmpdir(), 'tianmeng-worker-e2e-'))
+const workerEntry = join(persistence, 'index.js')
+const transpile = spawnSync(process.execPath, [tscCli, join(cloudRoot, 'src', 'index.ts'), '--ignoreConfig', '--target', 'ES2022', '--module', 'ESNext', '--noCheck', '--outDir', persistence], {
+  cwd: cloudRoot,
+  encoding: 'utf8',
+})
+assert.equal(transpile.status, 0, transpile.stderr || transpile.stdout)
 const workerUrl = 'http://127.0.0.1:8790'
 const missingPepperUrl = 'http://127.0.0.1:8791'
 const emptyPepperUrl = 'http://127.0.0.1:8792'
 const results = []
-const processes = []
+const runtimes = []
 
 function check(name, condition, detail = '') {
   const ok = Boolean(condition)
@@ -21,32 +28,37 @@ function check(name, condition, detail = '') {
   console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${detail ? ` — ${detail}` : ''}`)
 }
 
-function wrangler(args) {
-  return spawnSync(process.execPath, [wranglerCli, ...args], { cwd: root, encoding: 'utf8' })
-}
-
-function startWorker(port, vars = []) {
-  const child = spawn(process.execPath, [wranglerCli, 'dev', '--local', '--config', config, '--persist-to', persistence,
-    '--port', String(port), ...vars.flatMap((value) => ['--var', value])], {
-    cwd: root,
-    stdio: ['ignore', 'pipe', 'pipe'],
-    windowsHide: true,
+async function startWorker(port, vars = []) {
+  const bindings = Object.fromEntries(vars.map((value) => {
+    const separator = value.indexOf(':')
+    return [value.slice(0, separator), value.slice(separator + 1)]
+  }))
+  const runtime = new Miniflare({
+    resourcePersistencePath: join(persistence, String(port)),
+    host: '127.0.0.1',
+    port,
+    workers: [{
+      config: {
+        name: `tianmeng-worker-e2e-${port}`,
+        type: 'worker',
+        compatibilityDate: '2026-08-21',
+        manifest: {
+          mainModule: 'index.js',
+          modulesRoot: persistence,
+          modules: {
+            'index.js': { type: 'esm', contents: readFileSync(workerEntry, 'utf8') },
+          },
+        },
+        env: {
+          DB: { type: 'd1', id: `tianmeng-worker-e2e-${port}` },
+          ...Object.fromEntries(Object.entries(bindings).map(([name, value]) => [name, { type: 'json', value }])),
+        },
+      },
+    }],
   })
-  let output = ''
-  child.stdout.on('data', (chunk) => { output += chunk })
-  child.stderr.on('data', (chunk) => { output += chunk })
-  child.output = () => output
-  processes.push(child)
-  return child
-}
-
-async function waitForWorker(url, child) {
-  const deadline = Date.now() + 20_000
-  while (Date.now() < deadline) {
-    if (child.exitCode !== null) throw new Error(`wrangler dev exited (${child.exitCode})\n${child.output()}`)
-    try { await fetch(url); return } catch { await new Promise((resolve) => setTimeout(resolve, 100)) }
-  }
-  throw new Error(`wrangler dev did not become ready\n${child.output()}`)
+  runtimes.push(runtime)
+  await runtime.ready
+  return runtime
 }
 
 const payload = (marker) => ({
@@ -77,23 +89,13 @@ async function request(body, {
   return { response, json }
 }
 
-function query(sql) {
-  const result = wrangler(['d1', 'execute', 'DB', '--local', '--config', config, '--persist-to', persistence,
-    '--command', sql, '--json'])
-  let rows = []
-  try { rows = JSON.parse(result.stdout)?.[0]?.results ?? [] } catch { /* asserted by callers */ }
-  return { result, rows }
-}
-
 try {
-  const migration = wrangler(['d1', 'migrations', 'apply', 'DB', '--local', '--config', config, '--persist-to', persistence])
-  assert.equal(migration.status, 0, migration.stderr || migration.stdout)
-
-  const worker = startWorker(8790, [
+  const worker = await startWorker(8790, [
     'SAVE_PEPPER:e2e-only-pepper',
     'CORS_ORIGINS:https://allowed.example, https://second.example',
   ])
-  await waitForWorker(workerUrl, worker)
+  const database = await worker.getD1Database('DB')
+  await database.prepare(readFileSync(join(cloudRoot, 'migrations', '0001_cloud_save.sql'), 'utf8')).run()
 
   let result = await request(null, {
     method: 'OPTIONS',
@@ -137,20 +139,18 @@ try {
   result = await request({ action: 'force_save', passphrase: 'revision-passphrase', payload: payload('forced-v3') })
   check('W11 force_save increments the existing vault to revision 3', result.response.status === 200 && result.json?.revision === 3)
 
-  const stored = query("SELECT key_hash, revision, previous_revision, json_extract(payload_json, '$.savesExport.slots.slot1.marker') AS marker, json_extract(previous_payload_json, '$.savesExport.slots.slot1.marker') AS previous_marker FROM cloud_saves WHERE revision = 3")
-  const row = stored.rows[0]
-  check('W12 Local D1 key_hash is a 64-char digest and never stores the plaintext passphrase', stored.result.status === 0 && /^[0-9a-f]{64}$/.test(row?.key_hash ?? '') && row?.key_hash !== 'revision-passphrase')
-  check('W13 Local D1 preserves previous_revision and previous_payload_json', row?.revision === 3 && row?.marker === 'forced-v3' && row?.previous_revision === 2 && row?.previous_marker === 'v2')
-
   result = await request(null, { raw: '{broken' })
   check('W14 malformed JSON is rejected', result.response.status === 400 && result.json?.code === 'invalid')
 
-  result = await request(null, { raw: JSON.stringify({ padding: 'x'.repeat(1_000_001) }) })
+  const oversizedResponse = await worker.dispatchFetch(workerUrl, {
+    method: 'POST',
+    headers: { origin: 'http://localhost:5173', 'content-type': 'application/json' },
+    body: JSON.stringify({ padding: 'x'.repeat(1_000_001) }),
+  })
+  result = { response: oversizedResponse, json: await oversizedResponse.json() }
   check('W15 request bodies larger than 1 MB are rejected', result.response.status === 413 && result.json?.code === 'invalid')
 
-  const missingWorker = startWorker(8791)
-  const emptyWorker = startWorker(8792, ['SAVE_PEPPER:'])
-  await Promise.all([waitForWorker(missingPepperUrl, missingWorker), waitForWorker(emptyPepperUrl, emptyWorker)])
+  await Promise.all([startWorker(8791), startWorker(8792, ['SAVE_PEPPER:'])])
   const pepperResponses = await Promise.all([
     request({ action: 'load', passphrase: 'pepper-check' }, { url: missingPepperUrl }),
     request({ action: 'load', passphrase: 'pepper-check' }, { url: emptyPepperUrl }),
@@ -174,20 +174,16 @@ try {
   const wrongMethod = await request(null, { method: 'GET' })
   const caseSensitive = await request({ action: 'load', passphrase: 'alpha-normalized' })
   check('S3 method allowlist and passphrase case isolation remain enforced', wrongMethod.response.status === 405 && caseSensitive.json?.exists === false)
+
+  const stored = await database.prepare("SELECT key_hash, revision, previous_revision, json_extract(payload_json, '$.savesExport.slots.slot1.marker') AS marker, json_extract(previous_payload_json, '$.savesExport.slots.slot1.marker') AS previous_marker FROM cloud_saves WHERE revision = 3").all()
+  const row = stored.results[0]
+  check('W12 Local D1 key_hash is a 64-char digest and never stores the plaintext passphrase', stored.success === true && /^[0-9a-f]{64}$/.test(row?.key_hash ?? '') && row?.key_hash !== 'revision-passphrase')
+  check('W13 Local D1 preserves previous_revision and previous_payload_json', row?.revision === 3 && row?.marker === 'forced-v3' && row?.previous_revision === 2 && row?.previous_marker === 'v2')
 } catch (error) {
   console.error(error)
   process.exitCode = 1
 } finally {
-  // Windows 上 child.kill() 是异步 SIGTERM，SQLite/D1 句柄随进程真正退出才释放。
-  // 先等所有 wrangler dev 子进程退出（含孙进程退出留出的时间），再清理临时目录。
-  for (const child of processes) child.kill()
-  await Promise.all(processes.map((child) => new Promise((resolve) => {
-    if (child.exitCode !== null || child.signalCode !== null) return resolve()
-    child.once('exit', resolve)
-    setTimeout(resolve, 10_000)
-  })))
-  // 多给一拍让 WAL/句柄完全释放，避免 EPERM 竞态。
-  await new Promise((resolve) => setTimeout(resolve, 1_000))
+  await Promise.all(runtimes.map((runtime) => runtime.dispose()))
   let cleaned = false
   for (let attempt = 1; attempt <= 15 && !cleaned; attempt += 1) {
     try {

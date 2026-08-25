@@ -98,4 +98,12 @@ export const QUESTS: Record<string, QuestDefinition> = {
     giverNpcId: 'knight_captain_make',
     goldReward: 50, adventureXpReward: 120,
   },
+  quest_tianlong_martial_trial: {
+    id: 'quest_tianlong_martial_trial',
+    title: '天龙武备试炼',
+    summary: '马科邀请你进入天龙武备场，证明自己在压力下判断、战斗与管理资源的能力。',
+    giverNpcId: 'knight_captain_make',
+    goldReward: 50,
+    adventureXpReward: 120,
+  },
 }

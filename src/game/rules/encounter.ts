@@ -11,6 +11,7 @@ import { getEnemy, getLocation } from '../content'
 import { getEncounter, allEncounterMembers } from '../content/encounters'
 import type { EncounterDefinition, EncounterMember } from '../types/encounter'
 import type { GameState } from '../types/game'
+import { routeForProfession, trialCombatEncounterId } from './martialTrial'
 import { canFightCalamity, SAKURA_CALAMITY_ENEMY_ID } from './sakura'
 
 export type EncounterBlockReason =
@@ -276,6 +277,24 @@ export function checkEncounter(gameState: GameState, encounterId: string): Encou
   if (!location) return { allowed: false, reason: 'location_not_found' }
   if (!location.encounters?.includes(encounterId)) {
     return { allowed: false, reason: 'enemy_not_in_location' }
+  }
+
+  // TM-P2-010：武备试炼遭遇只能在武备场、获得新/旧邀请资格且完成观察考后开战。
+  // 旧 knight_trial_invited 作为兼容资格读取，但新流程只写 martial_trial_invited。
+  if (def.trialProfession) {
+    const trialQuest = gameState.quests.find((q) => q.questId === 'quest_tianlong_martial_trial')
+    const invited = gameState.world.flags.martial_trial_invited === true || gameState.world.flags.knight_trial_invited === true
+    const expectedEncounterId = trialCombatEncounterId(gameState.player.profession)
+    const expectedRoute = routeForProfession(gameState.player.profession)
+    if (def.trialProfession !== gameState.player.profession || encounterId !== expectedEncounterId || trialQuest?.flags[expectedRoute] !== true) {
+      return { allowed: false, reason: 'missing_prerequisite' }
+    }
+    if (trialQuest?.flags.trial_combat_done === true) {
+      return { allowed: false, reason: 'already_defeated' }
+    }
+    if (location.id !== 'tianlong_martial_trial_ground' || !invited || trialQuest?.status !== 'in_progress' || trialQuest.flags.trial_registered !== true || trialQuest.flags.trial_observation_done !== true) {
+      return { allowed: false, reason: 'missing_prerequisite' }
+    }
   }
 
   // 单敌遭遇：委托现有 checkEnemyEncounter（特殊敌人前置 + defeated 门原样复用）

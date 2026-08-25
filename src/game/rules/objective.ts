@@ -4,6 +4,7 @@ import { GOLDEN_RABBIT_QUEST_ID, isGoldenRabbitInvestigationComplete } from './g
 export interface CurrentObjective { questId: string; title: string; objective: string; locationHint?: string }
 
 const MAIN_QUEST_PRIORITY = [
+  'quest_tianlong_martial_trial',
   'quest_north_broken_banner',
   'quest_north_outskirts',
   'quest_north_gate_missing_patrol',
@@ -25,6 +26,13 @@ export function getCurrentObjective(state: GameState): CurrentObjective | null {
     ?? eligible[0]
   if (!q) return null
   const title = getQuest(q.questId)?.title ?? '当前任务'
+  if (q.questId === 'quest_tianlong_martial_trial') {
+    if (q.status === 'completable') return { questId: q.questId, title, objective: '提交武备试炼并领取奖励', locationHint: '天龙城武馆' }
+    if (q.flags.trial_registered !== true) return { questId: q.questId, title, objective: '前往武馆向马科报到', locationHint: '天龙城武馆' }
+    if (q.flags.trial_observation_done !== true) return { questId: q.questId, title, objective: '前往天龙武备场参加职业观察考', locationHint: '天龙武备场' }
+    if (q.flags.trial_combat_done !== true) return { questId: q.questId, title, objective: '完成职业对抗试炼', locationHint: '天龙武备场' }
+    return { questId: q.questId, title, objective: '返回武馆向马科复盘', locationHint: '天龙城武馆' }
+  }
   if (q.questId === 'quest_north_gate_missing_patrol') {
     if (q.status === 'completable') return { questId: q.questId, title, objective: '返回武馆向马科汇报', locationHint: '天龙城武馆' }
     if (q.flags.north_gate_trail_checked !== true) return { questId: q.questId, title, objective: '调查天龙城北门外巡逻队留下的痕迹', locationHint: '天龙城北门' }

@@ -8,6 +8,7 @@ import { getItem, getMount } from '../../game/content'
 import { getPlayerArmor, getPlayerAttackPower, getPlayerAgility } from '../../game/rules/combat'
 import { getEffectiveCharacterAttributes } from '../../game/rules/mount'
 import { getXpThresholdForLevel } from '../../game/rules/character'
+import SkillProgressionPanel from './SkillProgressionPanel'
 
 /**
  * 左栏：玩家栏（TM-P2-006）。
@@ -143,6 +144,12 @@ export default function PlayerSidebar() {
           </div>
         </div>
       </section>
+
+      <SkillProgressionPanel
+        profession={player.profession}
+        learnedSkillIds={player.learnedSkillIds}
+        trialComplete={gameState.quests.some((quest) => quest.questId === 'quest_tianlong_martial_trial' && quest.status === 'completed')}
+      />
 
       {/* 装备 */}
       <section className="rounded border border-ink-600 bg-ink-800/50 p-4 text-sm text-bone-300">

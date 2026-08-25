@@ -169,3 +169,30 @@ describe('TM-P2-009-R1 §12：Golden Rabbit 不作为当前目标', () => {
     expect(getCurrentObjective(state)).toBeNull()
   })
 })
+
+describe('TM-P2-010 武备试炼五阶段当前目标', () => {
+  const quest = (flags: Record<string, boolean> = {}, status: 'in_progress' | 'completable' = 'in_progress') => ({
+    questId: 'quest_tianlong_martial_trial', status, stage: 0, flags,
+  })
+
+  it.each([
+    [{}, '前往武馆向马科报到', '天龙城武馆'],
+    [{ trial_registered: true }, '前往天龙武备场参加职业观察考', '天龙武备场'],
+    [{ trial_registered: true, trial_observation_done: true }, '完成职业对抗试炼', '天龙武备场'],
+    [{ trial_registered: true, trial_observation_done: true, trial_combat_done: true }, '返回武馆向马科复盘', '天龙城武馆'],
+    [{ trial_registered: true, trial_observation_done: true, trial_combat_done: true }, '提交武备试炼并领取奖励', '天龙城武馆', 'completable'],
+  ] as const)('阶段目标正确推进', (flags, objective, locationHint, status: 'in_progress' | 'completable' = 'in_progress') => {
+    const state = createInitialGameState()
+    state.quests = [quest(flags, status)]
+    expect(getCurrentObjective(state)).toMatchObject({ questId: 'quest_tianlong_martial_trial', objective, locationHint })
+  })
+
+  it('武备试炼优先级高于旧北门支线', () => {
+    const state = createInitialGameState()
+    state.quests = [
+      { questId: 'quest_north_gate_missing_patrol', status: 'in_progress', stage: 0, flags: {} },
+      quest({ trial_registered: true }),
+    ]
+    expect(getCurrentObjective(state)?.questId).toBe('quest_tianlong_martial_trial')
+  })
+})

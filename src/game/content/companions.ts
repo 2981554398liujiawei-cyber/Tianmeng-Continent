@@ -27,12 +27,31 @@ export const COMPANIONS: Record<string, CompanionDefinition> = {
   },
 }
 
+/** 仅本地 V7 QA 使用的未入剧情伙伴；生产构建中恒为空，不产生招募入口或存档迁移。 */
+const QA_COMBAT_V7_COMPANIONS: Record<string, CompanionDefinition> =
+  import.meta.env?.DEV === true && import.meta.env.VITE_QA_COMBAT_V7 === '1'
+    ? {
+        zi_yuetian: {
+          id: 'zi_yuetian', name: '紫月天', title: 'QA 阵列伙伴', classification: 'companion',
+          summary: '仅用于本地 Combat V7 四人阵列验收。',
+          attributes: { str: 12, con: 12, agi: 12, mnd: 14, lck: 10 }, maxMp: 8,
+          skillIds: ['sakura_magic_shield'], tags: ['qa-only'],
+        },
+        tianfeng_princess: {
+          id: 'tianfeng_princess', name: '天凤公主', title: 'QA 阵列伙伴', classification: 'companion',
+          summary: '仅用于本地 Combat V7 四人阵列验收。',
+          attributes: { str: 14, con: 13, agi: 11, mnd: 12, lck: 10 }, maxMp: 7,
+          skillIds: ['sakura_petalslash'], tags: ['qa-only'],
+        },
+      }
+    : {}
+
 /** 樱花优子伙伴定义（唯一实例便捷读取） */
 export const SAKURA_COMPANION_ID = 'sakura_yuko'
 
 /** 查询伙伴定义；未知 ID 返回 undefined */
 export function getCompanion(id: string): CompanionDefinition | undefined {
-  return COMPANIONS[id]
+  return COMPANIONS[id] ?? QA_COMBAT_V7_COMPANIONS[id]
 }
 
 /** 樱花优子入 guest/recruited 时使用的初始技能（来自注册表；不写死名字） */

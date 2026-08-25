@@ -10,6 +10,7 @@ import { KNIGHT_POWER_STRIKE_MP_COST, MAGE_SPELL_MP_COST, WARRIOR_SUPPRESS_STRIK
 import { applyAdventureXpReward } from '../rules/progression'
 import { getEnemyFirstKillXp, FIRST_KILL_FLAG_ENEMIES, resolveEncounterVictoryXp } from '../rules/combatXp'
 import { SINGLE_ENEMY_ENCOUNTERS } from '../content/encounters'
+import { tier2SkillFor } from '../content/skillProgression'
 import type { EncounterDefinition } from '../types/encounter'
 import { checkEquipItem } from '../rules/equipment'
 import { canBuyMerchantItem, getMerchantOffer } from '../rules/merchant'
@@ -70,6 +71,14 @@ export const VILLAGE_ELDER_POST_QUEST_EVENT_ID = 'village_elder_post_quest_respo
 export const NORTH_SURVIVOR_RESCUED_EVENT_ID = 'north_survivor_rescued'
 /** TM-P2-009 §17：《断旗余声》完成后骑士试炼邀请活动事件 ID（activityEvents.ts 已登记文案；试炼本体不实现） */
 export const KNIGHT_TRIAL_INVITED_EVENT_ID = 'knight_trial_invited'
+/** TM-P2-010：职业无关的武备试炼邀请（旧 knight_trial_invited 保留兼容）。 */
+export const MARTIAL_TRIAL_INVITED_FLAG = 'martial_trial_invited'
+export const MARTIAL_TRIAL_QUEST_ID = 'quest_tianlong_martial_trial'
+export const MARTIAL_TRIAL_GROUND_ID = 'tianlong_martial_trial_ground'
+const MARTIAL_TRIAL_BRONZE_MEDAL_ID = 'tianlong_martial_medal'
+
+export type MartialTrialObservationMethod = 'str' | 'con' | 'agi' | 'mnd' | 'lck'
+export type MartialTrialObservationResult = { ok: boolean; success?: boolean; progressed?: boolean; method?: MartialTrialObservationMethod }
 import {
   deleteSlot as storageDeleteSlot,
   exportSaves as storageExportSaves,
@@ -260,6 +269,18 @@ interface GameStoreState {
   debriefWaystationSurvivor: () => boolean
   /** Stage E 回报马科（武馆）：quest in_progress + debriefed===true + reported undefined/false 时成功，写 quest.flags.north_broken_banner_reported=true 且 status→completable（stage 保持 0）；非法前置/异常 flag/重复全部拒绝且完全不变 */
   reportNorthBrokenBanner: () => boolean
+
+  // ---- TM-P2-010：天龙武备试炼（Save V6：仅复用 quest flags/world flags/inventory/learnedSkillIds）----
+  /** 接取试炼：仅武馆 + 新/旧邀请资格；按职业只落一个 route flag。 */
+  acceptMartialTrial: () => boolean
+  /** Stage A 武馆报到；接取后写 trial_registered。 */
+  registerMartialTrial: () => boolean
+  /** Stage B 职业观察考；成功/失败均 fail-forward 推进，结果只影响 preparation flag。 */
+  resolveMartialTrialObservation: (method: MartialTrialObservationMethod, roll?: number) => MartialTrialObservationResult
+  /** 试炼回报：战斗胜利后推进复盘阶段。 */
+  reportMartialTrial: () => boolean
+  /** 领取试炼奖励；单次授予职业 Tier II 技能、铜章、金币/XP 与后续 hook。 */
+  completeMartialTrial: () => boolean
 
   // ---- TM-P2-004：Sakura 剧情 / 伙伴 / 关系 / 休整 ----
   /** 触发反季樱雨（TM-P2-004 第 31 节）：canTriggerSakuraEncounter 纯规则；成功写 sakura_encounter_started=true + 《落樱越界》discover→in_progress */
@@ -690,7 +711,11 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
     let moved = false
     set((s) => {
       if (!s.gameState) return {}
-      const check = checkTravel(s.gameState.world.currentLocationId, targetLocationId, s.gameState.world.flags)
+      const flags = targetLocationId === MARTIAL_TRIAL_GROUND_ID &&
+        (s.gameState.world.flags[MARTIAL_TRIAL_INVITED_FLAG] === true || s.gameState.world.flags.knight_trial_invited === true)
+        ? { ...s.gameState.world.flags, [MARTIAL_TRIAL_INVITED_FLAG]: true }
+        : s.gameState.world.flags
+      const check = checkTravel(s.gameState.world.currentLocationId, targetLocationId, flags)
       if (!check.allowed) return {}
       moved = true
       return {
@@ -818,6 +843,40 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
       }
       // TM-P2-009-R1 §2.3：《断旗余声》正式提交只负责 50 Gold / 120 XP / completed——
       // 骑士试炼邀请已由 reportNorthBrokenBanner() 在向马科汇报时写入，completeQuest 不重复追加 invitation event。
+      if (questId === 'quest_north_broken_banner') {
+        return {
+          gameState: {
+            ...next,
+            player: playerAfterLevel,
+            world: { ...next.world, flags: { ...next.world.flags, [MARTIAL_TRIAL_INVITED_FLAG]: true } },
+          },
+        }
+      }
+      if (questId === MARTIAL_TRIAL_QUEST_ID) {
+        const tierTwoSkill = tier2SkillFor(next.player.profession)
+        const learnedSkillIds = tierTwoSkill && !next.player.learnedSkillIds.includes(tierTwoSkill)
+          ? [...next.player.learnedSkillIds, tierTwoSkill]
+          : next.player.learnedSkillIds
+        const medalIndex = next.inventory.findIndex((entry) => entry.itemId === MARTIAL_TRIAL_BRONZE_MEDAL_ID)
+        const inventory = medalIndex >= 0
+          ? next.inventory.map((entry, index) => index === medalIndex ? { ...entry, quantity: entry.quantity + 1 } : entry)
+          : [...next.inventory, { itemId: MARTIAL_TRIAL_BRONZE_MEDAL_ID, quantity: 1 }]
+        const quests = next.quests.map((quest) => quest.questId === MARTIAL_TRIAL_QUEST_ID
+          ? { ...quest, flags: { ...quest.flags, trial_reward_claimed: true } }
+          : quest)
+        return {
+          gameState: {
+            ...next,
+            player: { ...playerAfterLevel, learnedSkillIds },
+            inventory,
+            quests,
+            world: {
+              ...next.world,
+              flags: { ...next.world.flags, martial_trial_completed: true, martial_trial_bronze_medal_awarded: true, p2_011_hook_available: true },
+            },
+          },
+        }
+      }
       return reward !== undefined
         ? { gameState: { ...next, player: playerAfterLevel } }
         : { gameState: { ...next, player: playerAfterLevel } }
@@ -1229,21 +1288,25 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
     if (!state) return null
     const def = getEncounter(encounterId)
     if (!def) return null
-    // 单敌遭遇：委托现有 resolveCombatVictory（quest flags / 固定战利品 / first-kill XP 全复用）；返回 null（loot 展示由 CombatPage 走 grantLoot）
-    const singleEnemyId = singleEnemyIdOf(def)
-    if (singleEnemyId) {
-      get().resolveCombatVictory(singleEnemyId)
-      return null
-    }
-    // 多敌遭遇：整体胜利事务（§6/§15/§16）——XP sum + loot 聚合 + encounterDefeatFlag 一次性写入
+    // 结算入口必须重复执行 Encounter 权威守卫，不能只依赖 UI/startEncounter。
+    // 尤其 Trial 完成后必须在计算 XP/loot 之前拒绝重复结算。
     const check = checkEncounter(state, encounterId)
     if (!check.allowed) return null
+    // 单敌遭遇：先完成权威胜利校验/状态结算，成功后才发普通掉落；避免 UI 先发掉落、后校验失败造成部分结算。
+    const singleEnemyId = singleEnemyIdOf(def)
+    if (singleEnemyId) {
+      if (!get().resolveCombatVictory(singleEnemyId)) return null
+      const grant = get().grantLoot(singleEnemyId)
+      return resolveEncounterLoot(grant ? [grant] : [])
+    }
+    // 多敌遭遇：整体胜利事务（§6/§15/§16）——XP sum + loot 聚合 + encounterDefeatFlag 一次性写入
     const variantId = currentEncounterVariantId(state, def)
     const variant = variantId ? def.variants?.find((v) => v.id === variantId) : undefined
-    if (!variant) return null
+    const encounterMembers = variant?.members ?? def.fixedMembers
+    if (!encounterMembers || encounterMembers.length === 0) return null
     let firstKillXp = 0
     const grants: LootGrant[] = []
-    for (const member of variant.members) {
+    for (const member of encounterMembers) {
       for (let i = 0; i < member.count; i += 1) {
         // 每个 EnemyInstance 独立结算（§16 pendingLoot；同 enemyId 多实例各算一次 XP）
         firstKillXp += getEnemyFirstKillXp(state, member.enemyId)
@@ -1256,7 +1319,7 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
     const xp = resolveEncounterVictoryXp(
       state,
       def,
-      variant.members.flatMap((m) => Array.from({ length: m.count }, () => ({ enemyId: m.enemyId }))),
+      encounterMembers.flatMap((m) => Array.from({ length: m.count }, () => ({ enemyId: m.enemyId }))),
     )
     let ok = false
     set((s) => {
@@ -1285,7 +1348,7 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
       // TM-P2-009-R1 §11：多敌可重复遭遇首次击败写入 first-kill 标记（仅 FIRST_KILL_FLAG_ENEMIES 需要 flag 记录）
       const firstKillFlags: Record<string, boolean> = {}
       if (firstKillXp > 0) {
-        for (const member of variant.members) {
+        for (const member of encounterMembers) {
           if (FIRST_KILL_FLAG_ENEMIES.has(member.enemyId) && getEnemyFirstKillXp(state, member.enemyId) > 0) {
             firstKillFlags[`${member.enemyId}_first_kill`] = true
           }
@@ -1307,6 +1370,18 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
       ok = true
       return { gameState: { ...gs, inventory, player: { ...gs.player, gold }, world } }
     })
+    if (ok && def.trialProfession === state.player.profession) {
+      set((s) => {
+        const state = s.gameState
+        if (!state) return {}
+        const index = state.quests.findIndex((q) => q.questId === MARTIAL_TRIAL_QUEST_ID)
+        const quest = state.quests[index]
+        if (index < 0 || !quest || quest.status !== 'in_progress' || quest.flags.trial_observation_done !== true || quest.flags.trial_combat_done === true) return {}
+        const quests = [...state.quests]
+        quests[index] = { ...quest, stage: Math.max(quest.stage, 2), flags: { ...quest.flags, trial_combat_done: true } }
+        return { gameState: { ...state, quests } }
+      })
+    }
     return ok ? resolveEncounterLoot(grants) : null
   },
 
@@ -2816,7 +2891,7 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
           quests: nextQuests,
           world: {
             ...s.gameState.world,
-            flags: { ...s.gameState.world.flags, knight_trial_invited: true },
+            flags: { ...s.gameState.world.flags, knight_trial_invited: true, [MARTIAL_TRIAL_INVITED_FLAG]: true },
             completedEvents: [...s.gameState.world.completedEvents, KNIGHT_TRIAL_INVITED_EVENT_ID],
           },
         },
@@ -2824,6 +2899,100 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
     })
     return changed
   },
+
+  acceptMartialTrial: () => {
+    let changed = false
+    set((s) => {
+      const state = s.gameState
+      if (!state || state.world.currentLocationId !== 'tianlong_martial_hall') return {}
+      if (state.world.flags[MARTIAL_TRIAL_INVITED_FLAG] !== true && state.world.flags.knight_trial_invited !== true) return {}
+      let next = state
+      const existing = next.quests.find((q) => q.questId === MARTIAL_TRIAL_QUEST_ID)
+      if (!existing) {
+        const discovered = applyQuestDiscovery(next, MARTIAL_TRIAL_QUEST_ID)
+        if (!discovered) return {}
+        next = discovered
+      }
+      const quest = next.quests.find((q) => q.questId === MARTIAL_TRIAL_QUEST_ID)
+      if (!quest || quest.status !== 'available') return {}
+      const accepted = applyQuestTransition(next, MARTIAL_TRIAL_QUEST_ID, 'in_progress')
+      if (!accepted) return {}
+      const route = `route_${next.player.profession}`
+      const index = accepted.quests.findIndex((q) => q.questId === MARTIAL_TRIAL_QUEST_ID)
+      const acceptedQuest = accepted.quests[index]!
+      const quests = [...accepted.quests]
+      quests[index] = { ...acceptedQuest, flags: { ...acceptedQuest.flags, [route]: true } }
+      changed = true
+      return { gameState: { ...accepted, quests } }
+    })
+    return changed
+  },
+
+  registerMartialTrial: () => {
+    let changed = false
+    set((s) => {
+      const state = s.gameState
+      if (!state || state.world.currentLocationId !== 'tianlong_martial_hall') return {}
+      const index = state.quests.findIndex((q) => q.questId === MARTIAL_TRIAL_QUEST_ID)
+      const quest = state.quests[index]
+      if (index < 0 || !quest || quest.status !== 'in_progress') return {}
+      if (quest.flags.trial_registered === true || Object.values(quest.flags).some((v) => typeof v !== 'boolean')) return {}
+      const quests = [...state.quests]
+      quests[index] = { ...quest, flags: { ...quest.flags, trial_registered: true } }
+      changed = true
+      return { gameState: { ...state, quests } }
+    })
+    return changed
+  },
+
+  resolveMartialTrialObservation: (method, roll) => {
+    let result: MartialTrialObservationResult = { ok: false, method }
+    set((s) => {
+      const state = s.gameState
+      if (!state || state.world.currentLocationId !== MARTIAL_TRIAL_GROUND_ID) return {}
+      const index = state.quests.findIndex((q) => q.questId === MARTIAL_TRIAL_QUEST_ID)
+      const quest = state.quests[index]
+      if (index < 0 || !quest || quest.status !== 'in_progress' || quest.flags.trial_registered !== true) return {}
+      if (quest.flags.trial_observation_done !== undefined && typeof quest.flags.trial_observation_done !== 'boolean') return {}
+      if (quest.flags.trial_observation_done === true) return {}
+      const primary = (['warrior', 'knight', 'ranger', 'mage'] as const).find((p) => quest.flags[`route_${p}`] === true)
+      const allowed: MartialTrialObservationMethod[] = primary === 'warrior' ? ['str', 'lck'] : primary === 'knight' ? ['con', 'lck'] : primary === 'ranger' ? ['agi', 'lck'] : primary === 'mage' ? ['mnd', 'lck'] : ['lck']
+      if (!allowed.includes(method)) return {}
+      let check: D20CheckResult
+      try {
+        check = roll === undefined
+          ? performD20Check({ attributeScore: state.player.attributes[method], level: state.player.level, dc: CHECK_DC.moderate, proficient: false, situationalModifier: 0 })
+          : resolveD20Check({ attributeScore: state.player.attributes[method], level: state.player.level, dc: CHECK_DC.moderate, proficient: false, situationalModifier: 0 }, roll)
+      } catch { return {} }
+      const quests = [...state.quests]
+      quests[index] = { ...quest, stage: Math.max(quest.stage, 1), flags: { ...quest.flags, trial_observation_done: true, trial_observation_success: check.success, trial_observation_advantage: check.success } }
+      const player = check.success
+        ? { ...state.player, mp: Math.min(state.player.maxMp, state.player.mp + 2) }
+        : state.player
+      result = { ok: true, success: check.success, progressed: true, method }
+      return { gameState: { ...state, player, quests } }
+    })
+    return result
+  },
+
+  reportMartialTrial: () => {
+    let changed = false
+    set((s) => {
+      const state = s.gameState
+      if (!state || state.world.currentLocationId !== 'tianlong_martial_hall') return {}
+      const index = state.quests.findIndex((q) => q.questId === MARTIAL_TRIAL_QUEST_ID)
+      const quest = state.quests[index]
+      if (index < 0 || !quest || quest.status !== 'in_progress' || quest.flags.trial_combat_done !== true) return {}
+      if (quest.flags.trial_review_done === true) return {}
+      const quests = [...state.quests]
+      quests[index] = { ...quest, status: 'completable', stage: Math.max(quest.stage, 3), flags: { ...quest.flags, trial_review_done: true } }
+      changed = true
+      return { gameState: { ...state, quests } }
+    })
+    return changed
+  },
+
+  completeMartialTrial: () => get().completeQuest(MARTIAL_TRIAL_QUEST_ID),
 
   // ---- TM-P2-004：Sakura 剧情 / 伙伴 / 关系 / 休整 ----
 

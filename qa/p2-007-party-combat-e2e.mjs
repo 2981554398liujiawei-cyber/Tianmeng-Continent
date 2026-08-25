@@ -706,7 +706,7 @@ async function partG() {
     check('§49-5a: 引擎构建 3 敌实例（enemy#1/2/3）', engine.count === 3 && engine.ids.join(',') === 'enemy#1,enemy#2,enemy#3', engine.ids.join(','))
     check('§49-5b: 先手队列 3 单位', engine.turnOrder.length === 3, engine.turnOrder.join(','))
     check('§49-5c: 满血非胜利/全灭判胜利', engine.wonNow === false && engine.wonAfter0 === true)
-    check('G2: 上限 3 / 敌方定义', engine.maxMembers === 3 && engine.enemyDef === '骷髅战士')
+    check('G2: Combat V7 上限 4 / 敌方定义', engine.maxMembers === 4 && engine.enemyDef === '骷髅战士')
     check('G0: 无 JS exception', takeErrors().length === 0, takeErrors().join('; '))
   } catch (err) {
     partError(`${label} 异常`, err)

@@ -25,7 +25,6 @@ import type { SkillDefinition } from '../game/types/skill'
 import { formatLuckCheckLog } from '../game/rules/luck'
 import { getSkill } from '../game/content/skills'
 import { rollD20 } from '../game/rules/d20'
-import type { LootGrant } from '../game/types/loot'
 import { RARITY_LABELS } from '../game/types/loot'
 import { SAKURA_SEALED_SKILLS } from '../game/content/companions'
 import { getEffectiveCharacterAttributes } from '../game/rules/mount'
@@ -39,7 +38,6 @@ import {
 import {
   chooseEnemyAction,
   chooseEnemyTarget,
-  friendlyBlockIndices,
   instanceDisplaySuffix,
   isEncounterLost,
   isEncounterWon,
@@ -130,6 +128,11 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
   const [combatants, setCombatants] = useState<Combatant[]>(() => setup?.combatants ?? [])
   const [turns, setTurns] = useState<InitiativeTurn[]>(() => setup?.turns ?? [])
   const [currentTurnIndex, setCurrentTurnIndex] = useState(0)
+  /** 当前查看单位只影响卡片高亮；真正执行动作的单位始终由 initiative 队列决定。 */
+  const [viewedFriendlyId, setViewedFriendlyId] = useState<string | null>(() => {
+    const firstFriendly = setup?.turns.find((turn) => turn.combatant.side === 'friendly')
+    return firstFriendly?.combatant.instanceId ?? null
+  })
   const [phase, setPhase] = useState<'active' | 'victory' | 'defeat'>('active')
   const [pendingTarget, setPendingTarget] = useState<PendingTarget | null>(null)
   const [actionTray, setActionTray] = useState<'skill' | 'item' | null>(null)
@@ -159,7 +162,6 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
   const [skipSourceName, setSkipSourceName] = useState('轻舞')
 
   const [events, setEvents] = useState<CombatEvent[]>([])
-  const [victoryLoot, setVictoryLoot] = useState<LootGrant | null>(null)
   const [victorySummary, setVictorySummary] = useState<EncounterLootSummary | null>(null)
   const [defeatedList, setDefeatedList] = useState<DefeatedEntry[]>([])
   const [victoryXp, setVictoryXp] = useState(0)
@@ -382,16 +384,12 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
     advanceTurn(currentTurnIndex)
   }
 
-  /** §7：friendly 段内切换控制（点卡片；未 ended 且存活且同段才可切） */
-  const handleSwitchFriendly = (instanceId: string) => {
+  /** 点击我方卡只切换查看对象，绝不改变 initiative 当前行动单位。 */
+  const handleViewFriendly = (instanceId: string) => {
     if (phase !== 'active' || pendingTarget !== null) return
-    const idx = turns.findIndex((t) => t.combatant.instanceId === instanceId)
-    if (idx === -1) return
-    const c = turns[idx]!.combatant
-    if (c.side !== 'friendly' || !c.isAlive || (endedByInstance[c.instanceId] ?? false)) return
-    const block = friendlyBlockIndices(turns, currentTurnIndex)
-    if (!block.includes(idx)) return
-    setCurrentTurnIndex(idx)
+    const c = combatants.find((combatant) => combatant.instanceId === instanceId)
+    if (!c || c.side !== 'friendly') return
+    setViewedFriendlyId(instanceId)
   }
 
   /** 行动后统一收尾：胜负判定 → 结算。TM-P2-009-R1 §6.2：不再自动换人——
@@ -415,13 +413,6 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
   const currentResources = currentCombatant ? resourcesFor(currentCombatant.instanceId) : { action: 0, bonus: 0 }
   const hasAction = currentResources.action > 0
   const hasBonus = currentResources.bonus > 0
-  const friendlyBlock = isFriendlyTurn ? friendlyBlockIndices(turns, currentTurnIndex) : []
-  const switchableFriendlyIds = new Set(
-    friendlyBlock
-      .map((i) => turns[i]!.combatant)
-      .filter((c) => c.isAlive && !(endedByInstance[c.instanceId] ?? false))
-      .map((c) => c.instanceId),
-  )
   const actionsLocked = phase !== 'active' || !isFriendlyTurn || pendingTarget !== null || currentEnded
 
   /** 战斗结束统一同步：玩家 HP/MP + 药水 + 伙伴 MP 写入 GameState；胜利再结算 XP/loot/flags */
@@ -436,14 +427,9 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
         .map((c) => ({ companionId: c.sourceId, mp: c.currentMp })),
     })
     if (!isEncounterWon(next)) return
-    // 胜利结算（§6/§15/§16）：单敌委托 grantLoot + resolveCombatVictory；多敌整体事务一次写入并返回 summary
-    if (setup.singleEnemyId) {
-      setVictoryLoot(useGameStore.getState().grantLoot(setup.singleEnemyId))
-      useGameStore.getState().resolveEncounterVictory(encounterId)
-    } else {
-      const summary = useGameStore.getState().resolveEncounterVictory(encounterId)
-      setVictorySummary(summary)
-    }
+    // 胜利结算统一由 Encounter 权威入口先校验再发奖励；单敌/多敌都返回展示 summary。
+    const summary = useGameStore.getState().resolveEncounterVictory(encounterId)
+    setVictorySummary(summary)
     const defeatedInstances: EnemyInstance[] = next
       .filter((c) => c.side === 'enemy' && !c.isAlive)
       .map((c) => ({ instanceId: c.instanceId, enemyId: c.sourceId, currentHp: 0, maxHp: c.maxHp }))
@@ -541,7 +527,8 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
     const support = info.skill.combat?.supportEffect
     // 盾：选友方目标，目标下次被敌人命中减伤
     if (support?.type === 'reduce_next_enemy_damage') {
-      if (!target || target.side !== 'friendly') return
+      const supportTarget = target ?? (skillTargetMode(info.skill) === 'self' ? actor : undefined)
+      if (!supportTarget || supportTarget.side !== 'friendly') return
       if (actor.currentMp < info.skill.mpCost) {
         pushEvent('system', 'system', '灵力不足，技能无法施展。')
         return
@@ -553,9 +540,9 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
       if (info.oncePerCombat) markOnceUsed(actor, skillId)
       setShieldByTarget((prev) => ({
         ...prev,
-        [target.instanceId]: { amount: support.amount, skillName: info.skill.name },
+        [supportTarget.instanceId]: { amount: support.amount, skillName: info.skill.name },
       }))
-      pushEvent('companion_support', 'companion', `${actor.name}为${target.name}施展了${info.skill.name}（可抵消 ${support.amount} 点伤害）。`, [], actor.name)
+      pushEvent('companion_support', actor.sourceType, `${actor.name}为${supportTarget.name}施展了${info.skill.name}（可抵消 ${support.amount} 点伤害）。`, [], actor.name)
       afterAction(next)
       return
     }
@@ -858,9 +845,11 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
     const ended = c.side === 'friendly' && (endedByInstance[c.instanceId] ?? false)
     const isCurrent = c.instanceId === currentCombatant?.instanceId
     if (isCurrent) return `${base} border-gold-400 bg-ink-800/70 ring-1 ring-gold-400`
+    if (c.side === 'friendly' && c.instanceId === viewedFriendlyId) {
+      return `${base} cursor-pointer border-sky-500/60 bg-ink-800/60 ring-1 ring-sky-500/50`
+    }
     if (ended) return `${base} border-ink-800 bg-ink-950/60 text-bone-600 opacity-70`
-    // §7：当前 friendly 段内可切换的伙伴/玩家卡（ready → 可点）
-    if (c.side === 'friendly' && switchableFriendlyIds.has(c.instanceId)) {
+    if (c.side === 'friendly') {
       return `${base} cursor-pointer border-sky-500/60 bg-ink-800/60 hover:border-sky-400`
     }
     return `${base} border-ink-600 bg-ink-800/50`
@@ -881,16 +870,13 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
 
   const renderUnitCard = (c: Combatant, label: string, levelText: string) => {
     const isTarget = pendingTarget !== null && pendingTarget.mode === (c.side === 'enemy' ? 'enemy' : 'friendly') && c.isAlive
-    // TM-P2-009-R1 §7：friendly 段内可切换（未 ended / 存活 / 同段 / 非目标选择中）
-    const isSwitchable =
+    const isViewable =
       c.side === 'friendly' &&
       !isTarget &&
       phase === 'active' &&
       isFriendlyTurn &&
       pendingTarget === null &&
-      c.isAlive &&
-      !(endedByInstance[c.instanceId] ?? false) &&
-      switchableFriendlyIds.has(c.instanceId)
+      c.isAlive
     // 伙伴卡信息按 sourceId 独立（R1：多伙伴各自展示自己的技能/等级）
     const companionInfo = c.sourceType === 'companion' ? companionInfoFor(c.sourceId) : undefined
     const mpText = c.currentMp > 0 ? ` · 灵力 ${c.currentMp} / ${c.maxMp}` : ''
@@ -898,9 +884,9 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
       <div
         key={c.instanceId}
         data-testid={c.side === 'enemy' ? 'combat-enemy-unit' : c.sourceType === 'player' ? 'combat-player-panel' : 'combat-companion-panel'}
-        className={`${unitCardClass(c)} ${isTarget ? 'cursor-pointer border-sky-400 ring-1 ring-sky-400' : ''}`}
-        onClick={isTarget ? () => executeTargeted(c) : isSwitchable ? () => handleSwitchFriendly(c.instanceId) : undefined}
-        role={isTarget || isSwitchable ? 'button' : undefined}
+        className={`combat-unit-card ${unitCardClass(c)} ${isTarget ? 'cursor-pointer border-sky-400 ring-1 ring-sky-400' : ''}`}
+        onClick={isTarget ? () => executeTargeted(c) : isViewable ? () => handleViewFriendly(c.instanceId) : undefined}
+        role={isTarget || isViewable ? 'button' : undefined}
       >
         {/* TM-P2-009-R1 §5.2 三行：名字(·职业) · Lv / 生命 · 灵力 / 攻击 · 护甲 · 敏捷 */}
         <p className="font-bold text-bone-100">
@@ -915,6 +901,8 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
           <span className="tabular-nums text-bone-100">{c.armor}</span> · 敏捷{' '}
           <span className="tabular-nums text-bone-100">{c.agility}</span>
         </p>
+        {c.side === 'friendly' && c.instanceId === currentCombatant?.instanceId && <p className="mt-1 text-[11px] text-gold-300">当前行动单位</p>}
+        {c.side === 'friendly' && c.instanceId !== currentCombatant?.instanceId && c.instanceId === viewedFriendlyId && <p className="mt-1 text-[11px] text-sky-300">正在查看 · 尚未轮到行动</p>}
         {companionInfo && (
           <div className="mt-2 border-t border-ink-600 pt-2 text-xs text-bone-500">
             <p>
@@ -1011,15 +999,15 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
       </div>
 
       {/* 上：我方 / 敌方两栏（§17） */}
-      <section className="combat-status mb-3 grid gap-3 sm:grid-cols-2">
+      <section className="combat-status mb-3 grid gap-3 lg:grid-cols-2">
         {/* 我方（玩家 + 伙伴） */}
-        <section className="flex flex-wrap gap-2">
-          <p className="text-xs font-bold tracking-widest text-bone-500">我方</p>
+        <section className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <p className="col-span-full text-xs font-bold tracking-widest text-bone-500">我方</p>
           {combatants.filter((c) => c.side === 'friendly').map((c) => renderFriendlyCard(c))}
         </section>
         {/* 敌方 */}
-        <section data-testid="combat-enemy-panel" className="flex flex-wrap gap-2">
-          <p className="text-xs font-bold tracking-widest text-bone-500">敌方</p>
+        <section data-testid="combat-enemy-panel" className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <p className="col-span-full text-xs font-bold tracking-widest text-bone-500">敌方</p>
           {enemyDisplays.map((entry) => renderEnemyCard(entry))}
         </section>
       </section>
@@ -1178,23 +1166,7 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
                   {victoryLevelPreview.maxHpGain > 0 && '）'}
                 </p>
               )}
-              {(victoryLoot?.gold ?? 0) > 0 && <p className="mt-2">金币 +{victoryLoot?.gold ?? 0}</p>}
               {(victorySummary?.gold ?? 0) > 0 && <p className="mt-2">金币 +{victorySummary?.gold ?? 0}</p>}
-              {victoryLoot && victoryLoot.items.length > 0 && (
-                <div className="mt-3">
-                  <p className="text-bone-500">战利品：</p>
-                  {victoryLoot.items.map((it, index) => {
-                    const itemDef = getItem(it.itemId)
-                    const rarity = itemDef?.rarity ? `（${RARITY_LABELS[itemDef.rarity]}）` : ''
-                    return (
-                      <p key={combatLootItemKey(it.itemId, index)} className="mt-1">
-                        {itemDef?.name ?? '异常物品（无法识别）'} ×{it.quantity}
-                        {rarity}
-                      </p>
-                    )
-                  })}
-                </div>
-              )}
               {victorySummary && victorySummary.items.length > 0 && (
                 <div className="mt-3">
                   <p className="text-bone-500">战利品：</p>
@@ -1210,20 +1182,19 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
                   })}
                 </div>
               )}
-              {(victoryLoot?.luckCheck || victorySummary?.luckChecks?.length) && (
+              {victorySummary?.luckChecks?.length ? (
                 <div className="mt-2 text-xs text-bone-500">
-                  {victoryLoot?.luckCheck && formatLuckCheckLog(victoryLoot.luckCheck).map((line) => <p key={line}>{line}</p>)}
                   {victorySummary?.luckChecks?.map((lc, i) =>
                     formatLuckCheckLog(lc).map((line) => (
                       <p key={`${i}-${line}`}>{line}</p>
                     )),
                   )}
                 </div>
-              )}
-              {(victoryXp > 0 || victoryLoot || victorySummary) && (
+              ) : null}
+              {((victoryXp > 0) || (victorySummary && (victorySummary.gold > 0 || victorySummary.items.length > 0 || victorySummary.luckChecks.length > 0))) && (
                 <p className="mt-3 text-bone-500">已收入背包</p>
               )}
-              {victoryXp <= 0 && !victoryLoot && !victorySummary && (
+              {victoryXp <= 0 && !(victorySummary && (victorySummary.gold > 0 || victorySummary.items.length > 0 || victorySummary.luckChecks.length > 0)) && (
                 <p className="text-bone-500">本次胜利没有额外奖励。</p>
               )}
             </div>

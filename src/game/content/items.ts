@@ -189,6 +189,13 @@ export const ITEMS: Record<string, ItemDefinition> = {
     description: '王财在黑石塔附近遭遇魔物袭击时遗失的项链，是他妻子留下的重要物件。',
     value: 0,
   },
+  tianlong_martial_medal: {
+    id: 'tianlong_martial_medal',
+    name: '天龙武备铜章',
+    type: 'quest',
+    description: '天龙武备场授予的资格凭证，证明持有者完成了基础武备试炼。',
+    value: 0,
+  },
   // TM-P2-004 第 66 节：第一种真实礼物——天龙桂花糕（gift 类型 + 礼物标签）
   tianlong_osmanthus_cake: {
     id: 'tianlong_osmanthus_cake',

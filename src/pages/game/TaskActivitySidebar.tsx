@@ -508,6 +508,8 @@ function QuestRow({ questId, gameState, compact }: { questId: string; gameState:
   const goldenLairRechecked = goldenSearchQuest?.flags.rabbit_lair_rechecked === true
   // TM-P2-009-R1 §12：Golden Rabbit 四调查全部完成 → 派生「待续」（内部 status 仍 in_progress，零状态修改）
   const goldenRabbitInvestigationComplete = isGoldenRabbitInvestigationComplete(gameState)
+  // 该派生标签只属于黄金兔子任务；不能把它泄漏到同一列表中的其他进行中任务。
+  const isGoldenRabbitQuest = questId === 'quest_golden_rabbit_search'
   const northGateQuest = gameState.quests.find((q) => q.questId === 'quest_north_gate_missing_patrol')
   const northGateTrailChecked = northGateQuest?.flags.north_gate_trail_checked === true
   const northGateWolfDefeated = northGateQuest?.flags.north_gate_wolf_defeated === true
@@ -540,9 +542,9 @@ function QuestRow({ questId, gameState, compact }: { questId: string; gameState:
       <div className="flex items-center justify-between gap-3">
         <p className="font-bold text-bone-100">{def?.title ?? '未知任务'}</p>
         <span
-          className={`shrink-0 text-xs ${goldenRabbitInvestigationComplete ? 'text-bone-500' : 'text-gold-300'}`}
+          className={`shrink-0 text-xs ${isGoldenRabbitQuest && goldenRabbitInvestigationComplete ? 'text-bone-500' : 'text-gold-300'}`}
         >
-          {goldenRabbitInvestigationComplete ? '待续' : '进行中'}
+          {isGoldenRabbitQuest && goldenRabbitInvestigationComplete ? '待续' : '进行中'}
         </span>
       </div>
       {!compact && <p className="mt-1 text-xs leading-relaxed text-bone-500">{def?.summary ?? '异常任务（无法识别）'}</p>}

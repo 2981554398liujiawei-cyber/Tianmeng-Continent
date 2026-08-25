@@ -2,7 +2,7 @@
  * Party Combat 遭遇构建（TM-P2-007-R1 BLOCKER A）。
  *
  * 把 CombatPage 的 buildCombatSetup 抽为纯函数 + DI：
- *  - activeCompanionIds 泛化为任意伙伴（不再只认 sakura_yuko）→ 玩家 + 最多 2 名伙伴（3v3）
+ *  - activeCompanionIds 泛化为任意伙伴（不再只认 sakura_yuko）→ 玩家 + 最多 3 名伙伴（4v4）
  *  - resolveCompanion / getCompanionDef 可注入（测试用 fixture 伙伴，不进生产注册表）
  *  - rng 可注入（测试确定性先手）
  *
@@ -31,7 +31,7 @@ import { getUsableSkills } from './skill'
 import { getItem } from '../content'
 
 /** 参与战斗的伙伴上限（3v3：玩家 1 + 伙伴 ≤ 2） */
-export const MAX_PARTY_COMPANIONS = 2
+export const MAX_PARTY_COMPANIONS = 3
 
 /** 伙伴战斗信息（每个 active companion 一条；技能/属性独立） */
 export interface CompanionCombatInfo {
@@ -119,7 +119,8 @@ export function buildCombatSetup(state: GameState, def: EncounterDefinition, opt
   const companions: CompanionCombatInfo[] = []
 
   const activeCompanionIds = state.party?.activeCompanionIds ?? []
-  for (const companionId of activeCompanionIds.slice(0, MAX_PARTY_COMPANIONS)) {
+  for (const companionId of activeCompanionIds) {
+    if (companions.length >= MAX_PARTY_COMPANIONS) break
     const companionState = resolveCompanion(companionId, state)
     if (!companionState) continue
     if (companionState.status !== 'guest' && companionState.status !== 'recruited') continue

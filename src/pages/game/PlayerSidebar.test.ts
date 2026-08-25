@@ -76,3 +76,16 @@ describe('TM-P2-009-R1 §13：冒险阅历条（X1-X3）', () => {
     expect(xpFillWidth()).toBe(100)
   })
 })
+
+describe('TM-P2-010 技能成长入口', () => {
+  it('显示共用技能入口，展开后不泄露内部技能标识', () => {
+    renderToDom(createElement(PlayerSidebar))
+    const panel = document.querySelector('[data-testid="skill-progression-panel"]')!
+    expect(panel).toBeTruthy()
+    const button = panel.querySelector('[data-testid="open-skill-progression"]') as HTMLButtonElement
+    expect(button.textContent).toContain('查看技能')
+    act(() => button.click())
+    expect(panel.querySelector('[data-testid="skill-tree"]')).toBeTruthy()
+    expect(panel.textContent).not.toMatch(/(?:quest_|skill_|enemy_|encounter_|location_|item_|trial_)/)
+  })
+})

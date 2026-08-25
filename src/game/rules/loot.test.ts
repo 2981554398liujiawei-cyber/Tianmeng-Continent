@@ -152,11 +152,16 @@ describe('Loot V2 规则层（TM-P2-007 §5）', () => {
     expect(grant.luckCheck?.dc).toBe(LOOT_LUCK_DC)
   })
 
-  it('全部正式敌人均有掉落表，且 guaranteed 条目非空', () => {
+  it('正式敌人均有掉落表；武备训练单位明确无普通掉落', () => {
+    const trainingEnemyIds = new Set(['trial_soldier', 'trial_duelist', 'trial_scout', 'trial_apprentice_mage'])
     const enemyIds = Object.keys(ENEMIES)
     expect(enemyIds.length).toBeGreaterThanOrEqual(11)
     for (const id of enemyIds) {
       const table = getDropTable(id)
+      if (trainingEnemyIds.has(id)) {
+        expect(table, `${id} 训练单位不得有普通掉落表`).toBeUndefined()
+        continue
+      }
       expect(table, `${id} 应有掉落表`).toBeDefined()
       expect(table?.guaranteed?.length).toBeGreaterThan(0)
       // 任务关键物（rabbit_path / kuidong_necklace 等）绝不出现在掉落表中

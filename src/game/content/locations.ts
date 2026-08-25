@@ -63,8 +63,17 @@ export const LOCATIONS: Record<string, LocationDefinition> = {
     id: 'tianlong_martial_hall',
     name: '武馆',
     description: '天龙城中的武馆，来往的武者与守卫在这里操练，兵器碰撞声不时从场中传来。',
-    connections: ['tianlong_city'],
+    connections: ['tianlong_city', 'tianlong_martial_trial_ground'],
     enemyIds: [],
+  },
+  tianlong_martial_trial_ground: {
+    id: 'tianlong_martial_trial_ground',
+    name: '天龙武备场',
+    description: '武馆后方的封闭演武场，木桩、沙地与练习兵器记录着一代代武者的步伐。',
+    requiredFlag: 'martial_trial_invited',
+    connections: ['tianlong_martial_hall'],
+    enemyIds: ['trial_soldier', 'trial_duelist', 'trial_scout', 'trial_apprentice_mage'],
+    encounters: ['encounter_trial_warrior', 'encounter_trial_knight', 'encounter_trial_ranger', 'encounter_trial_mage'],
   },
   // TM-P1-025：黑石塔一层（第二地区第一段地牢——解锁路线+骷髅士兵战斗；未解锁时移动按钮可见但 disabled，复用 requiredFlag；不建独立入口节点/城外道路）
   black_stone_tower_floor1: {
@@ -90,7 +99,10 @@ export const LOCATIONS: Record<string, LocationDefinition> = {
     // TM-P1-028：二层严格固定顺序三敌（僵尸→黑法师→骷髅战士）
     enemyIds: ['tower_zombie', 'black_mage', 'skeleton_warrior'],
     // TM-P2-007 §7.5：二层同时挂非主线可选多怪遭遇「残破巡逻队」（不进主线，可忽略）
-    encounters: ['encounter_tower_zombie', 'encounter_black_mage', 'encounter_skeleton_warrior', 'encounter_broken_patrol'],
+    encounters: [
+      'encounter_tower_zombie', 'encounter_black_mage', 'encounter_skeleton_warrior', 'encounter_broken_patrol',
+      ...(import.meta.env?.DEV === true && import.meta.env.VITE_QA_COMBAT_V7 === '1' ? ['encounter_qa_combat_v7_four'] : []),
+    ],
   },
   // TM-P1-029：黑石塔三层（越过石阶后更深；守卫敌人骷髅女妖；击败后找到夔峒项链；未解锁时移动按钮可见但 disabled）
   black_stone_tower_floor3: {

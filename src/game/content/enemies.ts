@@ -287,4 +287,28 @@ export const ENEMIES: Record<string, EnemyDefinition> = {
     skillIds: ['enemy_boar_charge'],
     aiProfile: 'aggressive',
   },
+  trial_soldier: {
+    id: 'trial_soldier', name: '武备场士兵', level: 3,
+    description: '身披训练甲的武馆士兵，擅长以盾牌稳住阵线。', tags: ['humanoid', 'training'],
+    maxHp: 10, armor: 11, attackPower: 13, agility: 8,
+    skillIds: ['trial_shield_bash'], aiProfile: 'defensive',
+  },
+  trial_duelist: {
+    id: 'trial_duelist', name: '武备场教习', level: 4,
+    description: '负责检验武者节奏的武馆教习，出手沉稳而精准。', tags: ['humanoid', 'training'],
+    maxHp: 12, armor: 11, attackPower: 15, agility: 10,
+    skillIds: ['trial_breaking_slash'], aiProfile: 'aggressive',
+  },
+  trial_scout: {
+    id: 'trial_scout', name: '武备场斥候', level: 3,
+    description: '在沙地边缘高速移动的训练斥候，专门寻找破绽。', tags: ['humanoid', 'training'],
+    maxHp: 8, armor: 10, attackPower: 13, agility: 14,
+    skillIds: ['trial_lunge'], aiProfile: 'pack',
+  },
+  trial_apprentice_mage: {
+    id: 'trial_apprentice_mage', name: '武备场术士', level: 4,
+    description: '负责模拟法术压力的武馆学徒，法术尚不纯熟但不可大意。', tags: ['humanoid', 'training', 'magic'],
+    maxHp: 14, armor: 10, attackPower: 13, agility: 9,
+    skillIds: ['trial_arcane_bolt'], aiProfile: 'caster',
+  },
 }

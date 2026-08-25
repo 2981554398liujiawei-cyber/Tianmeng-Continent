@@ -5,7 +5,7 @@
 //   FJ1  北门失联提交后，马科发布《北郊追踪》行动块（北郊 available）
 //   FJ2  北郊未 completed 时，《断旗余声》发布块不出现（窄前置链 §31）
 //   FJ3  北郊 completed 后，《断旗余声》发布块出现（马科发布）
-//   FJ4  完整旅程三段全部打通（北门失联→北郊追踪→断旗余声→提交→骑士试炼预告）
+//   FJ4  完整旅程三段全部打通（北门失联→北郊追踪→断旗余声→提交→P2-010 正式试炼入口）
 //   FJ5  全程无 Production ID leak（quest_/clue_/enemy_/encounter_/location_/item_/skill_/companion_/mount_）
 //   FJ6  全程无 JS exception
 //
@@ -237,7 +237,7 @@ try {
   const afterBanner = await bodyText()
   check('FJ4: 断旗余声提交完成（冒险阅历 +120）', afterBanner.includes('冒险阅历 +120'), afterBanner.match(/任务完成[\s\S]{0,60}/)?.[0] ?? '')
   main = await mainColText()
-  check('FJ4: 骑士试炼预告块出现（§17 只预告不实现）', main.includes('骑士试炼的预告') && main.includes('试炼内容尚待展开'))
+  check('FJ4: P2-010 正式试炼入口兑现原 §17 预告', main.includes('天龙武备试炼') && main.includes('接受试炼') && !main.includes('试炼内容尚待展开'))
 
   const leakedJourney = await leakedPrefixes()
   check('FJ5: 全程无 Production ID leak', leakedJourney.length === 0, leakedJourney.join(','))
