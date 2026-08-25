@@ -116,6 +116,12 @@ jobs:
           PUBLIC_GAME_URL: ${{ github.event.inputs.public_game_url }}
         run: node qa/p2-007-r2-public-smoke.mjs
 
+      - name: P2-011 public load-only probe (5/5)
+        env:
+          PUBLIC_GAME_URL: ${{ github.event.inputs.public_game_url }}
+          WORKER_URL: ${{ github.event.inputs.worker_url }}
+        run: npm run qa:p2-011-public-load
+
       - name: Detect Cloudflare API token
         run: |
           if [ -n "$CLOUDFLARE_API_TOKEN" ]; then
