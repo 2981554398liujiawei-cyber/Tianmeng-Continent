@@ -142,7 +142,12 @@ try {
   result = await request(null, { raw: '{broken' })
   check('W14 malformed JSON is rejected', result.response.status === 400 && result.json?.code === 'invalid')
 
-  result = await request(null, { raw: JSON.stringify({ padding: 'x'.repeat(1_000_001) }) })
+  const oversizedResponse = await worker.dispatchFetch(workerUrl, {
+    method: 'POST',
+    headers: { origin: 'http://localhost:5173', 'content-type': 'application/json' },
+    body: JSON.stringify({ padding: 'x'.repeat(1_000_001) }),
+  })
+  result = { response: oversizedResponse, json: await oversizedResponse.json() }
   check('W15 request bodies larger than 1 MB are rejected', result.response.status === 413 && result.json?.code === 'invalid')
 
   await Promise.all([startWorker(8791), startWorker(8792, ['SAVE_PEPPER:'])])
