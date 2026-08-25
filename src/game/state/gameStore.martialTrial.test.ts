@@ -44,7 +44,15 @@ describe('TM-P2-010 martial trial store flow', () => {
     expect(useGameStore.getState().resolveMartialTrialObservation('con', 20)).toMatchObject({ ok: true, success: true })
     expect(useGameStore.getState().gameState?.player.mp).toBe(2)
 
+    const beforeTrialVictory = useGameStore.getState().gameState!
+    const beforeTrialVictoryGold = beforeTrialVictory.player.gold
+    const beforeTrialVictoryXp = beforeTrialVictory.player.adventureXp
+    const beforeTrialVictoryInventory = beforeTrialVictory.inventory
     expect(useGameStore.getState().resolveEncounterVictory('encounter_trial_knight')).not.toBeNull()
+    const afterTrialVictory = useGameStore.getState().gameState!
+    expect(afterTrialVictory.player.gold).toBe(beforeTrialVictoryGold)
+    expect(afterTrialVictory.player.adventureXp).toBe(beforeTrialVictoryXp)
+    expect(afterTrialVictory.inventory).toEqual(beforeTrialVictoryInventory)
     expect(useGameStore.getState().gameState?.quests.find((quest) => quest.questId === MARTIAL_TRIAL_QUEST_ID)?.flags.trial_combat_done).toBe(true)
     const afterFirstVictory = useGameStore.getState().gameState!
     expect(useGameStore.getState().startEncounter('encounter_trial_knight')).toBe(false)

@@ -403,12 +403,12 @@ describe('CombatPage TM-P2-009-R1 §5-§8', () => {
     expect(bodyText()).not.toContain('石头城的回合')
   })
 
-  it('R1-U6 §7 friendly 段切换：Sakura 回合点 test_fox 卡 → 控制切换（独立资源）', () => {
+  it('R1-U6 §7 friendly 查看切换：点击未轮到伙伴只切详情，不越 initiative 操控', () => {
     useGameStore.setState({ gameState: withTwoCompanions(createInitialGameState()) })
     vi.spyOn(Math, 'random').mockReturnValueOnce(0).mockReturnValueOnce(0.99).mockReturnValue(0)
     mountCombat('encounter_corrupted_rabbit')
     expect(bodyText()).toContain('樱花优子的回合')
-    // 点 test_fox 卡（同 friendly 段：sakura→test_fox→player 线性连续）→ 切到 test_fox
+    // 点 test_fox 卡只切换查看；真正行动单位仍是 Sakura。
     const foxCard = Array.from(document.querySelectorAll('[data-testid="combat-companion-panel"]')).find((el) =>
       (el.textContent ?? '').includes('测试狐'),
     )
@@ -416,7 +416,9 @@ describe('CombatPage TM-P2-009-R1 §5-§8', () => {
     act(() => {
       ;(foxCard as HTMLElement).click()
     })
-    expect(bodyText()).toContain('测试狐的回合')
+    expect(bodyText()).toContain('正在查看 · 尚未轮到行动')
+    expect(bodyText()).toContain('樱花优子的回合')
+    expect(bodyText()).not.toContain('测试狐的回合')
   })
 
   it('R1-U7 §6.1 治疗药水消耗 Bonus：普攻不影响 bonus，背包内药水不因资源禁用', () => {

@@ -1840,11 +1840,18 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
                 .map((encounterId) => getEncounter(encounterId))
                 .filter((def): def is NonNullable<typeof def> => (def ? checkEncounter(gameState, def.id).allowed : false))
               if (visibleEncounters.length === 0) return null
+              const encounterGroups = [
+                { key: 'story', title: '当前威胁', items: visibleEncounters.filter((def) => (def.activityType ?? (def.repeatable ? 'optional' : 'story')) === 'story') },
+                { key: 'optional', title: '区域历练', items: visibleEncounters.filter((def) => (def.activityType ?? (def.repeatable ? 'optional' : 'story')) === 'optional') },
+                { key: 'training', title: '训练对抗', items: visibleEncounters.filter((def) => def.activityType === 'training') },
+              ].filter((group) => group.items.length > 0)
               return (
-                <section className="rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
-                  <h3 data-testid="regional-training-heading" className="mb-3 text-sm font-bold tracking-wider text-bone-500">区域历练</h3>
-                  <div className="flex flex-col gap-3">
-                    {visibleEncounters.map((def) => {
+                <div className="flex flex-col gap-4">
+                  {encounterGroups.map((group) => (
+                    <section key={group.key} className="rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
+                      <h3 data-testid={group.key === 'optional' ? 'regional-training-heading' : `${group.key}-encounter-heading`} className="mb-3 text-sm font-bold tracking-wider text-bone-500">{group.title}</h3>
+                      <div className="flex flex-col gap-3">
+                    {group.items.map((def) => {
                       const cannotFight = player.hp <= 0
                       const singleEnemyId = singleEnemyIdOf(def)
                       const singleEnemy = singleEnemyId ? getEnemy(singleEnemyId) : undefined
@@ -1857,7 +1864,7 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
                       const loot = encounterLootPreview(def)
                       const recommendation = encounterRecommendation(def, player.level)
                       return (
-                        <div key={def.id} data-testid="training-encounter-card" className="rounded border border-ink-600 bg-ink-900/40 p-3">
+                        <div key={def.id} data-testid={group.key === 'optional' ? 'training-encounter-card' : `${group.key}-encounter-card`} className="rounded border border-ink-600 bg-ink-900/40 p-3">
                           <div className="flex items-center justify-between gap-3">
                             <div>
                               <p className="font-bold text-bone-100">
@@ -1898,8 +1905,10 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
                         </div>
                       )
                     })}
-                  </div>
-                </section>
+                      </div>
+                    </section>
+                  ))}
+                </div>
               )
             })()}
 

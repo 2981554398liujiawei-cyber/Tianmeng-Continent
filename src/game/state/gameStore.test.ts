@@ -31,6 +31,18 @@ beforeEach(() => {
   useGameStore.setState({ gameState: createInitialGameState(), hasSave: false })
 })
 
+describe('TM-P2-010-R1 Encounter 单敌权威结算', () => {
+  it('先通过权威胜利守卫再发掉落，重复结算被拒绝且背包不再变化', () => {
+    useGameStore.getState().newGame()
+    useGameStore.getState().setCurrentLocation('rabbit_lair')
+    const first = useGameStore.getState().resolveEncounterVictory('encounter_dudu_rabbit')
+    expect(first).not.toBeNull()
+    const inventoryAfterFirst = useGameStore.getState().gameState!.inventory
+    expect(useGameStore.getState().resolveEncounterVictory('encounter_dudu_rabbit')).toBeNull()
+    expect(useGameStore.getState().gameState!.inventory).toEqual(inventoryAfterFirst)
+  })
+})
+
 afterEach(() => {
   vi.unstubAllGlobals()
 })

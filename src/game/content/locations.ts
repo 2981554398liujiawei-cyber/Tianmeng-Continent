@@ -99,7 +99,10 @@ export const LOCATIONS: Record<string, LocationDefinition> = {
     // TM-P1-028：二层严格固定顺序三敌（僵尸→黑法师→骷髅战士）
     enemyIds: ['tower_zombie', 'black_mage', 'skeleton_warrior'],
     // TM-P2-007 §7.5：二层同时挂非主线可选多怪遭遇「残破巡逻队」（不进主线，可忽略）
-    encounters: ['encounter_tower_zombie', 'encounter_black_mage', 'encounter_skeleton_warrior', 'encounter_broken_patrol'],
+    encounters: [
+      'encounter_tower_zombie', 'encounter_black_mage', 'encounter_skeleton_warrior', 'encounter_broken_patrol',
+      ...(import.meta.env?.DEV === true && import.meta.env.VITE_QA_COMBAT_V7 === '1' ? ['encounter_qa_combat_v7_four'] : []),
+    ],
   },
   // TM-P1-029：黑石塔三层（越过石阶后更深；守卫敌人骷髅女妖；击败后找到夔峒项链；未解锁时移动按钮可见但 disabled）
   black_stone_tower_floor3: {

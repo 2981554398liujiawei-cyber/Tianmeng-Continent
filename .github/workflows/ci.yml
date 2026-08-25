@@ -174,3 +174,25 @@ jobs:
           fi
           echo "Using Chrome at $CHROME_PATH"
           CHROME_PATH="$CHROME_PATH" npm run qa:p2-010
+
+  qa-p2-010-r1:
+    name: P2-010-R1 Focused QA
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Run P2-010-R1 focused E2E
+        run: |
+          CHROME_PATH="$(command -v google-chrome-stable || command -v google-chrome || command -v chromium || true)"
+          if [ -z "$CHROME_PATH" ]; then echo "Chrome executable was not found on the runner"; exit 1; fi
+          CHROME_PATH="$CHROME_PATH" npm run qa:p2-010-r1
+      - name: Run P2-010-R1 screenshot evidence
+        run: |
+          CHROME_PATH="$(command -v google-chrome-stable || command -v google-chrome || command -v chromium || true)"
+          CHROME_PATH="$CHROME_PATH" npm run qa:p2-010-r1-screenshots

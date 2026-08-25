@@ -25,7 +25,7 @@ import type { SkillDefinition } from '../types/skill'
 export type Rng = () => number
 
 /** 遭遇敌方单位硬上限（3v3；§8） */
-export const MAX_ENCOUNTER_MEMBERS = 3
+export const MAX_ENCOUNTER_MEMBERS = 4
 
 /**
  * 战斗单位（§9.2）。

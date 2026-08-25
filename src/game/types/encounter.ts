@@ -1,7 +1,9 @@
+import type { ProfessionId } from './character'
+
 /**
  * Encounter V2 数据结构（TM-P2-007 §7）。
  *  - 玩家面对的入口是 Encounter，不再是单个 enemyId。
- *  - 一个 Encounter 含 1–3 名敌人（sum(count) <= 3）。
+ *  - 一个 Encounter 含 1–4 名敌人（sum(count) <= 4）。
  *  - fixedMembers 与 variants 只能二选一。
  *  - 纯数据：不包含任何规则 / RNG / 状态。
  */
@@ -9,7 +11,7 @@
 /** 单种敌人的出现数量 */
 export interface EncounterMember {
   enemyId: string
-  /** 该敌人数量（count >= 1；整场遭遇成员总数 sum(count) <= 3） */
+  /** 该敌人数量（count >= 1；整场遭遇成员总数 sum(count) <= 4） */
   count: number
 }
 
@@ -37,6 +39,10 @@ export interface EncounterDefinition {
   fixedMembers?: EncounterMember[]
   variants?: EncounterVariant[]
   canEscape: boolean
+  /** V7 展示分类：story=剧情/正式试炼，optional=区域历练，training=可重复训练。 */
+  activityType?: 'story' | 'optional' | 'training'
+  /** 正式职业试炼专属路线；存在时入口和胜利结算必须与玩家职业严格匹配。 */
+  trialProfession?: ProfessionId
   encounterDefeatFlag?: string
   /** TM-P2-009-R1 §11：威胁等级（UI 区分；纯展示元数据，不改战斗公式） */
   difficulty?: 'low' | 'standard' | 'dangerous'

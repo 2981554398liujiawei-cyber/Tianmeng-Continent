@@ -10,6 +10,7 @@ import { KNIGHT_POWER_STRIKE_MP_COST, MAGE_SPELL_MP_COST, WARRIOR_SUPPRESS_STRIK
 import { applyAdventureXpReward } from '../rules/progression'
 import { getEnemyFirstKillXp, FIRST_KILL_FLAG_ENEMIES, resolveEncounterVictoryXp } from '../rules/combatXp'
 import { SINGLE_ENEMY_ENCOUNTERS } from '../content/encounters'
+import { tier2SkillFor } from '../content/skillProgression'
 import type { EncounterDefinition } from '../types/encounter'
 import { checkEquipItem } from '../rules/equipment'
 import { canBuyMerchantItem, getMerchantOffer } from '../rules/merchant'
@@ -852,13 +853,7 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
         }
       }
       if (questId === MARTIAL_TRIAL_QUEST_ID) {
-        const skillByProfession: Record<string, string> = {
-          warrior: 'warrior_breaking_slash',
-          knight: 'knight_oath_guard',
-          ranger: 'ranger_windstep_strike',
-          mage: 'mage_flame_lance',
-        }
-        const tierTwoSkill = skillByProfession[next.player.profession]
+        const tierTwoSkill = tier2SkillFor(next.player.profession)
         const learnedSkillIds = tierTwoSkill && !next.player.learnedSkillIds.includes(tierTwoSkill)
           ? [...next.player.learnedSkillIds, tierTwoSkill]
           : next.player.learnedSkillIds
@@ -1297,11 +1292,12 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
     // 尤其 Trial 完成后必须在计算 XP/loot 之前拒绝重复结算。
     const check = checkEncounter(state, encounterId)
     if (!check.allowed) return null
-    // 单敌遭遇：委托现有 resolveCombatVictory（quest flags / 固定战利品 / first-kill XP 全复用）；返回 null（loot 展示由 CombatPage 走 grantLoot）
+    // 单敌遭遇：先完成权威胜利校验/状态结算，成功后才发普通掉落；避免 UI 先发掉落、后校验失败造成部分结算。
     const singleEnemyId = singleEnemyIdOf(def)
     if (singleEnemyId) {
-      get().resolveCombatVictory(singleEnemyId)
-      return null
+      if (!get().resolveCombatVictory(singleEnemyId)) return null
+      const grant = get().grantLoot(singleEnemyId)
+      return resolveEncounterLoot(grant ? [grant] : [])
     }
     // 多敌遭遇：整体胜利事务（§6/§15/§16）——XP sum + loot 聚合 + encounterDefeatFlag 一次性写入
     const variantId = currentEncounterVariantId(state, def)
@@ -1374,7 +1370,7 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
       ok = true
       return { gameState: { ...gs, inventory, player: { ...gs.player, gold }, world } }
     })
-    if (ok && encounterId.startsWith('encounter_trial_')) {
+    if (ok && def.trialProfession === state.player.profession) {
       set((s) => {
         const state = s.gameState
         if (!state) return {}

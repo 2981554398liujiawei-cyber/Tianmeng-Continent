@@ -602,7 +602,7 @@ async function partD() {
 }
 
 // =====================================================================
-// Part E：Friendly switching（F1-F5）
+// Part E：Friendly viewing without initiative bypass（F1-F5）
 // =====================================================================
 async function partE() {
   const label = 'Part E Friendly switching'
@@ -615,14 +615,14 @@ async function partE() {
     let body = await bodyText()
     check('F0: Sakura 先行动', body.includes('樱花优子的回合'))
 
-    // F1：当前 friendly 段内玩家卡可切换（role=button）
+    // F1：玩家卡可点击查看（role=button）
     const playerSwitchable = await page.evaluate(() => {
       const el = document.querySelector('[data-testid="combat-player-panel"]')
       return el?.getAttribute('role') === 'button' && el.className.includes('cursor-pointer')
     })
-    check('F1: 连续 friendly 段内玩家卡可点击切换', playerSwitchable === true)
+    check('F1: 非当前 friendly 卡可点击查看', playerSwitchable === true)
 
-    // F2：点击玩家卡 → 切到玩家回合（双向验证）
+    // F2：点击玩家卡只切换查看，不得越 initiative 把当前行动单位从 Sakura 改成玩家。
     const switchedToPlayer = await page.evaluate(() => {
       const el = document.querySelector('[data-testid="combat-player-panel"]')
       if (!el) return false
@@ -631,7 +631,7 @@ async function partE() {
     })
     await sleep(300)
     body = await bodyText()
-    check('F2: 点击伙伴/玩家卡切换控制（到玩家）', switchedToPlayer && body.includes('雅各布的回合'))
+    check('F2: 点击玩家卡只查看且不越序', switchedToPlayer && body.includes('正在查看 · 尚未轮到行动') && body.includes('樱花优子的回合') && !body.includes('雅各布的回合'))
     const backToSakura = await page.evaluate(() => {
       const el = document.querySelector('[data-testid="combat-companion-panel"]')
       if (!el) return false
@@ -640,7 +640,7 @@ async function partE() {
     })
     await sleep(300)
     body = await bodyText()
-    check('F2b: 双向切换（回到 Sakura）', backToSakura && body.includes('樱花优子的回合'))
+    check('F2b: 点击当前 Sakura 卡后行动单位仍为 Sakura', backToSakura && body.includes('樱花优子的回合'))
 
     // F3：Sakura End Turn → 推进到玩家（同 friendly 段，不跨 enemy）
     const endTurnSakura = await fastClick('结束回合')

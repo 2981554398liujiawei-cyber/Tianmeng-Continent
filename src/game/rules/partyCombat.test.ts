@@ -1,6 +1,6 @@
 /**
  * Party Combat V5 纯规则测试（TM-P2-007 §8–16；§42–47 的 PC 用例）。
- * 覆盖：我方 1–3 / 敌方 1–3 展开、先手排序（tie/稳定序）、死亡跳过与轮次推进、
+ * 覆盖：我方 1–3 / 敌方 1–4 展开、先手排序（tie/稳定序）、死亡跳过与轮次推进、
  * 敌方目标选择、胜负判定、多人逃跑、遭遇 XP（多实例各计一次/重复 0）、战利品聚合、
  * V3 公式原样复用、同源多实例展示名。
  */
@@ -108,7 +108,7 @@ describe('buildEnemyInstances（§8 敌方 1–3 展开）', () => {
     expect(instances.map((i) => i.instanceId)).toEqual(['enemy#1', 'enemy#2'])
   })
 
-  it('PC3 三种敌各 1 → 3 个实例（敌方上限 3）', () => {
+  it('PC3 三种敌各 1 → 3 个实例（敌方上限 4）', () => {
     const instances = buildEnemyInstances([
       { enemyId: 'corrupted_rabbit', count: 1 },
       { enemyId: 'corrupted_rat', count: 1 },
@@ -118,9 +118,15 @@ describe('buildEnemyInstances（§8 敌方 1–3 展开）', () => {
     expect(instances.map((i) => i.enemyId)).toEqual(['corrupted_rabbit', 'corrupted_rat', 'corrupted_wolf'])
   })
 
-  it('PC4 总数 >3 拒绝（硬上限 3v3）', () => {
-    expect(() => buildEnemyInstances([{ enemyId: 'corrupted_rabbit', count: 2 }, { enemyId: 'corrupted_rat', count: 2 }])).toThrow(RangeError)
-    expect(MAX_ENCOUNTER_MEMBERS).toBe(3)
+  it('PC4 总数 >4 拒绝（硬上限 4）', () => {
+    expect(() => buildEnemyInstances([{ enemyId: 'corrupted_rabbit', count: 3 }, { enemyId: 'corrupted_rat', count: 2 }])).toThrow(RangeError)
+    expect(MAX_ENCOUNTER_MEMBERS).toBe(4)
+  })
+
+  it('PC4b 四敌满编 → 4 个实例', () => {
+    const instances = buildEnemyInstances([{ enemyId: 'corrupted_rabbit', count: 4 }])
+    expect(instances).toHaveLength(4)
+    expect(instances.map((i) => i.instanceId)).toEqual(['enemy#1', 'enemy#2', 'enemy#3', 'enemy#4'])
   })
 
   it('PC5 空成员 / count 为 0 拒绝', () => {

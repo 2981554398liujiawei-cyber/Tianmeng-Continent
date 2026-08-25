@@ -3,25 +3,12 @@ import Button from '../../components/Button'
 import { SKILLS } from '../../game/content/skills'
 import { getProfessionName } from '../../game/content/professions'
 import type { ProfessionId } from '../../game/types'
+import { skillProgressionFor } from '../../game/content/skillProgression'
 
 type SkillProgressionPanelProps = {
   profession: ProfessionId
   learnedSkillIds: string[]
   trialComplete?: boolean
-}
-
-const TIER_ONE: Record<ProfessionId, string> = {
-  warrior: 'warrior_suppress_strike',
-  knight: 'knight_power_strike',
-  ranger: 'ranger_swift_strike',
-  mage: 'mage_spell',
-}
-
-const TIER_TWO: Record<ProfessionId, string> = {
-  warrior: 'warrior_breaking_slash',
-  knight: 'knight_oath_guard',
-  ranger: 'ranger_windstep_strike',
-  mage: 'mage_flame_lance',
 }
 
 function SkillCard({ id, learned, tier }: { id: string; learned: boolean; tier: string }) {
@@ -49,8 +36,9 @@ function SkillCard({ id, learned, tier }: { id: string; learned: boolean; tier: 
 
 export default function SkillProgressionPanel({ profession, learnedSkillIds, trialComplete = false }: SkillProgressionPanelProps) {
   const [open, setOpen] = useState(false)
-  const tierOne = TIER_ONE[profession]
-  const tierTwo = TIER_TWO[profession]
+  const progression = skillProgressionFor(profession)
+  const tierOne = progression.find((node) => node.tier === 1)!.skillId
+  const tierTwo = progression.find((node) => node.tier === 2)!.skillId
   const learned = new Set(learnedSkillIds)
   return (
     <section data-testid="skill-progression-panel" className="rounded border border-ink-600 bg-ink-800/50 p-4 text-sm text-bone-300">

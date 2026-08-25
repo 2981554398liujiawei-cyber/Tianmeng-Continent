@@ -288,7 +288,12 @@ try {
   check('S8: 幸运检定大成功（D20 20 + 幸运修正 0 = 20 → 大成功）',
     combatText.includes('幸运检定：大成功') && combatText.includes('D20 20'))
   const blackFangCount = (combatText.match(/黑鬃狼牙/g) || []).length
-  check('S8: 大成功必得额外掉落（黑鬃狼牙 ≥2：guaranteed 1 + lucky 1）', blackFangCount >= 2, `黑鬃狼牙 出现 ${blackFangCount} 次`)
+  const blackFangAggregated = /黑鬃狼牙\s*[×x]\s*2/.test(combatText)
+  check(
+    'S8: 大成功必得额外掉落（黑鬃狼牙 ≥2：guaranteed 1 + lucky 1）',
+    blackFangCount >= 2 || blackFangAggregated,
+    `重复行=${blackFangCount} 聚合×2=${blackFangAggregated}`,
+  )
 
   // ================= 返回冒险 =================
   await clickWhenFound('返回冒险', 4000)

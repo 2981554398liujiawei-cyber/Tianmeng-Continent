@@ -317,7 +317,7 @@ describe('TM-P2-007 §7/44：Encounter V2 数据层（checkEncounter / 权重 / 
     expect(() => validateEncounterDefinition(def)).not.toThrow()
   })
 
-  it('69: EN4 成员总数 >3 拒绝（fixed / weighted / 二选一 均校验抛错）', () => {
+  it('69: EN4 成员总数 >4 拒绝（fixed / weighted / 二选一 均校验抛错）', () => {
     const fixedOver: EncounterDefinition = {
       id: 'fixture_over_fixed',
       name: '测试超编',
@@ -326,20 +326,20 @@ describe('TM-P2-007 §7/44：Encounter V2 数据层（checkEncounter / 权重 / 
         { enemyId: 'corrupted_rabbit', count: 1 },
         { enemyId: 'corrupted_rat', count: 1 },
         { enemyId: 'corrupted_wolf', count: 1 },
-        { enemyId: 'dudu_rabbit', count: 1 },
+      { enemyId: 'dudu_rabbit', count: 2 },
       ],
       canEscape: true,
     }
-    expect(() => validateEncounterDefinition(fixedOver)).toThrow(/sum\(count\) 必须为 1–3/)
+    expect(() => validateEncounterDefinition(fixedOver)).toThrow(/sum\(count\) 必须为 1–4/)
 
     const variantOver: EncounterDefinition = {
       id: 'fixture_over_variant',
       name: '测试超编变体',
       locationId: 'village_grassland',
-      variants: [{ id: 'v1', weight: 50, members: [{ enemyId: 'skeleton_warrior', count: 4 }] }],
+      variants: [{ id: 'v1', weight: 50, members: [{ enemyId: 'skeleton_warrior', count: 5 }] }],
       canEscape: true,
     }
-    expect(() => validateEncounterDefinition(variantOver)).toThrow(/sum\(count\) 必须为 1–3/)
+    expect(() => validateEncounterDefinition(variantOver)).toThrow(/sum\(count\) 必须为 1–4/)
 
     const neither: EncounterDefinition = {
       id: 'fixture_neither',
@@ -677,7 +677,7 @@ describe('TM-P2-009-R1 §11：Encounter Diversity V1（H1-H6）', () => {
     expect(seen).toEqual(new Set(['low', 'standard', 'dangerous']))
   })
 
-  it('H4: 不动态缩放——全部遭遇定义校验通过（成员 1-3、敌人已注册；无 scaling 字段）', () => {
+  it('H4: 不动态缩放——全部遭遇定义校验通过（成员 1-4、敌人已注册；无 scaling 字段）', () => {
     for (const def of Object.values(ENCOUNTERS)) {
       expect(() => validateEncounterDefinition(def), def.id).not.toThrow()
     }
@@ -724,5 +724,46 @@ describe('TM-P2-009-R1 §11：Encounter Diversity V1（H1-H6）', () => {
     const north = atLocation(createInitialGameState(), 'tianlong_north_outskirts')
     expect(checkEnemyEncounter(north, 'wild_boar').allowed).toBe(true)
     expect(checkEncounter(north, 'encounter_north_boar').allowed).toBe(true)
+  })
+})
+
+describe('TM-P2-010 武备试炼职业路由守卫', () => {
+  const routes = [
+    ['warrior', 'route_warrior', 'encounter_trial_warrior'],
+    ['knight', 'route_knight', 'encounter_trial_knight'],
+    ['ranger', 'route_ranger', 'encounter_trial_ranger'],
+    ['mage', 'route_mage', 'encounter_trial_mage'],
+  ] as const
+
+  function trialState(profession: (typeof routes)[number][0], route: string): GameState {
+    const state = atLocation(createInitialGameState(), 'tianlong_martial_trial_ground')
+    state.player.profession = profession
+    state.world.flags.martial_trial_invited = true
+    state.quests = [{
+      questId: 'quest_tianlong_martial_trial',
+      status: 'in_progress',
+      stage: 0,
+      flags: {
+        trial_registered: true,
+        trial_observation_done: true,
+        [route]: true,
+      },
+    }]
+    return state
+  }
+
+  it.each(routes)('%s route → 允许对应职业试炼', (profession, route, encounterId) => {
+    expect(checkEncounter(trialState(profession, route), encounterId).allowed).toBe(true)
+  })
+
+  it.each([
+    ['warrior', 'route_knight', 'encounter_trial_warrior'], ['warrior', 'route_ranger', 'encounter_trial_warrior'], ['warrior', 'route_mage', 'encounter_trial_warrior'],
+    ['knight', 'route_warrior', 'encounter_trial_knight'], ['knight', 'route_ranger', 'encounter_trial_knight'], ['knight', 'route_mage', 'encounter_trial_knight'],
+    ['ranger', 'route_warrior', 'encounter_trial_ranger'], ['ranger', 'route_knight', 'encounter_trial_ranger'], ['ranger', 'route_mage', 'encounter_trial_ranger'],
+    ['mage', 'route_warrior', 'encounter_trial_mage'], ['mage', 'route_knight', 'encounter_trial_mage'], ['mage', 'route_ranger', 'encounter_trial_mage'],
+  ] as const)('%s cross-route %s → 拒绝', (profession, route, encounterId) => {
+    const result = checkEncounter(trialState(profession, route), encounterId)
+    expect(result.allowed).toBe(false)
+    expect(result.reason).toBe('missing_prerequisite')
   })
 })

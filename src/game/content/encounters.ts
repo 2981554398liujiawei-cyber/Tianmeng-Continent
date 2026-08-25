@@ -3,7 +3,7 @@
  *  - 现有全部单敌战斗包进 EncounterDefinition（fixedMembers 单敌；defeated 门继续由
  *    rules/encounter.ts 委托现有 checkEnemyEncounter 守卫链处理，本文件只负责定义与挂载）。
  *  - 新增非主线可选多怪遭遇：残破巡逻队（TM-P2-007 §7.5；黑石塔二层；不影响主线 flag）。
- *  - 模块加载即校验：成员总数 sum(count)<=3、fixedMembers 与 variants 二选一、count>=1、敌人已注册。
+ *  - 模块加载即校验：成员总数 sum(count)<=4、fixedMembers 与 variants 二选一、count>=1、敌人已注册。
  *  - 纯数据注册表：不写状态、不随机。
  */
 import { ENEMIES } from './enemies'
@@ -165,6 +165,7 @@ export const ENCOUNTERS: Record<string, EncounterDefinition> = {
     difficulty: 'low',
     recommendedLevelMin: 2,
     recommendedLevelMax: 3,
+    activityType: 'optional',
     repeatable: true,
     repeatAdventureXpReward: 4,
   },
@@ -195,6 +196,7 @@ export const ENCOUNTERS: Record<string, EncounterDefinition> = {
     difficulty: 'dangerous',
     recommendedLevelMin: 4,
     recommendedLevelMax: 5,
+    activityType: 'optional',
     repeatable: true,
     repeatAdventureXpReward: 10,
   },
@@ -251,6 +253,7 @@ export const ENCOUNTERS: Record<string, EncounterDefinition> = {
     difficulty: 'dangerous',
     recommendedLevelMin: 1,
     recommendedLevelMax: 2,
+    activityType: 'optional',
     repeatable: true,
     repeatAdventureXpReward: 4,
   },
@@ -263,6 +266,7 @@ export const ENCOUNTERS: Record<string, EncounterDefinition> = {
     difficulty: 'standard',
     recommendedLevelMin: 1,
     recommendedLevelMax: 2,
+    activityType: 'optional',
     repeatable: true,
     repeatAdventureXpReward: 4,
   },
@@ -284,6 +288,7 @@ export const ENCOUNTERS: Record<string, EncounterDefinition> = {
     difficulty: 'dangerous',
     recommendedLevelMin: 2,
     recommendedLevelMax: 3,
+    activityType: 'optional',
     repeatable: true,
     repeatAdventureXpReward: 5,
   },
@@ -298,6 +303,7 @@ export const ENCOUNTERS: Record<string, EncounterDefinition> = {
     difficulty: 'standard',
     recommendedLevelMin: 3,
     recommendedLevelMax: 4,
+    activityType: 'optional',
     repeatable: true,
     repeatAdventureXpReward: 8,
   },
@@ -318,6 +324,7 @@ export const ENCOUNTERS: Record<string, EncounterDefinition> = {
     canEscape: true,
     difficulty: 'dangerous',
     recommendedLevelMin: 5,
+    activityType: 'optional',
     repeatable: true,
     repeatAdventureXpReward: 10,
   },
@@ -330,6 +337,7 @@ export const ENCOUNTERS: Record<string, EncounterDefinition> = {
     difficulty: 'low',
     recommendedLevelMin: 2,
     recommendedLevelMax: 3,
+    activityType: 'optional',
     repeatable: true,
     repeatAdventureXpReward: 5,
   },
@@ -351,34 +359,44 @@ export const ENCOUNTERS: Record<string, EncounterDefinition> = {
     difficulty: 'dangerous',
     recommendedLevelMin: 3,
     recommendedLevelMax: 4,
+    activityType: 'optional',
     repeatable: true,
     repeatAdventureXpReward: 8,
   },
   encounter_trial_warrior: {
     id: 'encounter_trial_warrior', name: '战士武备试炼', locationId: 'tianlong_martial_trial_ground',
     fixedMembers: [{ enemyId: 'trial_soldier', count: 2 }, { enemyId: 'trial_duelist', count: 1 }],
-    canEscape: true, difficulty: 'dangerous', recommendedLevelMin: 3, recommendedLevelMax: 5,
+    canEscape: true, activityType: 'story', trialProfession: 'warrior', difficulty: 'dangerous', recommendedLevelMin: 3, recommendedLevelMax: 5,
   },
   encounter_trial_knight: {
     id: 'encounter_trial_knight', name: '骑士武备试炼', locationId: 'tianlong_martial_trial_ground',
     fixedMembers: [{ enemyId: 'trial_duelist', count: 1 }, { enemyId: 'trial_soldier', count: 1 }],
-    canEscape: true, difficulty: 'standard', recommendedLevelMin: 3, recommendedLevelMax: 5,
+    canEscape: true, activityType: 'story', trialProfession: 'knight', difficulty: 'standard', recommendedLevelMin: 3, recommendedLevelMax: 5,
   },
   encounter_trial_ranger: {
     id: 'encounter_trial_ranger', name: '游侠武备试炼', locationId: 'tianlong_martial_trial_ground',
     fixedMembers: [{ enemyId: 'trial_scout', count: 2 }, { enemyId: 'trial_soldier', count: 1 }],
-    canEscape: true, difficulty: 'standard', recommendedLevelMin: 3, recommendedLevelMax: 5,
+    canEscape: true, activityType: 'story', trialProfession: 'ranger', difficulty: 'standard', recommendedLevelMin: 3, recommendedLevelMax: 5,
   },
   encounter_trial_mage: {
     id: 'encounter_trial_mage', name: '法师武备试炼', locationId: 'tianlong_martial_trial_ground',
     fixedMembers: [{ enemyId: 'trial_apprentice_mage', count: 1 }, { enemyId: 'trial_soldier', count: 1 }],
-    canEscape: true, difficulty: 'standard', recommendedLevelMin: 3, recommendedLevelMax: 5,
+    canEscape: true, activityType: 'story', trialProfession: 'mage', difficulty: 'standard', recommendedLevelMin: 3, recommendedLevelMax: 5,
   },
   // 单敌迁移映射只供通用校验/XP 规则使用；正式入口使用上方四个职业试炼。
-  encounter_trial_soldier: { id: 'encounter_trial_soldier', name: '武备场士兵', locationId: 'tianlong_martial_trial_ground', fixedMembers: [{ enemyId: 'trial_soldier', count: 1 }], canEscape: true, difficulty: 'low', recommendedLevelMin: 3, recommendedLevelMax: 4 },
-  encounter_trial_duelist: { id: 'encounter_trial_duelist', name: '武备场教习', locationId: 'tianlong_martial_trial_ground', fixedMembers: [{ enemyId: 'trial_duelist', count: 1 }], canEscape: true, difficulty: 'standard', recommendedLevelMin: 3, recommendedLevelMax: 5 },
-  encounter_trial_scout: { id: 'encounter_trial_scout', name: '武备场斥候', locationId: 'tianlong_martial_trial_ground', fixedMembers: [{ enemyId: 'trial_scout', count: 1 }], canEscape: true, difficulty: 'low', recommendedLevelMin: 3, recommendedLevelMax: 4 },
-  encounter_trial_apprentice_mage: { id: 'encounter_trial_apprentice_mage', name: '武备场术士', locationId: 'tianlong_martial_trial_ground', fixedMembers: [{ enemyId: 'trial_apprentice_mage', count: 1 }], canEscape: true, difficulty: 'dangerous', recommendedLevelMin: 4, recommendedLevelMax: 5 },
+  encounter_trial_soldier: { id: 'encounter_trial_soldier', name: '武备场士兵', locationId: 'tianlong_martial_trial_ground', fixedMembers: [{ enemyId: 'trial_soldier', count: 1 }], canEscape: true, activityType: 'training', difficulty: 'low', recommendedLevelMin: 3, recommendedLevelMax: 4 },
+  encounter_trial_duelist: { id: 'encounter_trial_duelist', name: '武备场教习', locationId: 'tianlong_martial_trial_ground', fixedMembers: [{ enemyId: 'trial_duelist', count: 1 }], canEscape: true, activityType: 'training', difficulty: 'standard', recommendedLevelMin: 3, recommendedLevelMax: 5 },
+  encounter_trial_scout: { id: 'encounter_trial_scout', name: '武备场斥候', locationId: 'tianlong_martial_trial_ground', fixedMembers: [{ enemyId: 'trial_scout', count: 1 }], canEscape: true, activityType: 'training', difficulty: 'low', recommendedLevelMin: 3, recommendedLevelMax: 4 },
+  encounter_trial_apprentice_mage: { id: 'encounter_trial_apprentice_mage', name: '武备场术士', locationId: 'tianlong_martial_trial_ground', fixedMembers: [{ enemyId: 'trial_apprentice_mage', count: 1 }], canEscape: true, activityType: 'training', difficulty: 'dangerous', recommendedLevelMin: 4, recommendedLevelMax: 5 },
+  ...(import.meta.env?.DEV === true && import.meta.env.VITE_QA_COMBAT_V7 === '1'
+    ? {
+        encounter_qa_combat_v7_four: {
+          id: 'encounter_qa_combat_v7_four', name: 'Combat V7 四敌阵列', locationId: 'black_stone_tower_floor2',
+          fixedMembers: [{ enemyId: 'skeleton_warrior', count: 4 }], canEscape: true,
+          activityType: 'optional' as const, difficulty: 'dangerous' as const,
+        },
+      }
+    : {}),
 }
 
 export function getEncounter(id: string): EncounterDefinition | undefined {
@@ -421,8 +439,8 @@ function validateMembers(label: string, members: EncounterMember[]): void {
     throw new Error(`encounter ${label}: 成员不能为空`)
   }
   const total = members.reduce((sum, m) => sum + m.count, 0)
-  if (total < 1 || total > 3) {
-    throw new Error(`encounter ${label}: 成员总数 sum(count) 必须为 1–3，实际 ${total}`)
+  if (total < 1 || total > 4) {
+    throw new Error(`encounter ${label}: 成员总数 sum(count) 必须为 1–4，实际 ${total}`)
   }
   for (const m of members) {
     if (!Number.isInteger(m.count) || m.count < 1) {

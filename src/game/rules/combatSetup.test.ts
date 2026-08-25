@@ -42,6 +42,17 @@ const FIXTURE_DEFS: Record<string, CompanionDefinition> = {
     skillIds: ['sakura_light_dance', 'sakura_petalslash'],
     tags: ['test'],
   },
+  test_monk: {
+    id: 'test_monk',
+    name: '测试僧',
+    title: '测试伙伴丙',
+    classification: 'divine_contract_pet',
+    summary: 'R1 构建层测试用临时伙伴。',
+    attributes: { str: 12, con: 13, agi: 11, mnd: 12, lck: 10 },
+    maxMp: 7,
+    skillIds: ['sakura_petalslash'],
+    tags: ['test'],
+  },
 }
 
 function fixtureState(id: string, status: CompanionState['status'], level: number, mp: number, skillIds: string[]): CompanionState {
@@ -51,6 +62,7 @@ function fixtureState(id: string, status: CompanionState['status'], level: numbe
 const FIXTURE_STATES: Record<string, CompanionState> = {
   test_fox: fixtureState('test_fox', 'recruited', 3, 6, ['sakura_petalslash', 'sakura_magic_shield']),
   test_crane: fixtureState('test_crane', 'guest', 4, 8, ['sakura_light_dance', 'sakura_petalslash']),
+  test_monk: fixtureState('test_monk', 'recruited', 2, 7, ['sakura_petalslash']),
 }
 
 const resolveFixture = (id: string) => FIXTURE_STATES[id]
@@ -80,6 +92,11 @@ const THREE_ENEMY_DEF: EncounterDefinition = {
     { enemyId: 'corrupted_wolf', count: 1 },
   ],
   canEscape: true,
+}
+
+const FOUR_ENEMY_DEF: EncounterDefinition = {
+  id: 'test_four_enemy', name: '测试四敌', locationId: 'village_outskirts',
+  fixedMembers: [{ enemyId: 'corrupted_rabbit', count: 4 }], canEscape: true,
 }
 
 describe('buildCombatSetup（BLOCKER A：player + 最多 2 名 active companion）', () => {
@@ -150,16 +167,17 @@ describe('buildCombatSetup（BLOCKER A：player + 最多 2 名 active companion�
     expect(setup.companions.map((c) => c.companionId)).toEqual(['test_fox'])
   })
 
-  it('R1-6 active 超 3 名只取前 MAX_PARTY_COMPANIONS（2 名），不把第三个挤进来', () => {
-    const state = stateWithParty(['test_fox', 'test_crane', 'sakura_yuko'])
+  it('R1-6 active 超 3 名只取前 MAX_PARTY_COMPANIONS（3 名）', () => {
+    const state = stateWithParty(['test_fox', 'test_crane', 'test_monk', 'sakura_yuko'])
     const setup = buildCombatSetup(state, getEncounter('encounter_corrupted_rabbit')!, {
       resolveCompanion: (id) => resolveFixture(id) ?? (id === 'sakura_yuko' ? fixtureState('sakura_yuko', 'recruited', 5, 6, []) : undefined),
       getCompanionDef: defFixture,
       rng: seqRng(0.99, 0.99, 0.99),
     })
+    expect(MAX_PARTY_COMPANIONS).toBe(3)
     expect(setup.companions).toHaveLength(MAX_PARTY_COMPANIONS)
-    expect(setup.companions.map((c) => c.companionId)).toEqual(['test_fox', 'test_crane'])
-    expect(setup.friendly).toHaveLength(3)
+    expect(setup.companions.map((c) => c.companionId)).toEqual(['test_fox', 'test_crane', 'test_monk'])
+    expect(setup.friendly).toHaveLength(4)
   })
 
   it('R1-7 真实残破巡逻队（weighted 固化 variant）→ 2 敌、combatants 5、turns 5', () => {
@@ -186,6 +204,29 @@ describe('buildCombatSetup（BLOCKER A：player + 最多 2 名 active companion�
     expect(setup.enemies).toHaveLength(3)
     expect(setup.combatants).toHaveLength(6)
     expect(setup.turns).toHaveLength(6)
+  })
+
+  it('R1-5b 失效 active 槽位不占 4v4 名额，后续三个有效伙伴依次补位', () => {
+    const state = stateWithParty(['stale-id', 'test_fox', 'test_crane', 'test_monk'])
+    const setup = buildCombatSetup(state, getEncounter('encounter_corrupted_rabbit')!, {
+      resolveCompanion: resolveFixture,
+      getCompanionDef: defFixture,
+      rng: seqRng(0.99, 0.99, 0.99, 0.99),
+    })
+    expect(setup.companions.map((c) => c.companionId)).toEqual(['test_fox', 'test_crane', 'test_monk'])
+    expect(setup.friendly).toHaveLength(4)
+  })
+
+  it('R1-8b 自定义 4 敌 + 3 伙伴 → 4v4 满编（initiative 8）', () => {
+    const setup = buildCombatSetup(stateWithParty(['test_fox', 'test_crane', 'test_monk']), FOUR_ENEMY_DEF, {
+      resolveCompanion: resolveFixture,
+      getCompanionDef: defFixture,
+      rng: seqRng(0.99, 0.99, 0.99, 0.99, 0.99, 0.99, 0.99, 0.99),
+    })
+    expect(setup.friendly).toHaveLength(4)
+    expect(setup.enemies).toHaveLength(4)
+    expect(setup.combatants).toHaveLength(8)
+    expect(setup.turns).toHaveLength(8)
   })
 
   it('R1-9 先手队列严格等于我方+敌方单位（mount 等非单位不注入）', () => {

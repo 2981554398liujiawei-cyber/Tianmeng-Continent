@@ -64,11 +64,17 @@ check('TR17 locked preview roster matches encounter member resolver', JSON.strin
 const lockedARefresh = encounterRosterPreview(state('black_stone_tower_floor2', { encounter_broken_patrol: 'broken_patrol_a' }), previewDef)
 check('TR18 refresh does not reroll persisted variant', lockedA.locked && lockedARefresh.locked && JSON.stringify(lockedA.members) === JSON.stringify(lockedARefresh.members) && JSON.stringify(lockedA.members) !== JSON.stringify(lockedB.members))
 
-// Trial content stays fixed-authored and uses legal content/loot IDs.
+// Trial content stays fixed-authored and cannot leak ordinary combat rewards.
 for (const profession of ['warrior', 'knight', 'ranger', 'mage']) {
   const d = getEncounter(`encounter_trial_${profession}`)
   check(`TR trial ${profession}: <=3 enemies`, totalEncounterMemberCount(d) <= 3)
-  check(`TR trial ${profession}: all loot IDs registered`, (d.fixedMembers ?? []).every((m) => Boolean(getEnemy(m.enemyId)?.dropTable)))
+  check(
+    `TR trial ${profession}: no ordinary XP or loot`,
+    (d.fixedMembers ?? []).every((m) => {
+      const enemy = getEnemy(m.enemyId)
+      return enemy?.adventureXpReward === undefined && enemy?.dropTable === undefined
+    }),
+  )
 }
 check('TR trial reward item is registered', Boolean(ITEMS.tianlong_martial_medal))
 
