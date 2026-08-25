@@ -1,7 +1,7 @@
 {
   "status": "PASS_READY_FOR_AUDIT",
   "source": {
-    "rcCandidateCommit": "c9e60b61ca013bc7c002c4643965e42adfa4f38a",
+    "rcCandidateCommit": "ed37b41bcbdca5ecd0060a6de0569e8c1c44c379",
     "branch": "codex/p2-010-martial-trial",
     "parentBranch": "codex/p2-009-north-story",
     "note": "The candidate commit contains all product code and QA logic. This verification file, the authoritative log, generated reports, and screenshots are committed afterward as evidence artifacts to avoid a self-referential candidate hash."
@@ -22,9 +22,9 @@
     "command": "npm run verify:p2-010",
     "executed": true,
     "exitCode": 0,
-    "started": "2026-08-24T19:58:36.471Z",
-    "completed": "2026-08-24T20:17:00.596Z",
-    "durationSeconds": 1104.125,
+    "started": "2026-08-25T00:25:44.117Z",
+    "completed": "2026-08-25T00:43:22.388Z",
+    "durationSeconds": 1058.271,
     "log": "qa/evidence/verify.log",
     "result": "PASS"
   },
@@ -66,7 +66,7 @@
     { "id": "persistence-and-freeze", "state": "Save V6 reload keeps the learned skill while Golden Rabbit remains in_progress/stage 0 with its four flags and rabbit_path x1", "runtime": "full journey and P2-009-R1 sidebar E2E", "visual": ["qa/screenshots/p2-010/P_skill_tree_390.png"] }
   ],
   "limitations": [
-    "Vite reports a non-blocking warning for a 563.38 kB minified JavaScript chunk.",
+    "Vite reports a non-blocking warning for a 563.45 kB minified JavaScript chunk.",
     "No deployment or public-runtime verification was performed before audit approval.",
     "P2-011 is represented only by the approved text hook and was not implemented."
   ]

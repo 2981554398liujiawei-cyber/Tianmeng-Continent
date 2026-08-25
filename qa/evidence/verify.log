@@ -1,5 +1,5 @@
 TM-P2-010 authoritative verification
-started=2026-08-24T19:58:36.471Z
+started=2026-08-25T00:25:44.117Z
 node=v24.14.0
 platform=win32
 
@@ -15,11 +15,11 @@ platform=win32
 
  Test Files  44 passed (44)
       Tests  1596 passed (1596)
-   Start at  03:58:36
-   Duration  1.59s (transform 8.34s, setup 0ms, import 12.43s, tests 1.53s, environment 1.36s)
+   Start at  08:25:44
+   Duration  1.47s (transform 6.80s, setup 0ms, import 10.96s, tests 1.51s, environment 1.29s)
 
 
-===== RESULT unit: PASS exit=0 durationMs=2101 =====
+===== RESULT unit: PASS exit=0 durationMs=1976 =====
 
 ===== SUITE build | npm run build =====
 
@@ -32,16 +32,16 @@ rendering chunks...
 computing gzip size...
 dist/index.html                   0.52 kB │ gzip:   0.36 kB
 dist/assets/index-DrUcQeAq.css   36.62 kB │ gzip:   7.15 kB
-dist/assets/index-c-8tNib8.js   563.38 kB │ gzip: 150.90 kB
+dist/assets/index-w4UDtoQD.js   563.45 kB │ gzip: 150.91 kB
 
-✓ built in 170ms
+✓ built in 183ms
 [plugin builtin:vite-reporter]
 (!) Some chunks are larger than 500 kB after minification. Consider:
 - Using dynamic import() to code-split the application
 - Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
 - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
 
-===== RESULT build: PASS exit=0 durationMs=895 =====
+===== RESULT build: PASS exit=0 durationMs=904 =====
 
 ===== SUITE cloud | npm run qa:cloud =====
 
@@ -50,7 +50,7 @@ dist/assets/index-c-8tNib8.js   563.38 kB │ gzip: 150.90 kB
 
 cloud-save mock server on 5200
 
-  VITE v8.2.1  ready in 163 ms
+  VITE v8.2.1  ready in 158 ms
 
   ➜  Local:   http://localhost:5201/
   ➜  Network: use --host to expose
@@ -101,8 +101,8 @@ PASS | C20: V3 payload 直接注入云端（revision 1）
 [cloud-save mock] POST load -> 200
 PASS | C21: V3 云档解锁成功（客户端迁移链升级）
 PASS | C22: V3→V6 迁移后正常进入游戏（青石村）
-PASS | C23: 迁移后本地已是 V6（companions/relationships/party/restCount/XP）
 PASS | C24: 黄金兔冻结线保持（in_progress/stage0/四 flags/rabbit_path 不受云迁移影响）
+PASS | C23: 迁移后本地已是 V6（companions/relationships/party/restCount/XP）
 [cloud-save mock] POST save -> 200
 [cloud-save mock] POST load -> 200
 PASS | C25: 迁移后保存 → 云端已是 V6 且 revision 2
@@ -192,7 +192,7 @@ PASS | C29: 全程无 JS exception
 [cloud-e2e] dev server exited code=null
 ===== P2-005 Cloud focused 结果：67/67 通过 =====
 
-===== RESULT cloud: PASS exit=0 durationMs=109383 =====
+===== RESULT cloud: PASS exit=0 durationMs=109902 =====
 
 ===== SUITE worker | npm run qa:worker =====
 
@@ -220,7 +220,7 @@ PASS W13 Local D1 preserves previous_revision and previous_payload_json
 Worker task card W1-W15: 15/15 passed
 Worker + Local D1 total: 18/18 passed
 
-===== RESULT worker: PASS exit=0 durationMs=26749 =====
+===== RESULT worker: PASS exit=0 durationMs=1257 =====
 
 > tianmeng-continent@0.1.0 preview
 > vite preview --host 127.0.0.1 --port 5198 --strictPort
@@ -240,7 +240,7 @@ PASS | Prod: 主菜单无开发者控制台按钮
 PASS | Prod: 未写入任何存档状态 | keys=
 ===== 结果：6/6 通过 =====
 
-===== RESULT production-smoke: PASS exit=0 durationMs=2976 =====
+===== RESULT production-smoke: PASS exit=0 durationMs=3129 =====
 
 ===== SUITE p2-008 | npm run qa:p2-008 =====
 
@@ -252,7 +252,7 @@ PASS | Prod: 未写入任何存档状态 | keys=
 > node qa/p2-008-adventure-sidebar-e2e.mjs
 
 
-  VITE v8.2.1  ready in 187 ms
+  VITE v8.2.1  ready in 178 ms
 
   ➜  Local:   http://localhost:5237/
   ➜  Network: use --host to expose
@@ -285,15 +285,15 @@ PASS | AS7: 附近委托区块存在
 PASS | AS7: 附近委托仍展示其它可接委托《商人王财的麻烦》
 PASS | AS7: 北门失联未 completed 时附近委托不含《北郊追踪》
 PASS | AS5: 无线索时线索 Tab 空态（尚未发现任何线索）
-PASS | AS9: 全程无 Production ID leak（场景 B）
 PASS | AS: 全程无 JS exception
+PASS | AS9: 全程无 Production ID leak（场景 B）
 ===== TM-P2-008 §5/§33-35 AdventureSidebar E2E 结果：31/31 通过 =====
 
 > tianmeng-continent@0.1.0 qa:p2-008-north
 > node qa/p2-008-north-outskirts-e2e.mjs
 
 
-  VITE v8.2.1  ready in 191 ms
+  VITE v8.2.1  ready in 210 ms
 
   ➜  Local:   http://localhost:5235/
   ➜  Network: use --host to expose
@@ -346,7 +346,7 @@ PASS | N15: 全程无 JS exception
 > node qa/p2-008-layout-e2e.mjs
 
 
-  VITE v8.2.1  ready in 188 ms
+  VITE v8.2.1  ready in 223 ms
 
   ➜  Local:   http://localhost:5239/
   ➜  Network: use --host to expose
@@ -386,8 +386,8 @@ PASS | L4 [390×844] 底部 MobileNav 可见 | block/390px
 PASS | L4 [390×844] MobileNav 含[角色][冒险][背包]三按钮 | {"role":true,"adventure":true,"backpack":true}
 PASS | L4 [390×844] 右栏 quest-column 隐藏 | flex/0px
 PASS | L4 [390×844] 顶部「冒险」按钮隐藏
-PASS | L5 [390×844] [冒险] Drawer 打开含 AdventureSidebar
 PASS | L5 [390×844] Drawer 含当前目标/任务/线索/日志 | {"hasQuestColumn":true,"hasObjective":true,"hasQuestsTab":true,"hasCluesTab":true,"hasLogTab":true}
+PASS | L5 [390×844] [冒险] Drawer 打开含 AdventureSidebar
 PASS | L5 [390×844] [背包] BackpackPanel 打开
 PASS | L5 [390×844] BackpackPanel 含背包物品（铁剑/治疗药水） | {"hasIronSword":true,"hasPotion":true}
 PASS | L8: 全程无 JS exception
@@ -397,7 +397,7 @@ PASS | L8: 全程无 JS exception
 > node qa/p2-008-mobile-e2e.mjs
 
 
-  VITE v8.2.1  ready in 181 ms
+  VITE v8.2.1  ready in 206 ms
 
   ➜  Local:   http://localhost:5238/
   ➜  Network: use --host to expose
@@ -426,7 +426,7 @@ PASS | MOB6: 全程无 JS exception
 > node qa/p2-008-full-journey-e2e.mjs
 
 
-  VITE v8.2.1  ready in 202 ms
+  VITE v8.2.1  ready in 196 ms
 
   ➜  Local:   http://localhost:5240/
   ➜  Network: use --host to expose
@@ -443,16 +443,16 @@ PASS | FJ3: 痕迹剧情（凌乱马蹄印）
 PASS | FJ3: 调查后黑鬃魔狼 Lv.3 出现（迎战）
 PASS | 进入黑鬃魔狼战斗（Lv.3）
 PASS | 击败黑鬃魔狼（战斗胜利）
+PASS | FJ4: 日志显示黑鬃魔狼已击败
 PASS | FJ4: 北门胜利剧情（黑鬃魔狼倒在荒草之间）
 PASS | FJ4: 铜牌剧情（断裂铜牌）
-PASS | FJ4: 日志显示黑鬃魔狼已击败
 PASS | FJ4: 《北门失联》可提交（右栏）
 PASS | FJ5: 「提交任务」按钮可用（武馆）
 PASS | FJ5: 《北门失联》已完成（右栏已完成区）
 PASS | FJ5: 马科固定剧情（接过断裂的铜牌）
 PASS | FJ5: 马科固定剧情（封锁消息继续查）
-PASS | FJ5: 提交《北门失联》金币 +30 | 金币 100→130
 PASS | FJ6: 北门失联完成后马科发布块（北门失联 · 调查终结）
+PASS | FJ5: 提交《北门失联》金币 +30 | 金币 100→130
 PASS | FJ6: 「接受任务：前往北郊继续追查」
 PASS | FJ6: 《北郊追踪》进行中 + 目标更新
 PASS | FJ7: 北门「沿着足迹继续追踪」
@@ -524,7 +524,7 @@ TM-P2-008 §23-25 荒原狼群 Balance Regression
 
 报告已写入：C:\Users\cruelworld\Desktop\DeepSeek\dnd游戏--天梦大陆\.claude\worktrees\vigorous-dirac-880948\qa\P2_008_BALANCE_REPORT.md
 
-===== RESULT p2-008: PASS exit=0 durationMs=81392 =====
+===== RESULT p2-008: PASS exit=0 durationMs=85010 =====
 
 ===== SUITE p2-009 | npm run qa:p2-009 =====
 
@@ -536,7 +536,7 @@ TM-P2-008 §23-25 荒原狼群 Balance Regression
 > node qa/p2-009-sidebar-e2e.mjs
 
 
-  VITE v8.2.1  ready in 192 ms
+  VITE v8.2.1  ready in 208 ms
 
   ➜  Local:   http://localhost:5241/
   ➜  Network: use --host to expose
@@ -570,7 +570,7 @@ PASS | S8: 全程无 JS exception
 > node qa/p2-009-north-story-e2e.mjs
 
 
-  VITE v8.2.1  ready in 183 ms
+  VITE v8.2.1  ready in 216 ms
 
   ➜  Local:   http://localhost:5242/
   ➜  Network: use --host to expose
@@ -644,7 +644,7 @@ PASS | NS14: 全程无 JS exception
 > node qa/p2-009-full-journey-e2e.mjs
 
 
-  VITE v8.2.1  ready in 183 ms
+  VITE v8.2.1  ready in 206 ms
 
   ➜  Local:   http://localhost:5243/
   ➜  Network: use --host to expose
@@ -667,7 +667,7 @@ PASS | FJ5b: 全程无 Production ID leak（窄前置场景）
 > node qa/p2-009-layout-e2e.mjs
 
 
-  VITE v8.2.1  ready in 200 ms
+  VITE v8.2.1  ready in 208 ms
 
   ➜  Local:   http://localhost:5244/
   ➜  Network: use --host to expose
@@ -706,15 +706,15 @@ PASS | L3 [1024×768] 主场景列仍展示发布块
 PASS | L3 [1024×768] 点击「冒险」Drawer 打开且含 AdventureSidebar
 PASS | L3 [1024×768] Drawer 含当前目标/任务/线索/日志 | {"hasQuestColumn":true,"hasObjective":true,"hasQuestsTab":true,"hasCluesTab":true,"hasLogTab":true}
 PASS | L3 [1024×768] 关闭后 Drawer 消失
-PASS | L7 [390×844] 无 Production ID leak
 PASS | L4 [390×844] 底部 MobileNav 可见 | block/390px
 PASS | L4 [390×844] MobileNav 含[角色][冒险][背包]三按钮 | {"role":true,"adventure":true,"backpack":true}
 PASS | L4 [390×844] 右栏 quest-column 隐藏 | flex/0px
 PASS | L4 [390×844] 顶部「冒险」按钮隐藏
+PASS | L7 [390×844] 无 Production ID leak
 PASS | L5 [390×844] [冒险] Drawer 打开含 AdventureSidebar
 PASS | L5 [390×844] Drawer 含当前目标/任务/线索/日志 | {"hasQuestColumn":true,"hasObjective":true,"hasQuestsTab":true,"hasCluesTab":true,"hasLogTab":true}
-PASS | L5 [390×844] [背包] BackpackPanel 打开
 PASS | L5 [390×844] BackpackPanel 含背包物品（铁剑/治疗药水） | {"hasIronSword":true,"hasPotion":true}
+PASS | L5 [390×844] [背包] BackpackPanel 打开
 PASS | L6 [1366×900] 旧驿站场景渲染「驿站狼群」遭遇卡
 PASS | L6 [1366×900] 遭遇成员摘要「荒原野狼×2+魔化狼」
 PASS | L6 [1366×900] 遭遇「迎战」按钮存在
@@ -767,7 +767,7 @@ TM-P2-009 §13 驿站狼群 Balance Regression
 
 报告已写入：C:\Users\cruelworld\Desktop\DeepSeek\dnd游戏--天梦大陆\.claude\worktrees\vigorous-dirac-880948\qa\P2_009_BALANCE_REPORT.md
 
-===== RESULT p2-009: PASS exit=0 durationMs=85206 =====
+===== RESULT p2-009: PASS exit=0 durationMs=88231 =====
 
 ===== SUITE p2-009-r1 | npm run qa:p2-009-r1 =====
 
@@ -842,7 +842,7 @@ PASS | H6: encounter_north_mane_pack repeatable 不设 encounterDefeatFlag
 > node qa/p2-009-r1-combat-e2e.mjs
 
 
-  VITE v8.2.1  ready in 164 ms
+  VITE v8.2.1  ready in 195 ms
 
   ➜  Local:   http://localhost:5251/
   ➜  Network: use --host to expose
@@ -928,7 +928,7 @@ PASS | 全程无 JS exception
 > node qa/p2-009-r1-sidebar-e2e.mjs
 
 
-  VITE v8.2.1  ready in 165 ms
+  VITE v8.2.1  ready in 210 ms
 
   ➜  Local:   http://localhost:5252/
   ➜  Network: use --host to expose
@@ -937,22 +937,22 @@ PASS | I1: 状态标签「待续」
 PASS | I1: 待续文案「现阶段线索已收集 · 待续」
 PASS | I1: 无旧进度提示「还有一步没做」
 PASS | I2: 当前目标不选 Golden Rabbit（仅显示暂无） | 当前目标暂无当前目标。
-PASS | I3: 存档仍 in_progress / stage 0
-PASS | I3: 存档四 flags 保持
 PASS | I3: 存档 rabbit_path ×1 保持
 PASS | I4: 渲染后内部状态零修改（HARD FREEZE）
+PASS | I3: 存档仍 in_progress / stage 0
+PASS | I3: 存档四 flags 保持
 PASS | J1: Lv3 XP250 显示「250 / 450」 | 冒险阅历250 / 450
 PASS | J1: 填充约 55.6% | fill=55.5556%
 PASS | J1: 无「距离 Lv」文本
 PASS | J2: Lv3 XP450 显示「450 / 450」
 PASS | J2: 填充 100% | fill=100%
-PASS | J3: 满级显示「上限」+ 等级已达到当前上限
-PASS | J3: 满级填充 100% | fill=100%
 PASS | J4: 满级无虚构 Lv16 / 无「距离 Lv」
 PASS | 全程无 JS exception
+PASS | J3: 满级显示「上限」+ 等级已达到当前上限
+PASS | J3: 满级填充 100% | fill=100%
 ===== TM-P2-009-R1 Sidebar E2E 结果：18/18 通过 =====
 
-===== RESULT p2-009-r1: PASS exit=0 durationMs=88773 =====
+===== RESULT p2-009-r1: PASS exit=0 durationMs=87559 =====
 
 ===== SUITE p2-010 | npm run qa:p2-010 =====
 
@@ -964,7 +964,7 @@ PASS | 全程无 JS exception
 > node qa/p2-010-trial-e2e.mjs
 
 
-  VITE v8.2.1  ready in 186 ms
+  VITE v8.2.1  ready in 204 ms
 
   ➜  Local:   http://127.0.0.1:5250/
 PASS | T1/T2 warrior: P2-009 completed fixture and invitation visible
@@ -1026,7 +1026,7 @@ TRIAL_E2E_GREEN | 53/53
 > node qa/p2-010-skills-e2e.mjs
 
 
-  VITE v8.2.1  ready in 168 ms
+  VITE v8.2.1  ready in 192 ms
 
   ➜  Local:   http://localhost:5271/
   ➜  Network: use --host to expose
@@ -1102,7 +1102,7 @@ PASS | TR trial reward item is registered
 > node qa/p2-010-layout-e2e.mjs
 
 
-  VITE v8.2.1  ready in 195 ms
+  VITE v8.2.1  ready in 209 ms
 
   ➜  Local:   http://localhost:5272/
   ➜  Network: use --host to expose
@@ -1124,12 +1124,12 @@ PASS | 1366: combat no horizontal overflow | {"docWidth":1366,"bodyWidth":1366}
 PASS | 1024: no horizontal overflow | {"width":1024,"docWidth":1024,"bodyWidth":1024}
 PASS | 1024: skill tree no overflow | {"docWidth":1024,"bodyWidth":1024,"treeWidth":246}
 PASS | 1024: trial ground panel visible
-PASS | 1024: ActionBar fixed while skill tray opens | 346.75 -> 346.75
+PASS | 1024: ActionBar fixed while skill tray opens | 377.5 -> 377.5
 PASS | 1024: combat no horizontal overflow | {"docWidth":1024,"bodyWidth":1024}
 PASS | 390: no horizontal overflow | {"width":390,"docWidth":390,"bodyWidth":390}
 PASS | 390: skill tree no overflow | {"docWidth":390,"bodyWidth":390,"treeWidth":291.796875}
 PASS | 390: trial ground panel visible
-PASS | 390: ActionBar fixed while skill tray opens | 586.75 -> 586.75
+PASS | 390: ActionBar fixed while skill tray opens | 640.25 -> 640.25
 PASS | 390: combat no horizontal overflow | {"docWidth":390,"bodyWidth":390}
 ===== P2-010 Layout E2E: 25/25 =====
 
@@ -1137,7 +1137,7 @@ PASS | 390: combat no horizontal overflow | {"docWidth":390,"bodyWidth":390}
 > node qa/p2-010-full-journey-e2e.mjs
 
 
-  VITE v8.2.1  ready in 215 ms
+  VITE v8.2.1  ready in 226 ms
 
   ➜  Local:   http://127.0.0.1:5251/
 PASS | J1: P2-009 completed + trial task visible
@@ -1171,10 +1171,10 @@ PASS | TRranger: all enemies registered
 PASS | TRmage: fixed authored roster | [["trial_apprentice_mage",1],["trial_soldier",1]]
 PASS | TRmage: escape enabled and <=3
 PASS | TRmage: all enemies registered
+PASS | CF3 initiative tie resolves by AGI then friendly
 PASS | TR: all trial definitions have authored level/difficulty
 PASS | CF1 initiative d20+agi
 PASS | CF2 AGI9 can lose to AGI8 on natural rolls
-PASS | CF3 initiative tie resolves by AGI then friendly
 PASS | CF4 action attack resolves through V3 resolver
 PASS | CF5 nat20 is critical hit
 PASS | CF6 nat1 is critical miss
@@ -1182,11 +1182,11 @@ PASS | CF7 damage is non-negative
 PASS | CF8 armor participates in damage
 PASS | CF9 initiative queue contains every unit
 PASS | CF10 initiative queue has stable instance IDs
-PASS | CF11 enemy does not automatically become friendly
-PASS | CF12 encounter count guard
 PASS | CF13 escape flag is authored, not inferred
 PASS | CF14 no dynamic scaling metadata exists
 PASS | CF15 V3 hit formula remains AGI-vs-AGI
+PASS | CF11 enemy does not automatically become friendly
+PASS | CF12 encounter count guard
 PASS | BAL warrior Lv3 solo Monte Carlo | wins=63/200 rate=31.50%
 PASS | BAL warrior Lv3 +companion Monte Carlo | wins=195/200 rate=97.50%
 PASS | BAL warrior Lv4 solo Monte Carlo | wins=111/200 rate=55.50%
@@ -1221,7 +1221,7 @@ PASS | BAL mage Lv3 solo minimum 10% | rate=78.50%
 PASS | BAL mage solo progression broadly monotonic | {"3":0.785,"4":0.9,"5":0.98}
 ===== P2-010 balance: 60/60 PASS =====
 
-===== RESULT p2-010: PASS exit=0 durationMs=118409 =====
+===== RESULT p2-010: PASS exit=0 durationMs=120177 =====
 
 ===== SUITE release-candidate | npm run qa:rc =====
 
@@ -1238,16 +1238,16 @@ rendering chunks...
 computing gzip size...
 dist/index.html                   0.52 kB │ gzip:   0.36 kB
 dist/assets/index-DrUcQeAq.css   36.62 kB │ gzip:   7.15 kB
-dist/assets/index-c-8tNib8.js   563.38 kB │ gzip: 150.90 kB
+dist/assets/index-w4UDtoQD.js   563.45 kB │ gzip: 150.91 kB
 
-✓ built in 187ms
+✓ built in 222ms
 [plugin builtin:vite-reporter]
 (!) Some chunks are larger than 500 kB after minification. Consider:
 - Using dynamic import() to code-split the application
 - Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
 - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
 
-  VITE v8.2.1  ready in 182 ms
+  VITE v8.2.1  ready in 211 ms
 
   ➜  Local:   http://127.0.0.1:5199/
 ===== RC shared Vite ready: http://localhost:5199/ =====
@@ -1293,8 +1293,8 @@ PASS | P2-004-5: 进入樱华神域·破碎边界（sakura_domain_fragment）
 PASS | P2-004-6: 初见后关系变化短提示（好感 +2 信任 +3）
 PASS | P2-004-7: 初见后她出现在红颜录（已相识）
 PASS | P2-004-8: 职业对话后骑士专属回应 + 关系变化
-PASS | P2-004-9: MND 检定成功（DC 12 展示）
 PASS | P2-004-10: MND 成功后不再出现 LUCK 补救入口
+PASS | P2-004-9: MND 检定成功（DC 12 展示）
 PASS | P2-004-11: 临时同行（神域崩塌前兆 + 并肩而立）
 PASS | P2-004-12: 残灾之影威胁出现（可迎战）
 PASS | P2-004-13: 进入残灾战斗（残灾之影 Lv.3）
@@ -1338,7 +1338,7 @@ PASS | P2-004-43: 全程无 JS exception
 ===== RC suite start: Cloud =====
 cloud-save mock server on 5200
 
-  VITE v8.2.1  ready in 189 ms
+  VITE v8.2.1  ready in 198 ms
 
   ➜  Local:   http://localhost:5201/
   ➜  Network: use --host to expose
@@ -1421,9 +1421,9 @@ PASS | C42: 迁移选择前 MainMenu 未出现
 [cloud-save mock] POST save -> 200
 [cloud-save mock] POST load -> 200
 PASS | C43: 路径A上传 local 后云 revision=1 | revision=1
-PASS | C44: 路径A cloud slot 与 local slot 一致
 PASS | C45: 路径A上传后进入 MainMenu
 PASS | C46: 路径A MainMenu 可 Continue
+PASS | C44: 路径A cloud slot 与 local slot 一致
 [cloud-save mock] OPTIONS preflight -> 204
 [cloud-save mock] POST load -> 200
 [cloud-save mock] POST load -> 200
@@ -1468,8 +1468,8 @@ PASS | C63: 创建竞态不覆盖抢先建立的 cloud vault
 [cloud-save mock] POST save -> 409
 [cloud-save mock] POST load -> 200
 [cloud-save mock] POST load -> 200
-PASS | C65: 上传竞态显示标准本机/云端双选择
 PASS | C64: 上传本机档期间被抢先建 vault 后进入正常冲突页
+PASS | C65: 上传竞态显示标准本机/云端双选择
 PASS | C66: 上传竞态不覆盖合法 local
 PASS | C67: 上传竞态不覆盖抢先建立的 cloud vault
 [cloud-e2e] mock server exited code=null
@@ -1483,7 +1483,7 @@ PASS | C29: 全程无 JS exception
 
 ===== RC suite start: Full Journey =====
 
-  VITE v8.2.1  ready in 210 ms
+  VITE v8.2.1  ready in 204 ms
 
   ➜  Local:   http://localhost:5240/
   ➜  Network: use --host to expose
@@ -1508,8 +1508,8 @@ PASS | FJ5: 「提交任务」按钮可用（武馆）
 PASS | FJ5: 《北门失联》已完成（右栏已完成区）
 PASS | FJ5: 马科固定剧情（接过断裂的铜牌）
 PASS | FJ5: 马科固定剧情（封锁消息继续查）
-PASS | FJ5: 提交《北门失联》金币 +30 | 金币 100→130
 PASS | FJ6: 北门失联完成后马科发布块（北门失联 · 调查终结）
+PASS | FJ5: 提交《北门失联》金币 +30 | 金币 100→130
 PASS | FJ6: 「接受任务：前往北郊继续追查」
 PASS | FJ6: 《北郊追踪》进行中 + 目标更新
 PASS | FJ7: 北门「沿着足迹继续追踪」
@@ -1528,8 +1528,8 @@ PASS | FJ12: 主线完成后 UI 中黄金兔子王仍进行中
 PASS | FJ12: 存档仍 in_progress / stage 0
 PASS | FJ12: 存档四 flags 保持
 PASS | FJ12: 存档 rabbit_path ×1 保持
-PASS | FJ13: 全程无 Production ID leak
 PASS | FJ13: 全程无 JS exception
+PASS | FJ13: 全程无 Production ID leak
 ===== TM-P2-008 Full Journey E2E 结果：43/43 通过 =====
 ===== RC suite end: Full Journey (exit=0) =====
 
@@ -1560,7 +1560,7 @@ PASS | 1440: 无横向滚动
 
 ===== RC suite start: GamePage/Layout =====
 
-  VITE v8.2.1  ready in 220 ms
+  VITE v8.2.1  ready in 188 ms
 
   ➜  Local:   http://localhost:5212/
   ➜  Network: use --host to expose
@@ -1592,7 +1592,7 @@ PASS | 390x844: header/中央场景在首屏（移动端单栏滚动）
 
 ===== RC suite start: Combat =====
 
-  VITE v8.2.1  ready in 204 ms
+  VITE v8.2.1  ready in 175 ms
 
   ➜  Local:   http://localhost:5213/
   ➜  Network: use --host to expose
@@ -1627,10 +1627,10 @@ PASS | 1920x1080 普通玩家无 companion: 技能 tray 收起后消失
 PASS | 1920x1080 普通玩家无 companion: 物品 tray 内 使用治疗药水 可见可访问 | {"label":"使用治疗药水（+8 生命）","present":true,"disabled":false,"visible":true,"inViewport":true,"focusable":true}
 PASS | 1920x1080 普通玩家无 companion: 物品 tray 显示剩余药水数量 | trayText=使用治疗药水（+8 生命）剩余：2
 PASS | 1920x1080 普通玩家无 companion: 物品 tray 收起后消失
-PASS | 1920x1080 普通玩家无 companion: 战斗页真实渲染帧 | bytes=124052
-PASS | 1920x1080 普通玩家无 companion: browser outer 无横向溢出 | doc=1920 client=1920
+PASS | 1920x1080 普通玩家无 companion: 战斗页真实渲染帧 | bytes=124051
 PASS | 1920x1080 普通玩家无 companion: browser outer 无纵向溢出 | doc=1080 client=1080
 PASS | 1920x1080 普通玩家无 companion: 访问按钮未滚动 browser outer | x=0 y=0
+PASS | 1920x1080 普通玩家无 companion: browser outer 无横向溢出 | doc=1920 client=1920
 PASS | 1920x1080 Sakura active: 樱花飞斩（1 灵力） 可见可访问 | {"label":"樱花飞斩（1 灵力）","present":true,"disabled":false,"visible":true,"inViewport":true,"focusable":true}
 PASS | 1920x1080 Sakura active: 樱花魔法盾（2 灵力） 可见可访问 | {"label":"樱花魔法盾（2 灵力）","present":true,"disabled":false,"visible":true,"inViewport":true,"focusable":true}
 PASS | 1920x1080 Sakura active: 樱花轻舞（2 灵力） 可见可访问 | {"label":"樱花轻舞（2 灵力）","present":true,"disabled":false,"visible":true,"inViewport":true,"focusable":true}
@@ -1646,14 +1646,14 @@ PASS | 全程无 JS exception
 
 ===== RC suite start: Merchant =====
 
-  VITE v8.2.1  ready in 215 ms
+  VITE v8.2.1  ready in 168 ms
 
   ➜  Local:   http://localhost:5215/
   ➜  Network: use --host to expose
 PASS | V5 青石村铁匠经「交谈」打开 NPC 交互面板
 PASS | V5 青石村铁匠经「购买装备」打开 MerchantPanel
-PASS | 青石村铁匠出售三件商品 | 实际 3 件
 PASS | 铁匠三件商品为旅行布衣/硬皮甲/锁子甲
+PASS | 青石村铁匠出售三件商品 | 实际 3 件
 PASS | 法师职业不符的硬皮甲购买按钮 disabled
 PASS | 法师看硬皮甲行提示「职业无法使用」
 PASS | 铁匠面板内可通过购买按钮购买旅行布衣
@@ -1700,7 +1700,7 @@ Worker + Local D1 total: 18/18 passed
 
 ===== RC suite start: P2-006 Game UI =====
 
-  VITE v8.2.1  ready in 216 ms
+  VITE v8.2.1  ready in 171 ms
 
   ➜  Local:   http://localhost:5222/
   ➜  Network: use --host to expose
@@ -1738,7 +1738,7 @@ PASS | 全程无 JS exception
 
 ===== RC suite start: P2-006 Combat UI =====
 
-  VITE v8.2.1  ready in 212 ms
+  VITE v8.2.1  ready in 180 ms
 
   ➜  Local:   http://localhost:5223/
   ➜  Network: use --host to expose
@@ -1810,6 +1810,13 @@ warrior Lv2 vs 魔化狼   (Lv2)  胜率   72.0%  回合  3.2  胜余HP  13.0
 warrior Lv2 vs 骷髅士兵  (Lv3)  胜率   85.3%  回合  3.4  胜余HP  17.8
 warrior Lv2 vs 骷髅队长  (Lv4)  胜率   76.6%  回合  5.1  胜余HP  14.2
 warrior Lv2 vs 骷髅战士  (Lv5)  胜率   73.6%  回合  4.6  胜余HP  15.2
+warrior Lv5 vs 魔化兔   (Lv1)  胜率   97.0%  回合  2.0  胜余HP  22.5
+warrior Lv5 vs 魔化狼   (Lv2)  胜率   88.7%  回合  3.1  胜余HP  17.7
+warrior Lv5 vs 骷髅士兵  (Lv3)  胜率   95.8%  回合  3.0  胜余HP  23.0
+warrior Lv5 vs 骷髅队长  (Lv4)  胜率   96.7%  回合  4.6  胜余HP  22.5
+warrior Lv5 vs 骷髅战士  (Lv5)  胜率   93.5%  回合  4.1  胜余HP  21.9
+knight  Lv1 vs 魔化兔   (Lv1)  胜率   91.5%  回合  2.4  胜余HP  15.6
+knight  Lv1 vs 魔化狼   (Lv2)  胜率   67.8%  回合  3.4  胜余HP  11.2
 warrior Lv3 vs 魔化兔   (Lv1)  胜率   94.6%  回合  2.2  胜余HP  19.0
 warrior Lv3 vs 魔化狼   (Lv2)  胜率   81.2%  回合  3.1  胜余HP  14.6
 warrior Lv3 vs 骷髅士兵  (Lv3)  胜率   93.3%  回合  3.2  胜余HP  19.1
@@ -1820,13 +1827,6 @@ warrior Lv4 vs 魔化狼   (Lv2)  胜率   86.0%  回合  3.2  胜余HP  15.8
 warrior Lv4 vs 骷髅士兵  (Lv3)  胜率   94.1%  回合  3.2  胜余HP  21.0
 warrior Lv4 vs 骷髅队长  (Lv4)  胜率   92.3%  回合  4.8  胜余HP  20.1
 warrior Lv4 vs 骷髅战士  (Lv5)  胜率   89.9%  回合  4.3  胜余HP  20.0
-warrior Lv5 vs 魔化兔   (Lv1)  胜率   97.0%  回合  2.0  胜余HP  22.5
-warrior Lv5 vs 魔化狼   (Lv2)  胜率   88.7%  回合  3.1  胜余HP  17.7
-warrior Lv5 vs 骷髅士兵  (Lv3)  胜率   95.8%  回合  3.0  胜余HP  23.0
-warrior Lv5 vs 骷髅队长  (Lv4)  胜率   96.7%  回合  4.6  胜余HP  22.5
-warrior Lv5 vs 骷髅战士  (Lv5)  胜率   93.5%  回合  4.1  胜余HP  21.9
-knight  Lv1 vs 魔化兔   (Lv1)  胜率   91.5%  回合  2.4  胜余HP  15.6
-knight  Lv1 vs 魔化狼   (Lv2)  胜率   67.8%  回合  3.4  胜余HP  11.2
 knight  Lv1 vs 骷髅士兵  (Lv3)  胜率   59.9%  回合  3.4  胜余HP  10.9
 knight  Lv1 vs 骷髅队长  (Lv4)  胜率   39.7%  回合  5.4  胜余HP   7.7
 knight  Lv1 vs 骷髅战士  (Lv5)  胜率   32.6%  回合  4.6  胜余HP   8.2
@@ -1988,7 +1988,7 @@ mage    Lv5 vs 骷髅战士    普攻  3.40  技能  5.10  敌人每击  7.10  �
 
 ===== RC suite start: P2-007 Backpack/Loot =====
 
-  VITE v8.2.1  ready in 227 ms
+  VITE v8.2.1  ready in 210 ms
 
   ➜  Local:   http://localhost:5225/
   ➜  Network: use --host to expose
@@ -2031,7 +2031,7 @@ PASS | 全程无 JS exception
 
 ===== RC suite start: P2-007 Party Combat =====
 
-  VITE v8.2.1  ready in 187 ms
+  VITE v8.2.1  ready in 192 ms
 
   ➜  Local:   http://localhost:5226/
   ➜  Network: use --host to expose
@@ -2055,8 +2055,8 @@ PASS | B1: 伙伴卡渲染
 PASS | B2: 技能 tray 三技能
 PASS | B3: 技能进入目标选择
 PASS | §49-10: Sakura 樱花飞斩暴击 12 击杀
-PASS | B4: 伙伴击杀同样结算胜利
 PASS | B0: 无 JS exception
+PASS | B4: 伙伴击杀同样结算胜利
 PASS | §49-3a: 2v2 我方 Sakura
 PASS | §49-3b: 2v2 敌方 2 卡
 PASS | §49-6: 生产 2 敌遭遇（残破巡逻队）
@@ -2068,10 +2068,10 @@ PASS | C3: 玩家击杀骷髅①（10）
 PASS | §49-8b: 剩余骷髅继续行动打 Sakura
 PASS | §49-8a: kill one 后存活目标只剩 1 个 | 1 个目标
 PASS | §49-8a: 击杀后敌方卡 HP 实时刷新（0/20 + 20/20） | 0/20,20/20
-PASS | C4: 2v2 战斗胜利
-PASS | §49-13: 多敌胜利 XP 聚合 +80
 PASS | §49-14b: 多敌 loot 聚合（骨片×4+粉尘×2）
 PASS | C5: 已收入背包
+PASS | C4: 2v2 战斗胜利
+PASS | §49-13: 多敌胜利 XP 聚合 +80
 PASS | C6: XP 210/250
 PASS | C7: 背包 5 种物品（3 初始 + 2 掉落）
 PASS | C0: 无 JS exception
@@ -2104,14 +2104,14 @@ TOTAL 61 | PASS 61 | FAIL 0
 ===== RC suite start: P2-007 Mount =====
 cloud-save mock server on 5203
 
-  VITE v8.2.1  ready in 179 ms
+  VITE v8.2.1  ready in 205 ms
 
-  ➜  Local:   http://localhost:5204/
-  ➜  Network: use --host to expose
 
-  VITE v8.2.1  ready in 184 ms
+  VITE v8.2.1  ready in 207 ms
 
   ➜  Local:   http://localhost:5227/
+  ➜  Local:   http://localhost:5204/
+  ➜  Network: use --host to expose
   ➜  Network: use --host to expose
 [cloud-save mock] GET ? -> 405
 PASS | M13: 未装备时左栏坐骑区显示「未装备」
@@ -2214,10 +2214,10 @@ PASS | V6: 导入后 XP 130 保留
 
 ===== RC suite start: P2-007 Layout/IDLeak =====
 
-  VITE v8.2.1  ready in 218 ms
+  VITE v8.2.1  ready in 212 ms
 
-  ➜  Local:   http://localhost:5231/
   ➜  Network: use --host to expose
+  ➜  Local:   http://localhost:5231/
 PASS | §55 [1920×1080] 主菜单无 ID 泄露
 PASS | §55 [1920×1080] 游戏页无 ID 泄露
 PASS | §54 [1920×1080] GamePage outer 无滚动 | {"sh":1080,"ch":1080}
@@ -2287,7 +2287,7 @@ PASS | 全程无 JS exception
 ===== RC suite end: P2-007 Layout/IDLeak (exit=0) =====
 ===== RC shared Vite stopped =====
 
-===== RESULT release-candidate: PASS exit=0 durationMs=540858 =====
+===== RESULT release-candidate: PASS exit=0 durationMs=513143 =====
 
 ===== SUITE p2-010-screenshots | npm run qa:p2-010-screenshots =====
 
@@ -2302,17 +2302,17 @@ PASS | 截图 E_ranger_trial | bytes=186070
 PASS | 截图 F_mage_trial | bytes=186477
 PASS | 截图 G_skill_tree_locked | bytes=165059
 PASS | 截图 H_skill_tree_unlocked | bytes=172190
-PASS | 截图 I_new_skill_combat | bytes=128210
+PASS | 截图 I_new_skill_combat | bytes=128991
 PASS | 截图 J_training_panel | bytes=186171
 PASS | 截图 K_low_risk | bytes=8116
 PASS | 截图 L_high_risk | bytes=7563
-PASS | 截图 M_variant_preview | bytes=155481
+PASS | 截图 M_variant_preview | bytes=155438
 PASS | 截图 N_sakura_trial | bytes=195183
-PASS | 截图 O_combat_390 | bytes=49007
+PASS | 截图 O_combat_390 | bytes=49543
 PASS | 截图 P_skill_tree_390 | bytes=24114
 ===== P2-010 Screenshots: 16/16; output=16 =====
 
-===== RESULT p2-010-screenshots: PASS exit=0 durationMs=46436 =====
+===== RESULT p2-010-screenshots: PASS exit=0 durationMs=46067 =====
 
-completed=2026-08-24T20:17:00.596Z
+completed=2026-08-25T00:43:22.388Z
 overall=PASS
