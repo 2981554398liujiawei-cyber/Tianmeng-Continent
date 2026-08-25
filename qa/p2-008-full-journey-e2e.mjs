@@ -247,32 +247,38 @@ const combatLoop = async (enemyName, level) => {
       acted = await useSkillIfAvailable('骑士重击')
       skillFirst = false
     }
-    if (acted) continue
-    const hp = combatBody.match(/生命\s*(\d+)\s*\/\s*(\d+)/)
-    if (hp && Number(hp[1]) / Number(hp[2]) < 0.5) {
-      const potionUsed = await page.evaluate(() => {
-        const open = [...document.querySelectorAll('button')].find((b) => b.textContent?.includes('物品'))
-        if (!open || open.disabled) return false
-        open.click()
-        return true
-      })
-      if (potionUsed) {
-        await sleep(300)
-        const used = await page.evaluate(() => {
-          const b = [...document.querySelectorAll('button')].find((el) => el.textContent?.includes('使用治疗药水'))
-          if (b && !b.disabled) { b.click(); return true }
-          return false
+    if (!acted) {
+      const hp = combatBody.match(/生命\s*(\d+)\s*\/\s*(\d+)/)
+      let potionDrunk = false
+      if (hp && Number(hp[1]) / Number(hp[2]) < 0.5) {
+        const potionUsed = await page.evaluate(() => {
+          const open = [...document.querySelectorAll('button')].find((b) => b.textContent?.includes('背包'))
+          if (!open || open.disabled) return false
+          open.click()
+          return true
         })
-        if (used) {
-          await sleep(600)
-          continue
+        if (potionUsed) {
+          await sleep(300)
+          potionDrunk = await page.evaluate(() => {
+            const b = [...document.querySelectorAll('button')].find((el) => el.textContent?.includes('使用治疗药水'))
+            if (b && !b.disabled) { b.click(); return true }
+            return false
+          })
+          if (potionDrunk) {
+            await sleep(600)
+          } else {
+            await page.evaluate(() => [...document.querySelectorAll('button')].find((b) => b.textContent?.includes('背包'))?.click())
+            await sleep(200)
+          }
         }
-        await page.evaluate(() => [...document.querySelectorAll('button')].find((b) => b.textContent?.includes('物品'))?.click())
-        await sleep(200)
       }
+      // TM-P2-009-R1 §6：Bonus 与 Action 相互独立——喝药后同轮仍可普攻
+      const attacked = await playerAttack()
+      if (!attacked && !potionDrunk) break
     }
-    const attacked = await playerAttack()
-    if (!attacked) break
+    // TM-P2-009-R1 §6/§8：行动只消耗资源不自动流转 → 显式结束回合触发敌方行动（rng=0 → 敌方技能必 miss）
+    await page.evaluate(() => [...document.querySelectorAll('button')].find((b) => b.textContent?.includes('结束回合'))?.click())
+    await sleep(700)
   }
   await page.evaluate(() => {
     if (window.__origRandom) Math.random = window.__origRandom

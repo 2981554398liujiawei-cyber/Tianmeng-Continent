@@ -8,7 +8,9 @@ import { checkEncounter, currentEncounterVariantId, resolveEncounterVariant, sin
 import { performD20Check, CHECK_DC, type D20CheckResult } from '../rules/d20'
 import { KNIGHT_POWER_STRIKE_MP_COST, MAGE_SPELL_MP_COST, WARRIOR_SUPPRESS_STRIKE_MP_COST } from '../rules/combat'
 import { applyAdventureXpReward } from '../rules/progression'
-import { getEnemyFirstKillXp } from '../rules/combatXp'
+import { getEnemyFirstKillXp, FIRST_KILL_FLAG_ENEMIES, resolveEncounterVictoryXp } from '../rules/combatXp'
+import { SINGLE_ENEMY_ENCOUNTERS } from '../content/encounters'
+import type { EncounterDefinition } from '../types/encounter'
 import { checkEquipItem } from '../rules/equipment'
 import { canBuyMerchantItem, getMerchantOffer } from '../rules/merchant'
 import { rollLoot } from '../rules/loot'
@@ -17,7 +19,7 @@ import { resolveEncounterLoot } from '../rules/partyCombat'
 import type { EncounterLootSummary } from '../rules/partyCombat'
 import { checkSkillUse } from '../rules/skill'
 import { rollLuckCheck, resolveLuckCheck, type LuckCheckResult } from '../rules/luck'
-import { canExploreMountTrail, canSearchNorthOutskirtsByMount, getEffectiveCharacterAttributes, hasTravelTag, MOUNT_TRAIL_REWARD_GOLD } from '../rules/mount'
+import { canExploreMountTrail, canSearchNorthOutskirtsByMount, canSearchWaystationByMount, getEffectiveCharacterAttributes, hasTravelTag, MOUNT_TRAIL_REWARD_GOLD } from '../rules/mount'
 import { resolveD20Check, rollD20 } from '../rules/d20'
 import {
   canTriggerSakuraEncounter,
@@ -64,6 +66,10 @@ import {
 
 /** TM-P1-003：《村外异动》完成后村长一次性回应事件 ID（唯一代码来源，GamePage 亦读取） */
 export const VILLAGE_ELDER_POST_QUEST_EVENT_ID = 'village_elder_post_quest_response'
+/** TM-P2-009 §14：《断旗余声》Stage D 救出沈拓活动事件 ID（activityEvents.ts 已登记文案） */
+export const NORTH_SURVIVOR_RESCUED_EVENT_ID = 'north_survivor_rescued'
+/** TM-P2-009 §17：《断旗余声》完成后骑士试炼邀请活动事件 ID（activityEvents.ts 已登记文案；试炼本体不实现） */
+export const KNIGHT_TRIAL_INVITED_EVENT_ID = 'knight_trial_invited'
 import {
   deleteSlot as storageDeleteSlot,
   exportSaves as storageExportSaves,
@@ -241,6 +247,20 @@ interface GameStoreState {
   /** Stage D 回报（武馆/北门）：quest in_progress + ambush_investigated===true + reported undefined/false 时成功，写 quest.flags.north_outskirts_reported=true 且 status→completable（stage 保持 0）；非法前置/异常 flag/重复全部拒绝且完全不变 */
   reportNorthOutskirts: () => boolean
 
+  // ---- TM-P2-009：北线主线《断旗余声》（§9-19；Stage A-F 用 quest.flags 表达，stage 保持 number）----
+  /** Stage A 马科简报（武馆）：quest_north_broken_banner in_progress + make_briefed undefined/false 时成功，原子写 quest.flags.north_broken_banner_make_briefed=true + world.flags.north_waystation_unlocked=true（解锁旧驿站 §11）；重复/非 boolean 异常 flag/非法前置全部拒绝且完全不变；无金币/HP/MP/物品/装备副作用、不自动保存 */
+  startNorthBrokenBanner: () => boolean
+  /** Stage B 搜索驿站（旧驿站）：quest in_progress + make_briefed===true + searched undefined/false 时成功，原子写 quest.flags.north_waystation_searched=true + 线索「断裂队旗」（guaranteed §15）；非法前置/异常 flag/重复全部拒绝且完全不变 */
+  searchNorthAbandonedWaystation: () => boolean
+  /** Stage C 多解（旧驿站）：combat（已 neutralized 才通过）/mnd/lck 检定（DC 12）任一成功 → 写 quest.flags.north_waystation_barrier_resolved=true + 对应线索；sakura 在场 → flavor + 额外线索（不自动解决，§13）；mount（装备 fast_travel 坐骑）→ 快速侦查得黑篷车辙线索（不自动解决）；检定失败可重试（不软阻断）；前置不满足 → locked 且完全不变 */
+  resolveWaystationBarrier: (method: 'combat' | 'mnd' | 'lck' | 'sakura' | 'mount') => WaystationBarrierResult
+  /** Stage D 救出沈拓（旧驿站）：quest in_progress + barrier_resolved===true + rescued undefined/false 时成功，原子写 quest.flags.north_waystation_survivor_rescued=true + 活动事件 north_survivor_rescued（§14 唯一写入点）+ 线索「黑篷车辙」；非法前置/异常 flag/重复全部拒绝且完全不变 */
+  rescueWaystationSurvivor: () => boolean
+  /** Stage D 沈拓汇报（旧驿站）：quest in_progress + rescued===true + debriefed undefined/false 时成功，原子写 quest.flags.north_waystation_survivor_debriefed=true + 线索「魔化诱饵」（§15）；非法前置/异常 flag/重复全部拒绝且完全不变 */
+  debriefWaystationSurvivor: () => boolean
+  /** Stage E 回报马科（武馆）：quest in_progress + debriefed===true + reported undefined/false 时成功，写 quest.flags.north_broken_banner_reported=true 且 status→completable（stage 保持 0）；非法前置/异常 flag/重复全部拒绝且完全不变 */
+  reportNorthBrokenBanner: () => boolean
+
   // ---- TM-P2-004：Sakura 剧情 / 伙伴 / 关系 / 休整 ----
   /** 触发反季樱雨（TM-P2-004 第 31 节）：canTriggerSakuraEncounter 纯规则；成功写 sakura_encounter_started=true + 《落樱越界》discover→in_progress */
   startSakuraEncounter: () => boolean
@@ -320,6 +340,11 @@ function applyQuestDiscovery(gameState: GameState, questId: string): GameState |
     const northGateQuest = gameState.quests.find((q) => q.questId === 'quest_north_gate_missing_patrol')
     if (northGateQuest?.status !== 'completed') return null
   }
+  // TM-P2-009 §9：《断旗余声》窄特判——仅《北郊追踪》completed 才能发现；不建 prerequisite 系统
+  if (questId === 'quest_north_broken_banner') {
+    const northOutskirtsQuest = gameState.quests.find((q) => q.questId === 'quest_north_outskirts')
+    if (northOutskirtsQuest?.status !== 'completed') return null
+  }
   const index = gameState.quests.findIndex((q) => q.questId === questId)
   if (index < 0) {
     return {
@@ -346,6 +371,17 @@ function applyQuestTransition(gameState: GameState, questId: string, to: QuestSt
   const nextQuests = [...gameState.quests]
   nextQuests[index] = { ...current, status: to }
   return { ...gameState, quests: nextQuests }
+}
+
+/**
+ * 单敌可重复遭遇定义（TM-P2-009-R1 §11.3）：enemyId → 其 SINGLE_ENEMY_ENCOUNTERS 单敌遭遇，
+ * 且该遭遇 repeatable=true → 返回 def；否则 undefined。用于 resolveCombatVictory 重复胜利给低额 XP。
+ */
+function repeatableEncounterDefForEnemy(enemyId: string): EncounterDefinition | undefined {
+  const encounterId = SINGLE_ENEMY_ENCOUNTERS[enemyId]
+  if (!encounterId) return undefined
+  const def = getEncounter(encounterId)
+  return def?.repeatable ? def : undefined
 }
 
 export const useGameStore = create<GameStoreState>()((set, get) => ({
@@ -780,6 +816,8 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
           },
         }
       }
+      // TM-P2-009-R1 §2.3：《断旗余声》正式提交只负责 50 Gold / 120 XP / completed——
+      // 骑士试炼邀请已由 reportNorthBrokenBanner() 在向马科汇报时写入，completeQuest 不重复追加 invitation event。
       return reward !== undefined
         ? { gameState: { ...next, player: playerAfterLevel } }
         : { gameState: { ...next, player: playerAfterLevel } }
@@ -970,12 +1008,13 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
       // TM-P2-006 第 38/40 节：战斗阅历——只在「首次正式击败」时授予（getEnemyFirstKillXp 复用现有 defeated flags 防重复）；
       // 重复遭遇 / 无 XP 定义 → firstKillXp=0，withFirstKillXp 原样返回
       const firstKillXp = getEnemyFirstKillXp(s.gameState, enemyId)
-      const withFirstKillXp = (gs: GameState): GameState => {
-        if (firstKillXp <= 0) return gs
-        const progression = applyAdventureXpReward(gs.player, firstKillXp)
+      const withXp = (gs: GameState, amount: number): GameState => {
+        if (amount <= 0) return gs
+        const progression = applyAdventureXpReward(gs.player, amount)
         if (!progression) return gs
         return { ...gs, player: progression.player }
       }
+      const withFirstKillXp = (gs: GameState): GameState => withXp(gs, firstKillXp)
       // 《村外异动》任务推进：村外草原击败魔化兔 → completable（复用封板状态机）
       if (enemyId === 'corrupted_rabbit' && location.id === 'village_grassland') {
         const next = applyQuestTransition(s.gameState, 'quest_village_monsters', 'completable')
@@ -1136,7 +1175,18 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
         }
       }
       // 合法胜利但无持久效果（其他敌人 / 重复嘟嘟兔胜利 / 任务不在推进条件）：仍可能授予首次击败 XP（如：未接任务就击败的可重复遭遇敌人首次奖励）；其余状态全部不变
-      const xpState = withFirstKillXp(s.gameState)
+      // TM-P2-009-R1 §11.3：单敌可重复遭遇——首次授予 first-kill 并写首次标记（cave_bat/wild_boar，见 FIRST_KILL_FLAG_ENEMIES）；
+      // 非首次（重复胜利）给低额 repeatAdventureXpReward（wild_wolf/cave_bat/wild_boar 单敌可重复遭遇）
+      const repeatDef = repeatableEncounterDefForEnemy(enemyId)
+      let base = s.gameState
+      if (firstKillXp > 0 && repeatDef && FIRST_KILL_FLAG_ENEMIES.has(enemyId)) {
+        base = {
+          ...base,
+          world: { ...base.world, flags: { ...base.world.flags, [`${enemyId}_first_kill`]: true } },
+        }
+      }
+      const xp = firstKillXp > 0 ? firstKillXp : (repeatDef?.repeatAdventureXpReward ?? 0)
+      const xpState = xp > 0 ? withXp(base, xp) : base
       return xpState === s.gameState ? {} : { gameState: xpState }
     })
     return ok
@@ -1191,16 +1241,23 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
     const variantId = currentEncounterVariantId(state, def)
     const variant = variantId ? def.variants?.find((v) => v.id === variantId) : undefined
     if (!variant) return null
-    let xp = 0
+    let firstKillXp = 0
     const grants: LootGrant[] = []
     for (const member of variant.members) {
       for (let i = 0; i < member.count; i += 1) {
         // 每个 EnemyInstance 独立结算（§16 pendingLoot；同 enemyId 多实例各算一次 XP）
-        xp += getEnemyFirstKillXp(state, member.enemyId)
+        firstKillXp += getEnemyFirstKillXp(state, member.enemyId)
         const grant = rollLoot(member.enemyId, state.player.attributes.lck)
         if (grant) grants.push(grant)
       }
     }
+    // TM-P2-009-R1 §11.3：遭遇胜利 XP——首次击败优先 first-kill 总和；否则 repeatable 遭遇重复胜利给低额 repeat XP
+    // 同 enemyId 多实例按 count 展开各计一次（如 wild_wolf×2 → 2 次）
+    const xp = resolveEncounterVictoryXp(
+      state,
+      def,
+      variant.members.flatMap((m) => Array.from({ length: m.count }, () => ({ enemyId: m.enemyId }))),
+    )
     let ok = false
     set((s) => {
       if (!s.gameState) return {}
@@ -1221,8 +1278,31 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
         }
         gold += grant.gold
       }
-      const world = def.encounterDefeatFlag
-        ? { ...gs.world, flags: { ...gs.world.flags, [def.encounterDefeatFlag]: true } }
+      // TM-P2-009-R1 §2.1：驿站狼群战斗胜利额外写 waystation_wolf_pack_combat=true——
+      // 区分「战斗击杀」与「非战斗绕开」：非战斗路线（MND/LCK/Sakura/Mount）只写 neutralized，不消耗 wild_wolf first-kill（A7）
+      const extraCombatFlags: Record<string, boolean> =
+        encounterId === 'encounter_waystation_wolf_pack' ? { waystation_wolf_pack_combat: true } : {}
+      // TM-P2-009-R1 §11：多敌可重复遭遇首次击败写入 first-kill 标记（仅 FIRST_KILL_FLAG_ENEMIES 需要 flag 记录）
+      const firstKillFlags: Record<string, boolean> = {}
+      if (firstKillXp > 0) {
+        for (const member of variant.members) {
+          if (FIRST_KILL_FLAG_ENEMIES.has(member.enemyId) && getEnemyFirstKillXp(state, member.enemyId) > 0) {
+            firstKillFlags[`${member.enemyId}_first_kill`] = true
+          }
+        }
+      }
+      const hasFlagChanges =
+        Boolean(def.encounterDefeatFlag) || Object.keys(extraCombatFlags).length > 0 || Object.keys(firstKillFlags).length > 0
+      const world = hasFlagChanges
+        ? {
+            ...gs.world,
+            flags: {
+              ...gs.world.flags,
+              ...extraCombatFlags,
+              ...firstKillFlags,
+              ...(def.encounterDefeatFlag ? { [def.encounterDefeatFlag]: true } : {}),
+            },
+          }
         : gs.world
       ok = true
       return { gameState: { ...gs, inventory, player: { ...gs.player, gold }, world } }
@@ -2459,6 +2539,292 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
     return changed
   },
 
+  // ---- TM-P2-009：《断旗余声》Stage A-F（§9-19；Stage 用 quest.flags 表达，stage 保持 number）----
+
+  startNorthBrokenBanner: () => {
+    let changed = false
+    set((s) => {
+      if (!s.gameState) return {}
+      // Stage A：必须在武馆（马科简报）
+      if (s.gameState.world.currentLocationId !== 'tianlong_martial_hall') return {}
+      const questIndex = s.gameState.quests.findIndex((q) => q.questId === 'quest_north_broken_banner')
+      if (questIndex < 0) return {}
+      const quest = s.gameState.quests[questIndex]
+      if (!quest) return {}
+      if (quest.status !== 'in_progress') return {}
+      const briefed = quest.flags.north_broken_banner_make_briefed
+      if (typeof briefed !== 'undefined' && typeof briefed !== 'boolean') return {}
+      if (briefed === true) return {}
+      const unlocked = s.gameState.world.flags.north_waystation_unlocked
+      if (typeof unlocked !== 'undefined' && typeof unlocked !== 'boolean') return {}
+      changed = true
+      // 原子：quest.flags.north_broken_banner_make_briefed=true + world.flags.north_waystation_unlocked=true（解锁旧驿站 §11）
+      const nextQuests = [...s.gameState.quests]
+      nextQuests[questIndex] = { ...quest, flags: { ...quest.flags, north_broken_banner_make_briefed: true } }
+      return {
+        gameState: {
+          ...s.gameState,
+          quests: nextQuests,
+          world: { ...s.gameState.world, flags: { ...s.gameState.world.flags, north_waystation_unlocked: true } },
+        },
+      }
+    })
+    return changed
+  },
+
+  searchNorthAbandonedWaystation: () => {
+    let changed = false
+    set((s) => {
+      if (!s.gameState) return {}
+      // Stage B：必须在旧驿站
+      if (s.gameState.world.currentLocationId !== 'tianlong_north_abandoned_waystation') return {}
+      const questIndex = s.gameState.quests.findIndex((q) => q.questId === 'quest_north_broken_banner')
+      if (questIndex < 0) return {}
+      const quest = s.gameState.quests[questIndex]
+      if (!quest) return {}
+      if (quest.status !== 'in_progress') return {}
+      // 必须先接受马科简报（Stage A 完成才可搜索）
+      if (quest.flags.north_broken_banner_make_briefed !== true) return {}
+      const searched = quest.flags.north_waystation_searched
+      if (typeof searched !== 'undefined' && typeof searched !== 'boolean') return {}
+      if (searched === true) return {}
+      changed = true
+      // 原子：quest.flags.north_waystation_searched=true + 线索「断裂队旗」（guaranteed §15）
+      const nextQuests = [...s.gameState.quests]
+      nextQuests[questIndex] = { ...quest, flags: { ...quest.flags, north_waystation_searched: true } }
+      const base = { ...s.gameState, quests: nextQuests }
+      const withClue = applyClueDiscovery(base, 'clue_north_broken_banner')
+      return { gameState: withClue ?? base }
+    })
+    return changed
+  },
+
+  resolveWaystationBarrier: (method) => {
+    let result: WaystationBarrierResult | null = null
+    set((s) => {
+      const state = s.gameState
+      if (!state) return {}
+      // Stage C：必须在旧驿站 + quest in_progress + 驿站已搜索 + 屏障尚未解除
+      if (state.world.currentLocationId !== 'tianlong_north_abandoned_waystation') return {}
+      const questIndex = state.quests.findIndex((q) => q.questId === 'quest_north_broken_banner')
+      if (questIndex < 0) return {}
+      const quest = state.quests[questIndex]
+      if (!quest) return {}
+      if (quest.status !== 'in_progress') return {}
+      if (quest.flags.north_waystation_searched !== true) return {}
+      const resolved = quest.flags.north_waystation_barrier_resolved
+      if (typeof resolved !== 'undefined' && typeof resolved !== 'boolean') return {}
+      if (resolved === true) {
+        result = { ok: false, reason: 'already_done' }
+        return {}
+      }
+      // combat 解（§13）：必须先击退驿站狼群（world.flags.waystation_wolf_pack_neutralized===true）才可通过
+      if (method === 'combat') {
+        const neutralized = state.world.flags.waystation_wolf_pack_neutralized
+        if (typeof neutralized !== 'boolean' || neutralized !== true) {
+          result = { ok: false, reason: 'wolves_not_neutralized' }
+          return {}
+        }
+        // 通过：写 barrier_resolved + 线索「魔化诱饵」（击败狼群后能从狼穴找到诱饵）
+        const nextQuests = [...state.quests]
+        nextQuests[questIndex] = { ...quest, flags: { ...quest.flags, north_waystation_barrier_resolved: true } }
+        const base = { ...state, quests: nextQuests }
+        const withClue = applyClueDiscovery(base, 'clue_north_alchemical_bait')
+        result = { ok: true, method: 'combat', clueAdded: withClue ? 'clue_north_alchemical_bait' : undefined }
+        return { gameState: withClue ?? base }
+      }
+      // Sakura 路线（TM-P2-009-R1 §2.1）：樱花优子找到绕过狼群的安全路线 → 屏障真正解决（威胁被引开，非击杀）
+      if (method === 'sakura') {
+        if (!isSakuraPresent(state)) {
+          result = { ok: false, reason: 'sakura_not_present' }
+          return {}
+        }
+        const nextQuests = [...state.quests]
+        nextQuests[questIndex] = { ...quest, flags: { ...quest.flags, north_waystation_barrier_resolved: true } }
+        const base = {
+          ...state,
+          quests: nextQuests,
+          world: {
+            ...state.world,
+            flags: {
+              ...state.world.flags,
+              waystation_sakura_observation: true,
+              waystation_wolf_pack_neutralized: true,
+            },
+          },
+        }
+        const withClue = applyClueDiscovery(base, 'clue_north_alchemical_bait')
+        result = {
+          ok: true,
+          method: 'sakura',
+          present: true,
+          progressed: true,
+          clueAdded: withClue ? 'clue_north_alchemical_bait' : undefined,
+        }
+        return { gameState: withClue ?? base }
+      }
+      // Mount 路线（TM-P2-009-R1 §2.1）：骑马引开狼群后从另一侧进入 → 屏障真正解决（威胁被引走，非击杀）
+      if (method === 'mount') {
+        if (!hasTravelTag(state, 'fast_travel')) {
+          result = { ok: false, reason: 'mount_not_present' }
+          return {}
+        }
+        const alreadySearched = state.world.flags.waystation_mount_search === true
+        const nextQuests = [...state.quests]
+        nextQuests[questIndex] = { ...quest, flags: { ...quest.flags, north_waystation_barrier_resolved: true } }
+        const base = {
+          ...state,
+          quests: nextQuests,
+          world: {
+            ...state.world,
+            flags: {
+              ...state.world.flags,
+              waystation_mount_search: true,
+              waystation_wolf_pack_neutralized: true,
+            },
+          },
+        }
+        const withClue = applyClueDiscovery(base, 'clue_north_black_wagon_tracks')
+        result = {
+          ok: true,
+          method: 'mount',
+          progressed: true,
+          clueAdded: withClue ? 'clue_north_black_wagon_tracks' : undefined,
+          alreadySearched,
+        }
+        return { gameState: withClue ?? base }
+      }
+      // mnd / lck 检定（DC 12；失败可重试，不软阻断 §13）
+      let check: D20CheckResult
+      try {
+        check = performD20Check({
+          attributeScore: state.player.attributes[method],
+          level: state.player.level,
+          dc: WAYSTATION_BARRIER_DC,
+          proficient: false,
+          situationalModifier: 0,
+        })
+      } catch {
+        return {}
+      }
+      if (!check.success) {
+        result = { ok: true, method, check, progressed: false }
+        return {}
+      }
+      // 检定成功（TM-P2-009-R1 §2.1）：原子推进 barrier_resolved=true + neutralized=true（威胁被绕开，非击杀）
+      // + 对应线索（MND→魔化诱饵 / LCK→黑篷车辙）
+      const clueId = method === 'mnd' ? 'clue_north_alchemical_bait' : 'clue_north_black_wagon_tracks'
+      const nextQuests = [...state.quests]
+      nextQuests[questIndex] = { ...quest, flags: { ...quest.flags, north_waystation_barrier_resolved: true } }
+      const base = {
+        ...state,
+        quests: nextQuests,
+        world: { ...state.world, flags: { ...state.world.flags, waystation_wolf_pack_neutralized: true } },
+      }
+      const withClue = applyClueDiscovery(base, clueId)
+      result = { ok: true, method, check, progressed: true, clueAdded: withClue ? clueId : undefined }
+      return { gameState: withClue ?? base }
+    })
+    return result ?? { ok: false, reason: 'locked' }
+  },
+
+  rescueWaystationSurvivor: () => {
+    let changed = false
+    set((s) => {
+      if (!s.gameState) return {}
+      // Stage D：必须在旧驿站（沈拓所在）
+      if (s.gameState.world.currentLocationId !== 'tianlong_north_abandoned_waystation') return {}
+      const questIndex = s.gameState.quests.findIndex((q) => q.questId === 'quest_north_broken_banner')
+      if (questIndex < 0) return {}
+      const quest = s.gameState.quests[questIndex]
+      if (!quest) return {}
+      if (quest.status !== 'in_progress') return {}
+      // 必须先解除屏障（Stage C 完成才可进入后院）
+      if (quest.flags.north_waystation_barrier_resolved !== true) return {}
+      const rescued = quest.flags.north_waystation_survivor_rescued
+      if (typeof rescued !== 'undefined' && typeof rescued !== 'boolean') return {}
+      if (rescued === true) return {}
+      changed = true
+      // 原子：quest.flags.north_waystation_survivor_rescued=true + 活动事件 north_survivor_rescued（§14 唯一写入点）+ 线索「黑篷车辙」
+      const nextQuests = [...s.gameState.quests]
+      nextQuests[questIndex] = { ...quest, flags: { ...quest.flags, north_waystation_survivor_rescued: true } }
+      const base = {
+        ...s.gameState,
+        quests: nextQuests,
+        world: {
+          ...s.gameState.world,
+          completedEvents: [...s.gameState.world.completedEvents, NORTH_SURVIVOR_RESCUED_EVENT_ID],
+        },
+      }
+      const withClue = applyClueDiscovery(base, 'clue_north_black_wagon_tracks')
+      return { gameState: withClue ?? base }
+    })
+    return changed
+  },
+
+  debriefWaystationSurvivor: () => {
+    let changed = false
+    set((s) => {
+      if (!s.gameState) return {}
+      // Stage D：必须在旧驿站（听沈拓汇报）
+      if (s.gameState.world.currentLocationId !== 'tianlong_north_abandoned_waystation') return {}
+      const questIndex = s.gameState.quests.findIndex((q) => q.questId === 'quest_north_broken_banner')
+      if (questIndex < 0) return {}
+      const quest = s.gameState.quests[questIndex]
+      if (!quest) return {}
+      if (quest.status !== 'in_progress') return {}
+      // 必须先救出沈拓
+      if (quest.flags.north_waystation_survivor_rescued !== true) return {}
+      const debriefed = quest.flags.north_waystation_survivor_debriefed
+      if (typeof debriefed !== 'undefined' && typeof debriefed !== 'boolean') return {}
+      if (debriefed === true) return {}
+      changed = true
+      // 原子：quest.flags.north_waystation_survivor_debriefed=true + 线索「魔化诱饵」（§15；沈拓提到有人预先布置炼金诱饵）
+      const nextQuests = [...s.gameState.quests]
+      nextQuests[questIndex] = { ...quest, flags: { ...quest.flags, north_waystation_survivor_debriefed: true } }
+      const base = { ...s.gameState, quests: nextQuests }
+      const withClue = applyClueDiscovery(base, 'clue_north_alchemical_bait')
+      return { gameState: withClue ?? base }
+    })
+    return changed
+  },
+
+  reportNorthBrokenBanner: () => {
+    let changed = false
+    set((s) => {
+      if (!s.gameState) return {}
+      // Stage E：必须在武馆（马科所在）
+      if (s.gameState.world.currentLocationId !== 'tianlong_martial_hall') return {}
+      const questIndex = s.gameState.quests.findIndex((q) => q.questId === 'quest_north_broken_banner')
+      if (questIndex < 0) return {}
+      const quest = s.gameState.quests[questIndex]
+      if (!quest) return {}
+      if (quest.status !== 'in_progress') return {}
+      // 必须先听取沈拓汇报（Stage D 完成才可回报）
+      if (quest.flags.north_waystation_survivor_debriefed !== true) return {}
+      const reported = quest.flags.north_broken_banner_reported
+      if (typeof reported !== 'undefined' && typeof reported !== 'boolean') return {}
+      if (reported === true) return {}
+      changed = true
+      // 原子：写 quest.flags.north_broken_banner_reported=true 且 status→completable（stage 保持 0；无金币/XP/物品副作用、不自动保存）
+      // TM-P2-009-R1 §2.3：向马科汇报当场出现骑士试炼邀请（world.flags.knight_trial_invited + 活动事件；正式骑士试炼本体不实现）
+      const nextQuests = [...s.gameState.quests]
+      nextQuests[questIndex] = { ...quest, status: 'completable', flags: { ...quest.flags, north_broken_banner_reported: true } }
+      return {
+        gameState: {
+          ...s.gameState,
+          quests: nextQuests,
+          world: {
+            ...s.gameState.world,
+            flags: { ...s.gameState.world.flags, knight_trial_invited: true },
+            completedEvents: [...s.gameState.world.completedEvents, KNIGHT_TRIAL_INVITED_EVENT_ID],
+          },
+        },
+      }
+    })
+    return changed
+  },
+
   // ---- TM-P2-004：Sakura 剧情 / 伙伴 / 关系 / 休整 ----
 
   startSakuraEncounter: () => {
@@ -3124,6 +3490,16 @@ export type OldTraderResult = {
 
 /** 北郊袭击现场调查 DC（MND / LCK 检定） */
 export const NORTH_OUTSKIRTS_INVESTIGATE_DC = 12
+
+/** TM-P2-009 §13：旧驿站屏障多解检定 DC（MND / LCK） */
+export const WAYSTATION_BARRIER_DC = 12
+
+export type WaystationBarrierResult =
+  | { ok: true; method: 'combat'; clueAdded?: string }
+  | { ok: true; method: 'mnd' | 'lck'; check: D20CheckResult; progressed: boolean; clueAdded?: string }
+  | { ok: true; method: 'sakura'; present: true; progressed?: boolean; clueAdded?: string }
+  | { ok: true; method: 'mount'; clueAdded?: string; alreadySearched?: boolean; progressed?: boolean }
+  | { ok: false; reason: 'locked' | 'sakura_not_present' | 'mount_not_present' | 'already_done' | 'wolves_not_neutralized' }
 
 export type NorthOutskirtsInvestigateResult =
   | { ok: true; method: 'mnd' | 'lck'; check: D20CheckResult; progressed: boolean; clueAdded?: string }

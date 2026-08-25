@@ -279,11 +279,11 @@ try {
       check(`CUI5(${width}): 再次点击收起 tray`, (await page.$('[data-testid="combat-skill-tray"]')) === null)
 
       // CUI6：物品 tray 开/关
-      await clickButton('物品')
+      await clickButton('背包')
       await page.waitForSelector('[data-testid="combat-item-tray"]', { timeout: 3000 })
       const itemTray = await page.evaluate(() => document.querySelector('[data-testid="combat-item-tray"]')?.textContent || '')
       check(`CUI6(${width}): 物品 tray 含治疗药水`, itemTray.includes('使用治疗药水'))
-      await clickButton('物品')
+      await clickButton('背包')
       await sleep(300)
       check(`CUI6(${width}): 物品 tray 收起`, (await page.$('[data-testid="combat-item-tray"]')) === null)
 
@@ -341,7 +341,7 @@ try {
     if (hpLow) {
       // P2-007：药水/普攻均为我方回合专属，先等玩家阶段（敌人阶段行动栏隐藏）
       await waitPlayerTurn()
-      await clickButton('物品')
+      await clickButton('背包')
       await sleep(200)
       await clickButton('使用治疗药水')
     } else if (await waitPlayerTurn()) {

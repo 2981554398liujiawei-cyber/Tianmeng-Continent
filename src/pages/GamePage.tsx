@@ -7,10 +7,10 @@ import Drawer from '../components/Drawer'
 import Toast from '../components/Toast'
 import MobileNav from '../components/MobileNav'
 import { useGameStore, VILLAGE_ELDER_POST_QUEST_EVENT_ID } from '../game/state/gameStore'
-import { getClue, getEnemy, getEncounter, getItem, getLocation, getNpc, allEncounterMembers, NPCS, QUESTS } from '../game/content'
-import { CHECK_DC, type D20CheckResult } from '../game/rules/d20'
-import { checkEncounter, singleEnemyIdOf } from '../game/rules/encounter'
+import { getClue, getEnemy, getEncounter, getItem, getLocation, getNpc, NPCS, QUESTS } from '../game/content'
 import type { EncounterDefinition } from '../game/types/encounter'
+import { CHECK_DC, type D20CheckResult } from '../game/rules/d20'
+import { checkEncounter, encounterRosterPreview, formatEncounterMembers, singleEnemyIdOf } from '../game/rules/encounter'
 import type { Character } from '../game/types/character'
 import { formatLuckCheckLog } from '../game/rules/luck'
 import { getUsableSkills } from '../game/rules/skill'
@@ -31,11 +31,12 @@ import type {
   SakuraBanterChoice,
   SakuraFirstRestChoice,
   NorthOutskirtsInvestigateResult,
+  WaystationBarrierResult,
 } from '../game/state/gameStore'
 import PlayerSidebar from './game/PlayerSidebar'
 import TaskActivitySidebar from './game/TaskActivitySidebar'
 import NpcInteractionPanel, { type NearbyQuestInfo, type NpcShopExtras } from './game/NpcInteractionPanel'
-import { canExploreMountTrail, canSearchNorthOutskirtsByMount, MOUNT_TRAIL_REWARD_GOLD } from '../game/rules/mount'
+import { canExploreMountTrail, canSearchNorthOutskirtsByMount, canSearchWaystationByMount, MOUNT_TRAIL_REWARD_GOLD } from '../game/rules/mount'
 import { useCloudSession } from '../cloud/cloudSessionStore'
 import Modal from '../components/Modal'
 import { getQuest as getQuestDef } from '../game/content'
@@ -48,16 +49,19 @@ const CHECK_OUTCOME_LABELS: Record<D20CheckResult['outcome'], string> = {
   critical_failure: '大失败',
 }
 
-/** 遭遇成员摘要（TM-P2-007 §17：威胁入口卡片显示成员构成；variants 用「或」分隔；不泄露内部 ID） */
-function encounterMembersSummary(def: EncounterDefinition): string {
-  if (def.fixedMembers) {
-    return def.fixedMembers
-      .map((m) => `${getEnemy(m.enemyId)?.name ?? m.enemyId}${m.count > 1 ? `×${m.count}` : ''}`)
-      .join('、')
-  }
-  return (def.variants ?? [])
-    .map((v) => v.members.map((m) => `${getEnemy(m.enemyId)?.name ?? m.enemyId}${m.count > 1 ? `×${m.count}` : ''}`).join('+'))
-    .join(' 或 ')
+/** TM-P2-009-R1 §11：遭遇难度徽章（低风险/标准/高危；UI 文案不泄露内部 ID） */
+const DIFFICULTY_META: Record<'low' | 'standard' | 'dangerous', { label: string; className: string }> = {
+  low: { label: '低风险', className: 'border-emerald-500/40 bg-emerald-900/30 text-emerald-300' },
+  standard: { label: '标准', className: 'border-sky-500/40 bg-sky-900/30 text-sky-300' },
+  dangerous: { label: '高危', className: 'border-red-500/40 bg-red-900/30 text-red-300' },
+}
+
+/** TM-P2-009-R1 §11：遭遇推荐等级文案（仅 Min → 「Lv.X 起」；Min+Max → 「Lv.X–Y」） */
+function encounterLevelHint(def: EncounterDefinition): string | null {
+  if (def.recommendedLevelMin === undefined) return null
+  return def.recommendedLevelMax !== undefined
+    ? `建议等级 Lv.${def.recommendedLevelMin}–${def.recommendedLevelMax}`
+    : `建议等级 Lv.${def.recommendedLevelMin} 起`
 }
 
 interface GamePageProps {
@@ -133,6 +137,13 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
   const searchNorthOutskirtsAmbush = useGameStore((s) => s.searchNorthOutskirtsAmbush)
   const investigateNorthOutskirtsAmbush = useGameStore((s) => s.investigateNorthOutskirtsAmbush)
   const reportNorthOutskirts = useGameStore((s) => s.reportNorthOutskirts)
+  // TM-P2-009：《断旗余声》Stage A-F actions
+  const startNorthBrokenBanner = useGameStore((s) => s.startNorthBrokenBanner)
+  const searchNorthAbandonedWaystation = useGameStore((s) => s.searchNorthAbandonedWaystation)
+  const resolveWaystationBarrier = useGameStore((s) => s.resolveWaystationBarrier)
+  const rescueWaystationSurvivor = useGameStore((s) => s.rescueWaystationSurvivor)
+  const debriefWaystationSurvivor = useGameStore((s) => s.debriefWaystationSurvivor)
+  const reportNorthBrokenBanner = useGameStore((s) => s.reportNorthBrokenBanner)
   // 背包（移动端底部 [背包] Drawer / BackpackPanel 复用）
   const useHealingPotion = useGameStore((s) => s.useHealingPotion)
   // TM-P2-004：Sakura / 伙伴 / 关系 / 休整 actions
@@ -168,6 +179,8 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
   const [backpackOpen, setBackpackOpen] = useState(false)
   // TM-P2-008 §20/§22/§50：北郊袭击现场多解调查结果（仅 UI 本地状态）
   const [northInvestigation, setNorthInvestigation] = useState<NorthOutskirtsInvestigateResult | null>(null)
+  // TM-P2-009 §13：北郊旧驿站屏障多解结果（仅 UI 本地状态；战斗/MND/LCK 推进，Sakura/Mount 只补线索）
+  const [waystationBarrier, setWaystationBarrier] = useState<WaystationBarrierResult | null>(null)
   // 云同步状态（顶部薄系统栏轻量信息）
   const cloudStatus = useCloudSession((s) => s.status)
   const cloudSyncStatus = useCloudSession((s) => s.syncStatus)
@@ -303,10 +316,13 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
 
   // TM-P2-008：《北郊追踪》任务状态（北门失联 completed 后由马科发布）
   const northOutskirtsQuest = gameState.quests.find((q) => q.questId === 'quest_north_outskirts')
+  // TM-P2-009 §10：《断旗余声》任务状态（北郊追踪 completed 后由马科发布）
+  const northBrokenBannerQuest = gameState.quests.find((q) => q.questId === 'quest_north_broken_banner')
 
   // TM-P0-015：附近人物 = 常驻当前地点的注册 NPC（动态过滤；樱花优子不走普通对话系统，从列表排除）
+  // TM-P2-009 §12：沈拓（shen_tuo）是纯剧情人物，不走普通对话系统（NpcInteractionPanel），从列表排除
   const localNpcs = Object.values(NPCS).filter(
-    (npc) => npc.locationId === world.currentLocationId && npc.id !== 'sakura_yuko',
+    (npc) => npc.locationId === world.currentLocationId && npc.id !== 'sakura_yuko' && npc.id !== 'shen_tuo',
   )
 
   const handleTravel = (targetId: string) => {
@@ -364,6 +380,60 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
   /** TM-P2-008 Stage D：回报发现（武馆/北门） */
   const handleReportNorthOutskirts = () => {
     if (reportNorthOutskirts()) setToast('任务更新：北郊追踪')
+  }
+
+  /** TM-P2-009 §10：接受《断旗余声》（undiscovered→available→in_progress 全链；store 负责窄前置——要求北郊追踪 completed） */
+  const handleAcceptNorthBrokenBanner = () => {
+    const status = northBrokenBannerQuest?.status
+    if (status === 'undiscovered' || status === undefined) {
+      if (!discoverQuest('quest_north_broken_banner')) return
+    }
+    const after = useGameStore.getState().gameState?.quests.find((q) => q.questId === 'quest_north_broken_banner')
+    if (after?.status === 'available' && acceptQuest('quest_north_broken_banner')) {
+      setToast('接受任务：断旗余声')
+    }
+  }
+
+  /** TM-P2-009 Stage A：听取马科简报（武馆）——写 make_briefed + 解锁旧驿站 */
+  const handleStartNorthBrokenBannerBriefing = () => {
+    if (startNorthBrokenBanner()) setToast('任务更新：前往北郊旧驿站')
+  }
+
+  /** TM-P2-009 Stage B：搜索旧驿站（写 searched + 线索「断裂队旗」） */
+  const handleSearchWaystation = () => {
+    if (searchNorthAbandonedWaystation()) setToast('获得新线索：断裂队旗')
+  }
+
+  /** TM-P2-009 Stage C：多解解屏障（战斗 / MND / LCK / Sakura / Mount）——结果 UI ephemeral，展示在行动块内 */
+  const handleResolveWaystationBarrier = (method: 'combat' | 'mnd' | 'lck' | 'sakura' | 'mount') => {
+    const result = resolveWaystationBarrier(method)
+    if (!result || !result.ok) return
+    setWaystationBarrier(result)
+    // TM-P2-009-R1 §2.1：Sakura/Mount 成功 = 威胁被绕开/引走 → 反馈文案「找到安全路线」「骑马引开狼群后从另一侧进入」
+    if (result.method === 'sakura') {
+      setToast('樱花优子找到了绕过狼群的安全路线')
+    } else if (result.method === 'mount') {
+      setToast('你骑马引开狼群后从另一侧进入了后院')
+    } else if (result.clueAdded) {
+      setToast(`获得新线索：${getClue(result.clueAdded)?.title ?? '未知线索'}`)
+    } else if ((result.method === 'mnd' || result.method === 'lck') && result.progressed) {
+      setToast('你解开了驿站的屏障')
+    }
+  }
+
+  /** TM-P2-009 Stage D：搜救幸存者（写 rescued + 事件 north_survivor_rescued + 线索「黑篷车辙」） */
+  const handleRescueSurvivor = () => {
+    if (rescueWaystationSurvivor()) setToast('你救出了一名幸存的巡逻骑士')
+  }
+
+  /** TM-P2-009 Stage E：向沈拓了解详情（写 debriefed + 线索「魔化诱饵」） */
+  const handleDebriefSurvivor = () => {
+    if (debriefWaystationSurvivor()) setToast('获得新线索：魔化诱饵')
+  }
+
+  /** TM-P2-009 Stage F：回报马科（写 reported + status→completable） */
+  const handleReportNorthBrokenBanner = () => {
+    if (reportNorthBrokenBanner()) setToast('任务更新：断旗余声')
   }
 
   const activeNpc = activeNpcId ? getNpc(activeNpcId) : undefined
@@ -429,6 +499,8 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
       if (quest.id === 'quest_north_gate_missing_patrol' && !gameState.quests.some((q) => q.questId === 'quest_wangcai_trouble' && q.status === 'completed')) continue
       // TM-P2-008 §16：北郊追踪（与 Store discoverQuest 窄前置一致——要求北门失联 completed）
       if (quest.id === 'quest_north_outskirts' && !gameState.quests.some((q) => q.questId === 'quest_north_gate_missing_patrol' && q.status === 'completed')) continue
+      // TM-P2-009 §10：《断旗余声》（与 Store discoverQuest 窄前置一致——要求北郊追踪 completed）
+      if (quest.id === 'quest_north_broken_banner' && !gameState.quests.some((q) => q.questId === 'quest_north_outskirts' && q.status === 'completed')) continue
       list.push({ questId: quest.id, title: quest.title, status: qs?.status === 'available' ? 'available' : 'undiscovered' })
     }
     return list
@@ -1188,6 +1260,35 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
               )
             })()}
 
+            {/* TM-P2-009 §10：北郊追踪完成——马科发布《断旗余声》行动块（武馆；北郊 completed 后出现，§10/§31） */}
+            {northOutskirtsQuest?.status === 'completed' && (() => {
+              const status = northBrokenBannerQuest?.status
+              if (status === 'completable' || status === 'completed') return null
+              return (
+                <section className="rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
+                  <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">北郊驿站的传闻</h3>
+                  <p className="leading-relaxed text-bone-200">听完你的汇报，马科在沙盘前沉默了很久。</p>
+                  <p className="mt-1 leading-relaxed text-bone-200">“北郊官道岔口，有一座荒废多年的旧驿站。”</p>
+                  <p className="mt-1 leading-relaxed text-bone-200">“第三巡逻队最后一次传回消息，说是在那里歇脚。”</p>
+                  <p className="mt-1 leading-relaxed text-bone-200">“三天没有回音了。沈拓那小子——他是队里最稳当的一个。”</p>
+                  <p className="mt-1 leading-relaxed text-bone-200">“你替我走一趟，看看驿站到底发生了什么。”</p>
+                  {status === 'in_progress' ? (
+                    <p className="mt-3 text-gold-300">当前目标：前往北郊旧驿站查明巡逻队的下落。</p>
+                  ) : (
+                    <div className="mt-3">
+                      <Button
+                        variant="primary"
+                        data-testid="accept-north-broken-banner"
+                        onClick={handleAcceptNorthBrokenBanner}
+                      >
+                        接受任务：断旗余声
+                      </Button>
+                    </div>
+                  )}
+                </section>
+              )
+            })()}
+
             {/* TM-P2-008 §18-20/§26：北郊追踪——中间区只保留当前场景可执行行动（Stage A 追踪 / Stage B 搜索 / Stage C 多解调查 / Stage D 回报） */}
             {(() => {
               const nq = northOutskirtsQuest
@@ -1314,6 +1415,207 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
               return null
             })()}
 
+            {/* TM-P2-009 §11-17：断旗余声——中间区只保留当前场景可执行行动（Stage A 简报 / Stage B 搜索 / Stage C 多解解屏障 / Stage D 搜救 / Stage E 问沈拓 / Stage F 回报） */}
+            {(() => {
+              const bq = northBrokenBannerQuest
+              if (bq?.status !== 'in_progress') return null
+              const makeBriefed = bq.flags.north_broken_banner_make_briefed === true
+              const waystationSearched = bq.flags.north_waystation_searched === true
+              const barrierResolved = bq.flags.north_waystation_barrier_resolved === true
+              const survivorRescued = bq.flags.north_waystation_survivor_rescued === true
+              const survivorDebriefed = bq.flags.north_waystation_survivor_debriefed === true
+              const reported = bq.flags.north_broken_banner_reported === true
+              const atMartialHall = world.currentLocationId === 'tianlong_martial_hall'
+              const atWaystation = world.currentLocationId === 'tianlong_north_abandoned_waystation'
+              const mountSearchable = canSearchWaystationByMount(gameState)
+              const sakuraHere = isSakuraPresent(gameState)
+
+              // Stage A：武馆——听取马科简报（写 make_briefed + 解锁旧驿站）
+              if (!makeBriefed && atMartialHall) {
+                return (
+                  <section className="rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
+                    <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">断旗余声</h3>
+                    <p className="leading-relaxed text-bone-200">
+                      马科递给你一张泛黄的驿道图，指着北郊官道岔口的一处标记。
+                    </p>
+                    <p className="mt-1 leading-relaxed text-bone-200">
+                      “旧驿站。第三巡逻队最后传回的消息是从那里发出来的。”
+                    </p>
+                    <p className="mt-1 leading-relaxed text-bone-200">
+                      “去驿站看看，注意安全。如果遇到狼群，不要硬拼——它们最近疯了似的往北边跑。”
+                    </p>
+                    <Button
+                      variant="primary"
+                      className="mt-3"
+                      data-testid="brief-north-broken-banner"
+                      onClick={handleStartNorthBrokenBannerBriefing}
+                    >
+                      听马科说明驿站情况
+                    </Button>
+                  </section>
+                )
+              }
+
+              // Stage B：旧驿站——搜索驿站（写 searched + 线索「断裂队旗」）
+              if (makeBriefed && !waystationSearched && atWaystation) {
+                return (
+                  <section className="rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
+                    <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">断旗余声</h3>
+                    <p className="leading-relaxed text-bone-200">
+                      半塌的驿站安静得反常。院门半掩，风从门缝里漏进来，吹得一块垂挂的旗帜轻轻摆动。
+                    </p>
+                    <Button
+                      variant="primary"
+                      className="mt-3"
+                      data-testid="search-waystation"
+                      onClick={handleSearchWaystation}
+                    >
+                      搜索驿站
+                    </Button>
+                  </section>
+                )
+              }
+
+              // Stage C：旧驿站——多解解屏障（战斗 / MND / LCK / Sakura / Mount；五种路线成功都真正解决屏障并写 neutralized，非战斗路线不授予击杀 XP）
+              if (waystationSearched && !barrierResolved && atWaystation) {
+                const wolvesNeutralized = world.flags.waystation_wolf_pack_neutralized === true
+                const checkFailed =
+                  waystationBarrier?.ok === true &&
+                  (waystationBarrier.method === 'mnd' || waystationBarrier.method === 'lck') &&
+                  !waystationBarrier.progressed
+                return (
+                  <section className="rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
+                    <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">断旗余声 · 驿站狼群</h3>
+                    <p className="leading-relaxed text-bone-200">
+                      驿站后院被狼群堵死了——三只毛发杂乱的野狼在断墙前低吼，其中一只双眼泛着不正常的紫光。你要穿过它们才能进到后院的储藏室。
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Button
+                        variant="primary"
+                        data-testid="barrier-combat"
+                        onClick={() => handleResolveWaystationBarrier('combat')}
+                      >
+                        {wolvesNeutralized ? '战斗已完成，进入后院' : '击败狼群，突破屏障'}
+                      </Button>
+                      <Button
+                        variant="primary"
+                        data-testid="barrier-mnd"
+                        onClick={() => handleResolveWaystationBarrier('mnd')}
+                      >
+                        [MND 检定] 观察狼群的领地行为
+                      </Button>
+                      <Button
+                        variant="primary"
+                        data-testid="barrier-lck"
+                        onClick={() => handleResolveWaystationBarrier('lck')}
+                      >
+                        [LCK 检定] 寻找绕开狼群的小路
+                      </Button>
+                      {sakuraHere && (
+                        <Button
+                          variant="ghost"
+                          data-testid="barrier-sakura"
+                          onClick={() => handleResolveWaystationBarrier('sakura')}
+                        >
+                          请樱花优子寻找安全路线
+                        </Button>
+                      )}
+                      {mountSearchable && (
+                        <Button
+                          variant="ghost"
+                          data-testid="barrier-mount"
+                          onClick={() => handleResolveWaystationBarrier('mount')}
+                        >
+                          骑马引开狼群后从另一侧进入
+                        </Button>
+                      )}
+                    </div>
+                    {checkFailed && (
+                      <p className="mt-3 text-sm text-bone-400">狼群没有散开，但你可以再试一次。</p>
+                    )}
+                    {waystationBarrier?.ok === true && waystationBarrier.method === 'mount' && (
+                      <p className="mt-3 text-sm text-bone-400">你骑马引开狼群后从另一侧进入了后院。</p>
+                    )}
+                    {waystationBarrier?.ok === true && waystationBarrier.method === 'sakura' && (
+                      <p className="mt-3 text-sm text-bone-400">樱花优子找到了绕过狼群的安全路线。</p>
+                    )}
+                  </section>
+                )
+              }
+
+              // Stage D：旧驿站——搜救幸存者（写 rescued + 事件 north_survivor_rescued + 线索「黑篷车辙」）
+              if (barrierResolved && !survivorRescued && atWaystation) {
+                return (
+                  <section className="rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
+                    <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">断旗余声 · 搜救</h3>
+                    <p className="leading-relaxed text-bone-200">
+                      你穿过狼群盘踞的后院，推开储藏室的门，发现一名骑士倒在墙角的干草堆里，胸口还护着一面卷起来的旗帜。
+                    </p>
+                    <Button
+                      variant="primary"
+                      className="mt-3"
+                      data-testid="rescue-survivor"
+                      onClick={handleRescueSurvivor}
+                    >
+                      救出骑士
+                    </Button>
+                  </section>
+                )
+              }
+
+              // Stage E：旧驿站——问沈拓详情（写 debriefed + 线索「魔化诱饵」）
+              if (survivorRescued && !survivorDebriefed && atWaystation) {
+                return (
+                  <section className="rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
+                    <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">断旗余声 · 沈拓</h3>
+                    <p className="leading-relaxed text-bone-200">
+                      骑士咳了几声，撑着墙壁坐起来，报上名字：“第三巡逻队，沈拓。”
+                    </p>
+                    <Button
+                      variant="primary"
+                      className="mt-3"
+                      data-testid="debrief-survivor"
+                      onClick={handleDebriefSurvivor}
+                    >
+                      询问驿站发生了什么
+                    </Button>
+                  </section>
+                )
+              }
+
+              // Stage F：武馆——向马科回报（写 reported + status→completable）
+              if (survivorDebriefed && !reported && atMartialHall) {
+                return (
+                  <section className="rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
+                    <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">断旗余声</h3>
+                    <p className="leading-relaxed text-bone-200">你已查明驿站发生的一切，是时候把沈拓的证词交给马科。</p>
+                    <Button
+                      variant="primary"
+                      className="mt-3"
+                      data-testid="report-north-broken-banner"
+                      onClick={handleReportNorthBrokenBanner}
+                    >
+                      向马科汇报
+                    </Button>
+                  </section>
+                )
+              }
+
+              return null
+            })()}
+
+            {/* TM-P2-009 §17：断旗余声完成——马科预告正式骑士试炼（只引出下一阶段，试炼本体不实现） */}
+            {world.currentLocationId === 'tianlong_martial_hall' && world.flags.knight_trial_invited === true && (
+              <section className="rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
+                <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">骑士试炼的预告</h3>
+                <p className="leading-relaxed text-bone-200">马科听完沈拓的证词，久久没有说话。</p>
+                <p className="mt-1 leading-relaxed text-bone-200">“黑篷车、魔化诱饵……有人在故意引狼群去驿站。”</p>
+                <p className="mt-1 leading-relaxed text-bone-200">“你救回沈拓，立了大功。”</p>
+                <p className="mt-1 leading-relaxed text-bone-200">“等我把城防的事处理完，会有一场正式的骑士试炼等着你。”</p>
+                <p className="mt-2 text-gold-300">（试炼内容尚待展开）</p>
+              </section>
+            )}
+
             {/* 机缘型社交：路边旧货商 */}
             {world.currentLocationId === 'tianlong_city' && (() => {
               const talked = world.flags.old_trader_talked === true
@@ -1437,6 +1739,12 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
                       const cannotFight = player.hp <= 0
                       const singleEnemyId = singleEnemyIdOf(def)
                       const singleEnemy = singleEnemyId ? getEnemy(singleEnemyId) : undefined
+                      // TM-P2-009-R1 §4：roster 预览与 CombatPage 共享同一固化 variant（world.encounterVariants）。
+                      // 未固化 → 「可能遭遇」多候选（或分隔）；已固化 → 只显示单一「本次遭遇」；绝不把 variants 并集当阵容。
+                      const roster = encounterRosterPreview(gameState, def)
+                      // TM-P2-009-R1 §11：难度徽章 + 推荐等级（UI 文案，不泄露内部 ID）
+                      const diffMeta = DIFFICULTY_META[def.difficulty ?? 'standard']
+                      const levelHint = encounterLevelHint(def)
                       return (
                         <div key={def.id} className="rounded border border-ink-600 bg-ink-900/40 p-3">
                           <div className="flex items-center justify-between gap-3">
@@ -1446,13 +1754,23 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
                                 {singleEnemy && (
                                   <span className="text-xs font-normal text-bone-500"> · Lv.{singleEnemy.level}</span>
                                 )}
+                                <span
+                                  className={`ml-2 inline-block rounded border px-1.5 py-0.5 align-middle text-[10px] font-medium ${diffMeta.className}`}
+                                >
+                                  {diffMeta.label}
+                                </span>
                               </p>
+                              {levelHint && <p className="mt-1 text-xs text-bone-500">{levelHint}</p>}
                               {singleEnemy ? (
                                 <p className="mt-1 text-xs text-bone-500">
                                   HP {singleEnemy.maxHp} · 护甲 {singleEnemy.armor}
                                 </p>
+                              ) : roster.locked ? (
+                                <p className="mt-1 text-xs text-bone-500">本次遭遇：{formatEncounterMembers(roster.members)}</p>
                               ) : (
-                                <p className="mt-1 text-xs text-bone-500">{encounterMembersSummary(def)}</p>
+                                <p className="mt-1 text-xs text-bone-500">
+                                  可能遭遇：{roster.candidates.map((members) => `• ${formatEncounterMembers(members)}`).join(' 或 ')}
+                                </p>
                               )}
                             </div>
                             <Button variant="primary" disabled={cannotFight} onClick={() => onEngage(def.id)}>

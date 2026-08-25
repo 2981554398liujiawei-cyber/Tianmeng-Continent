@@ -66,4 +66,14 @@ export const NPCS: Record<string, NpcDefinition> = {
     summary: '来自大日岛樱花神宫的女神，神格受损，以寄灵神契锚定于天梦大陆的生命之上才得以存在。',
     greeting: '花瓣落在你的肩上。天梦大陆的风，比神域里要温柔一些。',
   },
+  // TM-P2-009 §14：沈拓（北线剧情人物——北门第三巡逻队巡逻骑士，旧驿站幸存者）。
+  // 仅剧情人物：不建 Companion/Relationship；交互由《断旗余声》剧情行动块承载（不走普通 NPC 对话），GamePage 从「附近人物」排除。
+  shen_tuo: {
+    id: 'shen_tuo',
+    name: '沈拓',
+    role: '第三巡逻队·巡逻骑士',
+    locationId: 'tianlong_north_abandoned_waystation',
+    summary: '北门第三巡逻队的年轻骑士，在旧驿站遭遇中侥幸存活，神色惊惶，身上缠着草草包扎的伤口。',
+    greeting: '我……我还活着。他们还活着吗？',
+  },
 }

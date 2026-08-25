@@ -1222,3 +1222,114 @@ describe('TM-P2-007：V6 坐骑/遭遇变体字段保真与迁移', () => {
     expect(gs?.player.gold).toBe(90)
   })
 })
+
+describe('TM-P2-009：V6 断旗余声字段保真与迁移（SV1-SV8）', () => {
+  const stateWithNorthBrokenBanner = () => {
+    const state = stateWithGold(200)
+    state.quests = [
+      {
+        questId: 'quest_north_broken_banner',
+        status: 'in_progress',
+        stage: 0,
+        flags: {
+          north_broken_banner_make_briefed: true,
+          north_waystation_searched: true,
+          north_waystation_barrier_resolved: true,
+          north_waystation_survivor_rescued: true,
+        },
+      },
+    ]
+    state.world.flags.north_waystation_unlocked = true
+    state.world.flags.knight_trial_invited = true
+    state.world.flags.clue_north_broken_banner = true
+    state.world.flags.clue_north_black_wagon_tracks = true
+    state.world.flags.clue_north_alchemical_bait = true
+    state.world.completedEvents = ['north_survivor_rescued', 'knight_trial_invited']
+    state.world.encounterVariants = { encounter_waystation_wolf_pack: 'waystation_wolf_pack_fixed' }
+    return state
+  }
+
+  it('SV1: SLOT_FORMAT_VERSION 仍为 6（P2-009 禁升 V7，Cloud Save 协议不变）', () => {
+    expect(SLOT_FORMAT_VERSION).toBe(6)
+  })
+
+  it('SV2: quest.flags.north_* 字段 saveSlot → loadSlot roundtrip 保留', () => {
+    const src = stateWithNorthBrokenBanner()
+    expect(saveSlot('slot1', src)).toBe(true)
+    const loaded = loadSlot('slot1')?.gameState
+    const q = loaded?.quests.find((x) => x.questId === 'quest_north_broken_banner')
+    expect(q?.status).toBe('in_progress')
+    expect(q?.stage).toBe(0)
+    expect(q?.flags.north_broken_banner_make_briefed).toBe(true)
+    expect(q?.flags.north_waystation_searched).toBe(true)
+    expect(q?.flags.north_waystation_barrier_resolved).toBe(true)
+    expect(q?.flags.north_waystation_survivor_rescued).toBe(true)
+  })
+
+  it('SV3: world.flags（解锁 / 里程碑 / 线索标记）roundtrip 保留', () => {
+    const src = stateWithNorthBrokenBanner()
+    expect(saveSlot('slot1', src)).toBe(true)
+    const flags = loadSlot('slot1')?.gameState.world.flags
+    expect(flags?.north_waystation_unlocked).toBe(true)
+    expect(flags?.knight_trial_invited).toBe(true)
+    expect(flags?.clue_north_broken_banner).toBe(true)
+    expect(flags?.clue_north_black_wagon_tracks).toBe(true)
+    expect(flags?.clue_north_alchemical_bait).toBe(true)
+  })
+
+  it('SV4: completedEvents（north_survivor_rescued / knight_trial_invited）roundtrip 保留', () => {
+    const src = stateWithNorthBrokenBanner()
+    expect(saveSlot('slot1', src)).toBe(true)
+    const events = loadSlot('slot1')?.gameState.world.completedEvents
+    expect(events).toContain('north_survivor_rescued')
+    expect(events).toContain('knight_trial_invited')
+  })
+
+  it('SV5: encounterVariants（waystation_wolf_pack_fixed）roundtrip 保留', () => {
+    const src = stateWithNorthBrokenBanner()
+    expect(saveSlot('slot1', src)).toBe(true)
+    const variants = loadSlot('slot1')?.gameState.world.encounterVariants
+    expect(variants).toEqual({ encounter_waystation_wolf_pack: 'waystation_wolf_pack_fixed' })
+  })
+
+  it('SV6: 无 P2-009 字段的老 V6 存档加载不崩溃（flags 空对象可接受，无需迁移）', () => {
+    const old = stateWithGold(77)
+    // 老存档：无断旗余声 quest、无 P2-009 flags / events / encounterVariants
+    expect(saveSlot('slot1', old)).toBe(true)
+    const loaded = loadSlot('slot1')?.gameState
+    expect(loaded?.quests.some((q) => q.questId === 'quest_north_broken_banner')).toBe(false)
+    expect(loaded?.world.flags.north_waystation_unlocked).toBeUndefined()
+    expect(loaded?.world.flags.knight_trial_invited).toBeUndefined()
+    // 迁移幂等：withV6Fields 后再跑一遍不改变
+    expect(withV6Fields(loaded!)).toEqual(withV6Fields(withV6Fields(loaded!)))
+  })
+
+  it('SV7: importSaves V6 导出导入后 P2-009 字段不丢失', () => {
+    const src = stateWithNorthBrokenBanner()
+    expect(saveSlot('slot1', src)).toBe(true)
+    const exported = exportSaves()
+    localStorage.clear()
+    expect(importSaves(exported)).toBe(true)
+    const slot = loadSlot('slot1')
+    expect(slot?.version).toBe(SLOT_FORMAT_VERSION)
+    const q = slot?.gameState.quests.find((x) => x.questId === 'quest_north_broken_banner')
+    expect(q?.flags.north_waystation_survivor_rescued).toBe(true)
+    expect(slot?.gameState.world.flags.knight_trial_invited).toBe(true)
+    expect(slot?.gameState.world.completedEvents).toContain('knight_trial_invited')
+    expect(slot?.gameState.world.encounterVariants.encounter_waystation_wolf_pack).toBe('waystation_wolf_pack_fixed')
+  })
+
+  it('SV8: 存档协议版本不升——export/import 与旧 V6 完全互读', () => {
+    const src = stateWithNorthBrokenBanner()
+    expect(saveSlot('slot1', src)).toBe(true)
+    const raw = JSON.parse(localStorage.getItem('tianmeng_continent_save_slot_slot1')!)
+    expect(raw.version).toBe(6)
+    // 旧 V6 存档（无 P2-009 字段）在导入后仍可读且不触发迁移
+    const legacy = stateWithGold(88)
+    expect(saveSlot('slot2', legacy)).toBe(true)
+    const legacyRaw = JSON.parse(localStorage.getItem('tianmeng_continent_save_slot_slot2')!)
+    expect(legacyRaw.version).toBe(6)
+    const legacySlot = loadSlot('slot2')
+    expect(legacySlot?.version).toBe(6)
+  })
+})

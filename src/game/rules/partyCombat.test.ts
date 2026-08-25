@@ -6,6 +6,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { createInitialGameState } from '../content/initial'
+import { SKILLS } from '../content/skills'
 import { resolveAttack } from './combat'
 import type { GameState } from '../types/game'
 import type { QuestStatus } from '../types/quest'
@@ -14,8 +15,10 @@ import {
   buildEnemyCombatant,
   buildEnemyInstances,
   buildFriendlyCombatant,
+  chooseEnemyAction,
   chooseEnemyTarget,
   didTurnLoop,
+  friendlyBlockIndices,
   instanceDisplaySuffix,
   isEncounterLost,
   isEncounterWon,
@@ -27,6 +30,7 @@ import {
   rollInitiativeQueue,
   updateCombatantHp,
   type Combatant,
+  type InitiativeTurn,
   type Rng,
 } from './partyCombat'
 
@@ -230,6 +234,67 @@ describe('回合推进（§9.4 死亡跳过 / round）', () => {
   })
 })
 
+describe('friendlyBlockIndices（TM-P2-009-R1 §7 Friendly Ready Block 线性连续段）', () => {
+  /** 直接构造 InitiativeTurn（不经过 rollInitiativeQueue），以便精确控制 friendly/enemy 几何布局 */
+  function turnOf(combatant: Combatant, order: number): InitiativeTurn {
+    return { combatant, roll: 1, initiative: combatant.agility + 1, order }
+  }
+
+  it('PC-§7-1 F1→F2→E1：同段 [0,1] 互切；E1 独立单段', () => {
+    const f1 = makePlayer()
+    const f2 = makeSakura()
+    const e1 = makeEnemyCombatants({ enemyId: 'corrupted_rabbit', count: 1 })[0]!
+    const turns = [turnOf(f1, 0), turnOf(f2, 1), turnOf(e1, 2)]
+    expect(friendlyBlockIndices(turns, 0)).toEqual([0, 1])
+    expect(friendlyBlockIndices(turns, 1)).toEqual([0, 1])
+    expect(friendlyBlockIndices(turns, 2)).toEqual([2])
+  })
+
+  it('PC-§7-2 F1→E1→F2：F1/F2 被 E1 隔开，各自单段，不能跨 E1 互切', () => {
+    const f1 = makePlayer()
+    const f2 = makeSakura()
+    const e1 = makeEnemyCombatants({ enemyId: 'corrupted_rabbit', count: 1 })[0]!
+    const turns = [turnOf(f1, 0), turnOf(e1, 1), turnOf(f2, 2)]
+    expect(friendlyBlockIndices(turns, 0)).toEqual([0])
+    expect(friendlyBlockIndices(turns, 1)).toEqual([1])
+    expect(friendlyBlockIndices(turns, 2)).toEqual([2])
+  })
+
+  it('PC-§7-3 全 friendly 段：无 enemy 时整列同一段', () => {
+    const turns = [turnOf(makePlayer(), 0), turnOf(makeSakura(), 1)]
+    expect(friendlyBlockIndices(turns, 0)).toEqual([0, 1])
+    expect(friendlyBlockIndices(turns, 1)).toEqual([0, 1])
+  })
+
+  it('PC-§7-4 friendly 在末尾连续：E1→F1→F2 时 F1/F2 同段', () => {
+    const e1 = makeEnemyCombatants({ enemyId: 'corrupted_rabbit', count: 1 })[0]!
+    const f1 = makePlayer()
+    const f2 = makeSakura()
+    const turns = [turnOf(e1, 0), turnOf(f1, 1), turnOf(f2, 2)]
+    expect(friendlyBlockIndices(turns, 1)).toEqual([1, 2])
+    expect(friendlyBlockIndices(turns, 2)).toEqual([1, 2])
+    expect(friendlyBlockIndices(turns, 0)).toEqual([0])
+  })
+
+  it('PC-§7-5 线性非环：turns 首尾的 friendly 不被错误相连', () => {
+    // F1 → E1 → E2 → F2 布局：index0 与 index3 都是 friendly，但被 enemy 隔开 → 各自单段
+    const f1 = makePlayer()
+    const e1 = makeEnemyCombatants({ enemyId: 'corrupted_rabbit', count: 1 })[0]!
+    const e2 = makeEnemyCombatants({ enemyId: 'corrupted_rat', count: 1 })[0]!
+    const f2 = makeSakura()
+    const turns = [turnOf(f1, 0), turnOf(e1, 1), turnOf(e2, 2), turnOf(f2, 3)]
+    expect(friendlyBlockIndices(turns, 0)).toEqual([0])
+    expect(friendlyBlockIndices(turns, 3)).toEqual([3])
+  })
+
+  it('PC-§7-6 空队列 / 越界索引拒绝', () => {
+    expect(() => friendlyBlockIndices([], 0)).toThrow(RangeError)
+    const turns = [turnOf(makePlayer(), 0)]
+    expect(() => friendlyBlockIndices(turns, -1)).toThrow(RangeError)
+    expect(() => friendlyBlockIndices(turns, 3)).toThrow(RangeError)
+  })
+})
+
 describe('敌方目标选择（§12 AI V1）', () => {
   it('PC16 rng=0 → 第一个存活目标；接近 1 → 最后一个', () => {
     const targets = [makePlayer(), makeSakura()]
@@ -242,6 +307,43 @@ describe('敌方目标选择（§12 AI V1）', () => {
     const enemy = makeEnemyCombatants({ enemyId: 'corrupted_rabbit', count: 1 })[0]!
     expect(() => chooseEnemyTarget([enemy], () => 0)).toThrow(RangeError)
     expect(() => chooseEnemyTarget([makePlayer()], () => 1)).toThrow(RangeError)
+  })
+})
+
+describe('敌方行动选择（TM-P2-009-R1 §10 AI：技能 + 普攻）', () => {
+  const skills = () => [SKILLS['enemy_rabbit_mad_bite']!, SKILLS['enemy_wolf_vicious_pounce']!]
+
+  it('EC1 无可用技能 → 恒普攻（任何画像 / rng）', () => {
+    expect(chooseEnemyAction([], 'aggressive', () => 0)).toEqual({ type: 'attack' })
+    expect(chooseEnemyAction([], 'boss', () => 0.5)).toEqual({ type: 'attack' })
+  })
+
+  it('EC2 aiProfile 决定用技能倾向（aggressive 0.7）', () => {
+    expect(chooseEnemyAction(skills(), 'aggressive', () => 0.5)).toEqual({ type: 'skill', skillId: 'enemy_wolf_vicious_pounce' })
+    expect(chooseEnemyAction(skills(), 'aggressive', () => 0.8)).toEqual({ type: 'attack' })
+  })
+
+  it('EC3 caster / boss 高倾向用技能', () => {
+    expect(chooseEnemyAction(skills(), 'caster', () => 0.8).type).toBe('skill')
+    expect(chooseEnemyAction(skills(), 'boss', () => 0.75).type).toBe('skill')
+    expect(chooseEnemyAction(skills(), 'defensive', () => 0.5).type).toBe('attack')
+    expect(chooseEnemyAction(skills(), 'pack', () => 0.6).type).toBe('attack')
+  })
+
+  it('EC4 缺省画像按 aggressive（undefined）', () => {
+    expect(chooseEnemyAction(skills(), undefined, () => 0.5).type).toBe('skill')
+    expect(chooseEnemyAction(skills(), undefined, () => 0.8).type).toBe('attack')
+  })
+
+  it('EC5 技能在可用技能内等概率挑选（rng 0 → 第一个；接近 rate → 最后一个）', () => {
+    expect(chooseEnemyAction(skills(), 'aggressive', () => 0)).toEqual({ type: 'skill', skillId: 'enemy_rabbit_mad_bite' })
+    expect(chooseEnemyAction(skills(), 'aggressive', () => 0.69)).toEqual({ type: 'skill', skillId: 'enemy_wolf_vicious_pounce' })
+  })
+
+  it('EC6 非法 rng → RangeError', () => {
+    expect(() => chooseEnemyAction(skills(), 'aggressive', () => 1)).toThrow(RangeError)
+    expect(() => chooseEnemyAction(skills(), 'aggressive', () => -0.1)).toThrow(RangeError)
+    expect(() => chooseEnemyAction(skills(), 'aggressive', () => NaN)).toThrow(RangeError)
   })
 })
 

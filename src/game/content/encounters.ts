@@ -25,6 +25,9 @@ export const SINGLE_ENEMY_ENCOUNTERS: Record<string, string> = {
   sakura_calamity_fragment: 'encounter_sakura_calamity_fragment',
   // TM-P2-008 §23：荒原野狼（北郊单只落单野狼 + 狼群 variants 成员）
   wild_wolf: 'encounter_wild_wolf',
+  // TM-P2-009-R1 §11：新增单敌可重复遭遇（反查用：重复 XP 授予 + checkEnemyEncounter 委托）
+  cave_bat: 'encounter_cave_bat',
+  wild_boar: 'encounter_north_boar',
 }
 
 /** 残破巡逻队：非主线可选多怪遭遇（TM-P2-007 §7.5；骷髅战士×2 或 骷髅战士+黑法师，权重二选一） */
@@ -38,6 +41,9 @@ export const ENCOUNTERS: Record<string, EncounterDefinition> = {
     locationId: 'village_grassland',
     fixedMembers: [{ enemyId: 'corrupted_rabbit', count: 1 }],
     canEscape: true,
+    difficulty: 'low',
+    recommendedLevelMin: 1,
+    recommendedLevelMax: 2,
   },
   encounter_corrupted_rat: {
     id: 'encounter_corrupted_rat',
@@ -45,6 +51,9 @@ export const ENCOUNTERS: Record<string, EncounterDefinition> = {
     locationId: 'abandoned_mine',
     fixedMembers: [{ enemyId: 'corrupted_rat', count: 1 }],
     canEscape: true,
+    difficulty: 'low',
+    recommendedLevelMin: 1,
+    recommendedLevelMax: 2,
   },
   encounter_corrupted_wolf: {
     id: 'encounter_corrupted_wolf',
@@ -52,6 +61,9 @@ export const ENCOUNTERS: Record<string, EncounterDefinition> = {
     locationId: 'village_grassland',
     fixedMembers: [{ enemyId: 'corrupted_wolf', count: 1 }],
     canEscape: true,
+    difficulty: 'standard',
+    recommendedLevelMin: 2,
+    recommendedLevelMax: 3,
   },
   encounter_dudu_rabbit: {
     id: 'encounter_dudu_rabbit',
@@ -59,6 +71,8 @@ export const ENCOUNTERS: Record<string, EncounterDefinition> = {
     locationId: 'rabbit_lair',
     fixedMembers: [{ enemyId: 'dudu_rabbit', count: 1 }],
     canEscape: true,
+    difficulty: 'dangerous',
+    recommendedLevelMin: 3,
   },
   encounter_skeleton_soldier: {
     id: 'encounter_skeleton_soldier',
@@ -68,6 +82,9 @@ export const ENCOUNTERS: Record<string, EncounterDefinition> = {
     canEscape: true,
     // defeated 门位于 quest_wangcai_trouble.flags（checkEncounter 委托 checkEnemyEncounter 处理）
     encounterDefeatFlag: 'floor1_soldier_defeated',
+    difficulty: 'low',
+    recommendedLevelMin: 2,
+    recommendedLevelMax: 3,
   },
   encounter_skeleton_captain: {
     id: 'encounter_skeleton_captain',
@@ -76,6 +93,8 @@ export const ENCOUNTERS: Record<string, EncounterDefinition> = {
     fixedMembers: [{ enemyId: 'skeleton_captain', count: 1 }],
     canEscape: true,
     encounterDefeatFlag: 'floor1_captain_defeated',
+    difficulty: 'dangerous',
+    recommendedLevelMin: 3,
   },
   encounter_tower_zombie: {
     id: 'encounter_tower_zombie',
@@ -84,6 +103,9 @@ export const ENCOUNTERS: Record<string, EncounterDefinition> = {
     fixedMembers: [{ enemyId: 'tower_zombie', count: 1 }],
     canEscape: true,
     encounterDefeatFlag: 'floor2_zombie_defeated',
+    difficulty: 'low',
+    recommendedLevelMin: 2,
+    recommendedLevelMax: 3,
   },
   encounter_black_mage: {
     id: 'encounter_black_mage',
@@ -92,6 +114,9 @@ export const ENCOUNTERS: Record<string, EncounterDefinition> = {
     fixedMembers: [{ enemyId: 'black_mage', count: 1 }],
     canEscape: true,
     encounterDefeatFlag: 'floor2_black_mage_defeated',
+    difficulty: 'standard',
+    recommendedLevelMin: 3,
+    recommendedLevelMax: 4,
   },
   encounter_skeleton_warrior: {
     id: 'encounter_skeleton_warrior',
@@ -100,6 +125,9 @@ export const ENCOUNTERS: Record<string, EncounterDefinition> = {
     fixedMembers: [{ enemyId: 'skeleton_warrior', count: 1 }],
     canEscape: true,
     encounterDefeatFlag: 'floor2_skeleton_warrior_defeated',
+    difficulty: 'standard',
+    recommendedLevelMin: 3,
+    recommendedLevelMax: 5,
   },
   encounter_skeleton_witch: {
     id: 'encounter_skeleton_witch',
@@ -108,6 +136,9 @@ export const ENCOUNTERS: Record<string, EncounterDefinition> = {
     fixedMembers: [{ enemyId: 'skeleton_witch', count: 1 }],
     canEscape: true,
     encounterDefeatFlag: 'floor3_skeleton_witch_defeated',
+    difficulty: 'standard',
+    recommendedLevelMin: 4,
+    recommendedLevelMax: 5,
   },
   encounter_black_mane_wolf: {
     id: 'encounter_black_mane_wolf',
@@ -116,6 +147,8 @@ export const ENCOUNTERS: Record<string, EncounterDefinition> = {
     fixedMembers: [{ enemyId: 'black_mane_wolf', count: 1 }],
     canEscape: true,
     encounterDefeatFlag: 'north_gate_wolf_defeated',
+    difficulty: 'standard',
+    recommendedLevelMin: 3,
   },
   // TM-P2-008 §23：北郊单只落单野狼（可重复遭遇；无 encounterDefeatFlag，不打不影响主线 flag）
   encounter_wild_wolf: {
@@ -124,6 +157,12 @@ export const ENCOUNTERS: Record<string, EncounterDefinition> = {
     locationId: 'tianlong_north_outskirts',
     fixedMembers: [{ enemyId: 'wild_wolf', count: 1 }],
     canEscape: true,
+    // TM-P2-009-R1 §11.3：北郊低风险可选遭遇可重复刷（首次仍 first-kill XP；重复给低额）
+    difficulty: 'low',
+    recommendedLevelMin: 2,
+    recommendedLevelMax: 3,
+    repeatable: true,
+    repeatAdventureXpReward: 4,
   },
   encounter_sakura_calamity_fragment: {
     id: 'encounter_sakura_calamity_fragment',
@@ -134,6 +173,8 @@ export const ENCOUNTERS: Record<string, EncounterDefinition> = {
     canEscape: false,
     // defeated 门位于 world.flags.sakura_calamity_defeated（sakura.ts 纯规则）
     encounterDefeatFlag: 'sakura_calamity_defeated',
+    difficulty: 'dangerous',
+    recommendedLevelMin: 3,
   },
   // ---- 非主线可选多怪遭遇（TM-P2-007 §7.5）----
   [BROKEN_PATROL_ENCOUNTER_ID]: {
@@ -146,6 +187,12 @@ export const ENCOUNTERS: Record<string, EncounterDefinition> = {
     ],
     canEscape: true,
     // 无 encounterDefeatFlag：可选遭遇，不打不影响主线 flag
+    // TM-P2-009-R1 §11.3：可选高威胁遭遇可重复刷（黑石塔二层练级选择；重复低额 XP）
+    difficulty: 'dangerous',
+    recommendedLevelMin: 4,
+    recommendedLevelMax: 5,
+    repeatable: true,
+    repeatAdventureXpReward: 10,
   },
   // ---- TM-P2-008 §23：北郊荒原狼群（可选遭遇；首次胜利后不再出现；不阻塞主线）----
   encounter_steppe_wolf_pack: {
@@ -160,6 +207,148 @@ export const ENCOUNTERS: Record<string, EncounterDefinition> = {
     canEscape: true,
     // 首次胜利后写 world.flags.steppe_wolf_pack_defeated=true，不再刷出（§24；可选遭遇不阻塞主线）
     encounterDefeatFlag: 'steppe_wolf_pack_defeated',
+    // 首次胜利后不再刷出 → 不标 repeatable（H6：一次性遭遇不可刷任务 XP）
+    difficulty: 'standard',
+    recommendedLevelMin: 2,
+    recommendedLevelMax: 3,
+  },
+  // ---- TM-P2-009 §13：北郊旧驿站狼群（《断旗余声》Stage C 战斗解；固定阵容 wild_wolf×2 + corrupted_wolf×1；canEscape=true；胜利得 XP/Loot/neutralized，逃跑不推进不保留）----
+  // 固定阵容用单一 weighted variant 表达（fixedMembers 多敌不走 resolveEncounterVictory 结算路径）。
+  encounter_waystation_wolf_pack: {
+    id: 'encounter_waystation_wolf_pack',
+    name: '驿站狼群',
+    locationId: 'tianlong_north_abandoned_waystation',
+    variants: [
+      {
+        id: 'waystation_wolf_pack_fixed',
+        weight: 1,
+        members: [
+          { enemyId: 'wild_wolf', count: 2 },
+          { enemyId: 'corrupted_wolf', count: 1 },
+        ],
+      },
+    ],
+    canEscape: true,
+    // 首次胜利后写 world.flags.waystation_wolf_pack_neutralized=true（Stage C combat 解前置；§13）
+    encounterDefeatFlag: 'waystation_wolf_pack_neutralized',
+    difficulty: 'dangerous',
+    recommendedLevelMin: 3,
+  },
+  // ---- TM-P2-009-R1 §11：Encounter Diversity V1（每图多威胁 + repeatable 低额重复 XP；纯 optional，不阻塞主线）。
+  //      repeatable 遭遇不设 encounterDefeatFlag（可反复刷）；剧情/Boss/一次性遭遇不标 repeatable（H6）。 ----
+  encounter_grassland_rabbit_pair: {
+    id: 'encounter_grassland_rabbit_pair',
+    name: '魔化兔群',
+    locationId: 'village_grassland',
+    variants: [
+      { id: 'grassland_rabbit_pair_a', weight: 1, members: [{ enemyId: 'corrupted_rabbit', count: 2 }] },
+    ],
+    canEscape: true,
+    difficulty: 'dangerous',
+    recommendedLevelMin: 1,
+    recommendedLevelMax: 2,
+    repeatable: true,
+    repeatAdventureXpReward: 4,
+  },
+  encounter_cave_bat: {
+    id: 'encounter_cave_bat',
+    name: '洞穴蝙蝠',
+    locationId: 'abandoned_mine',
+    fixedMembers: [{ enemyId: 'cave_bat', count: 1 }],
+    canEscape: true,
+    difficulty: 'standard',
+    recommendedLevelMin: 1,
+    recommendedLevelMax: 2,
+    repeatable: true,
+    repeatAdventureXpReward: 4,
+  },
+  encounter_mine_mixed: {
+    id: 'encounter_mine_mixed',
+    name: '矿洞混杂魔物',
+    locationId: 'abandoned_mine',
+    variants: [
+      {
+        id: 'mine_mixed_a',
+        weight: 1,
+        members: [
+          { enemyId: 'corrupted_rat', count: 1 },
+          { enemyId: 'cave_bat', count: 1 },
+        ],
+      },
+    ],
+    canEscape: true,
+    difficulty: 'dangerous',
+    recommendedLevelMin: 2,
+    recommendedLevelMax: 3,
+    repeatable: true,
+    repeatAdventureXpReward: 5,
+  },
+  encounter_floor1_soldier_pair: {
+    id: 'encounter_floor1_soldier_pair',
+    name: '骷髅士兵巡队',
+    locationId: 'black_stone_tower_floor1',
+    variants: [
+      { id: 'floor1_soldier_pair_a', weight: 1, members: [{ enemyId: 'skeleton_soldier', count: 2 }] },
+    ],
+    canEscape: true,
+    difficulty: 'standard',
+    recommendedLevelMin: 3,
+    recommendedLevelMax: 4,
+    repeatable: true,
+    repeatAdventureXpReward: 8,
+  },
+  encounter_floor3_witch_escort: {
+    id: 'encounter_floor3_witch_escort',
+    name: '女妖与护卫',
+    locationId: 'black_stone_tower_floor3',
+    variants: [
+      {
+        id: 'floor3_witch_escort_a',
+        weight: 1,
+        members: [
+          { enemyId: 'skeleton_witch', count: 1 },
+          { enemyId: 'skeleton_warrior', count: 1 },
+        ],
+      },
+    ],
+    canEscape: true,
+    difficulty: 'dangerous',
+    recommendedLevelMin: 5,
+    repeatable: true,
+    repeatAdventureXpReward: 10,
+  },
+  encounter_north_boar: {
+    id: 'encounter_north_boar',
+    name: '荒原野猪',
+    locationId: 'tianlong_north_outskirts',
+    fixedMembers: [{ enemyId: 'wild_boar', count: 1 }],
+    canEscape: true,
+    difficulty: 'low',
+    recommendedLevelMin: 2,
+    recommendedLevelMax: 3,
+    repeatable: true,
+    repeatAdventureXpReward: 5,
+  },
+  encounter_north_mane_pack: {
+    id: 'encounter_north_mane_pack',
+    name: '黑鬃魔狼伏击',
+    locationId: 'tianlong_north_outskirts',
+    variants: [
+      {
+        id: 'north_mane_pack_a',
+        weight: 1,
+        members: [
+          { enemyId: 'black_mane_wolf', count: 1 },
+          { enemyId: 'wild_wolf', count: 1 },
+        ],
+      },
+    ],
+    canEscape: true,
+    difficulty: 'dangerous',
+    recommendedLevelMin: 3,
+    recommendedLevelMax: 4,
+    repeatable: true,
+    repeatAdventureXpReward: 8,
   },
 }
 

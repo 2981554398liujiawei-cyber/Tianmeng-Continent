@@ -38,4 +38,13 @@ export interface EncounterDefinition {
   variants?: EncounterVariant[]
   canEscape: boolean
   encounterDefeatFlag?: string
+  /** TM-P2-009-R1 §11：威胁等级（UI 区分；纯展示元数据，不改战斗公式） */
+  difficulty?: 'low' | 'standard' | 'dangerous'
+  /** TM-P2-009-R1 §11：推荐挑战等级区间（展示用；Min 缺省则不显示推荐等级） */
+  recommendedLevelMin?: number
+  recommendedLevelMax?: number
+  /** TM-P2-009-R1 §11：可重复刷的 optional 遭遇（首次击败仍走 first-kill XP；此后每次胜利给 repeatAdventureXpReward） */
+  repeatable?: boolean
+  /** TM-P2-009-R1 §11：重复胜利的低额冒险阅历（必须明显低于首次奖励；仅 repeatable=true 生效） */
+  repeatAdventureXpReward?: number
 }

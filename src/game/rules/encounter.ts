@@ -9,7 +9,7 @@
  */
 import { getEnemy, getLocation } from '../content'
 import { getEncounter, allEncounterMembers } from '../content/encounters'
-import type { EncounterDefinition } from '../types/encounter'
+import type { EncounterDefinition, EncounterMember } from '../types/encounter'
 import type { GameState } from '../types/game'
 import { canFightCalamity, SAKURA_CALAMITY_ENEMY_ID } from './sakura'
 
@@ -334,4 +334,39 @@ export function resolveEncounterVariant(def: EncounterDefinition, rng: () => num
 export function currentEncounterVariantId(gameState: GameState, def: EncounterDefinition): string | undefined {
   if (!def.variants) return def.id
   return gameState.world.encounterVariants?.[def.id] ?? undefined
+}
+
+/**
+ * TM-P2-009-R1 §4：Encounter roster 预览数据（预览卡与 CombatPage 共享同一固化 variant）。
+ *  - fixedMembers：固定阵容 → locked=true、members=固定成员。
+ *  - weighted 已固化（world.encounterVariants 有值）：locked=true、members=固化后的单一阵容（UI 显示「本次遭遇」）。
+ *  - weighted 未固化：locked=false、candidates=各候选 variant 成员（UI 显示「可能遭遇」多候选用「或」分隔）。
+ * 绝不把 variants 成员并集当「本次阵容」（2 warriors 与 warrior+mage 并集会拼出假三人组）。
+ */
+export interface EncounterRosterPreview {
+  /** variant 已固化（或 fixed）：true 时 UI 应只显示单一「本次遭遇」阵容 */
+  locked: boolean
+  /** 固化后的单一阵容（locked=true 时有效） */
+  members: EncounterMember[]
+  /** 未固化时的候选阵容（locked=false；每个元素是单个 variant 的成员列表） */
+  candidates: EncounterMember[][]
+}
+
+export function encounterRosterPreview(gameState: GameState, def: EncounterDefinition): EncounterRosterPreview {
+  if (def.fixedMembers) {
+    return { locked: true, members: def.fixedMembers, candidates: [] }
+  }
+  const lockedId = currentEncounterVariantId(gameState, def)
+  const lockedVariant = lockedId ? def.variants?.find((v) => v.id === lockedId) : undefined
+  if (lockedVariant) {
+    return { locked: true, members: lockedVariant.members, candidates: [] }
+  }
+  return { locked: false, members: [], candidates: (def.variants ?? []).map((v) => v.members) }
+}
+
+/** 格式化成员列表为用户文案（不泄露内部 ID）：骷髅战士×2 / 骷髅战士+黑法师 */
+export function formatEncounterMembers(members: readonly EncounterMember[]): string {
+  return members
+    .map((m) => `${getEnemy(m.enemyId)?.name ?? m.enemyId}${m.count > 1 ? `×${m.count}` : ''}`)
+    .join('+')
 }

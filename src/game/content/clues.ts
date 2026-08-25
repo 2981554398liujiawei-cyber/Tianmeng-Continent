@@ -42,6 +42,31 @@ export const CLUES: Record<string, ClueDefinition> = {
     relatedQuestIds: ['quest_north_outskirts'],
     category: 'north',
   },
+  // TM-P2-009 §15：北线剧情《断旗余声》新线索（禁连接黄金兔；relatedQuestIds 仅登记本剧情任务）
+  clue_north_broken_banner: {
+    id: 'clue_north_broken_banner',
+    title: '断裂队旗',
+    description: '一面被撕成两半的骑士团战旗，绣着北门第三巡逻队的徽记。断裂处边缘平整——这不是野兽所为，更像是被利器斩断。',
+    source: '北郊旧驿站',
+    relatedQuestIds: ['quest_north_broken_banner'],
+    category: 'north',
+  },
+  clue_north_black_wagon_tracks: {
+    id: 'clue_north_black_wagon_tracks',
+    title: '黑篷车辙',
+    description: '驿站院墙外的车辙又深又新，辙印比寻常货运马车窄而深，一路延伸向西北荒野，被刻意用枯草掩盖过。',
+    source: '北郊旧驿站',
+    relatedQuestIds: ['quest_north_broken_banner'],
+    category: 'north',
+  },
+  clue_north_alchemical_bait: {
+    id: 'clue_north_alchemical_bait',
+    title: '魔化诱饵',
+    description: '散落在驿站角落的碎骨被一层淡紫色膏状物包裹，散发着令野兽狂躁的气息。有人用炼金诱饵把狼群引到了驿站。',
+    source: '北郊旧驿站',
+    relatedQuestIds: ['quest_north_broken_banner'],
+    category: 'investigation',
+  },
 }
 
 export function getClue(id: string): ClueDefinition | undefined {

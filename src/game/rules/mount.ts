@@ -60,3 +60,16 @@ export function canSearchNorthOutskirtsByMount(state: GameState): boolean {
     state.world.flags.north_outskirts_mount_search === undefined
   )
 }
+
+/**
+ * 北郊旧驿站「骑马引开狼群后从另一侧进入」可否触发（TM-P2-009 §13；TM-P2-009-R1 §2.1 真正解决屏障）。
+ * 条件：在旧驿站 + 装备带 fast_travel 的坐骑 + 尚未解决（一次性）。
+ * 坐骑不攻击、不进 initiative；成功即威胁被引走（写 neutralized + barrier_resolved + 黑篷车辙线索）。
+ */
+export function canSearchWaystationByMount(state: GameState): boolean {
+  return (
+    state.world.currentLocationId === 'tianlong_north_abandoned_waystation' &&
+    hasTravelTag(state, 'fast_travel') &&
+    state.world.flags.waystation_mount_search === undefined
+  )
+}

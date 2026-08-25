@@ -99,6 +99,228 @@ export const SKILLS: Record<string, SkillDefinition> = {
       supportEffect: { type: 'cancel_next_enemy_counter' },
     },
   },
+  // ---- TM-P2-009-R1 §10：敌人主动技能（enemy_* 前缀；无 profession、mpCost=0——敌人无 MP 系统。
+  //      结算走 rules/skill 的 resolveEnemySkillRawDamage（attack_power→attackPower+bonus /
+  //      agility_power→agility+bonus / magic_spell→6+bonus）。V3 命中/护甲由 combat.ts 负责） ----
+  enemy_rabbit_mad_bite: {
+    id: 'enemy_rabbit_mad_bite',
+    name: '疯狂撕咬',
+    description: '魔化兔双目赤红，疯狂撕咬眼前的敌人。',
+    mpCost: 0,
+    tags: ['physical'],
+    combat: {
+      damageFormula: '敌方攻击力 + 2',
+      damageResolver: { type: 'attack_power', bonus: 2 },
+    },
+  },
+  enemy_rat_swarm: {
+    id: 'enemy_rat_swarm',
+    name: '鼠群突袭',
+    description: '魔化鼠尖啸着扑来，成群撕咬。',
+    mpCost: 0,
+    tags: ['physical'],
+    combat: {
+      damageFormula: '敌方敏捷 + 8',
+      damageResolver: { type: 'agility_power', bonus: 8 },
+    },
+  },
+  enemy_wolf_vicious_pounce: {
+    id: 'enemy_wolf_vicious_pounce',
+    name: '嗜血猛扑',
+    description: '魔化狼腾身而起，露出獠牙猛扑而下。',
+    mpCost: 0,
+    tags: ['physical', 'movement'],
+    combat: {
+      damageFormula: '敌方攻击力 + 3（冷却 2 回合）',
+      damageResolver: { type: 'attack_power', bonus: 3 },
+      cooldownTurns: 2,
+    },
+  },
+  enemy_dudu_stomp: {
+    id: 'enemy_dudu_stomp',
+    name: '狂暴践踏',
+    description: '嘟嘟兔狂暴地蹬踏地面，震得尘土飞扬。',
+    mpCost: 0,
+    tags: ['physical', 'force'],
+    combat: {
+      damageFormula: '敌方攻击力 + 4',
+      damageResolver: { type: 'attack_power', bonus: 4 },
+    },
+  },
+  enemy_dudu_thunder_leap: {
+    id: 'enemy_dudu_thunder_leap',
+    name: '惊雷扑跃',
+    description: '嘟嘟兔化作一道白光扑向敌人，快如惊雷。',
+    mpCost: 0,
+    tags: ['physical', 'movement'],
+    combat: {
+      damageFormula: '敌方敏捷 + 12（冷却 2 回合）',
+      damageResolver: { type: 'agility_power', bonus: 12 },
+      cooldownTurns: 2,
+    },
+  },
+  enemy_bone_blade: {
+    id: 'enemy_bone_blade',
+    name: '骨刃斩',
+    description: '骷髅士兵挥动骨刃，斩向闯入者。',
+    mpCost: 0,
+    tags: ['physical'],
+    combat: {
+      damageFormula: '敌方攻击力 + 2',
+      damageResolver: { type: 'attack_power', bonus: 2 },
+    },
+  },
+  enemy_captain_heavy: {
+    id: 'enemy_captain_heavy',
+    name: '破甲重斩',
+    description: '骷髅队长抡起大剑，以重压之势当头斩下。',
+    mpCost: 0,
+    tags: ['physical', 'force'],
+    combat: {
+      damageFormula: '敌方攻击力 + 3',
+      damageResolver: { type: 'attack_power', bonus: 3 },
+    },
+  },
+  enemy_captain_quake: {
+    id: 'enemy_captain_quake',
+    name: '震地重击',
+    description: '骷髅队长狠狠砸向地面，震得整个大厅都在摇晃。',
+    mpCost: 0,
+    tags: ['physical', 'force'],
+    combat: {
+      damageFormula: '敌方攻击力 + 5（冷却 2 回合）',
+      damageResolver: { type: 'attack_power', bonus: 5 },
+      cooldownTurns: 2,
+    },
+  },
+  enemy_zombie_grasp: {
+    id: 'enemy_zombie_grasp',
+    name: '腐尸擒抓',
+    description: '僵尸伸出僵硬的双臂，试图将敌人抓入怀中。',
+    mpCost: 0,
+    tags: ['physical'],
+    combat: {
+      damageFormula: '敌方攻击力 + 2（冷却 2 回合）',
+      damageResolver: { type: 'attack_power', bonus: 2 },
+      cooldownTurns: 2,
+    },
+  },
+  enemy_dark_bolt: {
+    id: 'enemy_dark_bolt',
+    name: '暗影箭',
+    description: '黑法师凝出一支暗影箭矢，无声地射向敌人。',
+    mpCost: 0,
+    tags: ['magic', 'illusion'],
+    combat: {
+      damageFormula: '法术 6 + 10',
+      damageResolver: { type: 'magic_spell', bonus: 10 },
+    },
+  },
+  enemy_black_fire: {
+    id: 'enemy_black_fire',
+    name: '黑火球',
+    description: '黑法师抬手掷出一团翻涌的黑色火球。',
+    mpCost: 0,
+    tags: ['magic', 'fire'],
+    combat: {
+      damageFormula: '法术 6 + 12（冷却 2 回合）',
+      damageResolver: { type: 'magic_spell', bonus: 12 },
+      cooldownTurns: 2,
+    },
+  },
+  enemy_warrior_cleave: {
+    id: 'enemy_warrior_cleave',
+    name: '顺劈斩',
+    description: '骷髅战士横斩战刀，划出一道凶猛的弧线。',
+    mpCost: 0,
+    tags: ['physical'],
+    combat: {
+      damageFormula: '敌方攻击力 + 4',
+      damageResolver: { type: 'attack_power', bonus: 4 },
+    },
+  },
+  enemy_witch_wail: {
+    id: 'enemy_witch_wail',
+    name: '夺魂哭嚎',
+    description: '骷髅女妖发出刺耳的哭嚎，直刺心神。',
+    mpCost: 0,
+    tags: ['magic', 'illusion'],
+    combat: {
+      damageFormula: '法术 6 + 14',
+      damageResolver: { type: 'magic_spell', bonus: 14 },
+    },
+  },
+  enemy_bone_claw: {
+    id: 'enemy_bone_claw',
+    name: '白骨利爪',
+    description: '骷髅女妖张开的骨爪带起一阵阴风。',
+    mpCost: 0,
+    tags: ['physical'],
+    combat: {
+      damageFormula: '敌方攻击力 + 3（冷却 2 回合）',
+      damageResolver: { type: 'attack_power', bonus: 3 },
+      cooldownTurns: 2,
+    },
+  },
+  enemy_black_mane_bite: {
+    id: 'enemy_black_mane_bite',
+    name: '黑鬃撕咬',
+    description: '黑鬃魔狼低吼着咬向猎物，獠牙泛着冷光。',
+    mpCost: 0,
+    tags: ['physical'],
+    combat: {
+      damageFormula: '敌方攻击力 + 3（冷却 2 回合）',
+      damageResolver: { type: 'attack_power', bonus: 3 },
+      cooldownTurns: 2,
+    },
+  },
+  enemy_wild_bite: {
+    id: 'enemy_wild_bite',
+    name: '獠牙撕咬',
+    description: '荒原野狼露出獠牙，凶狠地咬向敌人。',
+    mpCost: 0,
+    tags: ['physical'],
+    combat: {
+      damageFormula: '敌方攻击力 + 2',
+      damageResolver: { type: 'attack_power', bonus: 2 },
+    },
+  },
+  enemy_calamity_lunge: {
+    id: 'enemy_calamity_lunge',
+    name: '残影突袭',
+    description: '残灾之影撕裂空气，化作残影猛然扑来。',
+    mpCost: 0,
+    tags: ['physical', 'movement'],
+    combat: {
+      damageFormula: '敌方敏捷 + 7（冷却 2 回合）',
+      damageResolver: { type: 'agility_power', bonus: 7 },
+      cooldownTurns: 2,
+    },
+  },
+  // ---- TM-P2-009-R1 §11：新增低复杂度通用敌人技能 ----
+  enemy_bat_swoop: {
+    id: 'enemy_bat_swoop',
+    name: '俯冲扑击',
+    description: '洞穴蝙蝠自黑暗中俯冲而下，尖牙直取敌人。',
+    mpCost: 0,
+    tags: ['physical', 'movement'],
+    combat: {
+      damageFormula: '敌方敏捷 + 5',
+      damageResolver: { type: 'agility_power', bonus: 5 },
+    },
+  },
+  enemy_boar_charge: {
+    id: 'enemy_boar_charge',
+    name: '蛮牛冲撞',
+    description: '荒原野猪低头蓄力，猛然向前冲撞。',
+    mpCost: 0,
+    tags: ['physical', 'force'],
+    combat: {
+      damageFormula: '敌方攻击力 + 3（冷却 2 回合）',
+      damageResolver: { type: 'attack_power', bonus: 3 },
+      cooldownTurns: 2,
+    },
+  },
 }
 
 /** 各职业初始技能（新角色自动获得；TM-P2-003 A） */

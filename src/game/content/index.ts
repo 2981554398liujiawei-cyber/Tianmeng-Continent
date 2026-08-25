@@ -32,6 +32,8 @@ export type { RelationshipProfile } from '../types/relationship'
 export { RELATIONSHIP_PROFILES, getRelationshipProfile, isRomanceableNpc } from './relationships'
 export type { ClueDefinition, ClueCategory } from '../types/clue'
 export { CLUES, getClue } from './clues'
+export type { ActivityEventDefinition } from './activityEvents'
+export { ACTIVITY_EVENTS, getActivityEvent } from './activityEvents'
 
 import type { ProfessionId } from '../types'
 import { LOCATIONS, type LocationDefinition } from './locations'

@@ -124,6 +124,59 @@ export function getUsableSkills(learnedSkillIds: readonly string[] | undefined, 
   return result
 }
 
+// ---- TM-P2-009-R1 §10：敌人技能（复用 SkillDefinition 注册表；敌人无属性表，用 attackPower/agility） ----
+
+/** 敌人技能伤害计算所需上下文（从 EnemyDefinition 基线读取；无 weaponDamageBonus） */
+export interface EnemySkillContext {
+  attackPower: number
+  agility: number
+}
+
+/**
+ * 敌人技能原始伤害（V3 命中/护甲结算由 combat.ts 负责；本函数只算 rawDamage）。
+ * 未知技能 / 无 damageResolver → null。
+ *  - attack_power：敌人攻击力 + bonus
+ *  - agility_power：敌人敏捷 + bonus
+ *  - magic_spell：固定 6 + bonus（敌人魔法基准；不引敌人属性表）
+ */
+export function resolveEnemySkillRawDamage(skillId: string, ctx: EnemySkillContext): number | null {
+  const skill = getSkill(skillId)
+  if (!skill) return null
+  const resolver = skill.combat?.damageResolver
+  if (!resolver) return null
+  switch (resolver.type) {
+    case 'attack_power':
+      return ctx.attackPower + (resolver.bonus ?? 0)
+    case 'agility_power':
+      return ctx.agility + (resolver.bonus ?? 0)
+    case 'magic_spell':
+      return 6 + (resolver.bonus ?? 0)
+    default:
+      return null
+  }
+}
+
+/**
+ * 过滤敌人当前可用技能（TM-P2-009-R1 §10：未被冷却 / 非 once-per-combat 已用）。
+ * cooldowns 按 skillId 计数（>0 冷却中）；usedOnce 为已使用的 once 技能集合。纯函数。
+ */
+export function filterUsableEnemySkills(
+  skills: readonly SkillDefinition[],
+  cooldowns: Readonly<Record<string, number>> = {},
+  usedOnce: ReadonlySet<string> = new Set(),
+): SkillDefinition[] {
+  return skills.filter((s) => {
+    if (s.combat?.oncePerCombat === true && usedOnce.has(s.id)) return false
+    if ((cooldowns[s.id] ?? 0) > 0) return false
+    return true
+  })
+}
+
+/** 技能冷却回合数（未知技能 0 = 无冷却） */
+export function skillCooldownTurns(skillId: string): number {
+  return getSkill(skillId)?.combat?.cooldownTurns ?? 0
+}
+
 /** 是否已学习某技能（Store/UI 共用；TM-P2-003-R1 C） */
 export function hasLearnedSkill(learnedSkillIds: readonly string[] | undefined, skillId: string): boolean {
   return (learnedSkillIds ?? []).includes(skillId)

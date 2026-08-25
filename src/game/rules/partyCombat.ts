@@ -19,6 +19,7 @@ import type { LuckCheckResult } from './luck'
 import type { GameState } from '../types/game'
 import type { EncounterMember } from '../types/encounter'
 import type { LootGrant } from '../types/loot'
+import type { SkillDefinition } from '../types/skill'
 
 /** 注入随机源：返回 [0,1) 区间的数（测试可注入固定序列） */
 export type Rng = () => number
@@ -198,6 +199,29 @@ export function didTurnLoop(fromIndex: number, nextIndex: number): boolean {
   return nextIndex <= fromIndex
 }
 
+/**
+ * TM-P2-009-R1 §7：从 fromIndex 出发的 Friendly Ready Block（线性连续 friendly 段）。
+ * 从 fromIndex 沿 turns 数组向两侧扩展连续 friendly 单位，直到遇到 enemy 或数组端点。
+ * 有意用「线性」而非「环」：turns 首尾的 friendly 不被错误相连，从而保证
+ *   `F1 → E1 → F2` 中 F1 不能跨过 E1 切到 F2、F2 也不能切回 F1；
+ *   `F1 → F2 → E1` 中 F1/F2 同段可互切。
+ * fromIndex 本身不是 friendly（enemy 位置）时只返回自身——段是「friendly 单位集」，
+ * 敌人不在任何段内；UI 层实际只在友好行动时调用（isFriendlyTurn）。
+ * 本函数只表达「段」的几何；是否可切换（未 ended / 存活）由调用方在 UI 层过滤。
+ */
+export function friendlyBlockIndices(turns: readonly InitiativeTurn[], fromIndex: number): number[] {
+  const n = turns.length
+  if (n === 0) throw new RangeError('先手队列不能为空')
+  if (!Number.isInteger(fromIndex) || fromIndex < 0 || fromIndex >= n) {
+    throw new RangeError('当前行动索引越界')
+  }
+  if (turns[fromIndex]!.combatant.side !== 'friendly') return [fromIndex]
+  const result = new Set<number>([fromIndex])
+  for (let i = fromIndex + 1; i < n && turns[i]!.combatant.side === 'friendly'; i += 1) result.add(i)
+  for (let i = fromIndex - 1; i >= 0 && turns[i]!.combatant.side === 'friendly'; i -= 1) result.add(i)
+  return [...result].sort((a, b) => a - b)
+}
+
 /** 敌方 AI 目标选择（§12 AI V1）：随机选取存活我方单位。livingTargets 必须已过滤为存活我方。 */
 export function chooseEnemyTarget(livingTargets: readonly Combatant[], rng: Rng): Combatant {
   if (!Array.isArray(livingTargets) || livingTargets.length === 0) {
@@ -212,6 +236,40 @@ export function chooseEnemyTarget(livingTargets: readonly Combatant[], rng: Rng)
   }
   const index = Math.min(livingTargets.length - 1, Math.floor(v * livingTargets.length))
   return livingTargets[index]!
+}
+
+/**
+ * TM-P2-009-R1 §10：敌方行动选择（主动技能 / 普攻）。
+ * usableSkills 必须是已过滤的可用技能（冷却归零 + 非 once-per-combat 已用，见 rules/skill 的
+ * filterUsableEnemySkills）——本函数只做「倾向性选择」，不重复校验。无可用技能 → 恒普攻。
+ * aiProfile 决定用技能倾向（aggressive 0.7 / defensive 0.4 / caster 0.85 / pack 0.55 / boss 0.8；
+ * 缺省按 aggressive）。rng 注入 [0,1)，测试可固定序列。
+ */
+export type EnemyActionChoice = { type: 'attack' } | { type: 'skill'; skillId: string }
+
+const AI_SKILL_RATE: Record<'aggressive' | 'defensive' | 'caster' | 'pack' | 'boss', number> = {
+  aggressive: 0.7,
+  defensive: 0.4,
+  caster: 0.85,
+  pack: 0.55,
+  boss: 0.8,
+}
+
+export function chooseEnemyAction(
+  usableSkills: readonly SkillDefinition[],
+  aiProfile: 'aggressive' | 'defensive' | 'caster' | 'pack' | 'boss' | undefined,
+  rng: Rng,
+): EnemyActionChoice {
+  const v = rng()
+  if (typeof v !== 'number' || !Number.isFinite(v) || v < 0 || v >= 1) {
+    throw new RangeError('rng 必须返回 [0,1) 区间的数')
+  }
+  if (usableSkills.length === 0) return { type: 'attack' }
+  const rate = AI_SKILL_RATE[aiProfile ?? 'aggressive']
+  if (v >= rate) return { type: 'attack' }
+  // v ∈ [0, rate)：在可用技能中等概率挑选一个（rate < 1 时按比例归一到技能数，避免低率画像偏向前几项）
+  const skillIndex = Math.min(usableSkills.length - 1, Math.floor((v / rate) * usableSkills.length))
+  return { type: 'skill', skillId: usableSkills[skillIndex]!.id }
 }
 
 /** 遭遇胜利：敌方全部单位死亡（§13） */
