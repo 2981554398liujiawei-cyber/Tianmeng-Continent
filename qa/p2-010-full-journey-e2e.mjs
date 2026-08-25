@@ -79,7 +79,8 @@ try {
   await ready(); await loadFixture()
   check('J1: P2-009 completed + trial task visible', (await body()).includes('天龙武备试炼'))
   await clickId('report-martial-trial'); check('J2: report moves task to reward state', (await body()).includes('领取试炼奖励'))
-  await clickId('complete-martial-trial'); check('J3: reward and P2-011 hook visible', (await body()).includes('神泉之水'))
+  await clickId('complete-martial-trial'); check('J3: one-time reward feedback visible', (await body()).includes('试炼完成') && (await body()).includes('Tier II') && (await body()).includes('天龙武备铜章'))
+  await clickText('知道了'); check('J3b: completed central card removed', (await page.$('[data-testid="martial-trial-panel"]')) === null && (await page.$('[data-testid="martial-trial-reward-notice"]')) === null)
   await clickId('open-skill-progression'); await requireId('skill-tree'); check('J4: Tier II skill tree opens after completion', (await body()).includes('Tier II'))
   // Move through the real travel buttons to a repeatable-training region.
   await clickText('天龙城'); await clickText('天龙城北门'); await clickText('天龙城北郊'); await requireId('regional-training-heading')

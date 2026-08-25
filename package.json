@@ -62,6 +62,8 @@
     "qa:p2-010-screenshots": "node qa/p2-010-screenshots.mjs",
     "qa:p2-010-r1": "node qa/p2-010-r1-e2e.mjs",
     "qa:p2-010-r1-screenshots": "node qa/p2-010-r1-screenshots.mjs",
+    "qa:p2-011-public-load": "node qa/p2-011-public-load.mjs",
+    "qa:p2-011": "npx vitest run src/pages/CombatPage.test.ts src/game/rules/partyCombat.test.ts src/cloud/cloudSave.test.ts && node qa/p2-011-e2e.mjs",
     "qa:rc": "npm run build && node qa/rc-e2e.mjs",
     "verify:p2-010": "node qa/verify-p2-010.mjs"
   },

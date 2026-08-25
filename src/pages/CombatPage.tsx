@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import Button from '../components/Button'
 import { useGameStore } from '../game/state/gameStore'
 import { getEnemy, getItem, getCompanion, getEncounter } from '../game/content'
@@ -41,7 +42,8 @@ import {
   instanceDisplaySuffix,
   isEncounterLost,
   isEncounterWon,
-  nextAliveTurnIndex,
+  getLiveCombatant,
+  nextLiveTurnIndex,
   resolvePartyEscape,
   updateCombatantHp,
   type Combatant,
@@ -136,6 +138,7 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
   const [phase, setPhase] = useState<'active' | 'victory' | 'defeat'>('active')
   const [pendingTarget, setPendingTarget] = useState<PendingTarget | null>(null)
   const [actionTray, setActionTray] = useState<'skill' | 'item' | null>(null)
+  const [tooltipSkillId, setTooltipSkillId] = useState<string | null>(null)
   const [detailDrawerOpen, setDetailDrawerOpen] = useState(false)
   /** TM-P2-009-R1 §6：每单位独立 Action/Bonus（按 instanceId；纯 UI 资源，不写 Save；新回合重置） */
   const [turnResources, setTurnResources] = useState<Record<string, { action: number; bonus: number }>>({})
@@ -162,6 +165,9 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
   const [skipSourceName, setSkipSourceName] = useState('轻舞')
 
   const [events, setEvents] = useState<CombatEvent[]>([])
+  const summaryFeedRef = useRef<HTMLDivElement>(null)
+  const detailLogRef = useRef<HTMLDivElement>(null)
+  const detailDrawerLogRef = useRef<HTMLDivElement>(null)
   const [victorySummary, setVictorySummary] = useState<EncounterLootSummary | null>(null)
   const [defeatedList, setDefeatedList] = useState<DefeatedEntry[]>([])
   const [victoryXp, setVictoryXp] = useState(0)
@@ -171,6 +177,8 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
 
   const eventSeqRef = useRef(0)
   const roundRef = useRef(1)
+  /** React effect 因实时 combatants 更新重跑时，同一单位同一回合仍只允许调度一次 AI。 */
+  const executedEnemyTurnKeysRef = useRef<ReadonlySet<string>>(new Set())
   const pushEvent = (
     kind: CombatEventKind,
     actor: CombatEvent['actor'],
@@ -191,13 +199,36 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
     setEvents((prev) => [...prev, ev])
   }
 
+  useEffect(() => {
+    for (const element of [summaryFeedRef.current, detailLogRef.current, detailDrawerLogRef.current]) {
+      if (element) element.scrollTop = element.scrollHeight
+    }
+  }, [events, detailDrawerOpen])
+
   // ---- 敌方 AI 回合（effect + ref 防 StrictMode 双调；timer 卸载清理）----
   // 注：effect 回调在渲染完成后才执行，此处引用定义在下方条件 return 之后的 executeEnemyTurn 是安全的（TDZ 已解除）。
   useEffect(() => {
     if (phase !== 'active') return
-    const actor = turns[currentTurnIndex]?.combatant
-    if (!actor || actor.side !== 'enemy' || !actor.isAlive) return
+    const turn = turns[currentTurnIndex]
+    if (!turn) return
+    const actor = getLiveCombatant(turn, combatants)
+    if (!actor?.isAlive) {
+      if (isEncounterWon(combatants)) {
+        setPhase('victory')
+        finalizeCombatEnd(combatants)
+      } else if (isEncounterLost(combatants)) {
+        setPhase('defeat')
+        finalizeCombatEnd(combatants)
+      } else {
+        advanceTurn(currentTurnIndex, combatants)
+      }
+      return
+    }
+    if (actor.side !== 'enemy') return
+    const enemyTurnKey = `${roundRef.current}:${actor.instanceId}`
+    if (executedEnemyTurnKeysRef.current.has(enemyTurnKey)) return
     if (skipNextEnemy) {
+      executedEnemyTurnKeysRef.current = new Set(executedEnemyTurnKeysRef.current).add(enemyTurnKey)
       setSkipNextEnemy(false)
       pushEvent('companion_skip', 'companion', `${actor.name}被${skipSourceName}牵走了注意力，本回合没有行动。`)
       setEndedByInstance((prev) => ({ ...prev, [actor.instanceId]: true }))
@@ -205,11 +236,12 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
       return
     }
     const timer = window.setTimeout(() => {
+      executedEnemyTurnKeysRef.current = new Set(executedEnemyTurnKeysRef.current).add(enemyTurnKey)
       executeEnemyTurn(actor)
     }, ENEMY_ACTION_DELAY_MS)
     return () => window.clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentTurnIndex, phase, skipNextEnemy])
+  }, [currentTurnIndex, phase, skipNextEnemy, combatants])
 
   // ---- 战斗开场播报（ref 防 StrictMode 双调）----
   const introLoggedRef = useRef(false)
@@ -342,33 +374,27 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
   /** §8：下一个「可行动」单位（turns 环）。friendly 要求未 ended；enemy 行动后也标记 ended（本轮只行动一次）。
    *  整圈扫描遇到 fromIndex 自身 → 说明全场 friendly/enemy 均已 ended → 返回 null 进入新回合。
    *  绝不能返回 fromIndex 自己，否则 enemy 行动完会无限循环。 */
-  const nextActorIndex = (fromIndex: number): number | null => {
-    const n = turns.length
-    for (let step = 1; step <= n; step += 1) {
-      const idx = (fromIndex + step) % n
-      if (idx === fromIndex) return null
-      const c = turns[idx]!.combatant
-      if (c.isAlive && !(endedByInstance[c.instanceId] ?? false)) return idx
-    }
-    return null
+  const nextActorIndex = (fromIndex: number, liveCombatants: readonly Combatant[] = combatants): number | null => {
+    const next = nextLiveTurnIndex(turns, liveCombatants, fromIndex, endedByInstance)
+    return next === fromIndex ? null : next
   }
 
   /** §8：新回合——round+1、清空所有单位 ended 与资源、回到第一个存活单位 */
-  const startNewRound = (fromIndex: number): number => {
+  const startNewRound = (fromIndex: number, liveCombatants: readonly Combatant[] = combatants): number => {
     roundRef.current += 1
     setRound(roundRef.current)
     setEndedByInstance({})
     setTurnResources({})
-    return nextAliveTurnIndex(turns, fromIndex)
+    return nextLiveTurnIndex(turns, liveCombatants, fromIndex) ?? fromIndex
   }
 
   /** 回合推进（End Turn / 敌方行动后）：下一未结束存活单位；全场已结束 → 新回合 */
-  const advanceTurn = (fromIndex: number) => {
-    const next = nextActorIndex(fromIndex)
+  const advanceTurn = (fromIndex: number, liveCombatants: readonly Combatant[] = combatants) => {
+    const next = nextActorIndex(fromIndex, liveCombatants)
     if (next !== null) {
       setCurrentTurnIndex(next)
     } else {
-      setCurrentTurnIndex(startNewRound(fromIndex))
+      setCurrentTurnIndex(startNewRound(fromIndex, liveCombatants))
     }
   }
 
@@ -792,7 +818,7 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
     }
     // TM-P2-009-R1 §7/§8：敌方不占 Action/Bonus，行动完标记本轮已行动并推进到下一未结束存活单位
     setEndedByInstance((prev) => ({ ...prev, [enemy.instanceId]: true }))
-    advanceTurn(currentTurnIndex)
+    advanceTurn(currentTurnIndex, next)
   }
 
   // ---- V4：回合分组（详细日志按回合折叠分组） ----
@@ -963,6 +989,27 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
       ? isOncePerCombatUsed(usedOnceCompanionSkillIds[currentCombatant.sourceId] ?? new Set(), skillId)
       : isOncePerCombatUsed(usedOnceSkillIds, skillId)
 
+  const tooltipSkill = tooltipSkillId ? unitSkills.find((skill) => skill.id === tooltipSkillId) : undefined
+  const renderSkillTooltip = () => {
+    if (!tooltipSkill || typeof document === 'undefined') return null
+    const target = skillTargetMode(tooltipSkill)
+    const targetLabel = target === 'enemy' ? '敌方目标' : target === 'friendly' ? '友方目标' : '自身'
+    const actionLabel = tooltipSkill.combat?.actionType === 'bonus_action' ? '附赠行动' : '行动'
+    return createPortal(
+      <div role="tooltip" data-testid="combat-skill-tooltip" className="combat-skill-tooltip">
+        <p className="font-bold text-bone-100">{tooltipSkill.name}</p>
+        <p className="mt-1">{tooltipSkill.description}</p>
+        <p className="mt-1 text-bone-400">
+          {tooltipSkill.mpCost > 0 ? `消耗 ${tooltipSkill.mpCost} 灵力 · ` : '不消耗灵力 · '}{actionLabel} · {targetLabel}
+        </p>
+        {(tooltipSkill.combat?.cooldownTurns ?? 0) > 0 && <p className="mt-1 text-bone-500">冷却 {tooltipSkill.combat!.cooldownTurns} 回合</p>}
+        {tooltipSkill.combat?.oncePerCombat === true && <p className="mt-1 text-bone-500">每场战斗一次</p>}
+        {tooltipSkill.combat?.damageFormula && <p className="mt-1 text-bone-500">{tooltipSkill.combat.damageFormula}</p>}
+      </div>,
+      document.body,
+    )
+  }
+
   return (
     <div className="combat-page mx-auto flex h-full w-full max-w-[1600px] flex-col px-4 py-3">
       {/* 顶部薄标题栏 */}
@@ -1014,7 +1061,7 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
 
       {/* 中 + 右：简洁战斗播报（中央）+ 详细战斗日志（右侧，按回合分组） */}
       <section className="combat-main grid min-h-0 flex-1 grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <div data-testid="combat-summary-feed" className="combat-feed min-h-0 overflow-y-auto rounded border border-ink-600 bg-ink-900/40 p-4">
+        <div ref={summaryFeedRef} data-testid="combat-summary-feed" className="combat-feed min-h-0 overflow-y-auto rounded border border-ink-600 bg-ink-900/40 p-4">
           <p className="mb-3 text-xs tracking-widest text-bone-500">战况播报</p>
           {events.length === 0 ? (
             <p className="text-sm text-bone-500">战斗开始。</p>
@@ -1038,7 +1085,7 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
           )}
         </div>
 
-        <div data-testid="combat-detail-log" className="combat-log hidden min-h-0 overflow-y-auto rounded border border-ink-600 bg-ink-900/50 p-4 xl:block">
+        <div ref={detailLogRef} data-testid="combat-detail-log" className="combat-log hidden min-h-0 overflow-y-auto rounded border border-ink-600 bg-ink-900/50 p-4 xl:block">
           <p className="mb-3 text-xs tracking-widest text-bone-500">详细战斗日志</p>
           {renderDetailLogBody()}
         </div>
@@ -1066,7 +1113,16 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
                     const actionType = skill.combat?.actionType ?? 'action'
                     const resourceOk = actionType === 'action' ? hasAction : hasBonus
                     return (
-                      <div key={skill.id} className="flex flex-col items-center gap-1">
+                      <div
+                        key={skill.id}
+                        className="relative flex flex-col items-center gap-1"
+                        tabIndex={0}
+                        aria-label={`${skill.name}技能说明`}
+                        onMouseEnter={() => setTooltipSkillId(skill.id)}
+                        onMouseLeave={() => setTooltipSkillId((current) => (current === skill.id ? null : current))}
+                        onFocus={() => setTooltipSkillId(skill.id)}
+                        onBlur={() => setTooltipSkillId((current) => (current === skill.id ? null : current))}
+                      >
                         <Button
                           variant="primary"
                           disabled={actionsLocked || mpNotEnough || onceUsed || !resourceOk}
@@ -1235,10 +1291,11 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
                 关闭（Esc）
               </Button>
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto">{renderDetailLogBody()}</div>
+            <div ref={detailDrawerLogRef} className="min-h-0 flex-1 overflow-y-auto">{renderDetailLogBody()}</div>
           </div>
         </div>
       )}
+      {renderSkillTooltip()}
     </div>
   )
 }

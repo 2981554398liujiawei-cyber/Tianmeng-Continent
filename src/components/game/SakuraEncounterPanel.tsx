@@ -348,21 +348,20 @@ export default function SakuraEncounterPanel({ onEngage, onLevelUp }: SakuraEnco
 
   // recruited：收尾提示（面板由 GamePage 隐藏，这里兜底）
   if (stage === 'recruited') {
+    if (!showContractReward) return null
     return (
       <section className="mt-4 w-full rounded border border-sakura-500/50 bg-gradient-to-b from-sakura-500/10 to-ink-900/40 p-5">
         <h3 className="text-lg font-bold tracking-wider text-sakura-200">神契已缔结</h3>
         <p className="mt-2 text-sm leading-relaxed text-bone-300">
           樱花优子以「神契宠物」的身份与你同行。她的神格暂时锚定于此界，等待神域重建的那一天。
         </p>
-        {showContractReward && (
-          <div className="mt-4 rounded border border-gold-500/60 bg-gold-900/30 p-4" role="status" aria-live="polite">
-            <p className="font-bold text-gold-300">{SAKURA_CONTRACT_REWARD_NOTICE.quest}</p>
-            <p className="mt-1 text-sm text-gold-200">{SAKURA_CONTRACT_REWARD_NOTICE.xp}</p>
-            <Button className="mt-3" variant="primary" onClick={() => setShowContractReward(false)}>
-              知道了
-            </Button>
-          </div>
-        )}
+        <div className="mt-4 rounded border border-gold-500/60 bg-gold-900/30 p-4" role="status" aria-live="polite">
+          <p className="font-bold text-gold-300">{SAKURA_CONTRACT_REWARD_NOTICE.quest}</p>
+          <p className="mt-1 text-sm text-gold-200">{SAKURA_CONTRACT_REWARD_NOTICE.xp}</p>
+          <Button className="mt-3" variant="primary" onClick={() => setShowContractReward(false)}>
+            知道了
+          </Button>
+        </div>
       </section>
     )
   }

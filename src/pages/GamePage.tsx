@@ -207,6 +207,7 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
   // TM-P2-009 §13：北郊旧驿站屏障多解结果（仅 UI 本地状态；战斗/MND/LCK 推进，Sakura/Mount 只补线索）
   const [waystationBarrier, setWaystationBarrier] = useState<WaystationBarrierResult | null>(null)
   const [trialNotice, setTrialNotice] = useState<string | null>(null)
+  const [showTrialRewardNotice, setShowTrialRewardNotice] = useState(false)
   // 云同步状态（顶部薄系统栏轻量信息）
   const cloudStatus = useCloudSession((s) => s.status)
   const cloudSyncStatus = useCloudSession((s) => s.syncStatus)
@@ -1215,53 +1216,25 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
                 </section>
               )}
 
-            {/* 黑石塔二层入口区清场剧情 */}
-            {world.currentLocationId === 'black_stone_tower_floor2' &&
-              floor2ZombieDefeated &&
-              floor2BlackMageDefeated &&
-              !floor2SkeletonWarriorDefeated && (
-                <section className="rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
-                  <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">二层前段</h3>
-                  <p className="leading-relaxed text-bone-200">二层前段的僵尸与黑法师已经被清理。</p>
-                  <p className="mt-1 leading-relaxed text-bone-200">
-                    曲折的通道继续向深处延伸，前方小厅中出现了更强的骷髅战士，挡住继续深入的道路。
-                  </p>
-                </section>
-              )}
-
             {/* 骷髅战士击败后固定剧情 */}
-            {world.currentLocationId === 'black_stone_tower_floor2' && floor2SkeletonWarriorDefeated && (
+            {world.currentLocationId === 'black_stone_tower_floor2' && floor2SkeletonWarriorDefeated && canUnlockTowerFloor3 && (
               <section className="rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
                 <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">二层深处</h3>
                 <p className="leading-relaxed text-bone-200">小厅中的骷髅战士已经倒下。</p>
                 <p className="mt-1 leading-relaxed text-bone-200">你仔细搜索了周围，依然没有发现王财遗失的夔峒项链。</p>
                 <p className="mt-1 leading-relaxed text-bone-200">小厅后方，一道向上的石阶通往黑石塔更高处。</p>
-                {canUnlockTowerFloor3 && (
-                  <div className="mt-3">
-                    <Button variant="primary" onClick={() => unlockBlackStoneTowerFloor3()}>
-                      继续向上
-                    </Button>
-                  </div>
-                )}
-              </section>
-            )}
-
-            {/* 黑石塔三层剧情 */}
-            {world.currentLocationId === 'black_stone_tower_floor3' && floor3SkeletonWitchDefeated && (
-              <section className="rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
-                <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">三层厅堂</h3>
-                <p className="leading-relaxed text-bone-200">骷髅女妖倒在破碎的石柱之间。</p>
-                <p className="mt-1 leading-relaxed text-bone-200">你在厅堂深处搜索时，发现了一条被灰尘覆盖的项链。</p>
-                <p className="mt-1 leading-relaxed text-bone-200">这正是王财所说的夔峒项链。</p>
-                <p className="mt-2 text-gold-300">夔峒项链 ×1 已获得。</p>
-                <p className="mt-1">当前目标：返回天龙城，将夔峒项链交还王财。</p>
+                <div className="mt-3">
+                  <Button variant="primary" onClick={() => unlockBlackStoneTowerFloor3()}>
+                    继续向上
+                  </Button>
+                </div>
               </section>
             )}
 
             {/* TM-P2-008：北门失联完成——马科发布《北郊追踪》行动块（原常驻完成大卡改造；completed 长期信息迁右栏已完成详情 + 活动流，§2-6/§31） */}
             {northGateQuest?.status === 'completed' && (() => {
               const status = northOutskirtsQuest?.status
-              if (status === 'completable' || status === 'completed') return null
+              if (status === 'in_progress' || status === 'completable' || status === 'completed') return null
               return (
                 <section className="rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
                   <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">北门失联 · 调查终结</h3>
@@ -1269,19 +1242,11 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
                   <p className="mt-1 leading-relaxed text-bone-200">“这是北门第三巡逻队的东西。”</p>
                   <p className="mt-1 leading-relaxed text-bone-200">“看来黑石塔之外，北面的情况也不对劲。”</p>
                   <p className="mt-1 leading-relaxed text-bone-200">“我会先派人封锁消息。下一步，我们得沿着他们留下的路线继续查。”</p>
-                  {status === 'in_progress' ? (
-                    <p className="mt-3 text-gold-300">当前目标：沿着巡逻队留下的足迹继续追踪。</p>
-                  ) : (
-                    <div className="mt-3">
-                      <Button
-                        variant="primary"
-                        data-testid="accept-north-outskirts"
-                        onClick={handleAcceptNorthOutskirts}
-                      >
-                        接受任务：前往北郊继续追查
-                      </Button>
-                    </div>
-                  )}
+                  <div className="mt-3">
+                    <Button variant="primary" data-testid="accept-north-outskirts" onClick={handleAcceptNorthOutskirts}>
+                      接受任务：前往北郊继续追查
+                    </Button>
+                  </div>
                 </section>
               )
             })()}
@@ -1289,7 +1254,7 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
             {/* TM-P2-009 §10：北郊追踪完成——马科发布《断旗余声》行动块（武馆；北郊 completed 后出现，§10/§31） */}
             {northOutskirtsQuest?.status === 'completed' && (() => {
               const status = northBrokenBannerQuest?.status
-              if (status === 'completable' || status === 'completed') return null
+              if (status === 'in_progress' || status === 'completable' || status === 'completed') return null
               return (
                 <section className="rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
                   <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">北郊驿站的传闻</h3>
@@ -1298,19 +1263,11 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
                   <p className="mt-1 leading-relaxed text-bone-200">“第三巡逻队最后一次传回消息，说是在那里歇脚。”</p>
                   <p className="mt-1 leading-relaxed text-bone-200">“三天没有回音了。沈拓那小子——他是队里最稳当的一个。”</p>
                   <p className="mt-1 leading-relaxed text-bone-200">“你替我走一趟，看看驿站到底发生了什么。”</p>
-                  {status === 'in_progress' ? (
-                    <p className="mt-3 text-gold-300">当前目标：前往北郊旧驿站查明巡逻队的下落。</p>
-                  ) : (
-                    <div className="mt-3">
-                      <Button
-                        variant="primary"
-                        data-testid="accept-north-broken-banner"
-                        onClick={handleAcceptNorthBrokenBanner}
-                      >
-                        接受任务：断旗余声
-                      </Button>
-                    </div>
-                  )}
+                  <div className="mt-3">
+                    <Button variant="primary" data-testid="accept-north-broken-banner" onClick={handleAcceptNorthBrokenBanner}>
+                      接受任务：断旗余声
+                    </Button>
+                  </div>
                 </section>
               )
             })()}
@@ -1631,12 +1588,20 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
             })()}
 
             {/* TM-P2-010：天龙武备试炼。旧 knight_trial_invited 仍作为兼容入口。 */}
+            {world.currentLocationId === 'tianlong_martial_hall' && showTrialRewardNotice && (
+              <section data-testid="martial-trial-reward-notice" className="rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300" role="status">
+                <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">试炼完成</h3>
+                <p className="leading-relaxed text-bone-200">Tier II 职业技能已解锁，获得天龙武备铜章、金币与冒险阅历奖励。</p>
+                <Button variant="primary" className="mt-3" onClick={() => setShowTrialRewardNotice(false)}>知道了</Button>
+              </section>
+            )}
             {world.currentLocationId === 'tianlong_martial_hall' && (world.flags.martial_trial_invited === true || world.flags.knight_trial_invited === true) && (() => {
               const trial = gameState.quests.find((quest) => quest.questId === 'quest_tianlong_martial_trial')
               const accepted = trial?.status === 'in_progress' || trial?.status === 'completable' || trial?.status === 'completed'
               const registered = trial?.flags.trial_registered === true
               const completed = trial?.status === 'completed' || trial?.flags.trial_reward_claimed === true
               const observed = trial?.flags.trial_observation_done === true
+              if (completed) return null
               return (
                 <section data-testid="martial-trial-panel" className="rounded border border-gold-500/50 bg-gold-900/20 p-5 text-sm text-bone-300">
                   <h3 className="mb-3 text-sm font-bold tracking-wider text-gold-300">天龙武备试炼</h3>
@@ -1664,12 +1629,9 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
                   ) : trial?.status === 'completable' ? (
                     <>
                       <p className="leading-relaxed text-bone-200">复盘完成。马科递来天龙武备铜章与新的职业技艺。</p>
-                      <Button variant="primary" data-testid="complete-martial-trial" className="mt-3" onClick={() => completeMartialTrial()}>领取试炼奖励</Button>
-                    </>
-                  ) : completed ? (
-                    <>
-                      <p className="leading-relaxed text-bone-200">试炼已完成。马科点头认可了你的判断与节奏。</p>
-                      <p className="mt-2 text-gold-300">天龙城外最近有人打听“神泉之水”——暂时还没有正式命令。</p>
+                      <Button variant="primary" data-testid="complete-martial-trial" className="mt-3" onClick={() => {
+                        if (completeMartialTrial()) setShowTrialRewardNotice(true)
+                      }}>领取试炼奖励</Button>
                     </>
                   ) : (
                     <>
@@ -1686,6 +1648,7 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
             {world.currentLocationId === 'tianlong_city' && (() => {
               const talked = world.flags.old_trader_talked === true
               const outcome = world.flags.old_trader_outcome
+              if (talked && !traderResult) return null
               return (
                 <section className="rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
                   <h3 className="mb-3 text-sm font-bold tracking-wider text-bone-500">路边旧货商</h3>
@@ -1728,6 +1691,7 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
                         <p key={line}>{line}</p>
                       ))}
                       {traderResult.goldBonus > 0 && <p className="mt-1 text-gold-300">金币 +{traderResult.goldBonus}</p>}
+                      <Button variant="ghost" className="mt-2" onClick={() => setTraderResult(null)}>知道了</Button>
                     </div>
                   )}
                 </section>
@@ -1913,7 +1877,8 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
             })()}
 
             {/* 废弃矿洞调查 */}
-            {world.currentLocationId === 'abandoned_mine' && (
+            {world.currentLocationId === 'abandoned_mine' &&
+              (world.flags.abandoned_mine_investigation === undefined || lastMineInvestigation !== null) && (
               <section className="rounded border border-ink-600 bg-ink-800/50 p-5 text-sm text-bone-300">
                 <h3 className="mb-3 text-sm font-bold tracking-wider text-bone-500">调查矿洞</h3>
                 {(() => {
@@ -1928,6 +1893,7 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
                           </p>
                           <p className="text-bone-500">DC {lastMineInvestigation.dc}</p>
                           <p className="font-bold text-gold-300">结果：{CHECK_OUTCOME_LABELS[lastMineInvestigation.outcome]}</p>
+                          <Button variant="ghost" className="mt-2" onClick={() => setLastMineInvestigation(null)}>知道了</Button>
                         </div>
                       )}
                       {done === 'success' && (
