@@ -112,7 +112,14 @@ try {
   const status = spawnSync('git', ['-C', tmpDir, 'status', '--porcelain'], { encoding: 'utf8' })
   const changed = status.stdout.trim().split('\n').filter(Boolean)
   if (changed.length === 0) {
-    console.log('deploy-public: gh-pages 无变更，跳过提交（dist 与已发布一致）。')
+    const previousSource = git(['-C', tmpDir, 'log', '-1', '--format=%s'])
+    if (previousSource === commitMessage) {
+      console.log('deploy-public: gh-pages 无变更，且已溯源至当前 main。')
+    } else {
+      // Bundle 可以相同，但每个最终 main SHA 都必须有可审计的 gh-pages 溯源提交。
+      git(['-C', tmpDir, 'commit', '--allow-empty', '-m', commitMessage])
+      console.log(`deploy-public: gh-pages 溯源提交（bundle 未变） → ${commitMessage}`)
+    }
   } else {
     git(['-C', tmpDir, 'commit', '-m', commitMessage])
     console.log(`deploy-public: gh-pages commit → ${commitMessage}`)
