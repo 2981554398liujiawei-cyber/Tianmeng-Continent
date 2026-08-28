@@ -235,6 +235,15 @@ export function checkEnemyEncounter(gameState: GameState, enemyId: string): Enco
       break
     }
 
+    case 'black_bear_qialala': {
+      // TM-P2-012 §26/§33：神泉 Boss 一次性清场——击败（world flag 严格 true）后禁止再战
+      const qialala = gameState.world.flags.black_bear_qialala_defeated
+      if (isMalformedFlag(qialala) || qialala === true) {
+        return { allowed: false, reason: qialala === true ? 'already_defeated' : 'invalid_story_state' }
+      }
+      break
+    }
+
     default:
       // 普通敌人（corrupted_rabbit / corrupted_rat）：无额外前置
       break

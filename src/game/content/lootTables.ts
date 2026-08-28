@@ -8,6 +8,10 @@
 import type { DropTable } from '../types/loot'
 
 export const DROP_TABLES: Record<string, DropTable> = {
+  forest_boar: { id: 'forest_boar', guaranteed: [{ itemId: 'wolf_meat', quantity: [1, 1] }], random: [{ itemId: 'wild_boar_hide', quantity: [1, 1], baseChance: 0.35 }] },
+  venom_bee_swarm: { id: 'venom_bee_swarm', guaranteed: [{ itemId: 'venom_bee_stinger', quantity: [1, 1] }] },
+  forest_black_bear: { id: 'forest_black_bear', guaranteed: [{ itemId: 'wolf_meat', quantity: [1, 2] }] },
+  black_bear_qialala: { id: 'black_bear_qialala', guaranteed: [{ itemId: 'wolf_meat', quantity: [1, 2] }] },
   // 野兽类：复用兽肉/鼠尾/狼牙；嘟嘟兔（Boss）更高概率 + 低 DC lucky
   corrupted_rabbit: {
     id: 'corrupted_rabbit',

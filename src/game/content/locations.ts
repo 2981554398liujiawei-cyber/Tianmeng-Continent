@@ -18,8 +18,22 @@ export const LOCATIONS: Record<string, LocationDefinition> = {
     id: 'qingshi_village',
     name: '青石村',
     description: '群山环抱中的小村，青石铺路，炊烟袅袅。近来村外野兽异动，人心惶惶。',
-    connections: ['village_grassland', 'abandoned_mine'],
+    // TM-P2-012 §4/§45/§83：神泉章节起官道重新开放——玩家可从天龙城返回青石村（P1-023 的单向离开不再是永久限制）
+    connections: ['village_grassland', 'abandoned_mine', 'qingshi_north_hills', 'tianlong_city'],
     enemyIds: [],
+  },
+  qingshi_north_hills: {
+    id: 'qingshi_north_hills', name: '青石北坡', description: '北坡林线起伏，旧猎路在草木之间断断续续地通向山谷。',
+    // TM-P2-012 §50：低（野猪）/ 标准（蜂群×2）/ 高危（山林黑熊）三层可重复威胁
+    connections: ['qingshi_village', 'spirit_spring_valley'], enemyIds: ['forest_boar', 'venom_bee_swarm', 'forest_black_bear'],
+    encounters: ['encounter_forest_boar', 'encounter_venom_bee_pair', 'encounter_forest_black_bear'],
+  },
+  spirit_spring_valley: {
+    id: 'spirit_spring_valley', name: '神泉山谷', description: '金色雾气笼罩的隐秘山谷，泉眼旁留着巨兽反复踏过的爪痕。',
+    requiredFlag: 'spirit_spring_valley_unlocked', connections: ['qingshi_north_hills'],
+    // TM-P2-012 §51：标准混合遭遇 + Boss story
+    enemyIds: ['forest_boar', 'venom_bee_swarm', 'black_bear_qialala'],
+    encounters: ['encounter_valley_beasts', 'encounter_black_bear_qialala'],
   },
   village_grassland: {
     id: 'village_grassland',
@@ -55,7 +69,8 @@ export const LOCATIONS: Record<string, LocationDefinition> = {
     name: '天龙城',
     description: '天龙王朝的皇城。高大的城墙、宽阔的街道与成片建筑构成这座繁华城市。',
     // TM-P1-024：天龙城与武馆双向连接（本卡唯一城市子区域）；TM-P1-025：增加黑石塔一层（未解锁时按钮 disabled）；TM-P2-001 D1：增加北门
-    connections: ['tianlong_martial_hall', 'black_stone_tower_floor1', 'tianlong_north_gate'],
+    // TM-P2-012 §4：增加青石村（神泉官道重新开放，双向）
+    connections: ['tianlong_martial_hall', 'black_stone_tower_floor1', 'tianlong_north_gate', 'qingshi_village'],
     enemyIds: [],
   },
   // TM-P1-024：天龙城第一段子区域——武馆（骑士队长马科驻地；无敌人、无其他连接）

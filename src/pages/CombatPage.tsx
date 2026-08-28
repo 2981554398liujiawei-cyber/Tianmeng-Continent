@@ -53,6 +53,7 @@ import {
 } from '../game/rules/partyCombat'
 import { resolveEncounterVictoryXp } from '../game/rules/combatXp'
 import { applyAdventureXpReward } from '../game/rules/progression'
+import { resolveBossPhaseTransition, type BossPhaseRuntime } from '../game/rules/bossPhase'
 
 interface CombatPageProps {
   /** TM-P2-007 §7：Encounter 战斗入口（App 已通过 startEncounter 校验并固化 weighted variant） */
@@ -157,6 +158,8 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
   const enemySkillCooldownsRef = useRef<Record<string, Record<string, number>>>({})
   /** TM-P2-009-R1 §10：敌人 once-per-combat 技能使用追踪（按 enemy instanceId 独立） */
   const enemyUsedOnceSkillIdsRef = useRef<ReadonlySet<string>>(new Set())
+  /** Boss phase 只属于本场 CombatPage；按实例记录，不写入存档。 */
+  const bossPhasesRef = useRef<Record<string, BossPhaseRuntime>>({})
 
   /** 护盾——target instanceId → 剩余减伤量 + 施术技能名（敌人命中时消耗；播报用技能名泛化） */
   const [shieldByTarget, setShieldByTarget] = useState<Record<string, { amount: number; skillName: string }>>({})
@@ -498,9 +501,17 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
     } else {
       pushEvent(kind, actor.sourceType, `${skillName ? `${skillName}没有` : `${actor.name}的攻击没有`}造成伤害。`, detail, actorName)
     }
-    const next = commitCombatantUpdate((cs) =>
-      cs.map((c) => (c.instanceId === target.instanceId ? updateCombatantHp(c, c.currentHp - result.damage) : c)),
-    )
+    let next = combatants.map((c) => (c.instanceId === target.instanceId ? updateCombatantHp(c, c.currentHp - result.damage) : c))
+    const damaged = next.find((c) => c.instanceId === target.instanceId)
+    if (damaged) {
+      const transition = resolveBossPhaseTransition(damaged, bossPhasesRef.current[damaged.instanceId], gameState.world.flags.spirit_spring_preparation === 'incense', gameState.world.flags.spirit_spring_preparation === 'old_injury' ? 1 : 0)
+      if (transition) {
+        bossPhasesRef.current[damaged.instanceId] = transition.runtime
+        next = next.map((c) => c.instanceId === damaged.instanceId ? transition.combatant : c)
+        pushEvent('system', 'system', transition.logText)
+      }
+    }
+    commitCombatantUpdate(() => next)
     afterAction(next)
   }
 
@@ -599,13 +610,21 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
     }
     if (!consumeResource(actor.instanceId, actionType)) return
     const result = performAttack(actor.agility, target.agility, rawDamage, target.armor)
-    const next = commitCombatantUpdate((cs) =>
-      cs.map((c) => {
+    let next = combatants.map((c) => {
         if (c.instanceId === actor.instanceId) return { ...c, currentMp: c.currentMp - info.skill.mpCost }
         if (c.instanceId === target.instanceId) return updateCombatantHp(c, c.currentHp - result.damage)
         return c
-      }),
-    )
+      })
+    const damaged = next.find((c) => c.instanceId === target.instanceId)
+    if (damaged) {
+      const transition = resolveBossPhaseTransition(damaged, bossPhasesRef.current[damaged.instanceId], gameState.world.flags.spirit_spring_preparation === 'incense', gameState.world.flags.spirit_spring_preparation === 'old_injury' ? 1 : 0)
+      if (transition) {
+        bossPhasesRef.current[damaged.instanceId] = transition.runtime
+        next = next.map((c) => c.instanceId === damaged.instanceId ? transition.combatant : c)
+        pushEvent('system', 'system', transition.logText)
+      }
+    }
+    commitCombatantUpdate(() => next)
     if (info.oncePerCombat) markOnceUsed(actor, skillId)
     const detail = formatAttackLog(result, target.name)
     const skillName = getSkill(skillId)?.name ?? '技能'
@@ -746,7 +765,10 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
     const target = chooseEnemyTarget(livingFriendly, Math.random)
     // TM-P2-009-R1 §10：敌人技能（注册表解析 → 过滤冷却/once → AI 在技能与普攻间选择）
     const enemyDef = getEnemy(enemy.sourceId)
-    const skillPool = (enemyDef?.skillIds ?? [])
+    const phaseSkillIds = bossPhasesRef.current[enemy.instanceId]?.phaseId
+      ? enemyDef?.bossPhases?.find((p) => p.id === bossPhasesRef.current[enemy.instanceId]?.phaseId)?.skillIds
+      : undefined
+    const skillPool = (phaseSkillIds ?? enemyDef?.skillIds ?? [])
       .map((id) => getSkill(id))
       .filter((s): s is SkillDefinition => Boolean(s))
     const usable = filterUsableEnemySkills(
@@ -957,7 +979,8 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
 
   const renderEnemyCard = (entry: { combatant: Combatant; label: string }) => {
     const levelText = `Lv.${getEnemy(entry.combatant.sourceId)?.level ?? '?'}`
-    return renderUnitCard(entry.combatant, entry.label, levelText)
+    const phaseLabel = bossPhasesRef.current[entry.combatant.instanceId]?.phaseId ? ' · 第二阶段' : ''
+    return renderUnitCard(entry.combatant, `${entry.combatant.name}${phaseLabel}`, levelText)
   }
 
   // ---- 行动栏目标选择 ----

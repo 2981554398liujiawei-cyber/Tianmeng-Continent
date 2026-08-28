@@ -19,4 +19,5 @@ export type {
   RelationshipChangeRequest,
 } from './relationship'
 export type { ClueDefinition, ClueCategory } from './clue'
+export type { GatheringDefinition, GatheringCategory, GatheringResultItem } from './gathering'
 export type { SkillDefinition, SkillTag, DamageResolverType, SupportEffect } from './skill'

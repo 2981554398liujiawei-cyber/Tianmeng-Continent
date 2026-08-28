@@ -178,23 +178,6 @@ export function rollInitiativeQueue(combatants: readonly Combatant[], rng: Rng):
 }
 
 /**
- * 下一个存活单位的索引（§9.4：死亡单位跳过，队列视为环）。
- * fromIndex 视为「已行动」；返回 fromIndex 之后第一个存活者；全场无存活时返回 fromIndex。
- */
-export function nextAliveTurnIndex(turns: readonly InitiativeTurn[], fromIndex: number): number {
-  const n = turns.length
-  if (n === 0) throw new RangeError('先手队列不能为空')
-  if (!Number.isInteger(fromIndex) || fromIndex < 0 || fromIndex >= n) {
-    throw new RangeError('当前行动索引越界')
-  }
-  for (let step = 1; step <= n; step += 1) {
-    const idx = (fromIndex + step) % n
-    if (turns[idx]!.combatant.isAlive) return idx
-  }
-  return fromIndex
-}
-
-/**
  * 从固定先手槽位解析实时战斗单位。InitiativeTurn 中的 combatant 只是开战快照，
  * HP / isAlive 必须始终以战斗中的 combatants 为准。
  */

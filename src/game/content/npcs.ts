@@ -16,6 +16,10 @@ export interface NpcDefinition {
 }
 
 export const NPCS: Record<string, NpcDefinition> = {
+  wang_wu: {
+    id: 'wang_wu', name: '王五', role: '采集导师', locationId: 'qingshi_north_hills',
+    summary: '曾走过北坡旧猎路的老猎人，对泉、兽和山林都保持着克制的敬畏。', greeting: '脚步放轻些。山里留下的痕迹，比传闻诚实。',
+  },
   village_elder: {
     id: 'village_elder',
     name: '村长',

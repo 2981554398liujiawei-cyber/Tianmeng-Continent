@@ -321,6 +321,43 @@ export const SKILLS: Record<string, SkillDefinition> = {
       cooldownTurns: 2,
     },
   },
+  // TM-P2-012 §49：山林黑熊（普通版）技能——与 Boss 恰拉拉的能力表刻意区分
+  enemy_bear_paw: {
+    id: 'enemy_bear_paw',
+    name: '熊掌',
+    description: '山林黑熊挥动厚重的熊掌拍向眼前的敌人。',
+    mpCost: 0,
+    tags: ['physical', 'force'],
+    combat: {
+      damageFormula: '敌方攻击力 + 2（冷却 1 回合）',
+      damageResolver: { type: 'attack_power', bonus: 2 },
+      cooldownTurns: 1,
+    },
+  },
+  enemy_bear_rending_claw: {
+    id: 'enemy_bear_rending_claw',
+    name: '裂爪',
+    description: '黑熊抡起沉重前爪，撕向眼前的敌人。',
+    mpCost: 0,
+    tags: ['physical', 'force'],
+    combat: { damageFormula: '敌方攻击力 + 4', damageResolver: { type: 'attack_power', bonus: 4 } },
+  },
+  enemy_golden_ground_slam: {
+    id: 'enemy_golden_ground_slam',
+    name: '黄金震地',
+    description: '黄金化的战熊重踏地面，震得碎石四散。',
+    mpCost: 0,
+    tags: ['physical', 'force'],
+    combat: { damageFormula: '敌方攻击力 + 2', damageResolver: { type: 'attack_power', bonus: 2 }, cooldownTurns: 1 },
+  },
+  enemy_golden_rage_charge: {
+    id: 'enemy_golden_rage_charge',
+    name: '暴怒冲撞',
+    description: '恰拉拉裹着金色泉光，向敌人发起猛烈冲撞。',
+    mpCost: 0,
+    tags: ['physical', 'force', 'movement'],
+    combat: { damageFormula: '敌方攻击力 + 6（冷却 2 回合）', damageResolver: { type: 'attack_power', bonus: 6 }, cooldownTurns: 2 },
+  },
   warrior_breaking_slash: {
     id: 'warrior_breaking_slash',
     name: '破阵重斩',

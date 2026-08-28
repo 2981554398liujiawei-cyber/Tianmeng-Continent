@@ -6,6 +6,17 @@
 import type { DropTable } from '../types/loot'
 import { DROP_TABLES } from './lootTables'
 
+export interface BossPhaseDefinition {
+  id: string
+  triggerHpRatio: number
+  displayName: string
+  attackBonus: number
+  armorBonus: number
+  skillIds: string[]
+  healAmount: number
+  logText: string
+}
+
 export interface EnemyDefinition {
   id: string
   name: string
@@ -31,9 +42,19 @@ export interface EnemyDefinition {
   skillIds?: string[]
   /** TM-P2-009-R1 §9：敌人 AI 行为画像（影响战斗内技能/普攻选择倾向） */
   aiProfile?: 'aggressive' | 'defensive' | 'caster' | 'pack' | 'boss'
+  bossPhases?: BossPhaseDefinition[]
 }
 
 export const ENEMIES: Record<string, EnemyDefinition> = {
+  forest_boar: { id: 'forest_boar', name: '山林野猪', level: 4, description: '在北坡拱土觅食的野猪，警觉而暴躁。', tags: ['beast'], maxHp: 22, armor: 12, attackPower: 18, agility: 8, adventureXpReward: 18, dropTable: DROP_TABLES.forest_boar, skillIds: ['enemy_boar_charge'], aiProfile: 'aggressive' },
+  venom_bee_swarm: { id: 'venom_bee_swarm', name: '毒针蜂群', level: 4, description: '围绕泉雾盘旋的毒针蜂群。', tags: ['beast'], maxHp: 18, armor: 10, attackPower: 17, agility: 15, adventureXpReward: 18, dropTable: DROP_TABLES.venom_bee_swarm, skillIds: ['enemy_bat_swoop'], aiProfile: 'pack' },
+  // TM-P2-012 §49：北坡高危普通黑熊（高 HP / 低 AGI；技能表与 Boss 恰拉拉刻意区分）
+  forest_black_bear: { id: 'forest_black_bear', name: '山林黑熊', level: 4, description: '在北坡矮林里游荡的壮实黑熊，被惊扰时极其危险。', tags: ['beast'], maxHp: 32, armor: 13, attackPower: 20, agility: 6, adventureXpReward: 35, dropTable: DROP_TABLES.forest_black_bear, skillIds: ['enemy_bear_paw'], aiProfile: 'aggressive' },
+  black_bear_qialala: {
+    id: 'black_bear_qialala', name: '黑熊恰拉拉', level: 5, description: '守在神泉前的巨大黑熊，金色泉光正在渗入它的毛发。', tags: ['beast', 'boss'],
+    maxHp: 36, armor: 9, attackPower: 13, agility: 7, adventureXpReward: 80, canEscape: false, dropTable: DROP_TABLES.black_bear_qialala, skillIds: ['enemy_bear_rending_claw'], aiProfile: 'boss',
+    bossPhases: [{ id: 'golden', triggerHpRatio: 0.5, displayName: '黄金战熊·恰拉拉', attackBonus: 3, armorBonus: 1, skillIds: ['enemy_golden_ground_slam', 'enemy_golden_rage_charge'], healAmount: 6, logText: '恰拉拉扑向泉边，金色光芒沿着毛发迅速蔓延。' }],
+  },
   corrupted_rabbit: {
     id: 'corrupted_rabbit',
     name: '魔化兔',

@@ -7,6 +7,9 @@
 import type { ClueDefinition } from '../types/clue'
 
 export const CLUES: Record<string, ClueDefinition> = {
+  clue_north_hill_tracks: { id: 'clue_north_hill_tracks', title: '北坡足迹', description: '旧猎路上有大型熊类与人类足迹交错，指向山谷。' },
+  clue_spring_golden_fur: { id: 'clue_spring_golden_fur', title: '金色毛发', description: '毛发在泉雾中泛着微光，说明泉眼正在影响恰拉拉。' },
+  clue_spirit_spring_trace: { id: 'clue_spirit_spring_trace', title: '神泉痕迹', description: '泉边爪痕与被折断的树枝，共同指向被守住的泉眼。' },
   // TM-P2-008 §8：迁移「兔子的路径」→ Clue（id=clue_rabbit_path；category=map；
   // relatedQuestIds=['quest_golden_rabbit_search']）。不改变 Golden Rabbit 剧情状态（HARD FREEZE）。
   clue_rabbit_path: {

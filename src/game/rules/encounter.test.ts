@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest'
 import { createInitialGameState } from '../content/initial'
 import { ENEMIES, getEnemy, getLocation } from '../content'
-import { ENCOUNTERS, getEncounter, SINGLE_ENEMY_ENCOUNTERS, validateEncounterDefinition } from '../content/encounters'
+import { ENCOUNTERS, allEncounterMembers, getEncounter, SINGLE_ENEMY_ENCOUNTERS, validateEncounterDefinition } from '../content/encounters'
 import type { EncounterDefinition } from '../types/encounter'
 import { checkEnemyEncounter, checkEncounter, currentEncounterVariantId, encounterRosterPreview, formatEncounterMembers, resolveEncounterVariant } from './encounter'
 import { buildCombatSetup } from './combatSetup'
@@ -431,14 +431,18 @@ describe('TM-P2-007 §7/44：Encounter V2 数据层（checkEncounter / 权重 / 
     expect(getEnemy('black_mage')).toBeDefined()
   })
 
-  it('77: EN12 迁移映射完整性：全部既有敌人都有对应单敌 EncounterDefinition', () => {
+  it('77: EN12 迁移映射完整性：全部敌人都有 EncounterDefinition 收录；单敌映射成员必须 exact count:1', () => {
     const enemyIds = Object.keys(ENEMIES)
     // 现有 registry 实际 12 个敌人（含 sakura_calamity_fragment）；全量覆盖不遗漏
     expect(enemyIds.length).toBeGreaterThanOrEqual(11)
     for (const enemyId of enemyIds) {
-      const encounterId = SINGLE_ENEMY_ENCOUNTERS[enemyId]
-      expect(encounterId).toBeDefined()
-      const def = getEncounter(encounterId!)
+      // TM-P2-012 §50/§51：venom_bee_swarm 只作为多敌遭遇成员出现（蜂群×2 / 山谷混合），
+      // 不再有单敌遭遇——映射完整性改为「至少被一个 Encounter 收录」。
+      const hosted = Object.values(ENCOUNTERS).some((def) => allEncounterMembers(def).some((m) => m.enemyId === enemyId))
+      expect(hosted).toBe(true)
+    }
+    for (const [enemyId, encounterId] of Object.entries(SINGLE_ENEMY_ENCOUNTERS)) {
+      const def = getEncounter(encounterId)
       expect(def).toBeDefined()
       expect(def!.fixedMembers).toEqual([{ enemyId, count: 1 }])
     }
