@@ -189,6 +189,24 @@ export function getLiveCombatant(
   return combatants.find((combatant) => combatant.instanceId === turn.combatant.instanceId)
 }
 
+/**
+ * @deprecated TM-P2-012 §85B：生产代码已不使用（实时回合推进走 nextLiveTurnIndex）。
+ * 仅为历史 QA 平衡模拟脚本（qa/p2-007/008/009-balance.mjs 的回合推进注入）保留；
+ * 生产代码与 CombatPage 禁止调用（不得读取开战快照的存活状态）。
+ */
+export function nextAliveTurnIndex(turns: readonly InitiativeTurn[], fromIndex: number): number {
+  const n = turns.length
+  if (n === 0) throw new RangeError('先手队列不能为空')
+  if (!Number.isInteger(fromIndex) || fromIndex < 0 || fromIndex >= n) {
+    throw new RangeError('当前行动索引越界')
+  }
+  for (let step = 1; step <= n; step += 1) {
+    const idx = (fromIndex + step) % n
+    if (turns[idx]!.combatant.isAlive) return idx
+  }
+  return fromIndex
+}
+
 /** 固定先手顺序中，从 fromIndex 之后寻找下一个实时存活且未结束回合的槽位。 */
 export function nextLiveTurnIndex(
   turns: readonly InitiativeTurn[],
