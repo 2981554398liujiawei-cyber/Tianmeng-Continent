@@ -211,9 +211,9 @@ function simulateOne(state, prep, rng) {
 }
 
 /** 一格蒙特卡洛：返回 { winRate, avgRounds } */
-function simulateCell(level, prep, withSakura, seed) {
+function simulateCell(stateBuilder, level, prep, withSakura, seed) {
   const rng = makeRng(seed)
-  const state = buildState(level, withSakura)
+  const state = stateBuilder(level, withSakura)
   let wins = 0
   let roundsSum = 0
   for (let i = 0; i < TRIALS; i++) {
@@ -236,7 +236,7 @@ const PREPS = ['none', 'incense', 'old_injury']
 
 // 玩家属性口径自检（假设 A6）
 for (const level of [4, 5, 6]) {
-  const p = buildState(level, false).player
+  const p = buildState(level, false).player // （预览保持 Synthetic 口径）
   const sum = Object.values(p.attributes).reduce((a, b) => a + b, 0)
   check(`S76 Lv${level} knight attrs str/con=11+n, sum=54+2(n-1)`, p.attributes.str === 11 + level && p.attributes.con === 11 + level && p.attributes.agi === 10 && p.attributes.mnd === 10 && p.attributes.lck === 10 && sum === 54 + 2 * (level - 1),
     `str=${p.attributes.str} con=${p.attributes.con} sum=${sum} maxHp=${p.maxHp} atk=${getPlayerAttackPower(p.attributes.str, 2, level)} armor=${getPlayerArmor(p.attributes.con, 1)}`)
@@ -247,7 +247,8 @@ for (const combo of COMBOS) {
   for (const prep of PREPS) {
     const seed = 0x2000 + combo.level * 101 + (combo.sakura ? 7 : 0) + PREPS.indexOf(prep) * 13
     results[combo.label] ??= {}
-    results[combo.label][prep] = simulateCell(combo.level, prep, combo.sakura, seed)
+    // Synthetic / Spec Matrix：显式使用 buildState（规格成长口径）
+    results[combo.label][prep] = simulateCell(buildState, combo.level, prep, combo.sakura, seed)
   }
 }
 
@@ -327,9 +328,19 @@ const RUNTIME_COMBOS = [
 console.log('')
 console.log('===== P2-012 §76 Runtime-Reachable Matrix【真实可达成长：属性=创建值，XP=真实门槛，装备=铁剑】=====')
 console.log('组合          | none           | incense')
+// 防回归断言：builder 接错时 Balance QA 直接红（而不是打印假 Runtime 数据）
+for (const combo of RUNTIME_COMBOS) {
+  const rt = buildRuntimeState(combo.level, combo.sakura)
+  check(`RT-A Runtime Lv${combo.level} STR===12（创建属性，不人工成长）`, rt.player.attributes.str === 12, `str=${rt.player.attributes.str}`)
+  check(`RT-A Runtime Lv${combo.level} CON===12（创建属性，不人工成长）`, rt.player.attributes.con === 12, `con=${rt.player.attributes.con}`)
+  check(`RT-B Runtime Lv${combo.level} level===getLevelFromXp(adventureXp)`, rt.player.level === getLevelFromXp(rt.player.adventureXp), `level=${rt.player.level} xp=${rt.player.adventureXp}`)
+  const spec = buildState(combo.level, combo.sakura)
+  check(`RT-C Runtime 与 Synthetic Lv${combo.level} 的 STR/CON 必须不同（两 builder 未接反）`, spec.player.attributes.str !== rt.player.attributes.str && spec.player.attributes.con !== rt.player.attributes.con, `spec str/con=${spec.player.attributes.str}/${spec.player.attributes.con} runtime=${rt.player.attributes.str}/${rt.player.attributes.con}`)
+}
 for (const combo of RUNTIME_COMBOS) {
   const cells = ['none', 'incense'].map((prep) => {
-    const { winRate, avgRounds } = simulateCell(combo.level, prep, combo.sakura, 20260829 + combo.level)
+    // Runtime-Reachable Matrix：显式使用 buildRuntimeState（真实可达口径）
+    const { winRate, avgRounds } = simulateCell(buildRuntimeState, combo.level, prep, combo.sakura, 20260829 + combo.level)
     return `${(winRate * 100).toFixed(1)}% / ${avgRounds.toFixed(1)}r`.padEnd(15)
   })
   console.log(`${combo.label.padEnd(13)}| ${cells[0]}| ${cells[1]}`)
