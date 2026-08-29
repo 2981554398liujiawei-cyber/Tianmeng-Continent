@@ -7,7 +7,7 @@ import Drawer from '../components/Drawer'
 import Toast from '../components/Toast'
 import MobileNav from '../components/MobileNav'
 import { useGameStore, VILLAGE_ELDER_POST_QUEST_EVENT_ID } from '../game/state/gameStore'
-import { getClue, getEnemy, getEncounter, getItem, getLocation, getNpc, NPCS, QUESTS } from '../game/content'
+import { GATHERING, getClue, getEnemy, getEncounter, getItem, getLocation, getNpc, NPCS, QUESTS } from '../game/content'
 import type { EncounterDefinition } from '../game/types/encounter'
 import { CHECK_DC, type D20CheckResult } from '../game/rules/d20'
 import { checkEncounter, encounterRosterPreview, formatEncounterMembers, singleEnemyIdOf } from '../game/rules/encounter'
@@ -169,6 +169,14 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
   const resolveMartialTrialObservation = useGameStore((s) => s.resolveMartialTrialObservation)
   const reportMartialTrial = useGameStore((s) => s.reportMartialTrial)
   const completeMartialTrial = useGameStore((s) => s.completeMartialTrial)
+  const beginSpiritSpringQuest = useGameStore((s) => s.beginSpiritSpringQuest)
+  const trackSpiritSpring = useGameStore((s) => s.trackSpiritSpring)
+  const discoverSpiritSpringRumor = useGameStore((s) => s.discoverSpiritSpringRumor)
+  const askVillageAboutSpiritSpring = useGameStore((s) => s.askVillageAboutSpiritSpring)
+  const chooseSpiritSpringPreparation = useGameStore((s) => s.chooseSpiritSpringPreparation)
+  const gather = useGameStore((s) => s.gather)
+  const reportSpiritSpringWater = useGameStore((s) => s.reportSpiritSpringWater)
+  const reportHunterOldPath = useGameStore((s) => s.reportHunterOldPath)
   // 背包（移动端底部 [背包] Drawer / BackpackPanel 复用）
   const useHealingPotion = useGameStore((s) => s.useHealingPotion)
   // TM-P2-004：Sakura / 伙伴 / 关系 / 休整 actions
@@ -644,6 +652,35 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
               </section>
             )}
 
+            {/* TM-P2-012：轻量 authored Gathering / 神泉章节入口；库存写入只经 Store。 */}
+            {world.currentLocationId === 'tianlong_city' && gameState.quests.some((q) => q.questId === 'quest_tianlong_martial_trial' && q.status === 'completed') && world.flags.spirit_spring_rumor_heard !== true && (
+              <section data-testid="spirit-spring-rumor" className="rounded border border-gold-500/40 bg-ink-800/50 p-5 text-sm text-bone-300"><h3 className="font-bold text-gold-300">城中传闻</h3><p className="mt-2">有人正高价收购一种被称为“神泉之水”的东西。</p><Button className="mt-3" variant="primary" onClick={() => { if (discoverSpiritSpringRumor()) setToast('你决定返回青石村打听神泉。') }}>记下神泉传闻</Button></section>
+            )}
+            {world.currentLocationId === 'qingshi_village' && world.flags.spirit_spring_rumor_heard === true && gameState.quests.some((q) => q.questId === 'quest_spirit_spring_water' && q.status === 'available' && q.flags.village_asked !== true) && (
+              <section data-testid="spirit-spring-village" className="rounded border border-gold-500/40 bg-ink-800/50 p-5 text-sm text-bone-300"><h3 className="font-bold text-gold-300">青石村旧闻</h3><p className="mt-2">村长提起北坡的泉光；药师说冬日仍青的草药绝非普通泉水所能养成。两人都让你去找王五。</p><Button className="mt-3" variant="primary" onClick={() => { if (askVillageAboutSpiritSpring()) setToast('线索指向青石北坡的猎人王五。') }}>向村长与药师打听</Button></section>
+            )}
+            {world.currentLocationId === 'qingshi_north_hills' && (
+              <section data-testid="spirit-spring-north-hills" className="rounded border border-gold-500/40 bg-ink-800/50 p-5 text-sm text-bone-300">
+                <h3 className="font-bold text-gold-300">北坡旧猎路</h3>
+                <p className="mt-2">王五守在林线旁：先学会看痕迹，再谈找泉。</p>
+                {gameState.quests.some((q) => q.questId === 'quest_spirit_spring_water' && q.status === 'available') && <Button className="mt-3" variant="primary" onClick={() => { if (beginSpiritSpringQuest()) setToast('王五教会了你采集与辨迹。') }}>向王五学习采集</Button>}
+                {gameState.quests.some((q) => q.questId === 'quest_spirit_spring_water' && q.status === 'in_progress' && q.flags.tracked !== true) && <div className="mt-3 flex flex-wrap gap-2"><Button variant="primary" onClick={() => { const r = trackSpiritSpring('mnd'); if (r.ok) setToast(r.failForward ? '判断失误，但绕路发现了被踩倒的灌木。' : '你从水汽和植被里辨出了山谷方向。') }}>MND 追踪（DC12）</Button><Button variant="ghost" onClick={() => { const r = trackSpiritSpring('lck'); if (r.ok) setToast(r.failForward ? '运气不佳，但旧猎道仍把你带向山谷。' : '你发现了被巨兽踩开的旧猎道。') }}>LUCK 追踪（DC12）</Button>{player.profession === 'ranger' && <Button variant="ghost" onClick={() => { const r = trackSpiritSpring('ranger'); if (r.ok) setToast('游侠的足迹判断带你越过林线。') }}>游侠辨迹</Button>}{gameState.equippedMountId && <Button variant="ghost" onClick={() => { if (trackSpiritSpring('mount').ok) setToast('坐骑替你缩短了搜索。') }}>借坐骑搜索</Button>}{isSakuraPresent(gameState) && <Button variant="ghost" onClick={() => { if (trackSpiritSpring('sakura').ok) setToast('樱花优子指出这股力量并非自然聚集。') }}>请优子判断</Button>}</div>}
+                {gameState.quests.some((q) => q.questId === 'quest_hunter_old_path' && q.status === 'in_progress' && q.flags.tutorial_gathered === true) && <Button className="mt-3" variant="ghost" onClick={() => { if (reportHunterOldPath()) setToast('王五记下了你的采集功课。《猎人的旧路》可以提交了。') }}>向王五复命</Button>}
+                {Object.values(GATHERING).filter((node) => node.locationId === world.currentLocationId && world.flags[`gathered_${node.id}`] !== true && (!node.prerequisiteFlag || world.flags[node.prerequisiteFlag] === true)).map((node) => <Button key={node.id} className="mt-3 ml-2" variant="ghost" onClick={() => { if (gather(node.id)) setToast(`获得：${node.name}`) }}>{node.name}</Button>)}
+              </section>
+            )}
+            {world.currentLocationId === 'spirit_spring_valley' && (
+              <section data-testid="spirit-spring-valley" className="rounded border border-gold-500/40 bg-ink-800/50 p-5 text-sm text-bone-300">
+                <h3 className="font-bold text-gold-300">神泉山谷</h3>
+                <p className="mt-2">泉边的爪痕仍很新。先处理守泉的威胁，才能靠近泉眼。</p>
+                {world.flags.black_bear_qialala_defeated !== true && !gameState.quests.some((q) => q.questId === 'quest_spirit_spring_water' && q.flags.preparation) && <div className="mt-3 flex flex-wrap gap-2"><Button variant="primary" onClick={() => { if (chooseSpiritSpringPreparation('incense')) setToast('王五的驱熊香会阻断恰拉拉的泉水疗愈。') }}>使用驱熊香</Button>{(player.profession === 'ranger' || player.attributes.mnd >= 12) && <Button variant="ghost" onClick={() => { if (chooseSpiritSpringPreparation('old_injury')) setToast('你记下了恰拉拉左前腿的旧伤。') }}>观察旧伤</Button>}<Button variant="ghost" onClick={() => { if (chooseSpiritSpringPreparation('none')) setToast('你决定不做准备，直接挑战。') }}>直接挑战</Button></div>}
+                {Object.values(GATHERING).filter((node) => node.locationId === world.currentLocationId && world.flags[`gathered_${node.id}`] !== true && (!node.prerequisiteFlag || world.flags[node.prerequisiteFlag] === true)).map((node) => <Button key={node.id} className="mt-3 mr-2" variant="primary" onClick={() => { if (gather(node.id)) setToast(`获得：${node.name}`) }}>{node.name}</Button>)}
+              </section>
+            )}
+            {world.currentLocationId === 'qingshi_village' && gameState.quests.some((q) => q.questId === 'quest_spirit_spring_water' && q.status === 'in_progress' && q.flags.water_collected === true) && (
+              <section className="rounded border border-gold-500/40 bg-ink-800/50 p-5 text-sm text-bone-300"><h3 className="font-bold text-gold-300">带水归来</h3><p className="mt-2">药师确认了泉水稳定的生命力。回报后即可完成任务。</p><Button className="mt-3" variant="primary" onClick={() => { if (reportSpiritSpringWater()) setToast('《神泉之水》可以提交了。') }}>交付神泉之水</Button></section>
+            )}
+
             {/* ---- 剧情与行动块（保留全部剧情逻辑） ---- */}
 
             {/* 反季樱雨入口 */}
@@ -1057,7 +1094,7 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
                       </Button>
                     ) : (
                       <div className="mt-3 rounded border border-red-400/40 bg-ink-900/40 p-3">
-                        <p className="text-bone-200">离开青石村后将无法返回。</p>
+                        <p className="text-bone-200">官道蜿蜒向南，通往天龙城。（TM-P2-012 起官道重新开放，日后可经天龙城返回青石村。）</p>
                         <p className="mt-1 text-bone-300">尚未发现的村内委托将被留在这里。</p>
                         <div className="mt-3 flex flex-wrap gap-3">
                           <Button variant="primary" onClick={() => departQingshiVillageToTianlongCity()}>
@@ -2144,6 +2181,8 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
         playerHp={player.hp}
         playerMaxHp={player.maxHp}
         profession={player.profession}
+        playerLevel={player.level}
+        attributes={player.attributes}
         onEquipItem={(itemId) => useGameStore.getState().equipItem(itemId)}
         onUnequipSlot={(slot) => useGameStore.getState().unequipSlot(slot)}
         onUseItem={(itemId) => (itemId === 'healing_potion' ? useHealingPotion() : false)}

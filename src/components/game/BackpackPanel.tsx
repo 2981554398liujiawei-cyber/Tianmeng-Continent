@@ -2,9 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import Button from '../Button'
 import { getItem } from '../../game/content'
 import type { ItemType } from '../../game/content/items'
+import { checkEquipEligibility } from '../../game/rules/equipment'
 import { RARITY_LABELS } from '../../game/types/loot'
 import type { Equipment, Inventory, ItemSlot } from '../../game/types/item'
-import type { ProfessionId } from '../../game/types/character'
+import type { AttributeKey, ProfessionId } from '../../game/types/character'
 import { getProfessionName } from '../../game/content/professions'
 
 /**
@@ -67,6 +68,8 @@ export interface BackpackPanelProps {
   playerHp: number
   playerMaxHp: number
   profession: ProfessionId
+  playerLevel?: number
+  attributes?: Record<AttributeKey, number>
   onEquipItem: (itemId: string) => boolean
   onUnequipSlot: (slot: ItemSlot) => boolean
   onUseItem: (itemId: string) => boolean
@@ -86,6 +89,8 @@ export default function BackpackPanel({
   playerHp,
   playerMaxHp,
   profession,
+  playerLevel = 1,
+  attributes = { str: 0, agi: 0, con: 0, mnd: 0, lck: 0 },
   onEquipItem,
   onUnequipSlot,
   onUseItem,
@@ -193,6 +198,8 @@ export default function BackpackPanel({
               itemId={detailEntry.itemId}
               entry={detailEntry}
               profession={profession}
+              playerLevel={playerLevel}
+              attributes={attributes}
               equipment={equipment}
               playerHp={playerHp}
               playerMaxHp={playerMaxHp}
@@ -239,6 +246,8 @@ function ItemDetail({
   itemId,
   entry,
   profession,
+  playerLevel,
+  attributes,
   equipment,
   playerHp,
   playerMaxHp,
@@ -251,6 +260,8 @@ function ItemDetail({
   itemId: string
   entry: { quantity: number }
   profession: ProfessionId
+  playerLevel: number
+  attributes: Record<AttributeKey, number>
   equipment: Equipment
   playerHp: number
   playerMaxHp: number
@@ -275,7 +286,11 @@ function ItemDetail({
   const type = def.type
   const slot = slotFor(type)
   const equipped = slot ? equipment[slot] === itemId : false
-  const professionAllowed = !def.allowedProfessions || def.allowedProfessions.includes(profession)
+  // TM-P2-012-R1 P1-06：装备合法性只由统一纯规则判定；UI 只 render 结果（不自行重算 level/attribute/profession）
+  const eligibility = checkEquipEligibility(def, { level: playerLevel, attributes, profession })
+  const professionAllowed = eligibility.allowed || eligibility.reason !== 'profession'
+  const equipmentAllowed = eligibility.allowed
+  const missingAttribute = eligibility.reason === 'attribute' ? eligibility : undefined
   const isHealPotion = type === 'consumable' && Number.isInteger(def.healAmount) && (def.healAmount ?? 0) > 0
   const canUseHeal =
     isHealPotion && playerHp > 0 && playerHp < playerMaxHp && entry.quantity >= 1
@@ -317,6 +332,10 @@ function ItemDetail({
         {type === 'quest' && <p className="text-bone-500">任务物品 · 不可使用</p>}
         {type === 'material' && <p className="text-bone-500">材料 · 本阶段不可制作</p>}
         {type === 'gift' && <p className="text-bone-500">礼物 · 赠予伙伴提升好感</p>}
+        {def.requirements?.minLevel && <p>需要等级 {def.requirements.minLevel}（当前 {playerLevel}）</p>}
+        {Object.entries(def.requirements?.attributes ?? {}).map(([key, value]) => (
+          <p key={key}>需要{key.toUpperCase()} {value}（当前 {attributes[key as AttributeKey]}）</p>
+        ))}
       </div>
 
       <p className="mt-3 text-sm text-bone-300">
@@ -341,7 +360,7 @@ function ItemDetail({
             <Button
               variant="primary"
               data-testid="backpack-equip"
-              disabled={!professionAllowed}
+              disabled={!equipmentAllowed}
               onClick={() => onEquipItem(itemId)}
             >
               装备
@@ -360,6 +379,14 @@ function ItemDetail({
         )}
         {!professionAllowed && slot && !equipped && (
           <span className="text-xs text-red-300">当前职业无法装备</span>
+        )}
+        {eligibility.reason === 'level' && slot && !equipped && (
+          <span className="text-xs text-red-300">等级不足：{eligibility.required}</span>
+        )}
+        {missingAttribute && slot && !equipped && (
+          <span className="text-xs text-red-300">
+            {missingAttribute.attribute?.toUpperCase()} 不足：需要 {missingAttribute.requiredValue}，当前 {missingAttribute.currentValue}（尚差 {(missingAttribute.requiredValue ?? 0) - (missingAttribute.currentValue ?? 0)}）
+          </span>
         )}
         {isHealPotion && playerHp >= playerMaxHp && (
           <span className="text-xs text-bone-500">生命已满</span>

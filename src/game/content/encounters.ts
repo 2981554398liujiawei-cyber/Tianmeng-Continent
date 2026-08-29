@@ -11,6 +11,9 @@ import type { EncounterDefinition, EncounterMember } from '../types/encounter'
 
 /** 单敌遭遇迁移映射：enemyId -> encounterId（与现有 guard 链敌人一一对应；全量覆盖不遗漏） */
 export const SINGLE_ENEMY_ENCOUNTERS: Record<string, string> = {
+  forest_boar: 'encounter_forest_boar',
+  forest_black_bear: 'encounter_forest_black_bear',
+  black_bear_qialala: 'encounter_black_bear_qialala',
   corrupted_rabbit: 'encounter_corrupted_rabbit',
   corrupted_rat: 'encounter_corrupted_rat',
   corrupted_wolf: 'encounter_corrupted_wolf',
@@ -38,6 +41,14 @@ export const SINGLE_ENEMY_ENCOUNTERS: Record<string, string> = {
 const BROKEN_PATROL_ENCOUNTER_ID = 'encounter_broken_patrol'
 
 export const ENCOUNTERS: Record<string, EncounterDefinition> = {
+  // ---- TM-P2-012 §50：青石北坡三层威胁（低/标准/高危全部 repeatable；重复胜利走低额 repeat XP）。
+  //      可重复遭遇不设 encounterDefeatFlag（P2-009-R1 §11 约定）；「检查猎物」采集前置改用首次击败标记 ${enemyId}_first_kill。 ----
+  encounter_forest_boar: { id: 'encounter_forest_boar', name: '山林野猪', locationId: 'qingshi_north_hills', fixedMembers: [{ enemyId: 'forest_boar', count: 1 }], canEscape: true, activityType: 'optional', difficulty: 'low', recommendedLevelMin: 4, repeatable: true, repeatAdventureXpReward: 5 },
+  encounter_venom_bee_pair: { id: 'encounter_venom_bee_pair', name: '毒针蜂群', locationId: 'qingshi_north_hills', fixedMembers: [{ enemyId: 'venom_bee_swarm', count: 2 }], canEscape: true, activityType: 'optional', difficulty: 'standard', recommendedLevelMin: 4, repeatable: true, repeatAdventureXpReward: 6 },
+  encounter_forest_black_bear: { id: 'encounter_forest_black_bear', name: '山林黑熊', locationId: 'qingshi_north_hills', fixedMembers: [{ enemyId: 'forest_black_bear', count: 1 }], canEscape: true, activityType: 'optional', difficulty: 'dangerous', recommendedLevelMin: 4, repeatable: true, repeatAdventureXpReward: 8 },
+  // ---- TM-P2-012 §51：神泉山谷标准混合遭遇（野猪 + 蜂群；optional repeatable）+ Boss（story 一次性）。 ----
+  encounter_valley_beasts: { id: 'encounter_valley_beasts', name: '山谷野兽', locationId: 'spirit_spring_valley', fixedMembers: [{ enemyId: 'forest_boar', count: 1 }, { enemyId: 'venom_bee_swarm', count: 1 }], canEscape: true, activityType: 'optional', difficulty: 'standard', recommendedLevelMin: 5, repeatable: true, repeatAdventureXpReward: 8 },
+  encounter_black_bear_qialala: { id: 'encounter_black_bear_qialala', name: '黑熊恰拉拉', locationId: 'spirit_spring_valley', fixedMembers: [{ enemyId: 'black_bear_qialala', count: 1 }], canEscape: false, encounterDefeatFlag: 'black_bear_qialala_defeated', activityType: 'story', difficulty: 'dangerous', recommendedLevelMin: 5 },
   // ---- 现有单敌战斗迁移（fixedMembers 单敌；canEscape / locationId 与现有守卫一致）----
   encounter_corrupted_rabbit: {
     id: 'encounter_corrupted_rabbit',

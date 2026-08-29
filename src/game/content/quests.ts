@@ -14,6 +14,12 @@ export interface QuestDefinition {
 }
 
 export const QUESTS: Record<string, QuestDefinition> = {
+  quest_spirit_spring_water: {
+    id: 'quest_spirit_spring_water', title: '神泉之水', summary: '循着北坡猎人留下的痕迹，找到神泉并带回一瓶稳定的泉水。', giverNpcId: 'wang_wu', goldReward: 60, adventureXpReward: 160,
+  },
+  quest_hunter_old_path: {
+    id: 'quest_hunter_old_path', title: '猎人的旧路', summary: '王五请你沿旧猎路确认山谷入口与野兽痕迹。', giverNpcId: 'wang_wu', goldReward: 15, adventureXpReward: 25,
+  },
   quest_village_monsters: {
     id: 'quest_village_monsters',
     title: '村外异动',

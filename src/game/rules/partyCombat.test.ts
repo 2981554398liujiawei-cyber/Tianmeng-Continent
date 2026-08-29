@@ -64,7 +64,7 @@ function makeSakura(overrides: Omit<Partial<Combatant>, 'sourceType'> = {}): Com
     instanceId: 'sakura',
     sourceType: 'companion' as const,
     sourceId: 'sakura_yuko',
-    name: '狐媚儿',
+    name: '樱花优子',
     currentHp: 24,
     maxHp: 24,
     currentMp: 12,
@@ -168,7 +168,7 @@ describe('rollInitiativeQueue（§9.3 先手排序）', () => {
   it('PC9 initiative 相同、敏捷不同 → 敏捷高者先', () => {
     // player agi12 roll13 → 25；sakura agi15 roll10 → 25；同 initiative → 比敏捷（sakura 先）
     const turns = rollInitiativeQueue([makePlayer(), makeSakura()], seqRng(0.6, 0.45))
-    expect(turns[0]!.combatant.name).toBe('狐媚儿')
+    expect(turns[0]!.combatant.name).toBe('樱花优子')
     expect(turns[0]!.initiative).toBe(25)
     expect(turns[1]!.initiative).toBe(25)
   })

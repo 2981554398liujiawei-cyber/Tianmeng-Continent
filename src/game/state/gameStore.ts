@@ -3,7 +3,8 @@ import type { CharacterCreationInput, ClueDefinition, GameState, QuestStatus } f
 import { createInitialGameState } from '../content/initial'
 import { checkTravel } from '../rules/exploration'
 import { canTransitionQuestStatus } from '../rules/quest'
-import { getClue, getEnemy, getEncounter, getItem, getLocation, getMount, getNpc, getQuest } from '../content'
+import { getClue, getEnemy, getEncounter, getGathering, getItem, getLocation, getMount, getNpc, getQuest } from '../content'
+import { checkGathering, gatheringFlag } from '../rules/gathering'
 import { checkEncounter, currentEncounterVariantId, resolveEncounterVariant, singleEnemyIdOf } from '../rules/encounter'
 import { performD20Check, CHECK_DC, type D20CheckResult } from '../rules/d20'
 import { KNIGHT_POWER_STRIKE_MP_COST, MAGE_SPELL_MP_COST, WARRIOR_SUPPRESS_STRIKE_MP_COST } from '../rules/combat'
@@ -79,6 +80,9 @@ const MARTIAL_TRIAL_BRONZE_MEDAL_ID = 'tianlong_martial_medal'
 
 export type MartialTrialObservationMethod = 'str' | 'con' | 'agi' | 'mnd' | 'lck'
 export type MartialTrialObservationResult = { ok: boolean; success?: boolean; progressed?: boolean; method?: MartialTrialObservationMethod }
+export type SpiritSpringTrackingMethod = 'mnd' | 'lck' | 'ranger' | 'mount' | 'sakura'
+export type SpiritSpringPreparation = 'incense' | 'old_injury' | 'none'
+export type SpiritSpringTrackingResult = { ok: boolean; method?: SpiritSpringTrackingMethod; success?: boolean; check?: D20CheckResult; failForward?: boolean; reason?: 'locked' | 'unavailable' }
 import {
   deleteSlot as storageDeleteSlot,
   exportSaves as storageExportSaves,
@@ -319,6 +323,16 @@ interface GameStoreState {
   setCompanionActive: (companionId: string, active: boolean) => boolean
   /** 伙伴技能 MP 消费（TM-P2-004 第 106 节）：伙伴自身 MP；checkSkillUse（profession=undefined）统一校验 */
   spendCompanionSkillMp: (companionId: string, skillId: string) => boolean
+  /** TM-P2-012：authoring 采集唯一状态入口；地点、前置与一次性均在 Store 校验。 */
+  gather: (gatheringId: string) => boolean
+  discoverSpiritSpringRumor: () => boolean
+  askVillageAboutSpiritSpring: () => boolean
+  beginSpiritSpringQuest: () => boolean
+  trackSpiritSpring: (method: SpiritSpringTrackingMethod, roll?: number) => SpiritSpringTrackingResult
+  chooseSpiritSpringPreparation: (preparation: SpiritSpringPreparation) => boolean
+  reportSpiritSpringWater: () => boolean
+  /** TM-P2-012-R1 P1-03：北坡向王五复命——《猎人的旧路》in_progress + 教学采集已完成 → completable（只推进一次） */
+  reportHunterOldPath: () => boolean
 }
 
 /** 线索发现（TM-P2-008 §38）：clueId 已注册 + `world.flags[clueId]` 非严格 true → 写 flag 返回新 GameState；未注册 / 已发现返回 null（不变）。幂等、纯函数 */
@@ -365,6 +379,10 @@ function applyQuestDiscovery(gameState: GameState, questId: string): GameState |
   if (questId === 'quest_north_broken_banner') {
     const northOutskirtsQuest = gameState.quests.find((q) => q.questId === 'quest_north_outskirts')
     if (northOutskirtsQuest?.status !== 'completed') return null
+  }
+  if (questId === 'quest_spirit_spring_water') {
+    const trial = gameState.quests.find((q) => q.questId === MARTIAL_TRIAL_QUEST_ID)
+    if (trial?.status !== 'completed') return null
   }
   const index = gameState.quests.findIndex((q) => q.questId === questId)
   if (index < 0) {
@@ -1063,6 +1081,9 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
       if (enemyId === SAKURA_CALAMITY_ENEMY_ID && location.id === SAKURA_DOMAIN_LOCATION) {
         if (!canFightCalamity(s.gameState)) return {}
       }
+      // TM-P2-012 §33/§34：恰拉拉一次性清场守卫——defeat flag 严格 true 后整次胜利结算拒绝（ok 不置位）。
+      // 注意必须在 ok = true 之前：后置分支 return {} 只代表「无状态变更」，不影响 ok。
+      if (enemyId === 'black_bear_qialala' && s.gameState.world.flags.black_bear_qialala_defeated === true) return {}
       ok = true
       // TM-P2-006 第 38/40 节：战斗阅历——只在「首次正式击败」时授予（getEnemyFirstKillXp 复用现有 defeated flags 防重复）；
       // 重复遭遇 / 无 XP 定义 → firstKillXp=0，withFirstKillXp 原样返回
@@ -1233,6 +1254,21 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
           }),
         }
       }
+      // TM-P2-012：恰拉拉（story Boss）一次性清场。EncounterDefinition 的 defeat flag 是唯一
+      // 真相源：它同时防重复首杀奖励，并作为「收集熊皮/神泉之水」的可靠前置。
+      // 重复结算拒绝在上方守卫段完成；本分支只负责首次写 flag + 任务 stage 6。
+      // 北坡普通野兽（野猪/蜂群/黑熊）走通用 repeatable 遭遇路径：first-kill 标记 + 低额重复 XP。
+      const p2012Encounter = getEncounter(SINGLE_ENEMY_ENCOUNTERS[enemyId] ?? '')
+      if (p2012Encounter?.encounterDefeatFlag && enemyId === 'black_bear_qialala' && s.gameState.world.flags[p2012Encounter.encounterDefeatFlag] !== true) {
+        const defeatFlag = p2012Encounter.encounterDefeatFlag
+        const questIndex = s.gameState.quests.findIndex((q) => q.questId === 'quest_spirit_spring_water')
+        const quests = [...s.gameState.quests]
+        if (enemyId === 'black_bear_qialala' && questIndex >= 0 && quests[questIndex]?.status === 'in_progress') {
+          const quest = quests[questIndex]!
+          quests[questIndex] = { ...quest, stage: 6, flags: { ...quest.flags, qialala_defeated: true } }
+        }
+        return { gameState: withFirstKillXp({ ...s.gameState, quests, world: { ...s.gameState.world, flags: { ...s.gameState.world.flags, [defeatFlag]: true } } }) }
+      }
       // 合法胜利但无持久效果（其他敌人 / 重复嘟嘟兔胜利 / 任务不在推进条件）：仍可能授予首次击败 XP（如：未接任务就击败的可重复遭遇敌人首次奖励）；其余状态全部不变
       // TM-P2-009-R1 §11.3：单敌可重复遭遇——首次授予 first-kill 并写首次标记（cave_bat/wild_boar，见 FIRST_KILL_FLAG_ENEMIES）；
       // 非首次（重复胜利）给低额 repeatAdventureXpReward（wild_wolf/cave_bat/wild_boar 单敌可重复遭遇）
@@ -1297,6 +1333,8 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
     if (singleEnemyId) {
       if (!get().resolveCombatVictory(singleEnemyId)) return null
       const grant = get().grantLoot(singleEnemyId)
+      // 神泉 Boss 首杀专属装备：只走 encounter 胜利事务，不通过 UI 发放；重复结算已被 defeated 门拒绝。
+      if (encounterId === 'encounter_black_bear_qialala') get().addItem('king_kong_giant_shield', 1)
       return resolveEncounterLoot(grant ? [grant] : [])
     }
     // 多敌遭遇：整体胜利事务（§6/§15/§16）——XP sum + loot 聚合 + encounterDefeatFlag 一次性写入
@@ -2993,6 +3031,160 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
   },
 
   completeMartialTrial: () => get().completeQuest(MARTIAL_TRIAL_QUEST_ID),
+
+  discoverSpiritSpringRumor: () => {
+    let changed = false
+    set((s) => {
+      const state = s.gameState
+      if (!state || state.world.currentLocationId !== 'tianlong_city') return {}
+      const discovered = applyQuestDiscovery(state, 'quest_spirit_spring_water')
+      if (!discovered) return {}
+      changed = true
+      return { gameState: { ...discovered, world: { ...discovered.world, flags: { ...discovered.world.flags, spirit_spring_rumor_heard: true } } } }
+    })
+    return changed
+  },
+
+  askVillageAboutSpiritSpring: () => {
+    let changed = false
+    set((s) => {
+      const state = s.gameState
+      if (!state || state.world.currentLocationId !== 'qingshi_village' || state.world.flags.spirit_spring_rumor_heard !== true) return {}
+      const index = state.quests.findIndex((q) => q.questId === 'quest_spirit_spring_water')
+      const quest = state.quests[index]
+      if (index < 0 || !quest || quest.status !== 'available' || quest.flags.village_asked === true) return {}
+      const quests = [...state.quests]
+      quests[index] = { ...quest, stage: 1, flags: { ...quest.flags, village_asked: true } }
+      changed = true
+      return { gameState: { ...state, quests, world: { ...state.world, flags: { ...state.world.flags, qingshi_north_hills_unlocked: true } } } }
+    })
+    return changed
+  },
+
+  beginSpiritSpringQuest: () => {
+    let changed = false
+    set((s) => {
+      const state = s.gameState
+      if (!state || state.world.currentLocationId !== 'qingshi_north_hills') return {}
+      const quest = state.quests.find((q) => q.questId === 'quest_spirit_spring_water')
+      if (!quest || quest.status !== 'available' || quest.flags.village_asked !== true) return {}
+      const accepted = applyQuestTransition(state, 'quest_spirit_spring_water', 'in_progress')
+      if (!accepted) return {}
+      const hunter = applyQuestDiscovery(accepted, 'quest_hunter_old_path') ?? accepted
+      const hunterAccepted = applyQuestTransition(hunter, 'quest_hunter_old_path', 'in_progress') ?? hunter
+      const quests = hunterAccepted.quests.map((q) => q.questId === 'quest_spirit_spring_water' ? { ...q, stage: 2, flags: { ...q.flags, wang_wu_met: true } } : q)
+      changed = true
+      return { gameState: { ...hunterAccepted, quests, world: { ...hunterAccepted.world, flags: { ...hunterAccepted.world.flags, gathering_v1_unlocked: true, spirit_spring_wang_wu_taught: true } } } }
+    })
+    return changed
+  },
+
+  trackSpiritSpring: (method, roll) => {
+    let result: SpiritSpringTrackingResult = { ok: false, reason: 'locked' }
+    set((s) => {
+      const state = s.gameState
+      if (!state || state.world.currentLocationId !== 'qingshi_north_hills') return {}
+      const index = state.quests.findIndex((q) => q.questId === 'quest_spirit_spring_water')
+      const quest = state.quests[index]
+      if (index < 0 || !quest || quest.status !== 'in_progress' || quest.flags.tracked === true) return {}
+      if (method === 'ranger' && state.player.profession !== 'ranger') { result = { ok: false, reason: 'unavailable' }; return {} }
+      if (method === 'mount' && !state.equippedMountId) { result = { ok: false, reason: 'unavailable' }; return {} }
+      if (method === 'sakura' && !isSakuraPresent(state)) { result = { ok: false, reason: 'unavailable' }; return {} }
+      let check: D20CheckResult | undefined
+      if (method === 'mnd' || method === 'lck' || method === 'ranger') {
+        const attribute = method === 'ranger' ? 'agi' : method
+        check = resolveD20Check({ attributeScore: state.player.attributes[attribute], level: state.player.level, dc: CHECK_DC.moderate, proficient: false, situationalModifier: method === 'ranger' ? 2 : 0 }, roll ?? rollD20())
+      }
+      const quests = [...state.quests]
+      quests[index] = { ...quest, stage: 4, flags: { ...quest.flags, tracked: true, tracking_method: method, tracking_success: check?.success ?? true, tracking_fail_forward: check ? !check.success : false } }
+      let next: GameState = { ...state, quests, world: { ...state.world, flags: { ...state.world.flags, spirit_spring_valley_unlocked: true } } }
+      next = applyClueDiscovery(next, 'clue_north_hill_tracks') ?? next
+      if (method === 'sakura') next = applyClueDiscovery(next, 'clue_spring_golden_fur') ?? next
+      result = { ok: true, method, success: check?.success ?? true, check, failForward: check ? !check.success : false }
+      return { gameState: next }
+    })
+    return result
+  },
+
+  chooseSpiritSpringPreparation: (preparation) => {
+    let changed = false
+    set((s) => {
+      const state = s.gameState
+      if (!state || state.world.currentLocationId !== 'spirit_spring_valley' || state.world.flags.black_bear_qialala_defeated === true) return {}
+      const index = state.quests.findIndex((q) => q.questId === 'quest_spirit_spring_water')
+      const quest = state.quests[index]
+      if (index < 0 || !quest || quest.status !== 'in_progress' || quest.flags.tracked !== true || quest.flags.preparation) return {}
+      if (preparation === 'incense' && state.world.flags.spirit_spring_wang_wu_taught !== true) return {}
+      if (preparation === 'old_injury' && state.player.profession !== 'ranger' && state.player.attributes.mnd < 12) return {}
+      const quests = [...state.quests]
+      quests[index] = { ...quest, stage: 5, flags: { ...quest.flags, preparation } }
+      changed = true
+      return { gameState: { ...state, quests, world: { ...state.world, flags: { ...state.world.flags, spirit_spring_preparation: preparation } } } }
+    })
+    return changed
+  },
+
+  gather: (gatheringId) => {
+    let changed = false
+    set((s) => {
+      const state = s.gameState
+      const check = checkGathering(state, gatheringId)
+      const node = getGathering(gatheringId)
+      if (!state || !check.allowed || !node) return {}
+      let inventory = [...state.inventory]
+      for (const result of node.resultItems) {
+        const index = inventory.findIndex((entry) => entry.itemId === result.itemId)
+        inventory = index < 0 ? [...inventory, { itemId: result.itemId, quantity: result.quantity }] : inventory.map((entry, i) => i === index ? { ...entry, quantity: entry.quantity + result.quantity } : entry)
+      }
+      let quests = state.quests
+      if (gatheringId === 'spirit_spring_water') {
+        const index = quests.findIndex((q) => q.questId === 'quest_spirit_spring_water')
+        if (index >= 0 && quests[index]?.status === 'in_progress') { quests = [...quests]; quests[index] = { ...quests[index]!, stage: 7, flags: { ...quests[index]!.flags, water_collected: true } } }
+      }
+      // TM-P2-012-R1 P1-03：《猎人的旧路》教学进度——任一 authored 采集成功即视为完成教学（轻量：不区分节点）
+      const hunterIndex = quests.findIndex((q) => q.questId === 'quest_hunter_old_path')
+      if (hunterIndex >= 0 && quests[hunterIndex]?.status === 'in_progress' && quests[hunterIndex]!.flags.tutorial_gathered !== true) {
+        quests = [...quests]
+        quests[hunterIndex] = { ...quests[hunterIndex]!, stage: 1, flags: { ...quests[hunterIndex]!.flags, tutorial_gathered: true } }
+      }
+      changed = true
+      return { gameState: { ...state, inventory, quests, world: { ...state.world, flags: { ...state.world.flags, [gatheringFlag(gatheringId)]: true } } } }
+    })
+    return changed
+  },
+
+  reportSpiritSpringWater: () => {
+    let changed = false
+    set((s) => {
+      const state = s.gameState
+      if (!state || state.world.currentLocationId !== 'qingshi_village') return {}
+      const index = state.quests.findIndex((q) => q.questId === 'quest_spirit_spring_water')
+      const quest = state.quests[index]
+      if (index < 0 || !quest || quest.status !== 'in_progress' || quest.flags.water_collected !== true) return {}
+      const quests = [...state.quests]
+      quests[index] = { ...quest, stage: 8, status: 'completable', flags: { ...quest.flags, reported: true } }
+      changed = true
+      return { gameState: { ...state, quests } }
+    })
+    return changed
+  },
+
+  // ---- TM-P2-012-R1 P1-03：《猎人的旧路》完整生命周期收尾（向王五复命；奖励走 generic completeQuest 15金/25XP，重复提交被状态机拒绝） ----
+  reportHunterOldPath: () => {
+    let changed = false
+    set((s) => {
+      const state = s.gameState
+      if (!state || state.world.currentLocationId !== 'qingshi_north_hills') return {}
+      const index = state.quests.findIndex((q) => q.questId === 'quest_hunter_old_path')
+      const quest = state.quests[index]
+      if (index < 0 || !quest || quest.status !== 'in_progress' || quest.flags.tutorial_gathered !== true || quest.flags.reported === true) return {}
+      const quests = [...state.quests]
+      quests[index] = { ...quest, stage: 2, status: 'completable', flags: { ...quest.flags, reported: true } }
+      changed = true
+      return { gameState: { ...state, quests } }
+    })
+    return changed
+  },
 
   // ---- TM-P2-004：Sakura 剧情 / 伙伴 / 关系 / 休整 ----
 

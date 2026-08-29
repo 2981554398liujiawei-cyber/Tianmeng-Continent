@@ -1,4 +1,4 @@
-name: P2-008 Public Release
+name: Public Release
 
 # TM-P2-008 §64：公网最终发布外部执行环境。
 # 本机网络无法访问 workers.dev/Cloudflare API 时的替代执行环境，
@@ -37,7 +37,7 @@ env:
 
 jobs:
   release:
-    name: P2-008 Public Release
+    name: Public Release
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:

@@ -30,7 +30,7 @@ import {
 import { getUsableSkills } from './skill'
 import { getItem } from '../content'
 
-/** 参与战斗的伙伴上限（3v3：玩家 1 + 伙伴 ≤ 2） */
+/** 参与战斗的伙伴上限（4v4 冻结规则：玩家 1 + companions ≤ 3 = 友方最多 4） */
 export const MAX_PARTY_COMPANIONS = 3
 
 /** 伙伴战斗信息（每个 active companion 一条；技能/属性独立） */

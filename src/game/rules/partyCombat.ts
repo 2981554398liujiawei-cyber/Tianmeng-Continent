@@ -1,7 +1,7 @@
 /**
  * Party Combat V5 纯规则（TM-P2-007 §8–16）。
  *
- * 3v3 多人遭遇战斗：我方 1–3 / 敌方 1–3 硬上限（EncounterDefinition 数据层已校验）。
+ * 4v4 多人遭遇战斗（TM-P2-012-R1 P1-05 冻结）：友方 = 主角 + 最多 3 companions（≤4）；敌方 ≤4 硬上限（EncounterDefinition 数据层已校验）。禁止回退 3v3。
  * 本文件只含纯函数：不修改 GameState、不掷系统随机数（rng 一律注入、返回 [0,1)）。
  *
  * 职责边界：
@@ -24,7 +24,7 @@ import type { SkillDefinition } from '../types/skill'
 /** 注入随机源：返回 [0,1) 区间的数（测试可注入固定序列） */
 export type Rng = () => number
 
-/** 遭遇敌方单位硬上限（3v3；§8） */
+/** 遭遇敌方单位硬上限（4v4 冻结规则；§8） */
 export const MAX_ENCOUNTER_MEMBERS = 4
 
 /**
@@ -178,8 +178,21 @@ export function rollInitiativeQueue(combatants: readonly Combatant[], rng: Rng):
 }
 
 /**
- * 下一个存活单位的索引（§9.4：死亡单位跳过，队列视为环）。
- * fromIndex 视为「已行动」；返回 fromIndex 之后第一个存活者；全场无存活时返回 fromIndex。
+ * 从固定先手槽位解析实时战斗单位。InitiativeTurn 中的 combatant 只是开战快照，
+ * HP / isAlive 必须始终以战斗中的 combatants 为准。
+ */
+export function getLiveCombatant(
+  turn: InitiativeTurn | undefined,
+  combatants: readonly Combatant[],
+): Combatant | undefined {
+  if (!turn) return undefined
+  return combatants.find((combatant) => combatant.instanceId === turn.combatant.instanceId)
+}
+
+/**
+ * @deprecated TM-P2-012 §85B：生产代码已不使用（实时回合推进走 nextLiveTurnIndex）。
+ * 仅为历史 QA 平衡模拟脚本（qa/p2-007/008/009-balance.mjs 的回合推进注入）保留；
+ * 生产代码与 CombatPage 禁止调用（不得读取开战快照的存活状态）。
  */
 export function nextAliveTurnIndex(turns: readonly InitiativeTurn[], fromIndex: number): number {
   const n = turns.length
@@ -192,18 +205,6 @@ export function nextAliveTurnIndex(turns: readonly InitiativeTurn[], fromIndex: 
     if (turns[idx]!.combatant.isAlive) return idx
   }
   return fromIndex
-}
-
-/**
- * 从固定先手槽位解析实时战斗单位。InitiativeTurn 中的 combatant 只是开战快照，
- * HP / isAlive 必须始终以战斗中的 combatants 为准。
- */
-export function getLiveCombatant(
-  turn: InitiativeTurn | undefined,
-  combatants: readonly Combatant[],
-): Combatant | undefined {
-  if (!turn) return undefined
-  return combatants.find((combatant) => combatant.instanceId === turn.combatant.instanceId)
 }
 
 /** 固定先手顺序中，从 fromIndex 之后寻找下一个实时存活且未结束回合的槽位。 */

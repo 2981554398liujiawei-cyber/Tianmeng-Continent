@@ -20,6 +20,8 @@ export interface ItemDefinition {
   /** 装备后护甲加成（仅 armor 可使用，TM-P2-002 A；当前内容暂无护甲物品，接口预留） */
   armorDefenseBonus?: number
   allowedProfessions?: import('../types/character').ProfessionId[]
+  /** 装备门槛（V1：不改变存档，只在装备时校验）。 */
+  requirements?: { minLevel?: number; attributes?: Partial<Record<'str' | 'agi' | 'con' | 'mnd' | 'lck', number>> }
   /** 礼物标签（仅 gift 类型可使用；TM-P2-004 第 65 节——赠礼按标签匹配关系档案 likedGiftTags） */
   giftTags?: string[]
   /** TM-P2-009-R1 §6.3：装备后每回合额外行动资源（通用扩展点；缺省无加成）。
@@ -33,6 +35,18 @@ export interface ItemDefinition {
 
 /** V1 最小物品目录（仅当前需要的内容） */
 export const ITEMS: Record<string, ItemDefinition> = {
+  king_kong_giant_shield: {
+    id: 'king_kong_giant_shield', name: '金刚巨盾', type: 'armor', value: 120, rarity: 'rare',
+    armorDefenseBonus: 4, allowedProfessions: ['warrior', 'knight'],
+    requirements: { minLevel: 4, attributes: { str: 15 } },
+    description: '恰拉拉守在泉边的巨盾，沉重却能稳住防线。',
+  },
+  hemostatic_herb: { id: 'hemostatic_herb', name: '止血草', type: 'material', value: 4, description: '北坡常见的止血药草。' },
+  clear_spring_moss: { id: 'clear_spring_moss', name: '清泉苔', type: 'material', value: 8, description: '神泉雾气滋养的青苔。' },
+  venom_bee_stinger: { id: 'venom_bee_stinger', name: '蜂针', type: 'material', value: 6, description: '毒针蜂群遗留的锋利蜂针。' },
+  wild_boar_hide: { id: 'wild_boar_hide', name: '野猪皮', type: 'material', value: 10, description: '结实的山林野猪皮。' },
+  bear_hide: { id: 'bear_hide', name: '熊皮', type: 'material', value: 24, description: '恰拉拉留下的厚实熊皮。' },
+  spirit_spring_water: { id: 'spirit_spring_water', name: '神泉之水', type: 'quest', value: 0, description: '水性稳定的神泉之水；本轮不可战斗使用。' },
   iron_sword: {
     id: 'iron_sword',
     name: '铁剑',
