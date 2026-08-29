@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createInitialGameState } from '../content/initial'
-import { checkEquipItem } from './equipment'
+import { checkEquipItem, checkEquipEligibility } from './equipment'
 import { useGameStore } from '../state/gameStore'
 
 function mockStorage(): Storage {
@@ -86,5 +86,30 @@ describe('TM-P2-012 §70：装备要求（金刚巨盾 REQ1-6）', () => {
     expect(useGameStore.getState().loadSlot('slot1')).toBe(true)
     expect(state().equipment.armor).toBeNull()
     expect(state().inventory.some((entry) => entry.itemId === 'king_kong_giant_shield')).toBe(true)
+  })
+})
+
+describe('TM-P2-012-R1 P1-06：统一装备资格规则（checkEquipEligibility 结构化输出）', () => {
+  const shield = { type: 'armor', allowedProfessions: ['warrior', 'knight'] as const, requirements: { minLevel: 4, attributes: { str: 15 } } }
+
+  it('满足等级 + STR → allowed；STR 不足给出结构化 attribute/requiredValue/currentValue', () => {
+    expect(checkEquipEligibility(shield, { level: 4, attributes: { str: 15, agi: 10, con: 10, mnd: 10, lck: 10 }, profession: 'knight' })).toMatchObject({ allowed: true })
+    const fail = checkEquipEligibility(shield, { level: 4, attributes: { str: 12, agi: 10, con: 10, mnd: 10, lck: 10 }, profession: 'knight' })
+    expect(fail).toMatchObject({ allowed: false, reason: 'attribute', attribute: 'str', requiredValue: 15, currentValue: 12 })
+    expect(fail.allowed === false && fail.required).toBe('需要STR 15（当前 12）')
+  })
+
+  it('等级不足 → reason=level 且给出等级差距', () => {
+    const fail = checkEquipEligibility(shield, { level: 3, attributes: { str: 15, agi: 10, con: 10, mnd: 10, lck: 10 }, profession: 'knight' })
+    expect(fail).toMatchObject({ allowed: false, reason: 'level', requiredValue: 4, currentValue: 3 })
+  })
+
+  it('失败原子性：装备失败不改变 equipment 且不丢 inventory（同一规则下再次验证）', () => {
+    grantShield()
+    useGameStore.setState((current) => ({ gameState: current.gameState ? { ...current.gameState, player: { ...current.gameState.player, attributes: { ...current.gameState.player.attributes, str: 10 } } } : null }))
+    const before = state()
+    expect(useGameStore.getState().equipItem('king_kong_giant_shield')).toBe(false)
+    expect(state().equipment).toEqual(before.equipment)
+    expect(state().inventory).toEqual(before.inventory)
   })
 })

@@ -362,3 +362,49 @@ describe('TM-P2-012 §72 S25：旧存档路径', () => {
     expect(result.success).toBe(true)
   })
 })
+
+describe('TM-P2-012-R1 P1-03：《猎人的旧路》完整生命周期', () => {
+  it('随王五教学自动开启；教学采集推进 progress；北坡复命 → completable → 完成；重复提交被拒绝', () => {
+    readyForTracking() // beginSpiritSpringQuest 同时 discover+accept 猎人的旧路
+    const side = () => state().quests.find((entry) => entry.questId === 'quest_hunter_old_path')!
+    expect(side().status).toBe('in_progress')
+    // 未教学时复命被拒绝
+    at('qingshi_north_hills')
+    expect(store().reportHunterOldPath()).toBe(false)
+    // 教学采集推进（任一 authored 节点）
+    expect(store().gather('north_hills_hemostatic_herb')).toBe(true)
+    expect(side().flags.tutorial_gathered).toBe(true)
+    expect(side().stage).toBe(1)
+    // 复命 → completable（不在北坡则拒绝）
+    at('qingshi_village')
+    expect(store().reportHunterOldPath()).toBe(false)
+    at('qingshi_north_hills')
+    expect(store().reportHunterOldPath()).toBe(true)
+    expect(side().status).toBe('completable')
+    expect(side().flags.reported).toBe(true)
+    expect(store().reportHunterOldPath()).toBe(false)
+    // 提交：奖励 15金/25XP 只发一次
+    const goldBefore = state().player.gold
+    const xpBefore = state().player.adventureXp
+    expect(store().completeQuest('quest_hunter_old_path')).toBe(true)
+    expect(side().status).toBe('completed')
+    expect(state().player.gold).toBe(goldBefore + 15)
+    expect(state().player.adventureXp).toBe(xpBefore + 25)
+    expect(store().completeQuest('quest_hunter_old_path')).toBe(false)
+    expect(state().player.gold).toBe(goldBefore + 15)
+  })
+
+  it('Save/Reload 保持《猎人的旧路》进度', () => {
+    readyForTracking()
+    at('qingshi_north_hills')
+    store().gather('north_hills_hemostatic_herb')
+    store().reportHunterOldPath()
+    expect(store().saveGame('slot1')).toBe(true)
+    useGameStore.setState({ gameState: null, hasSave: false })
+    expect(store().loadSlot('slot1')).toBe(true)
+    const side = state().quests.find((entry) => entry.questId === 'quest_hunter_old_path')!
+    expect(side.status).toBe('completable')
+    expect(side.flags.tutorial_gathered).toBe(true)
+    expect(side.flags.reported).toBe(true)
+  })
+})

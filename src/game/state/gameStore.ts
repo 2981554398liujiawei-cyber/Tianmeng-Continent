@@ -331,6 +331,8 @@ interface GameStoreState {
   trackSpiritSpring: (method: SpiritSpringTrackingMethod, roll?: number) => SpiritSpringTrackingResult
   chooseSpiritSpringPreparation: (preparation: SpiritSpringPreparation) => boolean
   reportSpiritSpringWater: () => boolean
+  /** TM-P2-012-R1 P1-03：北坡向王五复命——《猎人的旧路》in_progress + 教学采集已完成 → completable（只推进一次） */
+  reportHunterOldPath: () => boolean
 }
 
 /** 线索发现（TM-P2-008 §38）：clueId 已注册 + `world.flags[clueId]` 非严格 true → 写 flag 返回新 GameState；未注册 / 已发现返回 null（不变）。幂等、纯函数 */
@@ -3139,6 +3141,12 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
         const index = quests.findIndex((q) => q.questId === 'quest_spirit_spring_water')
         if (index >= 0 && quests[index]?.status === 'in_progress') { quests = [...quests]; quests[index] = { ...quests[index]!, stage: 7, flags: { ...quests[index]!.flags, water_collected: true } } }
       }
+      // TM-P2-012-R1 P1-03：《猎人的旧路》教学进度——任一 authored 采集成功即视为完成教学（轻量：不区分节点）
+      const hunterIndex = quests.findIndex((q) => q.questId === 'quest_hunter_old_path')
+      if (hunterIndex >= 0 && quests[hunterIndex]?.status === 'in_progress' && quests[hunterIndex]!.flags.tutorial_gathered !== true) {
+        quests = [...quests]
+        quests[hunterIndex] = { ...quests[hunterIndex]!, stage: 1, flags: { ...quests[hunterIndex]!.flags, tutorial_gathered: true } }
+      }
       changed = true
       return { gameState: { ...state, inventory, quests, world: { ...state.world, flags: { ...state.world.flags, [gatheringFlag(gatheringId)]: true } } } }
     })
@@ -3155,6 +3163,23 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
       if (index < 0 || !quest || quest.status !== 'in_progress' || quest.flags.water_collected !== true) return {}
       const quests = [...state.quests]
       quests[index] = { ...quest, stage: 8, status: 'completable', flags: { ...quest.flags, reported: true } }
+      changed = true
+      return { gameState: { ...state, quests } }
+    })
+    return changed
+  },
+
+  // ---- TM-P2-012-R1 P1-03：《猎人的旧路》完整生命周期收尾（向王五复命；奖励走 generic completeQuest 15金/25XP，重复提交被状态机拒绝） ----
+  reportHunterOldPath: () => {
+    let changed = false
+    set((s) => {
+      const state = s.gameState
+      if (!state || state.world.currentLocationId !== 'qingshi_north_hills') return {}
+      const index = state.quests.findIndex((q) => q.questId === 'quest_hunter_old_path')
+      const quest = state.quests[index]
+      if (index < 0 || !quest || quest.status !== 'in_progress' || quest.flags.tutorial_gathered !== true || quest.flags.reported === true) return {}
+      const quests = [...state.quests]
+      quests[index] = { ...quest, stage: 2, status: 'completable', flags: { ...quest.flags, reported: true } }
       changed = true
       return { gameState: { ...state, quests } }
     })

@@ -124,7 +124,13 @@ try {
   await load(fixture({ location: 'qingshi_village', quests: [springQuest('available', 1, { village_asked: false })], flags: { spirit_spring_rumor_heard: true, qingshi_north_hills_unlocked: true } }), { width: 390, height: 844 })
   await assertBody('青石村旧闻'); await shot('L-mobile-390.png')
 
-  console.log('===== P2-012 screenshots: 12 captured =====')
+  // §14 Responsive 补充：Tablet landscape / Mobile landscape
+  await load(fixture({ location: 'qingshi_north_hills', quests: [springQuest('in_progress', 2, { wang_wu_met: true })] }), { width: 1024, height: 768 })
+  await assertBody('山林黑熊'); await shot('M-tablet-landscape-1024.png')
+  await load(fixture({ location: 'qingshi_village', quests: [springQuest('available', 1, { village_asked: false })], flags: { spirit_spring_rumor_heard: true, qingshi_north_hills_unlocked: true } }), { width: 844, height: 390 })
+  await assertBody('青石村旧闻'); await shot('N-mobile-landscape-844.png')
+
+  console.log('===== P2-012 screenshots: 14 captured =====')
 } catch (error) {
   console.error(`SCREENSHOTS_FAIL | ${String(error)}`)
   process.exitCode = 1

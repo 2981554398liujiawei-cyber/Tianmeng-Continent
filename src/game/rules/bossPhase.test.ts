@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { buildEnemyCombatant } from './partyCombat'
-import { resolveBossPhaseTransition } from './bossPhase'
+import { resolveBossPhaseTransition, resolveBossPhaseContext } from './bossPhase'
 import { getEnemy } from '../content'
 
 function bossAtHp(currentHp: number) {
@@ -81,5 +81,21 @@ describe('TM-P2-012 §73：Boss Phase V1（BP1-BP12）', () => {
     expect(resolveBossPhaseTransition(bossAtHp(24), undefined)).not.toBeNull()
     expect(resolveBossPhaseTransition(bossAtHp(24), undefined)).not.toBeNull()
     expect(resolveBossPhaseTransition(bossAtHp(24), { phaseId: 'golden', transitioned: false })).not.toBeNull()
+  })
+})
+
+describe('TM-P2-012-R1 P1-04：Boss prep 作用域隔离（resolveBossPhaseContext）', () => {
+  const flags = (prep: string) => ({ world: { flags: { spirit_spring_preparation: prep } } })
+
+  it('恰拉拉 encounter：incense → suppressHeal / old_injury → agi-1 / none → 无效果', () => {
+    expect(resolveBossPhaseContext(flags('incense'), 'encounter_black_bear_qialala')).toEqual({ suppressHeal: true, agilityPenalty: 0 })
+    expect(resolveBossPhaseContext(flags('old_injury'), 'encounter_black_bear_qialala')).toEqual({ suppressHeal: false, agilityPenalty: 1 })
+    expect(resolveBossPhaseContext(flags('none'), 'encounter_black_bear_qialala')).toEqual({ suppressHeal: false, agilityPenalty: 0 })
+  })
+
+  it('无关 encounter/Boss：即使 spirit_spring_preparation 残留也不受影响', () => {
+    expect(resolveBossPhaseContext(flags('incense'), 'encounter_skeleton_captain')).toEqual({ suppressHeal: false, agilityPenalty: 0 })
+    expect(resolveBossPhaseContext(flags('old_injury'), 'encounter_waystation_wolf_pack')).toEqual({ suppressHeal: false, agilityPenalty: 0 })
+    expect(resolveBossPhaseContext(flags('incense'), '')).toEqual({ suppressHeal: false, agilityPenalty: 0 })
   })
 })

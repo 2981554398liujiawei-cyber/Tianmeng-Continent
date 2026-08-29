@@ -583,6 +583,8 @@ describe('TM-P0-008：地点遭遇敌人数据一致性', () => {
   it('已锁定地点字段保持不变：name/description/connections/requiredFlag', () => {
     // TM-P2-012 §4：+tianlong_city（神泉官道重新开放）
     expect(getLocation('qingshi_village')?.connections).toEqual(['village_grassland', 'abandoned_mine', 'qingshi_north_hills', 'tianlong_city'])
+    // TM-P2-012-R1 P1-02：北坡必须由青石村调查解锁（requiredFlag 接入 checkTravel）
+    expect(getLocation('qingshi_north_hills')?.requiredFlag).toBe('qingshi_north_hills_unlocked')
     expect(getLocation('village_grassland')?.connections).toEqual(['qingshi_village', 'rabbit_lair'])
     expect(getLocation('rabbit_lair')?.requiredFlag).toBe('rabbit_lair_unlocked')
     expect(getLocation('qingshi_village')?.description).toContain('群山环抱')

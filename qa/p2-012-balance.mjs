@@ -253,7 +253,7 @@ for (const combo of COMBOS) {
 
 // ---- 胜率表 ----
 console.log('')
-console.log('===== P2-012 §76 胜率矩阵（Boss 黑熊恰拉拉；每格 600 次蒙特卡洛）=====')
+console.log('===== P2-012 §76 胜率矩阵【Synthetic / Spec Model 规格模型：每级人工 +1 STR +1 CON，非真实可达成长】（Boss 黑熊恰拉拉；每格 600 次蒙特卡洛）=====')
 console.log('组合          | none           | incense        | old_injury')
 for (const combo of COMBOS) {
   const cell = (prep) => {
@@ -294,5 +294,47 @@ check('S77 Boss 平均战斗回合数 5~20', avgRoundsAll >= 5 && avgRoundsAll <
 const failed = out.filter((x) => !x).length
 console.log(`模拟总场次：${COMBOS.length * PREPS.length} 格 × ${TRIALS} = ${COMBOS.length * PREPS.length * TRIALS} 场`)
 console.log('假设：A1 骑士重击(mp2/+2/cd2)+Bonus喝药(不占主行动)；A2 药水 heal=8(注册表实际值, 任务卡30不符)；A3 Sakura按combatSetup真实路径 Lv4 只普攻；A4 敌方AI直接复用项目纯函数(无需50%简化)；A5 满血进场+装备铁剑(+2)；A6 属性按任务卡口径(创建54, 每级+1STR+1CON, maxHp=10+con+2(n-1))；A7 40回合超时判负')
+// ---- TM-P2-012-R1 P2-01：Runtime-Reachable Matrix（真实可达成长）----
+// 属性保持创建值（str12/con12/agi10/mnd10/lck10），等级由真实 adventureXp 门槛（getLevelFromXp）
+// 推进；装备=初始铁剑 + 3 瓶药水；Sakura 为真实 recruited 伙伴（Lv4）。不得用理想成长曲线修饰。
+const { getLevelFromXp } = character
+function buildRuntimeState(level, withSakura) {
+  const state = createInitialGameState({
+    name: '平衡模拟（真实可达）', gender: 'male', profession: 'knight',
+    attributes: { str: 12, con: 12, agi: 10, mnd: 10, lck: 10 },
+  })
+  // 真实可达 XP：取该等级门槛值（正常任务/遭遇 XP 累积可达成）
+  state.player.adventureXp = 25 * level * (level + 1) - 50
+  state.player.level = getLevelFromXp(state.player.adventureXp)
+  if (state.player.level !== level) throw new Error(`XP 门槛推导等级不符: ${state.player.level} != ${level}`)
+  // 真实 progression：每次升级 maxHp +2（progression.ts levelGain）
+  state.player.maxHp = getStartingMaxHp(state.player.attributes.con) + 2 * (level - 1)
+  state.player.hp = state.player.maxHp
+  state.equipment.weapon = 'iron_sword'
+  const potion = state.inventory.find((i) => i.itemId === POTION_ID)
+  if (potion) potion.quantity = 3
+  if (withSakura) {
+    state.companions.sakura_yuko = { companionId: 'sakura_yuko', status: 'recruited', level: 4, mp: 6, maxMp: 6, learnedSkillIds: sakuraDefaultSkillIds(), flags: {} }
+    state.party.activeCompanionIds = ['sakura_yuko']
+  }
+  return state
+}
+const RUNTIME_COMBOS = [
+  { label: 'Lv4 solo', level: 4, sakura: false },
+  { label: 'Lv5 solo', level: 5, sakura: false },
+  { label: 'Lv5+Sakura', level: 5, sakura: true },
+]
+console.log('')
+console.log('===== P2-012 §76 Runtime-Reachable Matrix【真实可达成长：属性=创建值，XP=真实门槛，装备=铁剑】=====')
+console.log('组合          | none           | incense')
+for (const combo of RUNTIME_COMBOS) {
+  const cells = ['none', 'incense'].map((prep) => {
+    const { winRate, avgRounds } = simulateCell(combo.level, prep, combo.sakura, 20260829 + combo.level)
+    return `${(winRate * 100).toFixed(1)}% / ${avgRounds.toFixed(1)}r`.padEnd(15)
+  })
+  console.log(`${combo.label.padEnd(13)}| ${cells[0]}| ${cells[1]}`)
+}
+console.log('(Runtime 矩阵为报告性数据：真实玩家可用技能/装备/伙伴组合更广，不作为 §77 门槛断言)')
+
 console.log(`===== P2-012 Balance: ${out.length - failed}/${out.length} =====`)
 process.exit(failed ? 1 : 0)

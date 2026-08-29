@@ -24,6 +24,8 @@ export const LOCATIONS: Record<string, LocationDefinition> = {
   },
   qingshi_north_hills: {
     id: 'qingshi_north_hills', name: '青石北坡', description: '北坡林线起伏，旧猎路在草木之间断断续续地通向山谷。',
+    // TM-P2-012-R1 P1-02：北坡正式接入解锁规则——完成青石村调查（askVillageAboutSpiritSpring）前不可进入（不只靠 UI 隐藏）
+    requiredFlag: 'qingshi_north_hills_unlocked',
     // TM-P2-012 §50：低（野猪）/ 标准（蜂群×2）/ 高危（山林黑熊）三层可重复威胁
     connections: ['qingshi_village', 'spirit_spring_valley'], enemyIds: ['forest_boar', 'venom_bee_swarm', 'forest_black_bear'],
     encounters: ['encounter_forest_boar', 'encounter_venom_bee_pair', 'encounter_forest_black_bear'],

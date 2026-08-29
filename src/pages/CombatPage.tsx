@@ -53,7 +53,7 @@ import {
 } from '../game/rules/partyCombat'
 import { resolveEncounterVictoryXp } from '../game/rules/combatXp'
 import { applyAdventureXpReward } from '../game/rules/progression'
-import { resolveBossPhaseTransition, type BossPhaseRuntime } from '../game/rules/bossPhase'
+import { resolveBossPhaseTransition, resolveBossPhaseContext, type BossPhaseRuntime } from '../game/rules/bossPhase'
 
 interface CombatPageProps {
   /** TM-P2-007 §7：Encounter 战斗入口（App 已通过 startEncounter 校验并固化 weighted variant） */
@@ -160,6 +160,8 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
   const enemyUsedOnceSkillIdsRef = useRef<ReadonlySet<string>>(new Set())
   /** Boss phase 只属于本场 CombatPage；按实例记录，不写入存档。 */
   const bossPhasesRef = useRef<Record<string, BossPhaseRuntime>>({})
+  // TM-P2-012-R1 P1-04：prep 语义由纯规则作用域隔离，只作用于对应 encounter
+  const bossPrep = gameState ? resolveBossPhaseContext(gameState, encounterId) : { suppressHeal: false, agilityPenalty: 0 }
 
   /** 护盾——target instanceId → 剩余减伤量 + 施术技能名（敌人命中时消耗；播报用技能名泛化） */
   const [shieldByTarget, setShieldByTarget] = useState<Record<string, { amount: number; skillName: string }>>({})
@@ -504,7 +506,7 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
     let next = combatants.map((c) => (c.instanceId === target.instanceId ? updateCombatantHp(c, c.currentHp - result.damage) : c))
     const damaged = next.find((c) => c.instanceId === target.instanceId)
     if (damaged) {
-      const transition = resolveBossPhaseTransition(damaged, bossPhasesRef.current[damaged.instanceId], gameState.world.flags.spirit_spring_preparation === 'incense', gameState.world.flags.spirit_spring_preparation === 'old_injury' ? 1 : 0)
+      const transition = resolveBossPhaseTransition(damaged, bossPhasesRef.current[damaged.instanceId], bossPrep.suppressHeal, bossPrep.agilityPenalty)
       if (transition) {
         bossPhasesRef.current[damaged.instanceId] = transition.runtime
         next = next.map((c) => c.instanceId === damaged.instanceId ? transition.combatant : c)
@@ -617,7 +619,7 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
       })
     const damaged = next.find((c) => c.instanceId === target.instanceId)
     if (damaged) {
-      const transition = resolveBossPhaseTransition(damaged, bossPhasesRef.current[damaged.instanceId], gameState.world.flags.spirit_spring_preparation === 'incense', gameState.world.flags.spirit_spring_preparation === 'old_injury' ? 1 : 0)
+      const transition = resolveBossPhaseTransition(damaged, bossPhasesRef.current[damaged.instanceId], bossPrep.suppressHeal, bossPrep.agilityPenalty)
       if (transition) {
         bossPhasesRef.current[damaged.instanceId] = transition.runtime
         next = next.map((c) => c.instanceId === damaged.instanceId ? transition.combatant : c)
@@ -886,7 +888,7 @@ export default function CombatPage({ encounterId, onVictory, onDefeat, onEscape,
 
   // ---- 单位卡渲染 ----
   const unitCardClass = (c: Combatant): string => {
-    // R1：3v3 单排 3 卡（min-w 200px）→ 1280 视口两栏各 ~620px 不换行不溢出
+    // R1：4v4 敌方卡最多 4 张单排（min-w 200px）→ 1280 视口两栏各 ~620px 不换行不溢出
     const base = 'min-w-[200px] flex-1 rounded border p-3 text-sm text-bone-300 transition-colors'
     if (!c.isAlive) return `${base} border-ink-800 bg-ink-950/40 text-bone-600 opacity-60`
     // TM-P2-009-R1 §7：已结束回合的 friendly 单位弱化（仅 friendly 有 ended 语义）

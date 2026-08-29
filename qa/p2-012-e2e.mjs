@@ -19,7 +19,7 @@ const body = () => page.evaluate(() => document.body.textContent || '')
 // 黄金兔冻结基线（§63）：status/stage/flags/rabbit_path 不得被神泉线改动
 const GOLDEN_FREEZE = { status: 'in_progress', stage: 0, flags: { asked_blacksmith: true, asked_apothecary: true, village_inquiry_reported: true, rabbit_lair_rechecked: true } }
 
-function fixture({ location = 'tianlong_city', questFlags = { tracked: true, preparation: 'none' }, questStage = 5, questStatus = 'in_progress', water = false, noRumor = false } = {}) {
+function fixture({ location = 'tianlong_city', questFlags = { tracked: true, preparation: 'none' }, questStage = 5, questStatus = 'in_progress', water = false, noRumor = false, sakura = 'none', noNorthUnlock = false } = {}) {
   return {
     // str 12 → 攻击力 9+2：固定 rng 下每次命中约 13 伤（Boss 36HP），保证先触发 Phase 再击杀（§34 死亡优先不被一刀秒掩盖）
     player: { id: 'p2-012-e2e', name: '神泉验收员', gender: 'male', level: 6, profession: 'knight', attributes: { str: 12, con: 50, agi: 50, mnd: 50, lck: 12 }, hp: 400, maxHp: 400, mp: 40, maxMp: 40, gold: 100, adventureXp: 1000, learnedSkillIds: ['knight_power_strike'] },
@@ -33,13 +33,17 @@ function fixture({ location = 'tianlong_city', questFlags = { tracked: true, pre
     world: {
       currentLocationId: location,
       flags: {
-        ...(noRumor ? {} : { spirit_spring_rumor_heard: true }), village_asked: true, qingshi_north_hills_unlocked: true,
+        ...(noRumor ? {} : { spirit_spring_rumor_heard: true }),
+        ...(noNorthUnlock ? {} : { village_asked: true, qingshi_north_hills_unlocked: true }),
         spirit_spring_valley_unlocked: true, gathering_v1_unlocked: true, spirit_spring_wang_wu_taught: true,
         ...(water ? { black_bear_qialala_defeated: true } : {}),
       },
       completedEvents: [], npcStates: {}, restCount: 0, encounterVariants: {},
     },
-    companions: {}, relationships: {}, party: { activeCompanionIds: [] }, ownedMountIds: [], equippedMountId: null,
+    companions: sakura === 'none' ? {} : {
+      sakura_yuko: { companionId: 'sakura_yuko', status: sakura, level: 4, mp: 8, maxMp: 8, learnedSkillIds: [], flags: {} },
+    },
+    relationships: {}, party: { activeCompanionIds: sakura === 'none' ? [] : ['sakura_yuko'] }, ownedMountIds: [], equippedMountId: null,
   }
 }
 let browser, page
@@ -174,6 +178,44 @@ try {
   check('BP23 黄金兔任务 status/stage/flags 原封不动', Boolean(golden) && golden.status === GOLDEN_FREEZE.status && golden.stage === GOLDEN_FREEZE.stage && JSON.stringify(golden.flags) === JSON.stringify(GOLDEN_FREEZE.flags), JSON.stringify(golden?.flags ?? null))
   check('BP24 rabbit_path 数量仍为 1', rabbitPath?.quantity === 1)
   check('BP25 神泉线与黄金兔线无联动 flag', !JSON.stringify(golden?.flags ?? {}).includes('spirit') && saved.gameState.quests.every((q) => q.questId !== 'quest_golden_rabbit_search' || true))
+
+  // ---- R1 P1-01：Sakura 调查入口（正式 ID sakura_yuko；recruited+active 才可见）----
+  await load(fixture({ location: 'qingshi_north_hills', questFlags: { tracked: false }, questStage: 2, sakura: 'recruited' }))
+  check('SK1 Sakura 在队时「请优子判断」可见', await clickText('请优子判断'))
+  check('SK2 Sakura 线索线索写入（金色兽毛）', (await body()).includes('樱花优子'))
+  await clickText('保存游戏'); await clickText('覆盖保存'); await clickText('确认覆盖'); await sleep(500)
+  const sakuraSave = await readSave()
+  check('SK3 trackSpiritSpring(sakura) 写入 clue_spring_golden_fur', sakuraSave?.gameState?.world?.flags?.clue_spring_golden_fur === true)
+
+  await load(fixture({ location: 'qingshi_north_hills', questFlags: { tracked: false }, questStage: 2, sakura: 'recruited', noNorthUnlock: false, water: false }))
+  // Sakura 不在 active party：仅 recruited 不显示（recruited 但 party 为空）
+  await load((() => { const f = fixture({ location: 'qingshi_north_hills', questFlags: { tracked: false }, questStage: 2, sakura: 'recruited' }); f.party.activeCompanionIds = []; return f })())
+  check('SK4 Sakura 未激活时按钮不可见（不凭 recruited 出现）', !(await page.evaluate(() => [...document.querySelectorAll('button')].some((b) => (b.textContent || '').includes('请优子判断')))))
+
+  // ---- R1 P1-02：北坡 requiredFlag 真接入（调查前不可进入 / 调查后开放且 Reload 保持）----
+  await load(fixture({ location: 'qingshi_village', questStatus: 'undiscovered', questFlags: {}, questStage: 0, noRumor: true, noNorthUnlock: true }))
+  const northBtnBefore = await page.evaluate(() => {
+    const b = [...document.querySelectorAll('button')].find((x) => (x.textContent || '').trim() === '青石北坡')
+    return b ? (b.disabled ? 'disabled' : 'enabled') : 'absent'
+  })
+  check('NH1 调查前北坡入口不可用', northBtnBefore !== 'enabled', `button=${northBtnBefore}`)
+  // 走完村中调查（先记传闻）
+  await page.goto(url, { waitUntil: 'networkidle0' }); await local()
+  const nhFixture = fixture({ location: 'tianlong_city', questStatus: 'undiscovered', questFlags: {}, questStage: 0, noRumor: true, noNorthUnlock: true })
+  await page.evaluate((value) => { localStorage.clear(); localStorage.setItem('tianmeng_continent_save_slot_slot1', JSON.stringify({ version: 6, savedAt: new Date().toISOString(), gameState: value })) }, nhFixture)
+  await page.reload({ waitUntil: 'networkidle0' }); await local(); await clickText('继续游戏'); await sleep(250)
+  await clickText('记下神泉传闻')
+  await clickText('青石村'); await sleep(250)
+  await clickText('向村长与药师打听')
+  await clickText('保存游戏'); await clickText('覆盖保存'); await clickText('确认覆盖'); await sleep(500)
+  const unlockedSave = await readSave()
+  check('NH2 调查后写入 qingshi_north_hills_unlocked', unlockedSave?.gameState?.world?.flags?.qingshi_north_hills_unlocked === true)
+  await load((() => { const f = fixture({ location: 'qingshi_village' }); return f })())
+  check('NH3 调查后北坡正式开放', await clickText('青石北坡'))
+  check('NH4 到达北坡（王五入口可见）', await page.$('[data-testid="spirit-spring-north-hills"]') !== null)
+  await load(unlockedSave.gameState)
+  check('NH5a Reload 后解锁 flag 保持', unlockedSave.gameState.world.flags.qingshi_north_hills_unlocked === true && await clickText('青石北坡'))
+  check('NH5 Save→Reload 后北坡保持开放', await page.$('[data-testid="spirit-spring-north-hills"]') !== null)
 
   // ---- §79：390×844 移动端 ----
   await page.setViewport({ width: 390, height: 844 })

@@ -1,7 +1,7 @@
 /**
  * Party Combat V5 纯规则（TM-P2-007 §8–16）。
  *
- * 3v3 多人遭遇战斗：我方 1–3 / 敌方 1–3 硬上限（EncounterDefinition 数据层已校验）。
+ * 4v4 多人遭遇战斗（TM-P2-012-R1 P1-05 冻结）：友方 = 主角 + 最多 3 companions（≤4）；敌方 ≤4 硬上限（EncounterDefinition 数据层已校验）。禁止回退 3v3。
  * 本文件只含纯函数：不修改 GameState、不掷系统随机数（rng 一律注入、返回 [0,1)）。
  *
  * 职责边界：
@@ -24,7 +24,7 @@ import type { SkillDefinition } from '../types/skill'
 /** 注入随机源：返回 [0,1) 区间的数（测试可注入固定序列） */
 export type Rng = () => number
 
-/** 遭遇敌方单位硬上限（3v3；§8） */
+/** 遭遇敌方单位硬上限（4v4 冻结规则；§8） */
 export const MAX_ENCOUNTER_MEMBERS = 4
 
 /**

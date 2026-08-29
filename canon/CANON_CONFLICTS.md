@@ -39,11 +39,12 @@
 - **优先级裁决**：AU-003 已定案 `[RULED]` —— 坐骑只提供基础属性加成、派生属性影响、探索 Tag、旅行能力、特殊场景选项。
 - **影响**：任何旧资料里「坐骑参战」的条目在本项目一律改写为属性/选项语义。
 
-## C-005 战斗规模：原著大型战斗 vs 项目 3v3 上限
+## C-005 战斗规模：原著大型战斗 vs 项目战斗上限（**SUPERSEDED**）
 
 - **主张 A（原著）**：原著存在大规模战斗表现。
-- **主张 B（项目）**：战斗固定最多 3 我方 + 3 敌方。
-- **优先级裁决**：AU-004 已定案 `[RULED]` —— 3v3；大型战争通过群体单位、波次、剧情表现、背景军队解决。
+- **主张 B（项目）**：~~战斗固定最多 3 我方 + 3 敌方（3v3）~~。
+- **优先级裁决**：AU-004 曾判 3v3 `[RULED]`；**TM-P2-012-R1 P1-05 起该判定废止（SUPERSEDED）**。
+- **当前冻结规则**：Friendly side = protagonist + max 3 active companions = max 4 combatants；Enemy side = max 4 combatants（`MAX_ENCOUNTER_MEMBERS = 4`、`MAX_ACTIVE_COMPANIONS = 3`）。大型战争仍通过群体单位、波次、剧情表现、背景军队解决。**Never regress to 3v3.**
 
 ## C-006 `divine_contract_pet` 命名：代码字符串 vs 设计语义
 
