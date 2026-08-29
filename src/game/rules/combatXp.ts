@@ -30,7 +30,8 @@ import type { GameState } from '../types/game'
  * TM-P2-012 §50/§53：北坡新生态野兽野猪/蜂群/黑熊同样以 first-kill 标记支持重复遭遇低额 XP，
  * 并作为「检查猎物」采集前置）。
  */
-export const FIRST_KILL_FLAG_ENEMIES: ReadonlySet<string> = new Set(['cave_bat', 'wild_boar', 'forest_boar', 'venom_bee_swarm', 'forest_black_bear'])
+// TM-P2-013 §9：黑石塔深层 repeatable 遭遇敌人同样以 first-kill 标记支持低额重复 XP
+export const FIRST_KILL_FLAG_ENEMIES: ReadonlySet<string> = new Set(['cave_bat', 'wild_boar', 'forest_boar', 'venom_bee_swarm', 'forest_black_bear', 'blackstone_sentinel', 'black_mist_wraith'])
 
 /** 敌人对应 defeated 判定：返回该敌人是否「尚未首次正式击败」（true = 本次胜利可给 XP） */
 export function isFirstKillPending(gameState: GameState, enemyId: string): boolean {
@@ -117,6 +118,18 @@ export function isFirstKillPending(gameState: GameState, enemyId: string): boole
     case 'black_bear_qialala': {
       // TM-P2-012 §54：神泉 Boss 首杀给 adventureXpReward；重复结算已被 defeated 门拒绝
       return gameState.world.flags.black_bear_qialala_defeated !== true
+    }
+    case 'blackstone_sentinel': {
+      // TM-P2-013 §9：黑石守卫（四层 repeatable）首次击败标记
+      return gameState.world.flags.blackstone_sentinel_first_kill !== true
+    }
+    case 'black_mist_wraith': {
+      // TM-P2-013 §9：黑雾残影（四层 repeatable）首次击败标记
+      return gameState.world.flags.black_mist_wraith_first_kill !== true
+    }
+    case 'blackstone_warden': {
+      // TM-P2-013 §11：守门者 Boss 首杀给 adventureXpReward；重复结算已被 defeated 门拒绝
+      return gameState.world.flags.blackstone_warden_defeated !== true
     }
     default:
       return false

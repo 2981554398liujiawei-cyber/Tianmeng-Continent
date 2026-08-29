@@ -244,6 +244,15 @@ export function checkEnemyEncounter(gameState: GameState, enemyId: string): Enco
       break
     }
 
+    case 'blackstone_warden': {
+      // TM-P2-013 §11：黑石守门者一次性——击败（world flag 严格 true）后禁止再战（Boss 不重复刷新）
+      const warden = gameState.world.flags.blackstone_warden_defeated
+      if (isMalformedFlag(warden) || warden === true) {
+        return { allowed: false, reason: warden === true ? 'already_defeated' : 'invalid_story_state' }
+      }
+      break
+    }
+
     default:
       // 普通敌人（corrupted_rabbit / corrupted_rat）：无额外前置
       break

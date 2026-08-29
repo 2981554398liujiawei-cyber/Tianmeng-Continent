@@ -104,6 +104,14 @@ export const QUESTS: Record<string, QuestDefinition> = {
     giverNpcId: 'knight_captain_make',
     goldReward: 50, adventureXpReward: 120,
   },
+  // TM-P2-013 §3：第六正式主线《黑石余响》（马科发布；仅《商人王财的麻烦》+《神泉之水》双 completed 可发现；奖励 180XP + 70金；特殊装备走遗物鉴定不进任务奖励）
+  quest_black_stone_deep_echo: {
+    id: 'quest_black_stone_deep_echo',
+    title: '黑石余响',
+    summary: '黑石塔原有探索区之下传来新的震动与黑雾。马科希望你重返黑石塔，查明深层通道的变化。',
+    giverNpcId: 'knight_captain_make',
+    goldReward: 70, adventureXpReward: 180,
+  },
   quest_tianlong_martial_trial: {
     id: 'quest_tianlong_martial_trial',
     title: '天龙武备试炼',

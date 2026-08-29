@@ -50,6 +50,15 @@ export const ENEMIES: Record<string, EnemyDefinition> = {
   venom_bee_swarm: { id: 'venom_bee_swarm', name: '毒针蜂群', level: 4, description: '围绕泉雾盘旋的毒针蜂群。', tags: ['beast'], maxHp: 18, armor: 10, attackPower: 17, agility: 15, adventureXpReward: 18, dropTable: DROP_TABLES.venom_bee_swarm, skillIds: ['enemy_bat_swoop'], aiProfile: 'pack' },
   // TM-P2-012 §49：北坡高危普通黑熊（高 HP / 低 AGI；技能表与 Boss 恰拉拉刻意区分）
   forest_black_bear: { id: 'forest_black_bear', name: '山林黑熊', level: 4, description: '在北坡矮林里游荡的壮实黑熊，被惊扰时极其危险。', tags: ['beast'], maxHp: 32, armor: 13, attackPower: 20, agility: 6, adventureXpReward: 35, dropTable: DROP_TABLES.forest_black_bear, skillIds: ['enemy_bear_paw'], aiProfile: 'aggressive' },
+  // TM-P2-013 §9：黑石塔四层普通敌人（authored 固定数值；无动态缩放）
+  blackstone_sentinel: { id: 'blackstone_sentinel', name: '黑石守卫', level: 6, description: '由黑石构成的守卫傀儡，甲片沉重，行动迟缓却极难击穿。', tags: ['construct'], maxHp: 30, armor: 15, attackPower: 19, agility: 5, adventureXpReward: 30, dropTable: DROP_TABLES.blackstone_sentinel, skillIds: ['enemy_sentinel_crushing_maul'], aiProfile: 'aggressive' },
+  black_mist_wraith: { id: 'black_mist_wraith', name: '黑雾残影', level: 6, description: '在黑石缝隙间游荡的雾状残影，攻击带着侵蚀性的寒意。', tags: ['spirit'], maxHp: 22, armor: 9, attackPower: 15, agility: 12, adventureXpReward: 26, dropTable: DROP_TABLES.black_mist_wraith, skillIds: ['enemy_mist_drain'], aiProfile: 'caster' },
+  // TM-P2-013 §10：守卫 Boss（高 HP/高护甲/低中 AGI/强正面压力；无 Boss Phase——本章重点是探索+鉴定）
+  // §34 Balance 调整后：HP 48 / armor 12 / attack 18，保证 Lv7 单人与组队胜率落在合理区间。
+  blackstone_warden: {
+    id: 'blackstone_warden', name: '黑石守门者', level: 7, description: '镇守黑石封印室的巨大守门者，周身甲片随深层共鸣缓缓亮起。', tags: ['construct', 'boss'],
+    maxHp: 48, armor: 12, attackPower: 18, agility: 6, adventureXpReward: 110, canEscape: false, dropTable: DROP_TABLES.blackstone_warden, skillIds: ['enemy_warden_black_smash', 'enemy_warden_shock_armor', 'enemy_warden_gate_sweep'], aiProfile: 'boss',
+  },
   black_bear_qialala: {
     id: 'black_bear_qialala', name: '黑熊恰拉拉', level: 5, description: '守在神泉前的巨大黑熊，金色泉光正在渗入它的毛发。', tags: ['beast', 'boss'],
     maxHp: 36, armor: 9, attackPower: 13, agility: 7, adventureXpReward: 80, canEscape: false, dropTable: DROP_TABLES.black_bear_qialala, skillIds: ['enemy_bear_rending_claw'], aiProfile: 'boss',

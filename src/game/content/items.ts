@@ -31,6 +31,9 @@ export interface ItemDefinition {
     actions?: number
     bonusActions?: number
   }
+  /** TM-P2-013 §12/§19：未鉴定标记（静态 authored 属性，不是实例元数据）。
+   *  true → 背包显示「未鉴定」、不暴露最终属性、不出现装备按钮；真实形态由鉴定规则确定性解析。 */
+  unidentified?: boolean
 }
 
 /** V1 最小物品目录（仅当前需要的内容） */
@@ -40,6 +43,36 @@ export const ITEMS: Record<string, ItemDefinition> = {
     armorDefenseBonus: 4, allowedProfessions: ['warrior', 'knight'],
     requirements: { minLevel: 4, attributes: { str: 15 } },
     description: '恰拉拉守在泉边的巨盾，沉重却能稳住防线。',
+  },
+  // TM-P2-013 §12：未鉴定黑石遗物（Boss 首胜 guaranteed；不可装备、不暴露最终属性、无随机词条）
+  unidentified_blackstone_relic: {
+    id: 'unidentified_blackstone_relic', name: '未鉴定的黑石遗物', type: 'quest', value: 0, unidentified: true,
+    description: '未鉴定。从黑石封印室取出的旧王朝遗物，天龙城的鉴定师也许能看出它的用途。',
+  },
+  // TM-P2-013 §17：职业对应鉴定结果（确定性 authored；数值在当前装备曲线内；Requirement 系统覆盖 STR/CON/AGI/MND）
+  blackstone_warblade: {
+    id: 'blackstone_warblade', name: '黑石战刃', type: 'weapon', value: 140, rarity: 'uncommon',
+    weaponDamageBonus: 5, allowedProfessions: ['warrior'],
+    requirements: { minLevel: 6, attributes: { str: 14 } },
+    description: '鉴定后的黑石战刃，刃口仍残留封印室的寒气，需要足够的力量才能驾驭。',
+  },
+  blackstone_guard_armor: {
+    id: 'blackstone_guard_armor', name: '黑石守卫甲', type: 'armor', value: 140, rarity: 'uncommon',
+    armorDefenseBonus: 5, allowedProfessions: ['knight'],
+    requirements: { minLevel: 6, attributes: { con: 14 } },
+    description: '鉴定后的黑石守卫甲，甲片之间刻着守卫誓词，只有体魄强健者能承受它的重量。',
+  },
+  blackstone_hunter_bow: {
+    id: 'blackstone_hunter_bow', name: '黑石猎弓', type: 'weapon', value: 140, rarity: 'uncommon',
+    weaponDamageBonus: 5, allowedProfessions: ['ranger'],
+    requirements: { minLevel: 6, attributes: { agi: 14 } },
+    description: '鉴定后的黑石猎弓，弓臂由黑石与兽筋合成，只有灵巧的手能拉开它。',
+  },
+  blackstone_resonance_staff: {
+    id: 'blackstone_resonance_staff', name: '黑石共鸣杖', type: 'weapon', value: 140, rarity: 'uncommon',
+    weaponDamageBonus: 5, allowedProfessions: ['mage'],
+    requirements: { minLevel: 6, attributes: { mnd: 14 } },
+    description: '鉴定后的黑石共鸣杖，杖首的黑石仍与深层共鸣，只有专注的头脑能引导它。',
   },
   hemostatic_herb: { id: 'hemostatic_herb', name: '止血草', type: 'material', value: 4, description: '北坡常见的止血药草。' },
   clear_spring_moss: { id: 'clear_spring_moss', name: '清泉苔', type: 'material', value: 8, description: '神泉雾气滋养的青苔。' },

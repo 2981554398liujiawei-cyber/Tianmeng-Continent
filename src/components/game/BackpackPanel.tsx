@@ -226,6 +226,12 @@ export default function BackpackPanel({
                       <span className="ml-2 text-xs text-bone-500">
                         {def?.rarity ? RARITY_LABELS[def.rarity] : ''}
                       </span>
+                      {/* TM-P2-013 §19：未鉴定物在列表即标记「未鉴定」，不暴露最终装备 */}
+                      {def?.unidentified === true && (
+                        <span data-testid={`backpack-unidentified-${entry.itemId}`} className="ml-2 rounded border border-gold-500/50 px-1.5 py-0.5 text-xs text-gold-300">
+                          未鉴定
+                        </span>
+                      )}
                     </span>
                     <span data-testid={`backpack-qty-${entry.itemId}`} className="shrink-0 text-sm tabular-nums text-bone-300">
                       ×{entry.quantity}
@@ -306,11 +312,20 @@ function ItemDetail({
         <span className="ml-3 text-sm font-normal text-bone-500">
           {def.rarity ? RARITY_LABELS[def.rarity] : '普通'}
         </span>
+        {/* TM-P2-013 §12/§19：未鉴定物不暴露最终属性、不出现装备按钮 */}
+        {def.unidentified === true && (
+          <span data-testid="backpack-detail-unidentified" className="ml-3 rounded border border-gold-500/50 px-1.5 py-0.5 text-sm font-normal text-gold-300">
+            未鉴定
+          </span>
+        )}
       </p>
       <p className="mt-1 text-sm text-bone-400">
         {ITEM_TYPE_LABELS[type]}
         <span className="ml-3 text-bone-500">×{entry.quantity}</span>
       </p>
+      {def.unidentified === true && (
+        <p className="mt-2 text-sm text-gold-300">鉴定后才会显出它真正的形态与属性。</p>
+      )}
 
       <div className="mt-3 space-y-1 text-sm text-bone-300">
         {weaponBonus > 0 && (

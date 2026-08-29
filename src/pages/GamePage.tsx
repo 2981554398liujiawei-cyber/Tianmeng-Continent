@@ -7,10 +7,12 @@ import Drawer from '../components/Drawer'
 import Toast from '../components/Toast'
 import MobileNav from '../components/MobileNav'
 import { useGameStore, VILLAGE_ELDER_POST_QUEST_EVENT_ID } from '../game/state/gameStore'
-import { GATHERING, getClue, getEnemy, getEncounter, getItem, getLocation, getNpc, NPCS, QUESTS } from '../game/content'
+import { ATTRIBUTE_LABELS, GATHERING, getClue, getEnemy, getEncounter, getItem, getLocation, getNpc, NPCS, QUESTS } from '../game/content'
 import type { EncounterDefinition } from '../game/types/encounter'
 import { CHECK_DC, type D20CheckResult } from '../game/rules/d20'
 import { checkEncounter, encounterRosterPreview, formatEncounterMembers, singleEnemyIdOf } from '../game/rules/encounter'
+import { checkIdentification } from '../game/rules/identification'
+import { resolveInvestigationCheck } from '../game/rules/investigation'
 import type { Character } from '../game/types/character'
 import { formatLuckCheckLog } from '../game/rules/luck'
 import { getUsableSkills } from '../game/rules/skill'
@@ -177,6 +179,11 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
   const gather = useGameStore((s) => s.gather)
   const reportSpiritSpringWater = useGameStore((s) => s.reportSpiritSpringWater)
   const reportHunterOldPath = useGameStore((s) => s.reportHunterOldPath)
+  // TM-P2-013：黑石余响主线 / 鉴定 V1
+  const beginBlackStoneEchoQuest = useGameStore((s) => s.beginBlackStoneEchoQuest)
+  const investigateFloor4Point = useGameStore((s) => s.investigateFloor4Point)
+  const identifyItem = useGameStore((s) => s.identifyItem)
+  const reportBlackStoneEcho = useGameStore((s) => s.reportBlackStoneEcho)
   // 背包（移动端底部 [背包] Drawer / BackpackPanel 复用）
   const useHealingPotion = useGameStore((s) => s.useHealingPotion)
   // TM-P2-004：Sakura / 伙伴 / 关系 / 休整 actions
@@ -679,6 +686,57 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
             )}
             {world.currentLocationId === 'qingshi_village' && gameState.quests.some((q) => q.questId === 'quest_spirit_spring_water' && q.status === 'in_progress' && q.flags.water_collected === true) && (
               <section className="rounded border border-gold-500/40 bg-ink-800/50 p-5 text-sm text-bone-300"><h3 className="font-bold text-gold-300">带水归来</h3><p className="mt-2">药师确认了泉水稳定的生命力。回报后即可完成任务。</p><Button className="mt-3" variant="primary" onClick={() => { if (reportSpiritSpringWater()) setToast('《神泉之水》可以提交了。') }}>交付神泉之水</Button></section>
+            )}
+
+            {/* TM-P2-013 §4：Stage A——天龙城黑石塔异动（双前置 completed 才出现；不接受不传送不自动战斗） */}
+            {world.currentLocationId === 'tianlong_city'
+              && gameState.quests.some((q) => q.questId === 'quest_wangcai_trouble' && q.status === 'completed')
+              && gameState.quests.some((q) => q.questId === 'quest_spirit_spring_water' && q.status === 'completed')
+              && !gameState.quests.some((q) => q.questId === 'quest_black_stone_deep_echo' && ['in_progress', 'completable', 'completed'].includes(q.status)) && (
+              <section data-testid="black-stone-echo-report" className="rounded border border-gold-500/40 bg-ink-800/50 p-5 text-sm text-bone-300"><h3 className="font-bold text-gold-300">黑石塔异动</h3><p className="mt-2">巡夜卫兵来报：黑石塔原有探索区之下传来新的震动，石缝里渗出淡淡黑雾，原先封死的深层通道不知何时发生了变化。马科希望你重返黑石塔调查。</p><Button className="mt-3" variant="primary" data-testid="accept-black-stone-echo" onClick={() => { if (beginBlackStoneEchoQuest()) setToast('你接下了《黑石余响》。深层通道已经打开。') }}>接受《黑石余响》</Button></section>
+            )}
+
+            {/* TM-P2-013 §6-§8：黑石塔四层调查点（一次性 + fail-forward；职业提供独特处理，不提供「正确职业」） */}
+            {world.currentLocationId === 'black_stone_tower_floor4' && (
+              <section data-testid="floor4-investigation" className="rounded border border-gold-500/40 bg-ink-800/50 p-5 text-sm text-bone-300">
+                <h3 className="font-bold text-gold-300">深层调查</h3>
+                <p className="mt-2">黑石纹路在黑暗中周期性亮起。要弄清深层的动静，得先读懂这里的三处痕迹。</p>
+                {(() => {
+                  const echo = gameState.quests.find((q) => q.questId === 'quest_black_stone_deep_echo')
+                  // §8/§23：职业路径用哪个属性判定由纯规则给出，UI 只翻译为可读文案（不自行判断职业）
+                  const profPlan = resolveInvestigationCheck('profession', player.profession)
+                  const profAttrLabel = ATTRIBUTE_LABELS[profPlan.attribute]
+                  const points: Array<{ id: 'broken_gate' | 'resonance' | 'seal_pattern'; label: string; profLabel: string }> = [
+                    { id: 'broken_gate', label: '崩裂石门', profLabel: player.profession === 'warrior' ? '稳住坍塌的石块' : player.profession === 'knight' ? '判断石门承重与守卫布局' : player.profession === 'ranger' ? '读门口的灰尘与足迹' : '解析门上的共鸣刻痕' },
+                    { id: 'resonance', label: '黑石共鸣纹', profLabel: player.profession === 'warrior' ? '以力量敲击比对震感' : player.profession === 'knight' ? '评估共鸣与守卫巡逻的关系' : player.profession === 'ranger' ? '循巡逻间隔寻找空档' : '解析共鸣的结构与节律' },
+                    { id: 'seal_pattern', label: '旧封印刻痕', profLabel: player.profession === 'warrior' ? '搬开遮挡刻痕的碎石' : player.profession === 'knight' ? '辨认旧防御工事的规格' : player.profession === 'ranger' ? '确认刻痕附近有无近期扰动' : '解析封印文的含义' },
+                  ]
+                  const investigated = (id: string) => echo?.flags[`investigated_${id}`] === true
+                  return (
+                    <div className="mt-3 flex flex-col gap-3">
+                      {points.map((point) => (
+                        <div key={point.id} className="rounded border border-ink-600 bg-ink-900/40 p-3">
+                          <p className="font-bold text-bone-100">{point.label}</p>
+                          {investigated(point.id) ? (
+                            <p className="mt-1 text-xs text-emerald-300">已调查{echo?.flags[`investigated_${point.id}_fail_forward`] === true ? '（当时没能看清全部，但记下了要点）' : ''}。</p>
+                          ) : echo?.status === 'in_progress' ? (
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              <Button variant="primary" data-testid={`investigate-mnd-${point.id}`} onClick={() => { const r = investigateFloor4Point(point.id, 'mnd'); if (r.ok) setToast(r.failForward ? '你没能完全看清，但记下了要点。' : '你读出了这里的门道。') }}>MND 检视（DC{profPlan.dc}）</Button>
+                              <Button variant="ghost" data-testid={`investigate-lck-${point.id}`} onClick={() => { const r = investigateFloor4Point(point.id, 'lck'); if (r.ok) setToast(r.failForward ? '运气不佳，只捡到一点零碎信息。' : '你恰好注意到了关键细节。') }}>LUCK 碰碰运气（DC{profPlan.dc}）</Button>
+                              <Button variant="ghost" data-testid={`investigate-profession-${point.id}`} onClick={() => { const r = investigateFloor4Point(point.id, 'profession'); if (r.ok) setToast(r.failForward ? '你的专业判断这次没起作用，但线索留下了。' : '你的专长派上了用场。') }}>{point.profLabel}（{profAttrLabel}·DC{profPlan.dc}）</Button>
+                            </div>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  )
+                })()}
+                {(() => {
+                  const echo = gameState.quests.find((q) => q.questId === 'quest_black_stone_deep_echo')
+                  const allDone = ['broken_gate', 'resonance', 'seal_pattern'].every((id) => echo?.flags[`investigated_${id}`] === true)
+                  return allDone ? <p className="mt-3 text-emerald-300" data-testid="sealed-chamber-hint">三处痕迹指向同一结论：封印室的门已经可以打开了。</p> : null
+                })()}
+              </section>
             )}
 
             {/* ---- 剧情与行动块（保留全部剧情逻辑） ---- */}
@@ -1997,7 +2055,11 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
                               : wangcaiQuest?.status === 'completable'
                                 ? '王财那边已经处理好了？把黑石塔里的情况告诉我。'
                                 : wangcaiQuest?.status === 'completed'
-                                  ? '黑石塔的情况我已经记下了。你先休整一下。'
+                                  ? (gameState.quests.find((q) => q.questId === 'quest_black_stone_deep_echo')?.status === 'in_progress'
+                                    ? '黑石塔深层的动静查得怎么样了？'
+                                    : gameState.quests.find((q) => q.questId === 'quest_black_stone_deep_echo')?.status === 'completable'
+                                      ? '深层的情况我都想听听。'
+                                      : '黑石塔的情况我已经记下了。你先休整一下。')
                                   : activeNpc.greeting
                       : activeNpc.id === 'merchant_wangcai' && kuidongNecklaceReturned
                         ? '王财把项链小心收好，见到你时郑重地点了点头。'
@@ -2128,6 +2190,37 @@ export default function GamePage({ onBackToMenu, onEngage, onOpenSaves }: GamePa
                   <p className="mt-1 text-bone-300">“黑石塔里的情况，也请你告诉马科队长。”</p>
                 </div>
               )}
+              {/* TM-P2-013 §20：向马科回报深层调查（identified → completable；提交走任务栏 generic 提交） */}
+              {activeNpc.id === 'knight_captain_make' && gameState.quests.some((q) => q.questId === 'quest_black_stone_deep_echo' && q.status === 'in_progress' && q.flags.relic_identified === true) && (
+                <div className="mb-3 rounded border border-gold-500/40 bg-ink-900/40 p-3" data-testid="report-black-stone-echo-panel">
+                  <p className="mb-2 text-bone-200">你把封印室、守门者和鉴定结果一五一十地告诉了马科。</p>
+                  <Button variant="primary" data-testid="report-black-stone-echo" onClick={() => { if (reportBlackStoneEcho()) setToast('《黑石余响》可以提交了。') }}>向马科回报深层调查</Button>
+                </div>
+              )}
+              {/* TM-P2-013 §13-§19：遗物鉴定师（UI 只展示规则结果并触发 Store；费用/资格/结果映射全部来自纯规则与 Store） */}
+              {activeNpc.id === 'tianlong_appraiser' && (() => {
+                const relicCount = gameState.inventory.find((entry) => entry.itemId === 'unidentified_blackstone_relic')?.quantity ?? 0
+                const identified = world.flags.blackstone_relic_identified === true
+                // §16/§23：可鉴定性 / 金币校验 / 结果映射全部由纯规则给出，UI 只 render 规则输出
+                const check = checkIdentification(gameState, 'identification_blackstone_relic')
+                return (
+                  <div className="mb-3 rounded border border-gold-500/40 bg-ink-900/40 p-3" data-testid="appraiser-panel">
+                    {!identified && relicCount === 0 && (
+                      <p className="text-bone-300">鉴定师扫了一眼你的行囊：“没有需要我出手的东西。等你从旧地方挖出看不懂的玩意儿，再来找我。”</p>
+                    )}
+                    {relicCount > 0 && (
+                      <div>
+                        <p className="text-bone-200">你取出未鉴定的黑石遗物。鉴定师眯起眼睛：“旧王朝的封印器件。{check.allowed ? `二十个金币，我告诉你它是干什么的。` : check.reason === 'gold_insufficient' ? `二十个金币——你现在的钱不够。` : `这东西我暂时看不透。`}”</p>
+                        <Button variant="primary" className="mt-2" data-testid="identify-relic" disabled={!check.allowed} onClick={() => { if (identifyItem('identification_blackstone_relic')) setToast('鉴定完成。遗物显出了它真正的形态。') }}>支付 20 金币鉴定</Button>
+                        <p className="mt-1 text-xs text-bone-500">鉴定结果由你的职业决定（确定性，无随机）。</p>
+                      </div>
+                    )}
+                    {identified && relicCount === 0 && (
+                      <p className="text-bone-300">鉴定师把玩着小刀：“黑石的东西认得主人。那件遗物在你手里会比在我这里更有用。”</p>
+                    )}
+                  </div>
+                )
+              })()}
             </div>
           }
         />

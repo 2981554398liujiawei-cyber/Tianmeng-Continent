@@ -220,3 +220,15 @@ jobs:
         with: { node-version: 22, cache: npm }
       - run: npm ci
       - run: CHROME_PATH="$(command -v google-chrome-stable || command -v google-chrome || command -v chromium)" npm run qa:p2-012
+
+  qa-p2-013:
+    name: P2-013 E2E Regression
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: CHROME_PATH="$(command -v google-chrome-stable || command -v google-chrome || command -v chromium)" npm run qa:p2-013
