@@ -16,6 +16,12 @@ export interface NpcDefinition {
 }
 
 export const NPCS: Record<string, NpcDefinition> = {
+  // TM-P2-013 §15：遗物鉴定师（轻量 NPC：解释/鉴定/本章反馈；不建商店与派系剧情）
+  tianlong_appraiser: {
+    id: 'tianlong_appraiser', name: '遗物鉴定师', role: '鉴定师', locationId: 'tianlong_city',
+    summary: '天龙城里少数看得懂旧王朝封印文的人，收费公道，话也不多。',
+    greeting: '把东西放在毡布上。旧物会自己说话——只要付得起听它的价钱。',
+  },
   wang_wu: {
     id: 'wang_wu', name: '王五', role: '采集导师', locationId: 'qingshi_north_hills',
     summary: '曾走过北坡旧猎路的老猎人，对泉、兽和山林都保持着克制的敬畏。', greeting: '脚步放轻些。山里留下的痕迹，比传闻诚实。',

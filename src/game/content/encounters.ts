@@ -14,6 +14,9 @@ export const SINGLE_ENEMY_ENCOUNTERS: Record<string, string> = {
   forest_boar: 'encounter_forest_boar',
   forest_black_bear: 'encounter_forest_black_bear',
   black_bear_qialala: 'encounter_black_bear_qialala',
+  // TM-P2-013 §9/§10：黑石塔深层
+  blackstone_sentinel: 'encounter_floor4_sentinel',
+  blackstone_warden: 'encounter_blackstone_warden',
   corrupted_rabbit: 'encounter_corrupted_rabbit',
   corrupted_rat: 'encounter_corrupted_rat',
   corrupted_wolf: 'encounter_corrupted_wolf',
@@ -41,6 +44,11 @@ export const SINGLE_ENEMY_ENCOUNTERS: Record<string, string> = {
 const BROKEN_PATROL_ENCOUNTER_ID = 'encounter_broken_patrol'
 
 export const ENCOUNTERS: Record<string, EncounterDefinition> = {
+  // ---- TM-P2-013 §9：黑石塔四层 repeatable 遭遇（标准 1 守卫 / 高危 守卫+残影；敌方总数 ≤4；无动态缩放） ----
+  encounter_floor4_sentinel: { id: 'encounter_floor4_sentinel', name: '黑石守卫', locationId: 'black_stone_tower_floor4', fixedMembers: [{ enemyId: 'blackstone_sentinel', count: 1 }], canEscape: true, activityType: 'optional', difficulty: 'standard', recommendedLevelMin: 6, repeatable: true, repeatAdventureXpReward: 10 },
+  encounter_floor4_mixed_patrol: { id: 'encounter_floor4_mixed_patrol', name: '深层巡逻', locationId: 'black_stone_tower_floor4', fixedMembers: [{ enemyId: 'blackstone_sentinel', count: 1 }, { enemyId: 'black_mist_wraith', count: 1 }], canEscape: true, activityType: 'optional', difficulty: 'dangerous', recommendedLevelMin: 6, repeatable: true, repeatAdventureXpReward: 14 },
+  // ---- TM-P2-013 §10/§11：Boss story 一次性（首胜 flag；不可逃跑） ----
+  encounter_blackstone_warden: { id: 'encounter_blackstone_warden', name: '黑石守门者', locationId: 'black_stone_sealed_chamber', fixedMembers: [{ enemyId: 'blackstone_warden', count: 1 }], canEscape: false, encounterDefeatFlag: 'blackstone_warden_defeated', activityType: 'story', difficulty: 'dangerous', recommendedLevelMin: 7 },
   // ---- TM-P2-012 §50：青石北坡三层威胁（低/标准/高危全部 repeatable；重复胜利走低额 repeat XP）。
   //      可重复遭遇不设 encounterDefeatFlag（P2-009-R1 §11 约定）；「检查猎物」采集前置改用首次击败标记 ${enemyId}_first_kill。 ----
   encounter_forest_boar: { id: 'encounter_forest_boar', name: '山林野猪', locationId: 'qingshi_north_hills', fixedMembers: [{ enemyId: 'forest_boar', count: 1 }], canEscape: true, activityType: 'optional', difficulty: 'low', recommendedLevelMin: 4, repeatable: true, repeatAdventureXpReward: 5 },

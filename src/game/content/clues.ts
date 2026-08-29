@@ -7,6 +7,10 @@
 import type { ClueDefinition } from '../types/clue'
 
 export const CLUES: Record<string, ClueDefinition> = {
+  // TM-P2-013 §6：黑石塔四层调查线索（一次性 authored investigation point 各一条）
+  clue_floor4_broken_gate: { id: 'clue_floor4_broken_gate', title: '崩裂石门', description: '石门上的裂口边缘很新——近期有东西从内部撞击过它。', source: '黑石塔四层', relatedQuestIds: ['quest_black_stone_deep_echo'] },
+  clue_floor4_resonance: { id: 'clue_floor4_resonance', title: '黑石共鸣纹', description: '黑石表面的纹路会周期性亮起，节律像是某种沉睡之物的呼吸。', source: '黑石塔四层', relatedQuestIds: ['quest_black_stone_deep_echo'] },
+  clue_floor4_seal_pattern: { id: 'clue_floor4_seal_pattern', title: '旧封印刻痕', description: '通往封印室的结构刻着旧王朝的封印纹——那不是普通的石门。', source: '黑石塔四层', relatedQuestIds: ['quest_black_stone_deep_echo'] },
   clue_north_hill_tracks: { id: 'clue_north_hill_tracks', title: '北坡足迹', description: '旧猎路上有大型熊类与人类足迹交错，指向山谷。' },
   clue_spring_golden_fur: { id: 'clue_spring_golden_fur', title: '金色毛发', description: '毛发在泉雾中泛着微光，说明泉眼正在影响恰拉拉。' },
   clue_spirit_spring_trace: { id: 'clue_spirit_spring_trace', title: '神泉痕迹', description: '泉边爪痕与被折断的树枝，共同指向被守住的泉眼。' },

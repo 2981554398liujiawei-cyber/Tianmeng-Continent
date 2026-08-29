@@ -65,6 +65,10 @@
     "qa:p2-011-public-load": "node qa/p2-011-public-load.mjs",
     "qa:p2-011": "npx vitest run src/pages/CombatPage.test.ts src/game/rules/partyCombat.test.ts src/cloud/cloudSave.test.ts && node qa/p2-011-e2e.mjs",
     "qa:p2-012": "npx vitest run src/game/rules/gathering.test.ts src/game/rules/bossPhase.test.ts src/game/rules/equipment.p2012.test.ts src/game/state/gameStore.p2012.test.ts && node qa/p2-012-balance.mjs && node qa/p2-012-e2e.mjs && node qa/p2-012-full-journey-e2e.mjs && npm run build",
+    "qa:p2-013-e2e": "node qa/p2-013-e2e.mjs",
+    "qa:p2-013-screenshots": "node qa/p2-013-screenshots.mjs",
+    "qa:p2-013-balance": "node qa/p2-013-balance.mjs",
+    "qa:p2-013": "npx vitest run src/game/rules/identification.test.ts src/game/rules/investigation.test.ts src/game/rules/equipment.p2013.test.ts src/game/state/gameStore.p2013.test.ts src/components/game/BackpackPanel.p2013.test.ts && node qa/p2-013-balance.mjs && node qa/p2-013-e2e.mjs && node qa/p2-013-screenshots.mjs && npm run build",
     "qa:rc": "npm run build && node qa/rc-e2e.mjs",
     "verify:p2-010": "node qa/verify-p2-010.mjs"
   },

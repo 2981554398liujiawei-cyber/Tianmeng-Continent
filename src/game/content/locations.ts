@@ -127,10 +127,27 @@ export const LOCATIONS: Record<string, LocationDefinition> = {
     name: '黑石塔三层',
     description: '越过石阶后，塔内变得更加阴冷。残破石柱围绕着中央厅堂，低沉的哭嚎声从黑暗中传来。',
     requiredFlag: 'black_stone_tower_floor3_unlocked',
-    connections: ['black_stone_tower_floor2'],
+    // TM-P2-013 §5：四层连接（floor4 requiredFlag 由《黑石余响》接受时写入；未解锁时移动按钮 disabled）
+    connections: ['black_stone_tower_floor2', 'black_stone_tower_floor4'],
     enemyIds: ['skeleton_witch'],
     // TM-P2-009-R1 §11：+ 女妖与护卫（high repeatable）
     encounters: ['encounter_skeleton_witch', 'encounter_floor3_witch_escort'],
+  },
+  // TM-P2-013 §5：黑石塔四层（比前三层更古老的石质结构；黑石纹路异常共鸣；少量 repeatable 战斗 + 3 个 authored 调查点；通往封印室）
+  black_stone_tower_floor4: {
+    id: 'black_stone_tower_floor4', name: '黑石塔四层', description: '比上层古老得多的石质回廊，黑石纹路在黑暗中周期性地亮起，像某种沉睡之物的呼吸。',
+    requiredFlag: 'black_stone_tower_floor4_unlocked',
+    connections: ['black_stone_tower_floor3', 'black_stone_sealed_chamber'],
+    enemyIds: ['blackstone_sentinel', 'black_mist_wraith'],
+    encounters: ['encounter_floor4_sentinel', 'encounter_floor4_mixed_patrol'],
+  },
+  // TM-P2-013 §5：黑石封印室（Boss 区域；完成四层核心调查后解锁；Boss 首胜后保持开放、不重复刷新）
+  black_stone_sealed_chamber: {
+    id: 'black_stone_sealed_chamber', name: '黑石封印室', description: '旧王朝风格的环形大厅，中央石门上的封印纹已经崩解，黑雾从门缝里缓慢渗出。',
+    requiredFlag: 'black_stone_sealed_chamber_unlocked',
+    connections: ['black_stone_tower_floor4'],
+    enemyIds: ['blackstone_warden'],
+    encounters: ['encounter_blackstone_warden'],
   },
   // TM-P2-001 D1：Phase 2 新地点——天龙城北门（与天龙城双向连接；北门本身无需 requiredFlag，任何时候可参观；任务行动只在正确状态出现）
   // TM-P2-008 §17：北门与北郊双向连接（北郊 requiredFlag=north_outskirts_unlocked 未解锁时 travel 拒绝）

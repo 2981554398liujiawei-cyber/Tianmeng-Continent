@@ -231,6 +231,8 @@ export default function PlayerSidebar() {
         playerHp={player.hp}
         playerMaxHp={player.maxHp}
         profession={player.profession}
+        playerLevel={player.level}
+        attributes={player.attributes}
         onEquipItem={(itemId) => useGameStore.getState().equipItem(itemId)}
         onUnequipSlot={(slot) => useGameStore.getState().unequipSlot(slot)}
         onUseItem={(itemId) => (itemId === 'healing_potion' ? useHealingPotion() : false)}

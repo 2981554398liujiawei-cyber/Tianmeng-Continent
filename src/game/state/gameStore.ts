@@ -1,10 +1,12 @@
 import { create } from 'zustand'
-import type { CharacterCreationInput, ClueDefinition, GameState, QuestStatus } from '../types'
+import type { AttributeKey, CharacterCreationInput, ClueDefinition, GameState, QuestStatus } from '../types'
 import { createInitialGameState } from '../content/initial'
 import { checkTravel } from '../rules/exploration'
 import { canTransitionQuestStatus } from '../rules/quest'
 import { getClue, getEnemy, getEncounter, getGathering, getItem, getLocation, getMount, getNpc, getQuest } from '../content'
 import { checkGathering, gatheringFlag } from '../rules/gathering'
+import { checkIdentification } from '../rules/identification'
+import { resolveInvestigationCheck } from '../rules/investigation'
 import { checkEncounter, currentEncounterVariantId, resolveEncounterVariant, singleEnemyIdOf } from '../rules/encounter'
 import { performD20Check, CHECK_DC, type D20CheckResult } from '../rules/d20'
 import { KNIGHT_POWER_STRIKE_MP_COST, MAGE_SPELL_MP_COST, WARRIOR_SUPPRESS_STRIKE_MP_COST } from '../rules/combat'
@@ -333,6 +335,14 @@ interface GameStoreState {
   reportSpiritSpringWater: () => boolean
   /** TM-P2-012-R1 P1-03：北坡向王五复命——《猎人的旧路》in_progress + 教学采集已完成 → completable（只推进一次） */
   reportHunterOldPath: () => boolean
+  /** TM-P2-013 §3/§4：Stage A——天龙城接受《黑石余响》（双前置 completed 才可发现；原子 discover+accept+写四层解锁 flag） */
+  beginBlackStoneEchoQuest: () => boolean
+  /** TM-P2-013 §6/§7：四层调查点（一次性、fail-forward；三点全部完成 → 封印室解锁） */
+  investigateFloor4Point: (pointId: 'broken_gate' | 'resonance' | 'seal_pattern', method: 'mnd' | 'lck' | 'profession', roll?: number) => { ok: boolean; success?: boolean; failForward?: boolean; attribute?: AttributeKey; dc?: number; reason?: 'locked' | 'unavailable' }
+  /** TM-P2-013 §13/§16：鉴定（天龙城鉴定师入口；checkIdentification 纯校验 + 原子事务：遗物-1 / 金币-cost / 结果装备+1） */
+  identifyItem: (identificationId: string) => boolean
+  /** TM-P2-013 §20：向马科回报深层调查（identified → completable；提交走 generic completeQuest） */
+  reportBlackStoneEcho: () => boolean
 }
 
 /** 线索发现（TM-P2-008 §38）：clueId 已注册 + `world.flags[clueId]` 非严格 true → 写 flag 返回新 GameState；未注册 / 已发现返回 null（不变）。幂等、纯函数 */
@@ -383,6 +393,12 @@ function applyQuestDiscovery(gameState: GameState, questId: string): GameState |
   if (questId === 'quest_spirit_spring_water') {
     const trial = gameState.quests.find((q) => q.questId === MARTIAL_TRIAL_QUEST_ID)
     if (trial?.status !== 'completed') return null
+  }
+  // TM-P2-013 §3：《黑石余响》窄特判——仅《商人王财的麻烦》+《神泉之水》双 completed 才能发现；不建 prerequisite 系统
+  if (questId === 'quest_black_stone_deep_echo') {
+    const wangcai = gameState.quests.find((q) => q.questId === 'quest_wangcai_trouble')
+    const spring = gameState.quests.find((q) => q.questId === 'quest_spirit_spring_water')
+    if (wangcai?.status !== 'completed' || spring?.status !== 'completed') return null
   }
   const index = gameState.quests.findIndex((q) => q.questId === questId)
   if (index < 0) {
@@ -1084,6 +1100,8 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
       // TM-P2-012 §33/§34：恰拉拉一次性清场守卫——defeat flag 严格 true 后整次胜利结算拒绝（ok 不置位）。
       // 注意必须在 ok = true 之前：后置分支 return {} 只代表「无状态变更」，不影响 ok。
       if (enemyId === 'black_bear_qialala' && s.gameState.world.flags.black_bear_qialala_defeated === true) return {}
+      // TM-P2-013 §11：守门者同规则——首胜后拒绝重复结算
+      if (enemyId === 'blackstone_warden' && s.gameState.world.flags.blackstone_warden_defeated === true) return {}
       ok = true
       // TM-P2-006 第 38/40 节：战斗阅历——只在「首次正式击败」时授予（getEnemyFirstKillXp 复用现有 defeated flags 防重复）；
       // 重复遭遇 / 无 XP 定义 → firstKillXp=0，withFirstKillXp 原样返回
@@ -1259,13 +1277,18 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
       // 重复结算拒绝在上方守卫段完成；本分支只负责首次写 flag + 任务 stage 6。
       // 北坡普通野兽（野猪/蜂群/黑熊）走通用 repeatable 遭遇路径：first-kill 标记 + 低额重复 XP。
       const p2012Encounter = getEncounter(SINGLE_ENEMY_ENCOUNTERS[enemyId] ?? '')
-      if (p2012Encounter?.encounterDefeatFlag && enemyId === 'black_bear_qialala' && s.gameState.world.flags[p2012Encounter.encounterDefeatFlag] !== true) {
+      const p2012StoryBosses: Record<string, { questId: string; stage: number; flag: string }> = {
+        black_bear_qialala: { questId: 'quest_spirit_spring_water', stage: 6, flag: 'qialala_defeated' },
+        blackstone_warden: { questId: 'quest_black_stone_deep_echo', stage: 3, flag: 'warden_defeated' },
+      }
+      const storyBoss = p2012StoryBosses[enemyId]
+      if (p2012Encounter?.encounterDefeatFlag && storyBoss && s.gameState.world.flags[p2012Encounter.encounterDefeatFlag] !== true) {
         const defeatFlag = p2012Encounter.encounterDefeatFlag
-        const questIndex = s.gameState.quests.findIndex((q) => q.questId === 'quest_spirit_spring_water')
+        const questIndex = s.gameState.quests.findIndex((q) => q.questId === storyBoss.questId)
         const quests = [...s.gameState.quests]
-        if (enemyId === 'black_bear_qialala' && questIndex >= 0 && quests[questIndex]?.status === 'in_progress') {
+        if (questIndex >= 0 && quests[questIndex]?.status === 'in_progress') {
           const quest = quests[questIndex]!
-          quests[questIndex] = { ...quest, stage: 6, flags: { ...quest.flags, qialala_defeated: true } }
+          quests[questIndex] = { ...quest, stage: Math.max(quest.stage, storyBoss.stage), flags: { ...quest.flags, [storyBoss.flag]: true } }
         }
         return { gameState: withFirstKillXp({ ...s.gameState, quests, world: { ...s.gameState.world, flags: { ...s.gameState.world.flags, [defeatFlag]: true } } }) }
       }
@@ -1335,6 +1358,8 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
       const grant = get().grantLoot(singleEnemyId)
       // 神泉 Boss 首杀专属装备：只走 encounter 胜利事务，不通过 UI 发放；重复结算已被 defeated 门拒绝。
       if (encounterId === 'encounter_black_bear_qialala') get().addItem('king_kong_giant_shield', 1)
+      // TM-P2-013 §12：黑石守门者首胜 guaranteed 未鉴定遗物（encounter 胜利事务发放；§12 不得走 loot 随机）
+      if (encounterId === 'encounter_blackstone_warden') get().addItem('unidentified_blackstone_relic', 1)
       return resolveEncounterLoot(grant ? [grant] : [])
     }
     // 多敌遭遇：整体胜利事务（§6/§15/§16）——XP sum + loot 聚合 + encounterDefeatFlag 一次性写入
@@ -3180,6 +3205,124 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
       if (index < 0 || !quest || quest.status !== 'in_progress' || quest.flags.tutorial_gathered !== true || quest.flags.reported === true) return {}
       const quests = [...state.quests]
       quests[index] = { ...quest, stage: 2, status: 'completable', flags: { ...quest.flags, reported: true } }
+      changed = true
+      return { gameState: { ...state, quests } }
+    })
+    return changed
+  },
+
+  // ---- TM-P2-013 §3/§4/§5：黑石余响主线（Content → Pure Rules → thin Store → UI） ----
+  beginBlackStoneEchoQuest: () => {
+    let changed = false
+    set((s) => {
+      const state = s.gameState
+      if (!state || state.world.currentLocationId !== 'tianlong_city') return {}
+      const discovered = applyQuestDiscovery(state, 'quest_black_stone_deep_echo')
+      if (!discovered) return {}
+      const accepted = applyQuestTransition(discovered, 'quest_black_stone_deep_echo', 'in_progress')
+      if (!accepted) return {}
+      changed = true
+      // §5：接受任务即写四层解锁（深层通道因异动变化）；封印室由四层调查解锁
+      return { gameState: { ...accepted, world: { ...accepted.world, flags: { ...accepted.world.flags, black_stone_tower_floor4_unlocked: true } } } }
+    })
+    return changed
+  },
+
+  investigateFloor4Point: (pointId, method, roll) => {
+    let result: { ok: boolean; success?: boolean; failForward?: boolean; attribute?: AttributeKey; dc?: number; reason?: 'locked' | 'unavailable' } = { ok: false, reason: 'locked' }
+    set((s) => {
+      const state = s.gameState
+      if (!state || state.world.currentLocationId !== 'black_stone_tower_floor4') return {}
+      const index = state.quests.findIndex((q) => q.questId === 'quest_black_stone_deep_echo')
+      const quest = state.quests[index]
+      if (index < 0 || !quest || quest.status !== 'in_progress') return {}
+      const flagKey = `investigated_${pointId}`
+      if (quest.flags[flagKey] === true) return {}
+      // §7：一次性、fail-forward——失败仍推进剧情，不允许无限重骰
+      const clueByPoint: Record<string, string> = {
+        broken_gate: 'clue_floor4_broken_gate',
+        resonance: 'clue_floor4_resonance',
+        seal_pattern: 'clue_floor4_seal_pattern',
+      }
+      const clueId = clueByPoint[pointId]
+      if (!clueId || !getClue(clueId)) return {}
+      // §7/§8：检定参数由纯规则给出（职业路径走职业主属性 + 本职加值；UI 只 render 结果）
+      const plan = resolveInvestigationCheck(method, state.player.profession)
+      const check = resolveD20Check(
+        { attributeScore: state.player.attributes[plan.attribute], level: state.player.level, dc: plan.dc, proficient: false, situationalModifier: plan.situationalModifier },
+        roll ?? rollD20(),
+      )
+      const quests = [...state.quests]
+      quests[index] = { ...quest, stage: Math.max(quest.stage, 1), flags: { ...quest.flags, [flagKey]: true, ...(check.success ? {} : { [`investigated_${pointId}_fail_forward`]: true }) } }
+      let next: GameState = { ...state, quests }
+      next = applyClueDiscovery(next, clueId) ?? next
+      const done = (['broken_gate', 'resonance', 'seal_pattern'] as const).every((id) => quests[index]!.flags[`investigated_${id}`] === true)
+      let flags = { ...next.world.flags }
+      if (done) {
+        // §5：完成四层核心调查 → 封印室解锁（world flag 走 travel rule）
+        flags = { ...flags, black_stone_sealed_chamber_unlocked: true }
+        quests[index] = { ...quests[index]!, stage: Math.max(quests[index]!.stage, 2) }
+        next = { ...next, quests }
+      }
+      result = { ok: true, success: check.success, failForward: !check.success, attribute: plan.attribute, dc: plan.dc }
+      return { gameState: { ...next, world: { ...next.world, flags } } }
+    })
+    return result
+  },
+
+  identifyItem: (identificationId) => {
+    let changed = false
+    set((s) => {
+      const state = s.gameState
+      if (!state) return {}
+      // §15/§16：鉴定入口合法位置 = 天龙城（鉴定师常驻地点；UI 只在鉴定师对话内触发）
+      if (state.world.currentLocationId !== 'tianlong_city') return {}
+      // §16：纯规则校验（遗物持有 / 金币 / 职业 → 结果装备）
+      const check = checkIdentification(state, identificationId)
+      if (!check.allowed) return {}
+      // §16：原子事务——任一步失败全部不变
+      const sourceIndex = state.inventory.findIndex((entry) => entry.itemId === 'unidentified_blackstone_relic')
+      if (sourceIndex < 0) return {}
+      const gold = state.player.gold - check.goldCost
+      if (!Number.isSafeInteger(gold) || gold < 0) return {}
+      // 只消耗第一条遗物条目（同 itemId 可能存在多条目：两份遗物可鉴定两次，ID13/ID14）
+      let inventory = state.inventory
+        .map((entry, i) => (i === sourceIndex ? { ...entry, quantity: entry.quantity - 1 } : entry))
+        .filter((entry) => entry.quantity > 0)
+      const resultIndex = inventory.findIndex((entry) => entry.itemId === check.resultItemId)
+      inventory = resultIndex < 0
+        ? [...inventory, { itemId: check.resultItemId, quantity: 1 }]
+        : inventory.map((entry, i) => (i === resultIndex ? { ...entry, quantity: entry.quantity + 1 } : entry))
+      const index = state.quests.findIndex((q) => q.questId === 'quest_black_stone_deep_echo')
+      let quests = state.quests
+      if (index >= 0 && quests[index]?.status === 'in_progress' && quests[index]!.flags.relic_identified !== true) {
+        quests = [...quests]
+        quests[index] = { ...quests[index]!, stage: 3, flags: { ...quests[index]!.flags, relic_identified: true, identified_result: check.resultItemId } }
+      }
+      changed = true
+      return {
+        gameState: {
+          ...state,
+          player: { ...state.player, gold },
+          inventory,
+          quests,
+          world: { ...state.world, flags: { ...state.world.flags, blackstone_relic_identified: true } },
+        },
+      }
+    })
+    return changed
+  },
+
+  reportBlackStoneEcho: () => {
+    let changed = false
+    set((s) => {
+      const state = s.gameState
+      if (!state || state.world.currentLocationId !== 'tianlong_martial_hall') return {}
+      const index = state.quests.findIndex((q) => q.questId === 'quest_black_stone_deep_echo')
+      const quest = state.quests[index]
+      if (index < 0 || !quest || quest.status !== 'in_progress' || quest.flags.relic_identified !== true) return {}
+      const quests = [...state.quests]
+      quests[index] = { ...quest, stage: 4, status: 'completable', flags: { ...quest.flags, reported: true } }
       changed = true
       return { gameState: { ...state, quests } }
     })
